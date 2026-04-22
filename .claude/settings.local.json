@@ -15,7 +15,10 @@
       "Bash(curl -skI http://centrofin.test/companies)",
       "Bash(curl -skI http://centrofin.test/invoices)",
       "Bash(npx --yes shadcn@latest add --all --overwrite --yes)",
-      "Bash(curl -skI http://centrofin.test/users)"
+      "Bash(curl -skI http://centrofin.test/users)",
+      "Bash(kill -9 43811)",
+      "Bash(redis-cli ping *)",
+      "Bash(composer require *)"
     ]
   },
   "enableAllProjectMcpServers": true,

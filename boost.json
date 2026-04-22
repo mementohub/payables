@@ -9,6 +9,7 @@
     "sail": false,
     "skills": [
         "laravel-best-practices",
+        "configuring-horizon",
         "wayfinder-development",
         "pest-testing"
     ]

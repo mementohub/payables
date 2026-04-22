@@ -1,7 +1,19 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import CompanyController from '@/actions/App/Http/Controllers/CompanyController';
 import SyncController from '@/actions/App/Http/Controllers/SyncController';
 import { create as companiesCreate, edit as companiesEdit, index as companiesIndex } from '@/routes/companies';
@@ -17,6 +29,87 @@ type Company = {
     invoices_count: number;
     last_synced_at: string | null;
 };
+
+function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function monthAgoISO() {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 10);
+}
+
+function SyncDialog({ company }: { company: Company }) {
+    const [open, setOpen] = useState(false);
+    const [from, setFrom] = useState(monthAgoISO());
+    const [to, setTo] = useState(todayISO());
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button size="sm" variant="secondary">
+                    <RefreshCw />
+                    Sincronizează
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Sincronizează {company.name}</DialogTitle>
+                    <DialogDescription>
+                        Alege intervalul de date (după data documentelor) pentru sincronizare. Va rula în fundal prin Horizon.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    {...SyncController.store.form(company.id)}
+                    options={{ preserveScroll: true }}
+                    onSuccess={() => setOpen(false)}
+                    className="space-y-4"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`sync-from-${company.id}`}>De la</Label>
+                                    <Input
+                                        id={`sync-from-${company.id}`}
+                                        type="date"
+                                        name="from"
+                                        value={from}
+                                        onChange={(e) => setFrom(e.target.value)}
+                                        required
+                                    />
+                                    {errors.from && <span className="text-xs text-red-600">{errors.from}</span>}
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`sync-to-${company.id}`}>Până la</Label>
+                                    <Input
+                                        id={`sync-to-${company.id}`}
+                                        type="date"
+                                        name="to"
+                                        value={to}
+                                        onChange={(e) => setTo(e.target.value)}
+                                        required
+                                    />
+                                    {errors.to && <span className="text-xs text-red-600">{errors.to}</span>}
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                                    Anulează
+                                </Button>
+                                <Button type="submit" disabled={processing}>
+                                    <RefreshCw />
+                                    {processing ? 'Se pornește…' : 'Pornește sincronizarea'}
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
 
 export default function CompaniesIndex({ companies }: { companies: Company[] }) {
     return (
@@ -74,14 +167,7 @@ export default function CompaniesIndex({ companies }: { companies: Company[] }) 
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-end gap-2">
-                                            <Form {...SyncController.store.form(company.id)}>
-                                                {({ processing }) => (
-                                                    <Button size="sm" variant="secondary" disabled={processing}>
-                                                        <RefreshCw />
-                                                        {processing ? 'Se sincronizează…' : 'Sincronizează'}
-                                                    </Button>
-                                                )}
-                                            </Form>
+                                            <SyncDialog company={company} />
                                             <Button asChild size="sm" variant="outline">
                                                 <Link href={companiesEdit(company.id)}>
                                                     <Pencil />

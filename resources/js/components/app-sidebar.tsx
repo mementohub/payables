@@ -5,6 +5,7 @@ import {
     FileInput,
     FileOutput,
     FileText,
+    Landmark,
     LayoutGrid,
     Truck,
     UserCog,
@@ -23,6 +24,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { index as companiesIndex } from '@/routes/companies';
+import { index as bankStatementsIndex } from '@/routes/bank-statements';
 import { emise as facturiEmise, primite as facturiPrimite } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as usersIndex } from '@/routes/users';
@@ -66,6 +68,11 @@ const mainNavItems: NavItemOrGroup[] = [
                 icon: Users,
             },
         ],
+    },
+    {
+        title: 'Extrase bancare',
+        href: bankStatementsIndex(),
+        icon: Landmark,
     },
 ];
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BankStatementController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PartnerController;
@@ -23,6 +24,9 @@ Route::middleware([
     Route::get('facturi-emise', [InvoiceController::class, 'emise'])->name('invoices.emise');
     Route::get('facturi-primite', [InvoiceController::class, 'primite'])->name('invoices.primite');
     Route::get('facturi/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+
+    Route::get('extrase-bancare', [BankStatementController::class, 'index'])->name('bank-statements.index');
+    Route::get('extrase-bancare/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
 
     Route::get('furnizori', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
     Route::get('furnizori/{partner}', [PartnerController::class, 'show'])->name('partners.show');

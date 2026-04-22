@@ -151,6 +151,37 @@ WHERE df.data_doc_com = :data_doc
 ORDER BY df.data_repartizare;
 ```
 
+### `extrasb` — bank statement headers
+
+- **Primary key**: `(data_extras, banca_eu, cont_banca_eu)`.
+- `banca_eu` + `cont_banca_eu` reference `eu_banca(banca, cont_banca)` (the *company's own* bank accounts — not to be confused with `partener_banca` which is for partners).
+- `operator` = user who imported the statement.
+
+**Statement lines** are `doc` rows where `(d.data_contab, d.banca_eu, d.cont_banca_eu) = (e.data_extras, e.banca_eu, e.cont_banca_eu)` — this FK is enforced. Typical `tip_doc` values in `doc` lines: `OP_INC`, `OP_PL`, `Ch_INC`, `Ch_PL`, `Reg_INC`, `Reg_PL`, `CardINC`, `Comis_B`, `Dob_INC`, `FV_B`, `FV_C`.
+
+**Unallocated receipts/payments:** a statement line (a `doc` row, financial doc) is "unallocated" when the sum of `doc_fin.val_fin` for rows where `(df.data_doc_fin, df.tip_doc_fin, df.nr_doc_fin)` matches the line is less than the line's `val_mon`. This is how you flag orphan receipts (money came in but isn't matched to any issued invoice) or orphan payments (money went out without being matched to a received invoice).
+
+Example — pull lines + allocated total per line for one statement:
+
+```sql
+SELECT d.data_doc, d.tip_doc, d.nr_doc, d.partener, d.moneda, d.val_mon,
+       COALESCE(SUM(df.val_fin), 0) AS val_allocated
+FROM doc d
+LEFT JOIN doc_fin df
+  ON df.data_doc_fin = d.data_doc
+ AND df.tip_doc_fin  = d.tip_doc
+ AND df.nr_doc_fin   = d.nr_doc
+WHERE d.data_contab = :data_extras
+  AND d.banca_eu    = :banca
+  AND d.cont_banca_eu = :iban
+GROUP BY d.data_doc, d.tip_doc, d.nr_doc, d.partener, d.moneda, d.val_mon;
+```
+
+### `eu_banca` — company's own bank accounts
+
+- PK: `(banca, cont_banca)`.
+- `moneda`, `da_nu_implicit`, `discontinued`, `eu_punct_lucru`, `conts`+`conta` (chart-of-accounts binding), `jurnal`.
+
 ### Other tables seen in the schema (mostly ignored for sync)
 
 - `doc_comp` — has a similar shape for compensation pairing but appears **empty/unused** in christiantour; do not rely on it.
@@ -212,6 +243,8 @@ Use these to size queries / pagination / job timeouts.
 | `partener`         | `partners`               | Only partners referenced by synced invoices                                 |
 | `partener_banca`   | `partner_bank_accounts`  | Only for partners that are furnizori in the sync window                     |
 | `doc_fin`          | `invoice_payments`       | `tip_doc_com` matches sync scope, `data_doc_com` in range; cascade-deletes local rows before re-inserting to handle unallocations |
+| `extrasb`          | `bank_statements`        | All statements whose `data_extras` falls in the sync window                 |
+| `doc` (statement lines) + `doc_fin` (allocations) | `bank_statement_lines`   | Joined via `(data_contab, banca_eu, cont_banca_eu)`; `val_allocated` = Σ `doc_fin.val_fin`; direction derived from `tip_doc` grupa (`incasare` → incoming, `plata` → outgoing). Lines are deleted and re-inserted per sync. |
 
 ## Quick diagnostic queries
 

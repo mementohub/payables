@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\BankStatement;
+use App\Models\BankStatementLine;
+use App\Models\BankStatementLineAllocation;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\InvoiceDetail;
@@ -10,7 +13,6 @@ use App\Models\Partner;
 use App\Models\PartnerBankAccount;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class SyncService
 {
@@ -21,15 +23,23 @@ class SyncService
     public function __construct(private readonly RemoteConnection $remote) {}
 
     /**
-     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int}
+     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int, statements: int}
      */
     public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null): array
     {
         $remote = $this->remote->connection($company);
-        $from ??= Carbon::now()->subMonth()->startOfDay();
-        $to ??= Carbon::now()->endOfDay();
 
         $tipDocs = [...self::FURNIZOR_DOC_TYPES, ...self::CLIENT_DOC_TYPES];
+
+        if ($to === null) {
+            $remoteMax = $remote->table('doc')
+                ->whereIn('tip_doc', $tipDocs)
+                ->max('data_doc');
+
+            $to = $remoteMax ? Carbon::parse($remoteMax)->subMonth() : Carbon::now()->endOfDay();
+        }
+
+        $from ??= $to->copy()->subMonth()->startOfDay();
 
         $partnerDocRows = $remote->table('doc')
             ->select('partener', 'tip_doc')
@@ -54,6 +64,8 @@ class SyncService
 
         $paymentsCount = $this->syncInvoicePayments($company, $remote, $from, $to, $tipDocs);
 
+        $statementsCount = $this->syncBankStatements($company, $remote, $from, $to);
+
         $company->forceFill(['last_synced_at' => now()])->save();
 
         return [
@@ -62,7 +74,161 @@ class SyncService
             'details' => $detailsCount,
             'bank_accounts' => $bankAccountsCount,
             'payments' => $paymentsCount,
+            'statements' => $statementsCount,
         ];
+    }
+
+    private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
+    {
+        $headers = $remote->table('extrasb as e')
+            ->leftJoin('eu_banca as b', function ($join) {
+                $join->on('b.banca', '=', 'e.banca_eu')->on('b.cont_banca', '=', 'e.cont_banca_eu');
+            })
+            ->select([
+                'e.data_extras', 'e.banca_eu', 'e.cont_banca_eu', 'e.operator', 'b.moneda',
+            ])
+            ->whereBetween('e.data_extras', [$from->toDateString(), $to->toDateString()])
+            ->orderBy('e.data_extras')
+            ->get();
+
+        if ($headers->isEmpty()) {
+            return 0;
+        }
+
+        $incasareTypes = [
+            'OP_INC', 'Ch_INC', 'Reg_INC', 'CardINC', 'CredINC', 'BO_INC', 'CEC_INC', 'Cmb_INC',
+            'DI_Casa', 'DIV_INC', 'Dob_INC', 'FV_B', 'OCV_INC', 'OVV_INC', 'DocCred',
+            'B_Cadou', 'B_CasaF', 'B_Masa', 'BonMasa', 'BordMgz', 'CCredit', 'CEC_N_C',
+        ];
+
+        $partnerLookup = Partner::where('company_id', $company->id)->pluck('id', 'name');
+        $invoiceLookup = Invoice::where('company_id', $company->id)
+            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+            ->keyBy(fn ($i) => $i->data_doc->toDateString().'|'.$i->tip_doc.'|'.$i->nr_doc);
+
+        $count = 0;
+
+        foreach ($headers as $header) {
+            $statement = BankStatement::updateOrCreate(
+                [
+                    'company_id' => $company->id,
+                    'data_extras' => $header->data_extras,
+                    'iban' => $header->cont_banca_eu,
+                ],
+                [
+                    'banca' => $header->banca_eu !== '-' ? $header->banca_eu : null,
+                    'operator' => $header->operator,
+                    'moneda' => $header->moneda,
+                ]
+            );
+
+            $lines = $remote->table('doc')
+                ->select([
+                    'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'val_mon',
+                    'emitent', 'cine_preda', 'cine_primeste', 'obs_txt',
+                ])
+                ->where('data_contab', $header->data_extras)
+                ->where('banca_eu', $header->banca_eu)
+                ->where('cont_banca_eu', $header->cont_banca_eu)
+                ->orderBy('data_doc')
+                ->get();
+
+            $allocationRows = $remote->table('doc_fin')
+                ->select([
+                    'data_doc_fin', 'tip_doc_fin', 'nr_doc_fin',
+                    'data_doc_com', 'tip_doc_com', 'nr_doc_com', 'val_fin', 'val_com',
+                ])
+                ->whereIn('tip_doc_fin', $lines->pluck('tip_doc')->unique()->all() ?: [''])
+                ->where(function ($q) use ($lines) {
+                    foreach ($lines as $line) {
+                        $q->orWhere(function ($q) use ($line) {
+                            $q->where('data_doc_fin', $line->data_doc)
+                                ->where('tip_doc_fin', $line->tip_doc)
+                                ->where('nr_doc_fin', $line->nr_doc);
+                        });
+                    }
+                })
+                ->get();
+
+            $allocationByLine = [];
+            $allocationRowsByLine = [];
+            foreach ($allocationRows as $row) {
+                $key = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
+                $allocationByLine[$key] = ($allocationByLine[$key] ?? 0) + ($row->val_fin ?? 0);
+                $allocationRowsByLine[$key][] = $row;
+            }
+
+            $statement->lines()->delete();
+
+            $linesCount = 0;
+            $unallocatedCount = 0;
+            $totalIn = 0.0;
+            $totalOut = 0.0;
+            $totalUnallocated = 0.0;
+
+            foreach ($lines as $line) {
+                $lineKey = $line->data_doc.'|'.$line->tip_doc.'|'.$line->nr_doc;
+                $direction = in_array($line->tip_doc, $incasareTypes, true) ? 'incoming' : 'outgoing';
+                $valAllocated = (float) ($allocationByLine[$lineKey] ?? 0);
+                $val = (float) ($line->val_mon ?? 0);
+
+                $lineModel = BankStatementLine::create([
+                    'bank_statement_id' => $statement->id,
+                    'data_doc' => $line->data_doc,
+                    'tip_doc' => $line->tip_doc,
+                    'nr_doc' => $line->nr_doc,
+                    'direction' => $direction,
+                    'partener_name' => $line->partener,
+                    'partner_id' => $line->partener ? ($partnerLookup[$line->partener] ?? null) : null,
+                    'emitent' => $line->emitent,
+                    'cine_preda' => $line->cine_preda,
+                    'cine_primeste' => $line->cine_primeste,
+                    'obs_txt' => $line->obs_txt,
+                    'moneda' => $line->moneda,
+                    'val_mon' => $val,
+                    'val_allocated' => $valAllocated,
+                ]);
+
+                foreach ($allocationRowsByLine[$lineKey] ?? [] as $alloc) {
+                    $invoiceKey = $alloc->data_doc_com.'|'.$alloc->tip_doc_com.'|'.$alloc->nr_doc_com;
+                    $invoiceId = isset($invoiceLookup[$invoiceKey]) ? $invoiceLookup[$invoiceKey]->id : null;
+
+                    BankStatementLineAllocation::create([
+                        'bank_statement_line_id' => $lineModel->id,
+                        'invoice_id' => $invoiceId,
+                        'data_doc_com' => $alloc->data_doc_com,
+                        'tip_doc_com' => $alloc->tip_doc_com,
+                        'nr_doc_com' => $alloc->nr_doc_com,
+                        'val_fin' => $alloc->val_fin ?? 0,
+                        'val_com' => $alloc->val_com ?? 0,
+                    ]);
+                }
+
+                $linesCount++;
+                $unallocatedAmount = max(0, $val - $valAllocated);
+                if ($unallocatedAmount > 0.01) {
+                    $unallocatedCount++;
+                    $totalUnallocated += $unallocatedAmount;
+                }
+                if ($direction === 'incoming') {
+                    $totalIn += $val;
+                } else {
+                    $totalOut += $val;
+                }
+            }
+
+            $statement->forceFill([
+                'lines_count' => $linesCount,
+                'unallocated_count' => $unallocatedCount,
+                'total_incoming' => $totalIn,
+                'total_outgoing' => $totalOut,
+                'total_unallocated' => $totalUnallocated,
+            ])->save();
+
+            $count++;
+        }
+
+        return $count;
     }
 
     /**
@@ -237,7 +403,13 @@ class SyncService
      */
     private function syncInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to, array $tipDocs): array
     {
-        $invoiceRows = $remote->table('doc')
+        $partnerLookup = Partner::where('company_id', $company->id)
+            ->pluck('id', 'name');
+
+        $invoicesCount = 0;
+        $detailsCount = 0;
+
+        $remote->table('doc')
             ->select([
                 'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'curs',
                 'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl',
@@ -246,65 +418,85 @@ class SyncService
             ->whereIn('tip_doc', $tipDocs)
             ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
             ->orderBy('data_doc')
-            ->get();
+            ->chunk(500, function ($chunk) use ($company, $remote, $partnerLookup, &$invoicesCount, &$detailsCount) {
+                $invoiceIds = [];
+                $rowsByKey = [];
 
-        $partnerLookup = Partner::where('company_id', $company->id)
-            ->pluck('id', 'name');
+                foreach ($chunk as $row) {
+                    $type = in_array($row->tip_doc, self::FURNIZOR_DOC_TYPES, true) ? 'furnizor' : 'client';
+                    $paid = $type === 'furnizor' ? $row->val_mon_pl : $row->val_mon_inc;
 
-        $invoicesCount = 0;
-        $detailsCount = 0;
+                    $invoice = Invoice::updateOrCreate(
+                        [
+                            'company_id' => $company->id,
+                            'data_doc' => $row->data_doc,
+                            'tip_doc' => $row->tip_doc,
+                            'nr_doc' => $row->nr_doc,
+                        ],
+                        [
+                            'partner_id' => $partnerLookup[$row->partener] ?? null,
+                            'partener_type' => $type,
+                            'moneda' => $row->moneda,
+                            'curs' => $row->curs,
+                            'val_mon' => $row->val_mon ?? 0,
+                            'val_mon_tva' => $row->val_mon_tva ?? 0,
+                            'val_mon_paid' => $paid ?? 0,
+                            'data_scadenta' => $row->data_scadenta,
+                            'data_inchidere' => $row->data_inchidere,
+                            'emitent' => $row->emitent,
+                        ]
+                    );
 
-        DB::transaction(function () use ($company, $remote, $invoiceRows, $partnerLookup, &$invoicesCount, &$detailsCount) {
-            foreach ($invoiceRows as $row) {
-                $type = in_array($row->tip_doc, self::FURNIZOR_DOC_TYPES, true) ? 'furnizor' : 'client';
+                    $invoicesCount++;
+                    $invoiceIds[] = $invoice->id;
+                    $key = $row->data_doc.'|'.$row->tip_doc.'|'.$row->nr_doc;
+                    $rowsByKey[$key] = $invoice->id;
+                }
 
-                $paid = $type === 'furnizor' ? $row->val_mon_pl : $row->val_mon_inc;
-
-                $invoice = Invoice::updateOrCreate(
-                    [
-                        'company_id' => $company->id,
-                        'data_doc' => $row->data_doc,
-                        'tip_doc' => $row->tip_doc,
-                        'nr_doc' => $row->nr_doc,
-                    ],
-                    [
-                        'partner_id' => $partnerLookup[$row->partener] ?? null,
-                        'partener_type' => $type,
-                        'moneda' => $row->moneda,
-                        'curs' => $row->curs,
-                        'val_mon' => $row->val_mon ?? 0,
-                        'val_mon_tva' => $row->val_mon_tva ?? 0,
-                        'val_mon_paid' => $paid ?? 0,
-                        'data_scadenta' => $row->data_scadenta,
-                        'data_inchidere' => $row->data_inchidere,
-                        'emitent' => $row->emitent,
-                    ]
-                );
-                $invoicesCount++;
-
-                $detailsCount += $this->syncInvoiceDetails($remote, $invoice, $row);
-            }
-        });
+                $detailsCount += $this->syncInvoiceDetailsBulk($remote, $invoiceIds, $rowsByKey);
+            });
 
         return [$invoicesCount, $detailsCount];
     }
 
-    private function syncInvoiceDetails(ConnectionInterface $remote, Invoice $invoice, object $docRow): int
+    /**
+     * @param  array<int, int>  $invoiceIds
+     * @param  array<string, int>  $rowsByKey
+     */
+    private function syncInvoiceDetailsBulk(ConnectionInterface $remote, array $invoiceIds, array $rowsByKey): int
     {
-        $rows = $remote->table('doc_poz')
-            ->select(['scv', 'articol', 'detaliu_articol', 'cant', 'um', 'pret', 'proc_tva'])
-            ->where('data_doc', $docRow->data_doc)
-            ->where('tip_doc', $docRow->tip_doc)
-            ->where('nr_doc', $docRow->nr_doc)
-            ->orderBy('scv')
+        if (empty($invoiceIds)) {
+            return 0;
+        }
+
+        InvoiceDetail::whereIn('invoice_id', $invoiceIds)->delete();
+
+        $pozRows = $remote->table('doc_poz')
+            ->select(['data_doc', 'tip_doc', 'nr_doc', 'scv', 'articol', 'detaliu_articol', 'cant', 'um', 'pret', 'proc_tva'])
+            ->where(function ($q) use ($rowsByKey) {
+                foreach (array_keys($rowsByKey) as $key) {
+                    [$dataDoc, $tipDoc, $nrDoc] = explode('|', $key);
+                    $q->orWhere(function ($q) use ($dataDoc, $tipDoc, $nrDoc) {
+                        $q->where('data_doc', $dataDoc)
+                            ->where('tip_doc', $tipDoc)
+                            ->where('nr_doc', $nrDoc);
+                    });
+                }
+            })
             ->get();
 
-        $invoice->details()->delete();
+        $inserts = [];
+        $now = now();
 
-        $count = 0;
-        foreach ($rows as $row) {
-            InvoiceDetail::create([
-                'invoice_id' => $invoice->id,
+        foreach ($pozRows as $row) {
+            $key = $row->data_doc.'|'.$row->tip_doc.'|'.$row->nr_doc;
+            $invoiceId = $rowsByKey[$key] ?? null;
+            if ($invoiceId === null) {
+                continue;
+            }
+
+            $inserts[] = [
+                'invoice_id' => $invoiceId,
                 'scv' => $row->scv,
                 'articol' => $row->articol,
                 'detaliu_articol' => $row->detaliu_articol,
@@ -312,10 +504,15 @@ class SyncService
                 'um' => $row->um,
                 'pret' => $row->pret ?? 0,
                 'proc_tva' => $row->proc_tva,
-            ]);
-            $count++;
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
 
-        return $count;
+        foreach (array_chunk($inserts, 500) as $batch) {
+            InvoiceDetail::insert($batch);
+        }
+
+        return count($inserts);
     }
 }

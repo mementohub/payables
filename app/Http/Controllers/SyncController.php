@@ -2,39 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncCompanyJob;
 use App\Models\Company;
-use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
-use Throwable;
 
 class SyncController extends Controller
 {
-    public function store(Request $request, Company $company, SyncService $sync): RedirectResponse
+    public function store(Request $request, Company $company): RedirectResponse
     {
         $validated = $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
-        $from = isset($validated['from']) ? Carbon::parse($validated['from']) : null;
-        $to = isset($validated['to']) ? Carbon::parse($validated['to']) : null;
+        $from = $validated['from'] ?? null;
+        $to = $validated['to'] ?? null;
 
-        try {
-            $result = $sync->sync($company, $from, $to);
-        } catch (Throwable $e) {
-            Inertia::flash('toast', ['type' => 'error', 'message' => 'Sincronizare eșuată: '.$e->getMessage()]);
+        SyncCompanyJob::dispatch($company, $from, $to);
 
-            return back();
-        }
+        $days = ($from && $to)
+            ? max(1, Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1)
+            : null;
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => "Sincronizate {$result['partners']} parteneri, {$result['invoices']} facturi, {$result['details']} rânduri, {$result['bank_accounts']} conturi bancare, {$result['payments']} plăți.",
+            'message' => $days
+                ? "Sincronizare pornită: {$days} zile vor fi procesate paralel prin Horizon."
+                : 'Sincronizare pornită în fundal prin Horizon.',
         ]);
 
-        return to_route('companies.index');
+        return back();
     }
 }
