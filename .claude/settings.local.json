@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__laravel-boost__application-info",
+      "Bash(psql -U root -h 127.0.0.1 -p 5432 -l)",
+      "Bash(psql -U root -h 127.0.0.1 -p 5432 -d christiantour -c \"\\\\dt\")",
+      "Bash(psql -U root -h 127.0.0.1 -p 5432 -d christiantour -c \"\\\\d doc\")",
+      "Bash(psql *)",
+      "Bash(php artisan *)",
+      "Bash(vendor/bin/pint --dirty --format agent)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(npx vite *)",
+      "Bash(curl -sI https://centrofin.test/companies)",
+      "Bash(curl -sI https://centrofin.test/invoices)",
+      "Bash(curl -skI http://centrofin.test/companies)",
+      "Bash(curl -skI http://centrofin.test/invoices)",
+      "Bash(npx --yes shadcn@latest add --all --overwrite --yes)",
+      "Bash(curl -skI http://centrofin.test/users)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "laravel-boost"
+  ]
+}
