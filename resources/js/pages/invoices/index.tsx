@@ -141,8 +141,7 @@ export default function InvoicesIndex({ invoices, scope, filters, companies }: P
                                 <th className="px-4 py-3">Număr</th>
                                 <th className="px-4 py-3">{scope === 'emise' ? 'Client' : 'Furnizor'}</th>
                                 <th className="px-4 py-3">Companie</th>
-                                <th className="px-4 py-3 text-right">Net</th>
-                                <th className="px-4 py-3 text-right">TVA</th>
+                                <th className="px-4 py-3 text-right">Total</th>
                                 <th className="px-4 py-3">Plată</th>
                             </tr>
                         </thead>
@@ -182,9 +181,6 @@ export default function InvoicesIndex({ invoices, scope, filters, companies }: P
                                     <td className="px-4 py-3 text-muted-foreground">{invoice.company.name}</td>
                                     <td className="px-4 py-3 text-right tabular-nums">
                                         {formatAmount(invoice.val_mon, invoice.moneda)}
-                                    </td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
-                                        {formatAmount(invoice.val_mon_tva, invoice.moneda)}
                                     </td>
                                     <td className="px-4 py-3">
                                         <PaymentStatusBadge status={invoice.payment_status} />

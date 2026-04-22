@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -30,11 +32,11 @@ class InvoiceController extends Controller
             ->when($scope === 'primite', fn ($q) => $q->furnizor())
             ->when($scope === 'emise', fn ($q) => $q->client())
             ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
-            ->when($payment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', \Illuminate\Support\Facades\DB::raw('val_mon + val_mon_tva - 0.01')))
+            ->when($payment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', DB::raw('val_mon - 0.01')))
             ->when($payment === 'unpaid', fn ($q) => $q->where('val_mon_paid', '<=', 0.009))
             ->when($payment === 'partial', function ($q) {
                 $q->where('val_mon_paid', '>', 0.009)
-                    ->whereColumn('val_mon_paid', '<', \Illuminate\Support\Facades\DB::raw('val_mon + val_mon_tva - 0.01'));
+                    ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'));
             })
             ->when($search, function ($q, $term) {
                 $q->where(function ($q) use ($term) {
@@ -72,7 +74,7 @@ class InvoiceController extends Controller
                 'company_id' => $companyId ?: null,
                 'payment' => $payment ?: null,
             ],
-            'companies' => \App\Models\Company::orderBy('name')->get(['id', 'name']),
+            'companies' => Company::orderBy('name')->get(['id', 'name']),
         ]);
     }
 

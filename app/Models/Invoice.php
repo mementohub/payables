@@ -30,7 +30,7 @@ class Invoice extends Model
 
     public function getPaymentStatusAttribute(): string
     {
-        $total = (float) $this->val_mon + (float) $this->val_mon_tva;
+        $total = (float) $this->val_mon;
         $paid = (float) $this->val_mon_paid;
 
         if ($paid <= 0.009) {
