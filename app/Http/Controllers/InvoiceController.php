@@ -26,12 +26,20 @@ class InvoiceController extends Controller
         $search = $request->string('search')->toString();
         $companyId = $request->integer('company_id');
         $payment = $request->string('payment')->toString();
+        $dataDocFrom = $request->string('data_doc_from')->toString();
+        $dataDocTo = $request->string('data_doc_to')->toString();
+        $scadentaFrom = $request->string('data_scadenta_from')->toString();
+        $scadentaTo = $request->string('data_scadenta_to')->toString();
 
         $invoices = Invoice::query()
             ->with(['partner:id,name,cui', 'company:id,name'])
             ->when($scope === 'primite', fn ($q) => $q->furnizor())
             ->when($scope === 'emise', fn ($q) => $q->client())
             ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($dataDocFrom, fn ($q, $d) => $q->where('data_doc', '>=', $d))
+            ->when($dataDocTo, fn ($q, $d) => $q->where('data_doc', '<=', $d))
+            ->when($scadentaFrom, fn ($q, $d) => $q->where('data_scadenta', '>=', $d))
+            ->when($scadentaTo, fn ($q, $d) => $q->where('data_scadenta', '<=', $d))
             ->when($payment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', DB::raw('val_mon - 0.01')))
             ->when($payment === 'unpaid', fn ($q) => $q->where('val_mon_paid', '<=', 0.009))
             ->when($payment === 'partial', function ($q) {
@@ -73,6 +81,10 @@ class InvoiceController extends Controller
                 'search' => $search ?: null,
                 'company_id' => $companyId ?: null,
                 'payment' => $payment ?: null,
+                'data_doc_from' => $dataDocFrom ?: null,
+                'data_doc_to' => $dataDocTo ?: null,
+                'data_scadenta_from' => $scadentaFrom ?: null,
+                'data_scadenta_to' => $scadentaTo ?: null,
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
         ]);

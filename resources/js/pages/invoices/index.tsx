@@ -1,9 +1,11 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
+import DateRangePicker, { type DateRangeValue } from '@/components/date-range-picker';
 import Pagination from '@/components/pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -36,6 +38,10 @@ type Filters = {
     search: string | null;
     company_id: number | null;
     payment: string | null;
+    data_doc_from: string | null;
+    data_doc_to: string | null;
+    data_scadenta_from: string | null;
+    data_scadenta_to: string | null;
 };
 
 type Props = {
@@ -65,10 +71,17 @@ export default function InvoicesIndex({ invoices, scope, filters, companies }: P
                 search: next.search ?? filters.search ?? undefined,
                 company_id: next.company_id ?? filters.company_id ?? undefined,
                 payment: next.payment ?? filters.payment ?? undefined,
+                data_doc_from: next.data_doc_from ?? filters.data_doc_from ?? undefined,
+                data_doc_to: next.data_doc_to ?? filters.data_doc_to ?? undefined,
+                data_scadenta_from: next.data_scadenta_from ?? filters.data_scadenta_from ?? undefined,
+                data_scadenta_to: next.data_scadenta_to ?? filters.data_scadenta_to ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
+
+    const docRange: DateRangeValue = { from: filters.data_doc_from, to: filters.data_doc_to };
+    const scadentaRange: DateRangeValue = { from: filters.data_scadenta_from, to: filters.data_scadenta_to };
 
     return (
         <>
@@ -81,53 +94,83 @@ export default function InvoicesIndex({ invoices, scope, filters, companies }: P
                 </div>
 
                 <form
-                    className="flex flex-wrap items-center gap-2"
+                    aria-label={`Filtre ${label.toLowerCase()}`}
+                    className="flex flex-wrap items-end gap-2"
                     onSubmit={(e) => {
                         e.preventDefault();
                         applyFilter({ search });
                     }}
                 >
-                    <Input
-                        className="max-w-xs"
-                        placeholder={
-                            scope === 'emise'
-                                ? 'Caută număr factură sau client…'
-                                : 'Caută număr factură sau furnizor…'
-                        }
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                    <Select
-                        value={filters.company_id ? String(filters.company_id) : 'all'}
-                        onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
-                    >
-                        <SelectTrigger className="w-[200px]">
-                            <SelectValue placeholder="Companie" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Toate companiile</SelectItem>
-                            {companies.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                    {c.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select
-                        value={filters.payment ?? 'all'}
-                        onValueChange={(v) => applyFilter({ payment: v === 'all' ? null : v })}
-                    >
-                        <SelectTrigger className="w-[160px]">
-                            <SelectValue placeholder="Plată" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Toate plățile</SelectItem>
-                            <SelectItem value="paid">Plătite</SelectItem>
-                            <SelectItem value="partial">Parțial</SelectItem>
-                            <SelectItem value="unpaid">Neplătite</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button type="submit" variant="secondary">
+                    <div className="grid gap-1">
+                        <Label className="text-xs">Caută</Label>
+                        <Input
+                            className="min-h-11 w-[260px]"
+                            placeholder={
+                                scope === 'emise'
+                                    ? 'Număr factură sau client…'
+                                    : 'Număr factură sau furnizor…'
+                            }
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <Label className="text-xs">Companie</Label>
+                        <Select
+                            value={filters.company_id ? String(filters.company_id) : 'all'}
+                            onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
+                        >
+                            <SelectTrigger className="min-h-11 w-[200px]">
+                                <SelectValue placeholder="Companie" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Toate companiile</SelectItem>
+                                {companies.map((c) => (
+                                    <SelectItem key={c.id} value={String(c.id)}>
+                                        {c.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-1">
+                        <Label className="text-xs">Data factură</Label>
+                        <DateRangePicker
+                            className="w-[230px]"
+                            value={docRange}
+                            onChange={(v) => applyFilter({ data_doc_from: v.from, data_doc_to: v.to })}
+                            placeholder="Perioadă data"
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <Label className="text-xs">Data scadență</Label>
+                        <DateRangePicker
+                            className="w-[230px]"
+                            value={scadentaRange}
+                            onChange={(v) =>
+                                applyFilter({ data_scadenta_from: v.from, data_scadenta_to: v.to })
+                            }
+                            placeholder="Perioadă scadență"
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <Label className="text-xs">Plată</Label>
+                        <Select
+                            value={filters.payment ?? 'all'}
+                            onValueChange={(v) => applyFilter({ payment: v === 'all' ? null : v })}
+                        >
+                            <SelectTrigger className="min-h-11 w-[160px]">
+                                <SelectValue placeholder="Plată" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Toate plățile</SelectItem>
+                                <SelectItem value="paid">Plătite</SelectItem>
+                                <SelectItem value="partial">Parțial</SelectItem>
+                                <SelectItem value="unpaid">Neplătite</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Button type="submit" variant="secondary" className="min-h-11">
                         Caută
                     </Button>
                 </form>
