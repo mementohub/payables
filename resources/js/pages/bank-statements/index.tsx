@@ -17,6 +17,7 @@ import {
 import {
     Table,
     TableBody,
+    TableCaption,
     TableCell,
     TableHead,
     TableHeader,
@@ -85,6 +86,7 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                 </div>
 
                 <form
+                    aria-label="Filtre extrase bancare"
                     className="flex flex-wrap items-end gap-2"
                     onSubmit={(e) => {
                         e.preventDefault();
@@ -143,7 +145,10 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                 </form>
 
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <Table>
+                    <Table aria-label="Lista extrase bancare">
+                        <TableCaption className="sr-only">
+                            Lista extrase bancare importate, sortate descendent după dată
+                        </TableCaption>
                         <TableHeader>
                             <TableRow>
                                 <TableHead className="w-28">Dată</TableHead>
