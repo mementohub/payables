@@ -12,7 +12,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import DatePicker from '@/components/date-picker';
 import { Label } from '@/components/ui/label';
 import CompanyController from '@/actions/App/Http/Controllers/CompanyController';
 import SyncController from '@/actions/App/Http/Controllers/SyncController';
@@ -71,24 +71,22 @@ function SyncDialog({ company }: { company: Company }) {
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="grid gap-2">
                                     <Label htmlFor={`sync-from-${company.id}`}>De la</Label>
-                                    <Input
+                                    <DatePicker
                                         id={`sync-from-${company.id}`}
-                                        type="date"
                                         name="from"
                                         value={from}
-                                        onChange={(e) => setFrom(e.target.value)}
+                                        onChange={setFrom}
                                         required
                                     />
                                     {errors.from && <span className="text-xs text-red-600">{errors.from}</span>}
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor={`sync-to-${company.id}`}>Până la</Label>
-                                    <Input
+                                    <DatePicker
                                         id={`sync-to-${company.id}`}
-                                        type="date"
                                         name="to"
                                         value={to}
-                                        onChange={(e) => setTo(e.target.value)}
+                                        onChange={setTo}
                                         required
                                     />
                                     {errors.to && <span className="text-xs text-red-600">{errors.to}</span>}

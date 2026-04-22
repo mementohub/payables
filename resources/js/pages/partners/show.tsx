@@ -4,6 +4,7 @@ import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import PartnerController from '@/actions/App/Http/Controllers/PartnerController';
 import Pagination from '@/components/pagination';
+import DatePicker from '@/components/date-picker';
 import PaymentStatusBadge, { type PaymentStatus } from '@/components/payment-status-badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -340,19 +341,17 @@ export default function PartnerShow({
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Input
-                                type="date"
-                                className="w-[160px]"
+                            <DatePicker
+                                className="w-[180px]"
                                 value={from}
-                                onChange={(e) => setFrom(e.target.value)}
-                                aria-label="De la"
+                                onChange={setFrom}
+                                placeholder="De la"
                             />
-                            <Input
-                                type="date"
-                                className="w-[160px]"
+                            <DatePicker
+                                className="w-[180px]"
                                 value={to}
-                                onChange={(e) => setTo(e.target.value)}
-                                aria-label="Până la"
+                                onChange={setTo}
+                                placeholder="Până la"
                             />
                             <Select
                                 value={invoiceFilters.payment ?? 'all'}

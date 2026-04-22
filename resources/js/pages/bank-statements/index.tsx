@@ -2,10 +2,10 @@ import { Head, Link, router } from '@inertiajs/react';
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
+import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -112,20 +112,20 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                     </div>
                     <div className="grid gap-1">
                         <Label className="text-xs">De la</Label>
-                        <Input
-                            type="date"
-                            className="w-[160px]"
+                        <DatePicker
+                            className="w-[180px]"
                             value={from}
-                            onChange={(e) => setFrom(e.target.value)}
+                            onChange={setFrom}
+                            placeholder="De la"
                         />
                     </div>
                     <div className="grid gap-1">
                         <Label className="text-xs">Până la</Label>
-                        <Input
-                            type="date"
-                            className="w-[160px]"
+                        <DatePicker
+                            className="w-[180px]"
                             value={to}
-                            onChange={(e) => setTo(e.target.value)}
+                            onChange={setTo}
+                            placeholder="Până la"
                         />
                     </div>
                     <Button type="submit" variant="secondary">
