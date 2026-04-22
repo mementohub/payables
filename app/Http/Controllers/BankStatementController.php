@@ -24,6 +24,8 @@ class BankStatementController extends Controller
             ->when($to, fn ($q, $d) => $q->where('data_extras', '<=', $d))
             ->when($onlyUnallocated, fn ($q) => $q->where('unallocated_count', '>', 0))
             ->orderByDesc('data_extras')
+            ->orderBy('company_id')
+            ->orderBy('iban')
             ->paginate(20)
             ->withQueryString()
             ->through(fn (BankStatement $s) => [
