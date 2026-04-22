@@ -80,7 +80,7 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                 <div>
                     <h1 className="text-2xl font-semibold">Extrase bancare</h1>
                     <p className="text-sm text-muted-foreground">
-                        Extrase de cont importate din BD-urile companiilor. Evidențiem tranzacțiile care nu sunt alocate pe facturi.
+                        Alocă încasările pe facturi emise și plățile pe facturi primite.
                     </p>
                 </div>
 
@@ -97,7 +97,7 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                             value={filters.company_id ? String(filters.company_id) : 'all'}
                             onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
                         >
-                            <SelectTrigger className="w-[200px]">
+                            <SelectTrigger className="min-h-11 w-[200px]" size="default">
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
@@ -113,26 +113,27 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                     <div className="grid gap-1">
                         <Label className="text-xs">De la</Label>
                         <DatePicker
-                            className="w-[180px]"
+                            className="min-h-11 w-[180px]"
                             value={from}
                             onChange={setFrom}
-                            placeholder="De la"
+                            placeholder="yyyy-mm-dd"
                         />
                     </div>
                     <div className="grid gap-1">
                         <Label className="text-xs">Până la</Label>
                         <DatePicker
-                            className="w-[180px]"
+                            className="min-h-11 w-[180px]"
                             value={to}
                             onChange={setTo}
-                            placeholder="Până la"
+                            placeholder="yyyy-mm-dd"
                         />
                     </div>
-                    <Button type="submit" variant="secondary">
+                    <Button type="submit" variant="secondary" className="min-h-11">
                         Aplică
                     </Button>
                     <Button
                         type="button"
+                        className="min-h-11"
                         variant={filters.only_unallocated ? 'default' : 'outline'}
                         onClick={() => applyFilter({ only_unallocated: !filters.only_unallocated })}
                     >
@@ -204,7 +205,7 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                                     <TableCell className="hidden text-right tabular-nums text-green-700 sm:table-cell dark:text-green-400">
                                         {formatAmount(s.total_incoming, s.moneda)}
                                     </TableCell>
-                                    <TableCell className="hidden text-right tabular-nums text-red-700 sm:table-cell dark:text-red-400">
+                                    <TableCell className="hidden text-right tabular-nums text-muted-foreground sm:table-cell">
                                         {formatAmount(s.total_outgoing, s.moneda)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums font-medium">
