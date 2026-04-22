@@ -147,12 +147,12 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                             <TableRow>
                                 <TableHead className="w-28">Dată</TableHead>
                                 <TableHead>Bancă</TableHead>
-                                <TableHead>IBAN</TableHead>
-                                <TableHead>Companie</TableHead>
-                                <TableHead className="text-right">Linii</TableHead>
-                                <TableHead className="text-right">Nealocate</TableHead>
-                                <TableHead className="text-right">Încasări</TableHead>
-                                <TableHead className="text-right">Plăți</TableHead>
+                                <TableHead className="hidden lg:table-cell">IBAN</TableHead>
+                                <TableHead className="hidden sm:table-cell">Companie</TableHead>
+                                <TableHead className="hidden text-right xl:table-cell">Linii</TableHead>
+                                <TableHead className="hidden text-right md:table-cell">Nealocate</TableHead>
+                                <TableHead className="hidden text-right sm:table-cell">Încasări</TableHead>
+                                <TableHead className="hidden text-right sm:table-cell">Plăți</TableHead>
                                 <TableHead className="text-right">Sumă nealocată</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -188,10 +188,10 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                                         </Link>
                                     </TableCell>
                                     <TableCell>{s.banca ?? '—'}</TableCell>
-                                    <TableCell className="font-mono text-xs">{s.iban}</TableCell>
-                                    <TableCell className="text-muted-foreground">{s.company.name}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{s.lines_count}</TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="hidden font-mono text-xs lg:table-cell">{s.iban}</TableCell>
+                                    <TableCell className="hidden text-muted-foreground sm:table-cell">{s.company.name}</TableCell>
+                                    <TableCell className="hidden text-right tabular-nums xl:table-cell">{s.lines_count}</TableCell>
+                                    <TableCell className="hidden text-right md:table-cell">
                                         {s.unallocated_count > 0 ? (
                                             <Badge variant="outline" className="border-amber-600/40 bg-amber-100/50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
                                                 <AlertTriangle className="mr-1 size-3" />
@@ -201,10 +201,10 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                                             <span className="text-xs text-muted-foreground">0</span>
                                         )}
                                     </TableCell>
-                                    <TableCell className="text-right tabular-nums text-green-700 dark:text-green-400">
+                                    <TableCell className="hidden text-right tabular-nums text-green-700 sm:table-cell dark:text-green-400">
                                         {formatAmount(s.total_incoming, s.moneda)}
                                     </TableCell>
-                                    <TableCell className="text-right tabular-nums text-red-700 dark:text-red-400">
+                                    <TableCell className="hidden text-right tabular-nums text-red-700 sm:table-cell dark:text-red-400">
                                         {formatAmount(s.total_outgoing, s.moneda)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums font-medium">
