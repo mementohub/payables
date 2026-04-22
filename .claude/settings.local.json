@@ -18,7 +18,8 @@
       "Bash(curl -skI http://centrofin.test/users)",
       "Bash(kill -9 43811)",
       "Bash(redis-cli ping *)",
-      "Bash(composer require *)"
+      "Bash(composer require *)",
+      "mcp__laravel-boost__get-absolute-url"
     ]
   },
   "enableAllProjectMcpServers": true,
