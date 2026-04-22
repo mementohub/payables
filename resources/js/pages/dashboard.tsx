@@ -116,13 +116,14 @@ export default function Dashboard({
     const moneda = filters.moneda || 'Lei';
 
     const applyFilter = (next: Partial<Filters>) => {
+        const merged = { ...filters, ...next };
         router.get(
             dashboard().url,
             {
-                company_id: next.company_id ?? filters.company_id ?? undefined,
-                from: next.from ?? filters.from ?? undefined,
-                to: next.to ?? filters.to ?? undefined,
-                moneda: next.moneda ?? filters.moneda ?? undefined,
+                company_id: merged.company_id ?? undefined,
+                from: merged.from ?? undefined,
+                to: merged.to ?? undefined,
+                moneda: merged.moneda ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );

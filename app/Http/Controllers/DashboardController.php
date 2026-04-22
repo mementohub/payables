@@ -141,11 +141,11 @@ class DashboardController extends Controller
         return Invoice::query()
             ->furnizor()
             ->where('moneda', $moneda)
-            ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
-            ->where('data_scadenta', '<', $today)
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
-            ->when($from, fn ($q, $d) => $q->where('data_doc', '>=', $d))
-            ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
+            ->whereColumn('invoices.val_mon_paid', '<', DB::raw('invoices.val_mon - 0.01'))
+            ->where('invoices.data_scadenta', '<', $today)
+            ->when($companyId, fn ($q, $id) => $q->where('invoices.company_id', $id))
+            ->when($from, fn ($q, $d) => $q->where('invoices.data_doc', '>=', $d))
+            ->when($to, fn ($q, $d) => $q->where('invoices.data_doc', '<=', $d))
             ->leftJoin('partners', 'invoices.partner_id', '=', 'partners.id')
             ->selectRaw('
                 invoices.partner_id,
@@ -186,8 +186,8 @@ class DashboardController extends Controller
             ->selectRaw("
                 date_format(bank_statement_lines.data_doc, '%x-W%v') as week,
                 min(bank_statement_lines.data_doc) as week_start,
-                coalesce(sum(case when direction = 'incoming' then val_mon else 0 end), 0) as incoming,
-                coalesce(sum(case when direction = 'outgoing' then val_mon else 0 end), 0) as outgoing
+                coalesce(sum(case when bank_statement_lines.direction = 'incoming' then bank_statement_lines.val_mon else 0 end), 0) as incoming,
+                coalesce(sum(case when bank_statement_lines.direction = 'outgoing' then bank_statement_lines.val_mon else 0 end), 0) as outgoing
             ")
             ->groupBy('week')
             ->orderBy('week_start')

@@ -65,16 +65,17 @@ export default function InvoicesIndex({ invoices, scope, filters, companies }: P
             : 'Facturi primite de la furnizori (FactFI / FactFE) sincronizate din BD-urile companiilor.';
 
     const applyFilter = (next: Partial<Filters>) => {
+        const merged = { ...filters, ...next };
         router.get(
             baseUrl,
             {
-                search: next.search ?? filters.search ?? undefined,
-                company_id: next.company_id ?? filters.company_id ?? undefined,
-                payment: next.payment ?? filters.payment ?? undefined,
-                data_doc_from: next.data_doc_from ?? filters.data_doc_from ?? undefined,
-                data_doc_to: next.data_doc_to ?? filters.data_doc_to ?? undefined,
-                data_scadenta_from: next.data_scadenta_from ?? filters.data_scadenta_from ?? undefined,
-                data_scadenta_to: next.data_scadenta_to ?? filters.data_scadenta_to ?? undefined,
+                search: merged.search ?? undefined,
+                company_id: merged.company_id ?? undefined,
+                payment: merged.payment ?? undefined,
+                data_doc_from: merged.data_doc_from ?? undefined,
+                data_doc_to: merged.data_doc_to ?? undefined,
+                data_scadenta_from: merged.data_scadenta_from ?? undefined,
+                data_scadenta_to: merged.data_scadenta_to ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );

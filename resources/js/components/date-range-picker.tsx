@@ -158,42 +158,45 @@ export default function DateRangePicker({
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    type="button"
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn(
-                        'min-h-11 justify-start font-normal',
-                        !hasValue && 'text-muted-foreground',
-                        className,
-                    )}
-                >
-                    <CalendarIcon className="mr-2 size-4 shrink-0" />
-                    <span className="truncate">{label}</span>
-                    {allowClear && hasValue && (
-                        <span
-                            role="button"
-                            tabIndex={0}
-                            aria-label="Șterge perioada"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                clear();
-                            }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    clear();
-                                }
-                            }}
-                            className="ml-auto inline-flex size-5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                        >
-                            <X className="size-3.5" />
-                        </span>
-                    )}
-                </Button>
-            </PopoverTrigger>
+            <div className={cn('relative inline-flex', className)}>
+                <PopoverTrigger asChild>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        disabled={disabled}
+                        className={cn(
+                            'min-h-11 w-full justify-start font-normal',
+                            !hasValue && 'text-muted-foreground',
+                            allowClear && hasValue && 'pr-9',
+                        )}
+                    >
+                        <CalendarIcon className="mr-2 size-4 shrink-0" />
+                        <span className="truncate">{label}</span>
+                    </Button>
+                </PopoverTrigger>
+                {allowClear && hasValue && (
+                    <button
+                        type="button"
+                        aria-label="Șterge perioada"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            clear();
+                        }}
+                        className="absolute top-1/2 right-2 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                        <X className="size-3.5" />
+                    </button>
+                )}
+            </div>
             <PopoverContent align="start" className="flex w-auto flex-col gap-0 p-0 sm:flex-row">
                 <div className="flex shrink-0 flex-col gap-1 border-b p-2 sm:w-[180px] sm:border-r sm:border-b-0">
                     {PRESETS.map((preset) => {
