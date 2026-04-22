@@ -165,9 +165,25 @@ export default function BankStatementsIndex({ statements, filters, companies }: 
                                 </TableRow>
                             )}
                             {statements.data.map((s) => (
-                                <TableRow key={s.id} className={s.unallocated_count > 0 ? 'bg-amber-50/50 dark:bg-amber-500/5' : ''}>
+                                <TableRow
+                                    key={s.id}
+                                    onClick={() => router.visit(bankStatementsShow(s.id).url)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            router.visit(bankStatementsShow(s.id).url);
+                                        }
+                                    }}
+                                    tabIndex={0}
+                                    role="link"
+                                    className={`cursor-pointer hover:bg-muted/70 focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${s.unallocated_count > 0 ? 'bg-amber-50/50 dark:bg-amber-500/5' : ''}`}
+                                >
                                     <TableCell className="font-medium">
-                                        <Link className="hover:underline" href={bankStatementsShow(s.id)}>
+                                        <Link
+                                            className="hover:underline"
+                                            href={bankStatementsShow(s.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             {s.data_extras}
                                         </Link>
                                     </TableCell>
