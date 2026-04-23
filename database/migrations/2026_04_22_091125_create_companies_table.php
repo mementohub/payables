@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('db_port')->default('5432');
             $table->string('db_database');
             $table->text('db_username');
-            $table->text('db_password');
+            $table->text('db_password')->nullable();
             $table->timestamp('last_synced_at')->nullable();
             $table->timestamps();
         });
