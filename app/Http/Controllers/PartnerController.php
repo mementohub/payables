@@ -3,10 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\Partner;
-use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -29,10 +30,10 @@ class PartnerController extends Controller
         $partner->load([
             'company:id,name',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
-            'responsibles:id,name,email',
+            'supervisorDepartments:id,name,type',
         ]);
 
-        $assignedIds = $partner->responsibles->pluck('id');
+        $assignedDeptIds = $partner->supervisorDepartments->pluck('id');
 
         $invoiceSearch = $request->string('invoice_search')->toString();
         $invoiceTipDoc = $request->string('invoice_tip_doc')->toString();
@@ -45,11 +46,11 @@ class PartnerController extends Controller
             ->when($invoiceTipDoc, fn ($q, $type) => $q->where('tip_doc', $type))
             ->when($invoiceFrom, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($invoiceTo, fn ($q, $d) => $q->where('data_doc', '<=', $d))
-            ->when($invoicePayment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', \Illuminate\Support\Facades\DB::raw('val_mon + val_mon_tva - 0.01')))
+            ->when($invoicePayment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', DB::raw('val_mon + val_mon_tva - 0.01')))
             ->when($invoicePayment === 'unpaid', fn ($q) => $q->where('val_mon_paid', '<=', 0.009))
             ->when($invoicePayment === 'partial', function ($q) {
                 $q->where('val_mon_paid', '>', 0.009)
-                    ->whereColumn('val_mon_paid', '<', \Illuminate\Support\Facades\DB::raw('val_mon + val_mon_tva - 0.01'));
+                    ->whereColumn('val_mon_paid', '<', DB::raw('val_mon + val_mon_tva - 0.01'));
             })
             ->orderByDesc('data_doc')
             ->paginate(15, pageName: 'invoices')
@@ -99,11 +100,10 @@ class PartnerController extends Controller
                         'is_default' => $account->is_default,
                         'is_discontinued' => $account->is_discontinued,
                     ]),
-                'responsibles' => $partner->responsibles->map(fn (User $user) => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'initials' => $this->initials($user->name),
+                'supervisor_departments' => $partner->supervisorDepartments->map(fn (Department $dept) => [
+                    'id' => $dept->id,
+                    'name' => $dept->name,
+                    'type' => $dept->type,
                 ])->values(),
             ],
             'invoices' => $invoices,
@@ -115,36 +115,43 @@ class PartnerController extends Controller
                 'payment' => $invoicePayment ?: null,
             ],
             'availableTipDocs' => $availableTipDocs,
-            'availableUsers' => User::query()
-                ->whereNotIn('id', $assignedIds)
+            'availableDepartments' => Department::supervisors()
+                ->whereNotIn('id', $assignedDeptIds)
                 ->orderBy('name')
-                ->get(['id', 'name', 'email'])
-                ->map(fn (User $user) => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
+                ->get(['id', 'name', 'type'])
+                ->map(fn (Department $dept) => [
+                    'id' => $dept->id,
+                    'name' => $dept->name,
+                    'type' => $dept->type,
                 ]),
         ]);
     }
 
-    public function attachResponsible(Request $request, Partner $partner): RedirectResponse
+    public function attachSupervisorDepartment(Request $request, Partner $partner): RedirectResponse
     {
+        abort_unless($partner->is_furnizor, 404);
+
         $validated = $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
         ]);
 
-        $partner->responsibles()->syncWithoutDetaching([$validated['user_id']]);
+        $department = Department::findOrFail($validated['department_id']);
+        abort_unless($department->type === Department::TYPE_SUPERVISOR, 422, 'Doar departamentele de supervizori pot fi atribuite.');
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Utilizator atribuit.']);
+        $partner->departments()->syncWithoutDetaching([$department->id]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament atribuit.']);
 
         return back();
     }
 
-    public function detachResponsible(Partner $partner, User $user): RedirectResponse
+    public function detachSupervisorDepartment(Partner $partner, Department $department): RedirectResponse
     {
-        $partner->responsibles()->detach($user->id);
+        abort_unless($partner->is_furnizor, 404);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Utilizator eliminat.']);
+        $partner->departments()->detach($department->id);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament eliminat.']);
 
         return back();
     }
@@ -156,7 +163,7 @@ class PartnerController extends Controller
 
         $partners = Partner::query()
             ->with(['company:id,name'])
-            ->when($scope === 'furnizori', fn ($q) => $q->with('responsibles:id,name'))
+            ->when($scope === 'furnizori', fn ($q) => $q->with('supervisorDepartments:id,name,type'))
             ->withCount('invoices')
             ->when($scope === 'furnizori', fn ($q) => $q->furnizori())
             ->when($scope === 'clienti', fn ($q) => $q->clienti())
@@ -183,11 +190,10 @@ class PartnerController extends Controller
                 'is_client' => $partner->is_client,
                 'invoices_count' => $partner->invoices_count,
                 'company' => ['id' => $partner->company->id, 'name' => $partner->company->name],
-                'responsibles' => $scope === 'furnizori'
-                    ? $partner->responsibles->map(fn (User $user) => [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'initials' => $this->initials($user->name),
+                'supervisor_departments' => $scope === 'furnizori'
+                    ? $partner->supervisorDepartments->map(fn (Department $dept) => [
+                        'id' => $dept->id,
+                        'name' => $dept->name,
                     ])->values()
                     : [],
             ]);
@@ -201,13 +207,5 @@ class PartnerController extends Controller
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
         ]);
-    }
-
-    private function initials(string $name): string
-    {
-        $parts = preg_split('/\s+/u', trim($name)) ?: [];
-        $letters = array_map(fn ($p) => mb_substr($p, 0, 1), array_slice($parts, 0, 2));
-
-        return mb_strtoupper(implode('', $letters)) ?: '?';
     }
 }

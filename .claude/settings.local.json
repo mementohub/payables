@@ -22,7 +22,16 @@
       "mcp__laravel-boost__get-absolute-url",
       "Bash(npm run *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(grep -E \"\\\\.\\(tsx|jsx|ts|js\\)$\")",
+      "Bash(xargs cat *)",
+      "Bash(git -C /Users/ciungulete/Sites/centrofin log --oneline -20)",
+      "mcp__laravel-boost__database-schema",
+      "WebSearch",
+      "Bash(grep -n \"public \\\\$\\\\|public function\\\\|readonly\\\\|public.*conversationId\" /Users/ciungulete/Sites/centrofin/vendor/laravel/ai/src/Responses/AgentResponse.php)",
+      "Bash(echo \"---exit=$?---\")",
+      "Bash(npm install *)",
+      "Bash(php -r '$c=\\\\App\\\\Models\\\\Company::find\\(1\\); echo $c->db_password;')"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -7,6 +7,8 @@ import {
     FileText,
     Landmark,
     LayoutGrid,
+    ShieldCheck,
+    Sparkles,
     Truck,
     UserCog,
     Users,
@@ -23,8 +25,10 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { index as aiChatIndex } from '@/routes/ai-chat';
 import { index as companiesIndex } from '@/routes/companies';
 import { index as bankStatementsIndex } from '@/routes/bank-statements';
+import { index as departmentsIndex } from '@/routes/departments';
 import { emise as facturiEmise, primite as facturiPrimite } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as usersIndex } from '@/routes/users';
@@ -74,6 +78,11 @@ const mainNavItems: NavItemOrGroup[] = [
         href: bankStatementsIndex(),
         icon: Landmark,
     },
+    {
+        title: 'Asistent AI',
+        href: aiChatIndex(),
+        icon: Sparkles,
+    },
 ];
 
 const settingsNavItems: NavItemOrGroup[] = [
@@ -86,6 +95,11 @@ const settingsNavItems: NavItemOrGroup[] = [
         title: 'Utilizatori',
         href: usersIndex(),
         icon: UserCog,
+    },
+    {
+        title: 'Departamente',
+        href: departmentsIndex(),
+        icon: ShieldCheck,
     },
 ];
 

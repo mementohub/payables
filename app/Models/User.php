@@ -31,8 +31,8 @@ class User extends Authenticatable
         ];
     }
 
-    public function partners(): BelongsToMany
+    public function departments(): BelongsToMany
     {
-        return $this->belongsToMany(Partner::class)->withTimestamps();
+        return $this->belongsToMany(Department::class)->withTimestamps();
     }
 }

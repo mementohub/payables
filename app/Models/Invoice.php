@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Invoice extends Model
 {
-    /** @use HasFactory<\Database\Factories\InvoiceFactory> */
+    /** @use HasFactory<InvoiceFactory> */
     use HasFactory;
 
     protected $guarded = [];
@@ -25,6 +26,9 @@ class Invoice extends Model
             'val_mon' => 'decimal:4',
             'val_mon_tva' => 'decimal:4',
             'val_mon_paid' => 'decimal:4',
+            'supervisors_approved_at' => 'datetime',
+            'is_fully_approved' => 'boolean',
+            'fully_approved_at' => 'datetime',
         ];
     }
 
@@ -62,6 +66,11 @@ class Invoice extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(InvoicePayment::class)->orderBy('data_repartizare');
+    }
+
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(InvoiceApproval::class);
     }
 
     public function scopeFurnizor(Builder $query): Builder

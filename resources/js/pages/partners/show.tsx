@@ -6,7 +6,6 @@ import PartnerController from '@/actions/App/Http/Controllers/PartnerController'
 import Pagination from '@/components/pagination';
 import DatePicker from '@/components/date-picker';
 import PaymentStatusBadge, { type PaymentStatus } from '@/components/payment-status-badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,11 +39,10 @@ type BankAccount = {
     is_discontinued: boolean;
 };
 
-type Responsible = {
+type SupervisorDepartment = {
     id: number;
     name: string;
-    email: string;
-    initials: string;
+    type: string;
 };
 
 type Partner = {
@@ -61,7 +59,7 @@ type Partner = {
     is_client: boolean;
     company: { id: number; name: string };
     bank_accounts: BankAccount[];
-    responsibles: Responsible[];
+    supervisor_departments: SupervisorDepartment[];
 };
 
 type InvoiceRow = {
@@ -86,14 +84,14 @@ type InvoiceFilters = {
     payment: string | null;
 };
 
-type AvailableUser = { id: number; name: string; email: string };
+type AvailableDepartment = { id: number; name: string; type: string };
 
 type Props = {
     partner: Partner;
     invoices: Paginated<InvoiceRow>;
     invoiceFilters: InvoiceFilters;
     availableTipDocs: string[];
-    availableUsers: AvailableUser[];
+    availableDepartments: AvailableDepartment[];
 };
 
 function formatAmount(value: number, currency: string | null) {
@@ -105,9 +103,9 @@ export default function PartnerShow({
     invoices,
     invoiceFilters,
     availableTipDocs,
-    availableUsers,
+    availableDepartments,
 }: Props) {
-    const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('');
     const [search, setSearch] = useState(invoiceFilters.search ?? '');
     const [from, setFrom] = useState(invoiceFilters.from ?? '');
     const [to, setTo] = useState(invoiceFilters.to ?? '');
@@ -221,30 +219,22 @@ export default function PartnerShow({
                     <Card className="gap-2 py-3">
                         <CardHeader className="px-4 pb-0">
                             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Responsabili
+                                Departamente supervizori
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2 px-4 pb-2">
-                            {partner.responsibles.length === 0 ? (
-                                <p className="text-xs text-muted-foreground">Niciun utilizator atribuit.</p>
+                            {partner.supervisor_departments.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">Niciun departament atribuit.</p>
                             ) : (
                                 <ul className="flex flex-wrap gap-1.5">
-                                    {partner.responsibles.map((user) => (
+                                    {partner.supervisor_departments.map((dept) => (
                                         <li
-                                            key={user.id}
-                                            className="flex items-center gap-1.5 rounded-full border border-sidebar-border/70 py-0.5 pr-1 pl-0.5 text-xs dark:border-sidebar-border"
+                                            key={dept.id}
+                                            className="flex items-center gap-1.5 rounded-full border border-sidebar-border/70 px-2 py-0.5 text-xs dark:border-sidebar-border"
                                         >
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Avatar size="sm">
-                                                        <AvatarFallback>{user.initials}</AvatarFallback>
-                                                    </Avatar>
-                                                </TooltipTrigger>
-                                                <TooltipContent>{user.email}</TooltipContent>
-                                            </Tooltip>
-                                            <span>{user.name}</span>
+                                            <span>{dept.name}</span>
                                             <Form
-                                                {...PartnerController.detachResponsible.form([partner.id, user.id])}
+                                                {...PartnerController.detachSupervisorDepartment.form([partner.id, dept.id])}
                                                 options={{ preserveScroll: true }}
                                                 className="flex"
                                             >
@@ -253,7 +243,7 @@ export default function PartnerShow({
                                                         type="submit"
                                                         className="rounded-full p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
                                                         disabled={processing}
-                                                        aria-label={`Elimină ${user.name}`}
+                                                        aria-label={`Elimină ${dept.name}`}
                                                     >
                                                         <X className="size-3" />
                                                     </button>
@@ -264,35 +254,32 @@ export default function PartnerShow({
                                 </ul>
                             )}
 
-                            {availableUsers.length > 0 && (
+                            {availableDepartments.length > 0 && (
                                 <Form
-                                    {...PartnerController.attachResponsible.form(partner.id)}
+                                    {...PartnerController.attachSupervisorDepartment.form(partner.id)}
                                     options={{ preserveScroll: true }}
-                                    onSuccess={() => setSelectedUserId('')}
+                                    onSuccess={() => setSelectedDepartmentId('')}
                                     className="flex items-center gap-2"
                                 >
                                     {({ processing }) => (
                                         <>
-                                            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                                            <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
                                                 <SelectTrigger size="sm" className="w-full">
-                                                    <SelectValue placeholder="Atribuie utilizator…" />
+                                                    <SelectValue placeholder="Atribuie departament…" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {availableUsers.map((user) => (
-                                                        <SelectItem key={user.id} value={String(user.id)}>
-                                                            {user.name}
-                                                            <span className="ml-2 text-xs text-muted-foreground">
-                                                                {user.email}
-                                                            </span>
+                                                    {availableDepartments.map((dept) => (
+                                                        <SelectItem key={dept.id} value={String(dept.id)}>
+                                                            {dept.name}
                                                         </SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
-                                            <input type="hidden" name="user_id" value={selectedUserId} />
+                                            <input type="hidden" name="department_id" value={selectedDepartmentId} />
                                             <Button
                                                 size="sm"
                                                 type="submit"
-                                                disabled={processing || !selectedUserId}
+                                                disabled={processing || !selectedDepartmentId}
                                             >
                                                 Atribuie
                                             </Button>

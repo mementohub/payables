@@ -182,6 +182,69 @@ GROUP BY d.data_doc, d.tip_doc, d.nr_doc, d.partener, d.moneda, d.val_mon;
 - PK: `(banca, cont_banca)`.
 - `moneda`, `da_nu_implicit`, `discontinued`, `eu_punct_lucru`, `conts`+`conta` (chart-of-accounts binding), `jurnal`.
 
+### `eu_punct_lucru` — **puncte de lucru proprii ale companiei**
+
+- PK: `eu_punct_lucru` (varchar(50)) — numele e cheia (ex. `SEDIUL CENTRAL`, `Corporate`, `Cluj Iulius Mall`, `BRASOV`, …).
+- `tip_punct_lucru` → FK `tip_punct_lucru.tip_punct_lucru`. În `christiantour` valorile observate sunt doar `Punct de Lucru` și `Sediu Social` (dicționar `tip_punct_lucru` foarte simplu: doar numele + `discontinued`).
+- Alte coloane utile: `localit`, `adresa_punct_lucru`, `cod_fiscal_punct_lucru`, `banca_pl`+`cont_banca_pl` (FK → `eu_banca`), `conts_decontari`+`conta_decontari` (FK → `conta`, contul contabil al PL-ului), `eu_punct_lucru_procesare` (PL de procesare default), `discontinued`.
+- Volum (christiantour snapshot): 583 PL-uri (576 `Punct de Lucru` + 7 `Sediu Social`). Multe sunt aparent „PL-uri logice" create pentru o cheltuială specifică (ex. `Abonament Fortigate`), nu doar sedii fizice — nu presupune că `eu_punct_lucru` reflectă doar locații.
+
+**Unde apar PL-urile pe documente:**
+
+| Coloană | În | Ce înseamnă |
+| --- | --- | --- |
+| `doc.eu_punct_lucru` | `doc` (obligatoriu, NOT NULL) | PL-ul propriu pe care se emite/primește documentul |
+| `doc.eu_punct_lucru_procesare` | `doc` (nullable) | PL-ul care procesează doc-ul (poate diferi) |
+| `doc.partener_punct_lucru` | `doc` (nullable) | PL-ul partenerului asociat doc-ului (FK compozit `(partener, partener_punct_lucru)` → `partener_punct_lucru`) |
+| `eu_banca.eu_punct_lucru` | `eu_banca` | PL-ul de care ține contul bancar propriu |
+| `conta.eu_punct_lucru_conta` | `conta` | Analiticul poate fi legat de un PL anume |
+
+### `gr_doc` — dicționar grupuri de document
+
+- PK: `gr_doc` (varchar(20)). Singura altă coloană: `discontinued`. Pe `doc.gr_doc` se păstrează grupul la nivel de document (categorie grosieră, pe deasupra lui `tip_doc`).
+
+### `gr_chelt_ven_postc` — **categoria „business" pentru postcalcul cheltuieli / venituri**
+
+- PK: `gr_chelt_ven_postc` (varchar(25)).
+- `gr_chelt_ven_postc_sup` (self-FK) — categoria părinte; permite ierarhii (ex. `SALARII DEPARTAMEN` → `5.2.55.Administrativ`, `5.2.56.B2B`, …).
+- `da_nu_chelt_postc` boolean — intră în postcalcul cheltuieli.
+- `proc_deductibilitate`, `activitate`, `ordonare`, `detalii_gr_chelt_ven_postc`, `discontinued`.
+- Volum (christiantour): 5 711 categorii, 5 697 marcate `da_nu_chelt_postc=true`.
+
+**Aceasta este „categoria" pentru facturi în acest ERP.** Exemple din `christiantour`: `UTILITATI`, `TRANSPORT ARAD`, `ADMINISTRATIV`, `Cheltuieli de publicitate`, `Servicii (704)`, `B2C`, `HQ`, `Venituri anticipate`, `Cheltuieli anticipate`.
+
+**Unde apar categoriile:**
+
+| Coloană | În | Ce înseamnă |
+| --- | --- | --- |
+| `doc_poz.gr_chelt_ven_postc` | `doc_poz` | **CATEGORIA per linie de factură** — punctul principal de clasificare |
+| `doc_poz.loc` | `doc_poz` | FK → `loc`, centru de cost |
+| `doc_poz.com_int` | `doc_poz` | FK → `com_int`, comanda internă |
+| `doc_poz.gr_art_contare` | `doc_poz` | FK → `gr_art_contare`, grup contare articol |
+| `articol.gr_chelt_ven_postc` | `articol` | Categorie default pe articol |
+| `conta.gr_chelt_ven_postc` | `conta` | Categorie default pe contul analitic |
+
+Notă: pe `doc` direct NU există o coloană unică de „categorie" — o factură poate avea linii cu categorii diferite. Pentru raportări pe categorie, agregă pe `doc_poz.gr_chelt_ven_postc`.
+
+### `conts` / `conta` — planul de conturi
+
+- `conts` — cont **sintetic** (chart of accounts synthetic). PK `conts` (varchar(7), ex. `411`, `4426`, `707`).
+  - `den_conts` — denumire (ex. „Clienți", „TVA deductibilă", „Venituri din vânzarea mărfurilor").
+  - `tip_conts` — `activ` | `pasiv` | `bifunctional`.
+  - `clasa_conts` — `Financiar` | `Comercial` | `Buget` | … (clasa contabilă, FK → `clasa_conts`).
+  - `da_nu_disponibilitati` — cont de disponibilități (cash/bank).
+  - `da_nu_taxa` — cont de taxe (TVA).
+  - `prez_sold_bal` (`D`/`C`), `da_nu_plata_cont_unic`, `discontinued`.
+- `conta` — cont **analitic**. PK compozit `(conts, conta)`; `conta` varchar(25).
+  - `moneda` — moneda contului (`Lei`, `EUR`, `USD`, …).
+  - `den_conta` — denumire analitic.
+  - `gr_chelt_ven_postc` — **legătura explicită cont ↔ categorie de cheltuieli/venituri**.
+  - `conts_profit` + `conta_profit` — contul de profit asociat (self-FK).
+  - `conts_grup` + `conta_grup` — analitic părinte, pt. consolidări.
+  - `eu_punct_lucru_conta` — analiticul poate fi legat de un PL (FK → `eu_punct_lucru`).
+  - `capitol_bugetar`, `id_ifrs`, `saft_taxa`, `saft_taxcode` — coduri pt. raportări externe (buget, IFRS, SAF-T).
+  - `discontinued`.
+
 ### Other tables seen in the schema (mostly ignored for sync)
 
 - `doc_comp` — has a similar shape for compensation pairing but appears **empty/unused** in christiantour; do not rely on it.
@@ -189,6 +252,7 @@ GROUP BY d.data_doc, d.tip_doc, d.nr_doc, d.partener, d.moneda, d.val_mon;
 - `doc_scadenta` — scheduled payment tranches (installment plans).
 - `partener_contact`, `partener_punct_lucru`, `partener_departament` — extra partner detail.
 - `banca`, `moneda`, `tara`, `tva` — lookup/dictionary tables.
+- `loc`, `com_int`, `gr_art_contare`, `capitol_bugetar`, `conta_ifrs` — auxiliary dictionaries used by `doc_poz` / `conta`.
 - Thousands of other tables — ignore unless explicitly needed.
 
 ## Payment-status logic
@@ -245,6 +309,103 @@ Use these to size queries / pagination / job timeouts.
 | `doc_fin`          | `invoice_payments`       | `tip_doc_com` matches sync scope, `data_doc_com` in range; cascade-deletes local rows before re-inserting to handle unallocations |
 | `extrasb`          | `bank_statements`        | All statements whose `data_extras` falls in the sync window                 |
 | `doc` (statement lines) + `doc_fin` (allocations) | `bank_statement_lines`   | Joined via `(data_contab, banca_eu, cont_banca_eu)`; `val_allocated` = Σ `doc_fin.val_fin`; direction derived from `tip_doc` grupa (`incasare` → incoming, `plata` → outgoing). Lines are deleted and re-inserted per sync. |
+
+## Categorii & puncte de lucru — cheat-sheet
+
+**Găsirea categoriei unei facturi (la nivel de linie):**
+
+```sql
+SELECT d.data_doc, d.tip_doc, d.nr_doc, dp.scv, dp.articol,
+       dp.gr_chelt_ven_postc AS categorie, gcv.gr_chelt_ven_postc_sup AS categorie_parinte,
+       dp.loc, dp.com_int
+FROM doc d
+JOIN doc_poz dp  ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
+LEFT JOIN gr_chelt_ven_postc gcv ON gcv.gr_chelt_ven_postc = dp.gr_chelt_ven_postc
+WHERE d.data_doc = :data_doc AND d.tip_doc = :tip_doc AND d.nr_doc = :nr_doc
+ORDER BY dp.scv;
+```
+
+**Agregare cheltuieli pe categorie (factură furnizor, 2025):**
+
+```sql
+SELECT COALESCE(dp.gr_chelt_ven_postc, '(fără categorie)') AS categorie,
+       SUM(dp.cant * dp.pret) AS total_mon,
+       SUM(dp.cant * dp.pret * COALESCE(d.curs, 1)) AS total_lei
+FROM doc d
+JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
+WHERE d.tip_doc IN ('FactFI','FactFE')
+  AND d.data_doc BETWEEN '2025-01-01' AND '2025-12-31'
+GROUP BY 1 ORDER BY total_lei DESC NULLS LAST LIMIT 50;
+```
+
+> ⚠ `dp.gr_chelt_ven_postc` conține multe coduri-numerice (`1.1.34.1`, `2.2.1.48.Timisoara Bega`, `1.1.49 Hartie A4 TM Bega`) care nu spun nimic unui om. Niciodată nu le afișa direct în UI / chat. Rezolvă-le la text — vezi secțiunea următoare.
+
+**Rezolvarea codului de categorie la text descriptiv:**
+
+`gr_chelt_ven_postc` are trei surse de etichetă, în ordinea de preferință:
+
+1. `detalii_gr_chelt_ven_postc` — când e completat cu text real (ex. `1.1.34.1` → „Rental expenses", `1.1.34.2` → „Service charge (only for shopping malls)"). Adesea e NULL, gol, sau repetă codul — ignoră-l în acele cazuri.
+2. `gr_chelt_ven_postc_sup` — părintele din ierarhie. Aproape întotdeauna text curat (`ENERGIE ELECTRICA`, `SALUBRIZAREA`, `CONSUMABILE HARTIE A4`, `CHELTUIELI UTILITATI`, `SERVICII SEDII`, `ADMINISTRATIV`).
+3. codul însuși, doar ca ultim fallback.
+
+Pattern standard (recomandat oricând rezultatul ajunge la utilizator):
+
+```sql
+SELECT
+  CASE
+    WHEN BTRIM(COALESCE(gcv.detalii_gr_chelt_ven_postc, '')) = ''
+      OR BTRIM(gcv.detalii_gr_chelt_ven_postc) = gcv.gr_chelt_ven_postc
+    THEN COALESCE(gcv.gr_chelt_ven_postc_sup, dp.gr_chelt_ven_postc)
+    ELSE gcv.detalii_gr_chelt_ven_postc
+  END AS categorie,
+  SUM(dp.cant * dp.pret * COALESCE(d.curs,1)) AS total_lei
+FROM doc d
+JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
+LEFT JOIN gr_chelt_ven_postc gcv ON gcv.gr_chelt_ven_postc = dp.gr_chelt_ven_postc
+WHERE d.tip_doc IN ('FactFI','FactFE')
+  AND d.data_doc BETWEEN :start AND :end
+GROUP BY 1 ORDER BY total_lei DESC NULLS LAST LIMIT 50;
+```
+
+Urcarea ierarhiei până la rădăcină (atenție: există cicluri auto-referențiale — ex. `ADMINISTRATIV` → `ADMINISTRATIV`; oprește când parent = self sau parent IS NULL):
+
+```sql
+WITH RECURSIVE chain AS (
+  SELECT gr_chelt_ven_postc AS leaf, gr_chelt_ven_postc, gr_chelt_ven_postc_sup,
+         detalii_gr_chelt_ven_postc, 0 AS depth
+  FROM gr_chelt_ven_postc WHERE gr_chelt_ven_postc = :codul_tau
+  UNION ALL
+  SELECT c.leaf, g.gr_chelt_ven_postc, g.gr_chelt_ven_postc_sup,
+         g.detalii_gr_chelt_ven_postc, c.depth + 1
+  FROM gr_chelt_ven_postc g JOIN chain c
+    ON g.gr_chelt_ven_postc = c.gr_chelt_ven_postc_sup
+  WHERE c.gr_chelt_ven_postc_sup IS NOT NULL
+    AND c.gr_chelt_ven_postc_sup <> c.gr_chelt_ven_postc
+    AND c.depth < 10
+)
+SELECT DISTINCT ON (leaf) leaf, gr_chelt_ven_postc AS root, detalii_gr_chelt_ven_postc
+FROM chain ORDER BY leaf, depth DESC;
+```
+
+**Facturi pe punct de lucru propriu:**
+
+```sql
+SELECT d.eu_punct_lucru, COUNT(*) AS nr_facturi,
+       SUM(d.val_lei + COALESCE(d.val_lei_tva, 0)) AS total_lei
+FROM doc d
+WHERE d.tip_doc IN ('FactCI','FactCE','FactFI','FactFE')
+  AND d.data_doc BETWEEN '2025-01-01' AND '2025-12-31'
+GROUP BY 1 ORDER BY total_lei DESC;
+```
+
+**Conturi analitice legate de o categorie:**
+
+```sql
+SELECT c.conts, c.conta, c.den_conta, c.moneda, c.gr_chelt_ven_postc, c.eu_punct_lucru_conta
+FROM conta c
+WHERE c.gr_chelt_ven_postc = :categorie AND c.discontinued = false
+ORDER BY c.conts, c.conta;
+```
 
 ## Quick diagnostic queries
 

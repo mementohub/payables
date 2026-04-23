@@ -15,7 +15,7 @@ class UserController extends Controller
     public function index(): Response
     {
         $users = User::query()
-            ->withCount('partners')
+            ->withCount('departments')
             ->orderBy('name')
             ->get()
             ->map(fn (User $user) => [
@@ -23,7 +23,7 @@ class UserController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'initials' => $this->initials($user->name),
-                'partners_count' => $user->partners_count,
+                'departments_count' => $user->departments_count,
                 'created_at' => $user->created_at?->toDateTimeString(),
             ]);
 

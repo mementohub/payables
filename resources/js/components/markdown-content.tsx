@@ -1,0 +1,76 @@
+import type { Components } from 'react-markdown';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+const components: Components = {
+    p: ({ node, ...props }) => <p {...props} className="my-2 leading-relaxed first:mt-0 last:mb-0" />,
+    h1: ({ node, ...props }) => <h1 {...props} className="mb-2 mt-3 text-base font-semibold first:mt-0" />,
+    h2: ({ node, ...props }) => <h2 {...props} className="mb-2 mt-3 text-sm font-semibold first:mt-0" />,
+    h3: ({ node, ...props }) => <h3 {...props} className="mb-1 mt-2 text-sm font-semibold first:mt-0" />,
+    ul: ({ node, ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,
+    ol: ({ node, ...props }) => <ol {...props} className="my-2 list-decimal pl-5" />,
+    li: ({ node, ...props }) => <li {...props} className="my-0.5" />,
+    strong: ({ node, ...props }) => <strong {...props} className="font-semibold" />,
+    em: ({ node, ...props }) => <em {...props} className="italic" />,
+    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="underline" />,
+    code: ({ node, className, children, ...props }) => {
+        const isBlock = /language-/.test(className ?? '');
+        if (isBlock) {
+            return (
+                <code {...props} className={(className ?? '') + ' block'}>
+                    {children}
+                </code>
+            );
+        }
+        return (
+            <code {...props} className="rounded bg-muted px-1 py-0.5 text-[0.85em] font-mono">
+                {children}
+            </code>
+        );
+    },
+    pre: ({ node, ...props }) => (
+        <pre
+            {...props}
+            className="my-2 overflow-x-auto rounded-md bg-muted p-2 text-xs font-mono"
+        />
+    ),
+    blockquote: ({ node, ...props }) => (
+        <blockquote
+            {...props}
+            className="my-2 border-l-2 border-sidebar-border/70 pl-3 text-muted-foreground dark:border-sidebar-border"
+        />
+    ),
+    hr: ({ node, ...props }) => (
+        <hr {...props} className="my-3 border-sidebar-border/70 dark:border-sidebar-border" />
+    ),
+    table: ({ node, ...props }) => (
+        <div className="my-2 overflow-x-auto">
+            <table
+                {...props}
+                className="w-full border-collapse border border-sidebar-border/70 text-xs dark:border-sidebar-border"
+            />
+        </div>
+    ),
+    th: ({ node, ...props }) => (
+        <th
+            {...props}
+            className="border border-sidebar-border/70 bg-muted/50 px-2 py-1 text-left font-medium dark:border-sidebar-border"
+        />
+    ),
+    td: ({ node, ...props }) => (
+        <td
+            {...props}
+            className="border border-sidebar-border/70 px-2 py-1 tabular-nums dark:border-sidebar-border"
+        />
+    ),
+};
+
+export default function MarkdownContent({ content }: { content: string }) {
+    return (
+        <div className="break-words text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                {content}
+            </ReactMarkdown>
+        </div>
+    );
+}

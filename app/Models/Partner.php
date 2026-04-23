@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\PartnerFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Partner extends Model
 {
-    /** @use HasFactory<\Database\Factories\PartnerFactory> */
+    /** @use HasFactory<PartnerFactory> */
     use HasFactory;
 
     protected $guarded = [];
@@ -40,9 +41,16 @@ class Partner extends Model
         return $this->hasMany(PartnerBankAccount::class);
     }
 
-    public function responsibles(): BelongsToMany
+    public function departments(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withTimestamps();
+        return $this->belongsToMany(Department::class, 'partner_department')->withTimestamps();
+    }
+
+    public function supervisorDepartments(): BelongsToMany
+    {
+        return $this->belongsToMany(Department::class, 'partner_department')
+            ->where('type', Department::TYPE_SUPERVISOR)
+            ->withTimestamps();
     }
 
     public function scopeFurnizori(Builder $query): Builder

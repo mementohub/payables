@@ -19,7 +19,7 @@ type UserRow = {
     name: string;
     email: string;
     initials: string;
-    partners_count: number;
+    departments_count: number;
     created_at: string | null;
 };
 
@@ -38,7 +38,7 @@ export default function UsersIndex({ users, current_user_id }: Props) {
                     <div>
                         <h1 className="text-2xl font-semibold">Utilizatori</h1>
                         <p className="text-sm text-muted-foreground">
-                            Utilizatori disponibili pentru atribuire ca responsabili pe furnizori.
+                            Utilizatori disponibili pentru atribuire în departamente.
                         </p>
                     </div>
                     <Button asChild>
@@ -56,7 +56,7 @@ export default function UsersIndex({ users, current_user_id }: Props) {
                                 <TableHead className="w-12"></TableHead>
                                 <TableHead>Nume</TableHead>
                                 <TableHead>Email</TableHead>
-                                <TableHead className="text-right">Furnizori atribuiți</TableHead>
+                                <TableHead className="text-right">Departamente</TableHead>
                                 <TableHead>Creat</TableHead>
                                 <TableHead className="text-right">Acțiuni</TableHead>
                             </TableRow>
@@ -85,7 +85,7 @@ export default function UsersIndex({ users, current_user_id }: Props) {
                                             )}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                                        <TableCell className="text-right tabular-nums">{user.partners_count}</TableCell>
+                                        <TableCell className="text-right tabular-nums">{user.departments_count}</TableCell>
                                         <TableCell className="text-muted-foreground">{user.created_at ?? '—'}</TableCell>
                                         <TableCell>
                                             <div className="flex items-center justify-end gap-2">

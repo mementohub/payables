@@ -2,7 +2,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import Pagination from '@/components/pagination';
-import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,14 +20,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { clienti as clientiRoute, furnizori as furnizoriRoute, show as partnerShow } from '@/routes/partners';
 import type { Paginated } from '@/types/pagination';
 
-type Responsible = {
+type SupervisorDepartment = {
     id: number;
     name: string;
-    initials: string;
 };
 
 type Partner = {
@@ -43,7 +41,7 @@ type Partner = {
     is_client: boolean;
     invoices_count: number;
     company: { id: number; name: string };
-    responsibles: Responsible[];
+    supervisor_departments: SupervisorDepartment[];
 };
 
 type Props = {
@@ -53,40 +51,19 @@ type Props = {
     companies: { id: number; name: string }[];
 };
 
-function ResponsibleAvatars({ users }: { users: Responsible[] }) {
-    if (users.length === 0) {
+function DepartmentChips({ departments }: { departments: SupervisorDepartment[] }) {
+    if (departments.length === 0) {
         return <span className="text-muted-foreground text-xs">—</span>;
     }
 
-    const visible = users.slice(0, 3);
-    const extra = users.length - visible.length;
-
     return (
-        <AvatarGroup>
-            {visible.map((user) => (
-                <Tooltip key={user.id}>
-                    <TooltipTrigger asChild>
-                        <Avatar size="sm">
-                            <AvatarFallback>{user.initials}</AvatarFallback>
-                        </Avatar>
-                    </TooltipTrigger>
-                    <TooltipContent>{user.name}</TooltipContent>
-                </Tooltip>
+        <div className="flex flex-wrap gap-1">
+            {departments.map((dept) => (
+                <Badge key={dept.id} variant="outline" className="text-[10px]">
+                    {dept.name}
+                </Badge>
             ))}
-            {extra > 0 && (
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <AvatarGroupCount>+{extra}</AvatarGroupCount>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        {users
-                            .slice(3)
-                            .map((u) => u.name)
-                            .join(', ')}
-                    </TooltipContent>
-                </Tooltip>
-            )}
-        </AvatarGroup>
+        </div>
     );
 }
 
@@ -163,7 +140,7 @@ export default function PartnersIndex({ partners, scope, filters, companies }: P
                                 <TableHead>CUI</TableHead>
                                 <TableHead>Locație</TableHead>
                                 <TableHead>Contact</TableHead>
-                                {scope === 'furnizori' && <TableHead>Responsabili</TableHead>}
+                                {scope === 'furnizori' && <TableHead>Supervizori</TableHead>}
                                 <TableHead>Companie</TableHead>
                                 <TableHead className="text-right">Facturi</TableHead>
                             </TableRow>
@@ -206,7 +183,7 @@ export default function PartnersIndex({ partners, scope, filters, companies }: P
                                     </TableCell>
                                     {scope === 'furnizori' && (
                                         <TableCell>
-                                            <ResponsibleAvatars users={partner.responsibles} />
+                                            <DepartmentChips departments={partner.supervisor_departments} />
                                         </TableCell>
                                     )}
                                     <TableCell className="text-muted-foreground">{partner.company.name}</TableCell>
