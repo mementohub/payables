@@ -340,52 +340,77 @@ GROUP BY 1 ORDER BY total_lei DESC NULLS LAST LIMIT 50;
 
 > ⚠ `dp.gr_chelt_ven_postc` conține multe coduri-numerice (`1.1.34.1`, `2.2.1.48.Timisoara Bega`, `1.1.49 Hartie A4 TM Bega`) care nu spun nimic unui om. Niciodată nu le afișa direct în UI / chat. Rezolvă-le la text — vezi secțiunea următoare.
 
-**Rezolvarea codului de categorie la text descriptiv:**
+**Rezolvarea codului la CALE IERARHICĂ COMPLETĂ (format preferat):**
 
-`gr_chelt_ven_postc` are trei surse de etichetă, în ordinea de preferință:
+Regulă de aur pentru UI / chat: nu afișa niciodată un cod brut (`2.2.6.48.Timisoara Bega`, `1.1.34.1`, …). În locul lui produce calea ierarhică completă de la prima etichetă citibilă până la rădăcină, unite cu `→`:
 
-1. `detalii_gr_chelt_ven_postc` — când e completat cu text real (ex. `1.1.34.1` → „Rental expenses", `1.1.34.2` → „Service charge (only for shopping malls)"). Adesea e NULL, gol, sau repetă codul — ignoră-l în acele cazuri.
-2. `gr_chelt_ven_postc_sup` — părintele din ierarhie. Aproape întotdeauna text curat (`ENERGIE ELECTRICA`, `SALUBRIZAREA`, `CONSUMABILE HARTIE A4`, `CHELTUIELI UTILITATI`, `SERVICII SEDII`, `ADMINISTRATIV`).
-3. codul însuși, doar ca ultim fallback.
+| Cod (`gr_chelt_ven_postc`) | Rezultat afișat |
+| --- | --- |
+| `2.2.6.48.Timisoara Bega` | `SALUBRIZAREA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV` |
+| `2.2.1.48.Timisoara Bega` | `ENERGIE ELECTRICA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV` |
+| `1.1.34.1` | `Rental expenses` (are `detalii`, fără părinte) |
+| `B2C` | `B2C` (text, fără părinte) |
 
-Pattern standard (recomandat oricând rezultatul ajunge la utilizator):
+Reguli per nod:
 
-```sql
-SELECT
-  CASE
-    WHEN BTRIM(COALESCE(gcv.detalii_gr_chelt_ven_postc, '')) = ''
-      OR BTRIM(gcv.detalii_gr_chelt_ven_postc) = gcv.gr_chelt_ven_postc
-    THEN COALESCE(gcv.gr_chelt_ven_postc_sup, dp.gr_chelt_ven_postc)
-    ELSE gcv.detalii_gr_chelt_ven_postc
-  END AS categorie,
-  SUM(dp.cant * dp.pret * COALESCE(d.curs,1)) AS total_lei
-FROM doc d
-JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
-LEFT JOIN gr_chelt_ven_postc gcv ON gcv.gr_chelt_ven_postc = dp.gr_chelt_ven_postc
-WHERE d.tip_doc IN ('FactFI','FactFE')
-  AND d.data_doc BETWEEN :start AND :end
-GROUP BY 1 ORDER BY total_lei DESC NULLS LAST LIMIT 50;
-```
+1. Eticheta nodului = `detalii_gr_chelt_ven_postc` DOAR când e text real (nenull, nenul după `BTRIM`, diferit de codul însuși). Altfel eticheta = codul-nod (la părinți codul ESTE numele: `ENERGIE ELECTRICA`, `ADMINISTRATIV` etc.).
+2. Frunza se **omite** din lanț dacă nu are detalii utile ȘI are părinte — pornește lanțul de la părinte (nu vrem `2.2.6.48.Timisoara Bega → SALUBRIZAREA → …`).
+3. Oprește urcarea când parent = node (auto-ciclu, ex. `ADMINISTRATIV → ADMINISTRATIV`), când parent `IS NULL`, sau la adâncimea 10. Ține un array de noduri vizitate ca protecție împotriva ciclurilor mai lungi.
 
-Urcarea ierarhiei până la rădăcină (atenție: există cicluri auto-referențiale — ex. `ADMINISTRATIV` → `ADMINISTRATIV`; oprește când parent = self sau parent IS NULL):
+Pattern SQL standard (agregare pe categorii cu calea completă):
 
 ```sql
-WITH RECURSIVE chain AS (
-  SELECT gr_chelt_ven_postc AS leaf, gr_chelt_ven_postc, gr_chelt_ven_postc_sup,
-         detalii_gr_chelt_ven_postc, 0 AS depth
-  FROM gr_chelt_ven_postc WHERE gr_chelt_ven_postc = :codul_tau
+WITH RECURSIVE cat_chain AS (
+  SELECT
+    l.gr_chelt_ven_postc AS leaf,
+    l.gr_chelt_ven_postc AS node,
+    l.gr_chelt_ven_postc_sup AS parent,
+    (CASE
+      WHEN BTRIM(COALESCE(l.detalii_gr_chelt_ven_postc, '')) <> ''
+       AND BTRIM(l.detalii_gr_chelt_ven_postc) <> l.gr_chelt_ven_postc
+        THEN l.detalii_gr_chelt_ven_postc
+      WHEN l.gr_chelt_ven_postc_sup IS NULL
+        OR l.gr_chelt_ven_postc_sup = l.gr_chelt_ven_postc
+        THEN l.gr_chelt_ven_postc
+      ELSE NULL                    -- frunză-cod: o sărim, va fi reprezentată de părinte
+    END)::text AS label,
+    ARRAY[l.gr_chelt_ven_postc::text] AS visited,
+    0 AS depth
+  FROM gr_chelt_ven_postc l
   UNION ALL
   SELECT c.leaf, g.gr_chelt_ven_postc, g.gr_chelt_ven_postc_sup,
-         g.detalii_gr_chelt_ven_postc, c.depth + 1
-  FROM gr_chelt_ven_postc g JOIN chain c
-    ON g.gr_chelt_ven_postc = c.gr_chelt_ven_postc_sup
-  WHERE c.gr_chelt_ven_postc_sup IS NOT NULL
-    AND c.gr_chelt_ven_postc_sup <> c.gr_chelt_ven_postc
+    (CASE
+      WHEN BTRIM(COALESCE(g.detalii_gr_chelt_ven_postc, '')) <> ''
+       AND BTRIM(g.detalii_gr_chelt_ven_postc) <> g.gr_chelt_ven_postc
+        THEN g.detalii_gr_chelt_ven_postc
+      ELSE g.gr_chelt_ven_postc
+    END)::text,
+    c.visited || g.gr_chelt_ven_postc::text,
+    c.depth + 1
+  FROM cat_chain c
+  JOIN gr_chelt_ven_postc g ON g.gr_chelt_ven_postc = c.parent
+  WHERE c.parent IS NOT NULL
+    AND c.parent <> c.node
+    AND NOT (g.gr_chelt_ven_postc::text = ANY(c.visited))
     AND c.depth < 10
+),
+cat_label AS (
+  SELECT leaf,
+         string_agg(label, ' → ' ORDER BY depth)
+           FILTER (WHERE label IS NOT NULL) AS category_path
+  FROM cat_chain GROUP BY leaf
 )
-SELECT DISTINCT ON (leaf) leaf, gr_chelt_ven_postc AS root, detalii_gr_chelt_ven_postc
-FROM chain ORDER BY leaf, depth DESC;
+SELECT cl.category_path,
+       SUM(dp.cant * dp.pret * COALESCE(d.curs, 1)) AS total_lei
+FROM doc d
+JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
+LEFT JOIN cat_label cl ON cl.leaf = dp.gr_chelt_ven_postc
+WHERE d.tip_doc IN ('FactFI','FactFE')
+  AND d.data_doc BETWEEN :start AND :end
+GROUP BY cl.category_path ORDER BY total_lei DESC NULLS LAST LIMIT 50;
 ```
+
+> Note despre cast-uri: rădăcina CTE-ului trebuie să aibă TIPURI EXPLICITE (`::text` pe `label` și pe elementele array-ului `visited`). Fără ele, PostgreSQL se plânge cu `type character varying(25)[] in non-recursive term but type character varying[] overall`.
 
 **Facturi pe punct de lucru propriu:**
 

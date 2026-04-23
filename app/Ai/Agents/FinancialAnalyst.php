@@ -84,40 +84,75 @@ class FinancialAnalyst implements Agent, Conversational, HasTools
         PREZENTAREA CATEGORIILOR (regulă strictă):
         Codurile `gr_chelt_ven_postc` precum „1.1.34.1", „2.2.1.48.Timisoara Bega",
         „1.1.49 Hartie A4 TM Bega", „2.2.6.48.Timisoara Bega" sunt frunze de ierarhie și nu
-        înseamnă nimic pentru utilizator. NU le afișa niciodată așa în răspuns. Rezolvă-le
-        întotdeauna la un text descriptiv:
-          a) ia `detalii_gr_chelt_ven_postc` DOAR dacă nu e NULL/gol ȘI nu e egal cu codul
-             însuși (după TRIM). Ex: „1.1.34.1" → detalii „Rental expenses" ✓.
-          b) altfel folosește `gr_chelt_ven_postc_sup` (părintele) — aproape mereu text
-             descriptiv (ex. „ENERGIE ELECTRICA", „SALUBRIZAREA", „CONSUMABILE HARTIE A4",
-             „ADMINISTRATIV").
-          c) dacă și părintele lipsește, menționează codul doar ca fallback, însoțit de o
-             etichetă generică („cod necategorizat").
+        înseamnă nimic pentru utilizator. NU le afișa niciodată așa.
 
-        Pattern SQL recomandat când afișezi categorii la utilizator:
+        În locul lor, arată TOT LANȚUL IERARHIC, de la prima etichetă citibilă până la
+        rădăcină, unite cu „ → ". Exemple:
+          2.2.6.48.Timisoara Bega → „SALUBRIZAREA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV"
+          2.2.1.48.Timisoara Bega → „ENERGIE ELECTRICA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV"
+          1.1.34.1                → „Rental expenses" (are `detalii`, fără părinte)
+          B2C                     → „B2C" (text, fără părinte)
 
-          LEFT JOIN gr_chelt_ven_postc gcv ON gcv.gr_chelt_ven_postc = dp.gr_chelt_ven_postc
-          -- apoi în SELECT:
-          COALESCE(
-            NULLIF(BTRIM(gcv.detalii_gr_chelt_ven_postc), ''),
-            NULLIF(BTRIM(gcv.gr_chelt_ven_postc_sup), ''),
-            dp.gr_chelt_ven_postc
-          ) AS categorie
-          -- dar preferă parent dacă detalii = codul propriu:
-          -- CASE WHEN BTRIM(gcv.detalii_gr_chelt_ven_postc) IS NULL
-          --        OR BTRIM(gcv.detalii_gr_chelt_ven_postc) = ''
-          --        OR BTRIM(gcv.detalii_gr_chelt_ven_postc) = gcv.gr_chelt_ven_postc
-          --      THEN COALESCE(gcv.gr_chelt_ven_postc_sup, dp.gr_chelt_ven_postc)
-          --      ELSE gcv.detalii_gr_chelt_ven_postc
-          -- END AS categorie
+        La fiecare nod: eticheta = `detalii_gr_chelt_ven_postc` DOAR dacă e text real
+        (nenull, nenul după BTRIM, diferit de codul însuși); altfel codul-nod este
+        eticheta (la părinți „ENERGIE ELECTRICA", „ADMINISTRATIV" etc. codul ESTE textul).
+        Pentru frunze fără detalii și cu părinte (ex. „2.2.6.48.Timisoara Bega"), SARI
+        peste frunză — pornește lanțul de la părinte. Oprește urcarea când părintele =
+        nodul însuși (auto-ciclu, ex. „ADMINISTRATIV"), când lipsește, sau la adâncimea 10.
 
-        Dacă utilizatorul cere agregare pe un PL (ex. „TIMIȘOARA BEGA MALL"), grupează cu
-        această etichetă `categorie`, nu cu codul brut. În răspuns, dacă o linie tot pare
-        „pe număr" (ex. 1.1.49 când toate variantele sunt descrise abia la părinte
-        „CONSUMABILE HARTIE A4"), folosește numele părintelui.
+        Pattern SQL standard (obligatoriu când rezultatul ajunge la utilizator):
 
-        Dacă ai categorii cu același `gr_chelt_ven_postc_sup` dar afișezi leaf-urile separat,
-        explică în text ce înseamnă părintele (ex. „Hârtie A4 — puncte de lucru multiple").
+          WITH RECURSIVE cat_chain AS (
+            SELECT
+              l.gr_chelt_ven_postc AS leaf,
+              l.gr_chelt_ven_postc AS node,
+              l.gr_chelt_ven_postc_sup AS parent,
+              (CASE
+                WHEN BTRIM(COALESCE(l.detalii_gr_chelt_ven_postc, '')) <> ''
+                 AND BTRIM(l.detalii_gr_chelt_ven_postc) <> l.gr_chelt_ven_postc
+                  THEN l.detalii_gr_chelt_ven_postc
+                WHEN l.gr_chelt_ven_postc_sup IS NULL
+                  OR l.gr_chelt_ven_postc_sup = l.gr_chelt_ven_postc
+                  THEN l.gr_chelt_ven_postc
+                ELSE NULL                 -- sărim frunza când e doar un cod
+              END)::text AS label,
+              ARRAY[l.gr_chelt_ven_postc::text] AS visited,
+              0 AS depth
+            FROM gr_chelt_ven_postc l
+            UNION ALL
+            SELECT c.leaf, g.gr_chelt_ven_postc, g.gr_chelt_ven_postc_sup,
+              (CASE
+                WHEN BTRIM(COALESCE(g.detalii_gr_chelt_ven_postc, '')) <> ''
+                 AND BTRIM(g.detalii_gr_chelt_ven_postc) <> g.gr_chelt_ven_postc
+                  THEN g.detalii_gr_chelt_ven_postc
+                ELSE g.gr_chelt_ven_postc  -- părinții au numele = codul
+              END)::text,
+              c.visited || g.gr_chelt_ven_postc::text,
+              c.depth + 1
+            FROM cat_chain c
+            JOIN gr_chelt_ven_postc g ON g.gr_chelt_ven_postc = c.parent
+            WHERE c.parent IS NOT NULL
+              AND c.parent <> c.node
+              AND NOT (g.gr_chelt_ven_postc::text = ANY(c.visited))
+              AND c.depth < 10
+          ),
+          cat_label AS (
+            SELECT leaf,
+                   string_agg(label, ' → ' ORDER BY depth)
+                     FILTER (WHERE label IS NOT NULL) AS category_path
+            FROM cat_chain GROUP BY leaf
+          )
+          SELECT cl.category_path, SUM(dp.cant * dp.pret * COALESCE(d.curs, 1)) AS total_lei
+          FROM doc d
+          JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc)
+                           = (d.data_doc, d.tip_doc, d.nr_doc)
+          LEFT JOIN cat_label cl ON cl.leaf = dp.gr_chelt_ven_postc
+          WHERE d.tip_doc IN ('FactFI','FactFE')
+            AND d.data_doc BETWEEN :start AND :end
+            AND d.eu_punct_lucru = :punct_lucru  -- opțional
+          GROUP BY cl.category_path ORDER BY total_lei DESC NULLS LAST LIMIT 50;
+
+        Când grupezi pe PL, folosește `category_path` ca etichetă de grup — NU codul brut.
         TXT;
     }
 

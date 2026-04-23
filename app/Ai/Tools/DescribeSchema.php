@@ -115,40 +115,79 @@ class DescribeSchema implements Tool
       - proc_deductibilitate, activitate, detalii_gr_chelt_ven_postc.
       - Referențiat și de `articol.gr_chelt_ven_postc` și `conta.gr_chelt_ven_postc` — adică și articolele și conturile analitice pot avea o categorie default de cheltuieli/venituri.
 
-    ⚠ REZOLVAREA CATEGORIEI LA TEXT (obligatoriu înainte de a afișa):
+    ⚠ REZOLVAREA CATEGORIEI LA TEXT IERARHIC (obligatoriu înainte de a afișa):
     Codurile frunză arată adesea ca numere („1.1.34.1", „2.2.1.48.Timisoara Bega",
-    „1.1.49 Hartie A4 TM Bega", „2.2.6.48.Timisoara Bega"). Utilizatorul nu le înțelege.
-    Nu le afișa niciodată în răspuns. Join `gr_chelt_ven_postc` și alege eticheta astfel:
-      1. dacă `detalii_gr_chelt_ven_postc` NU e NULL, NU e gol (după BTRIM) ȘI NU e egal cu
-         codul însuși → folosește `detalii_gr_chelt_ven_postc` (ex: „Rental expenses",
-         „Service charge (only for shopping malls)").
-      2. altfel → folosește `gr_chelt_ven_postc_sup` (părintele). Aproape întotdeauna e
-         text curat: „ENERGIE ELECTRICA", „SALUBRIZAREA", „CONSUMABILE HARTIE A4",
-         „ADMINISTRATIV", „SERVICII SEDII", „CHELTUIELI UTILITATI", „SALARII VANZARI(B2C)".
-      3. dacă și părintele lipsește → fallback la cod, dar numai ca ultim resort.
+    „1.1.49 Hartie A4 TM Bega", „2.2.6.48.Timisoara Bega") și nu le afișa niciodată
+    în răspunsul final. În schimb, pentru FIECARE cod rezolvă TOT LANȚUL IERARHIC până
+    la rădăcină, unit cu „ → ".
 
-    Exemplu SQL pentru agregări pe categorie (pattern standard):
+    Rezultat așteptat:
+      2.2.6.48.Timisoara Bega → „SALUBRIZAREA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV"
+      2.2.1.48.Timisoara Bega → „ENERGIE ELECTRICA → CHELTUIELI UTILITATI → SERVICII SEDII → ADMINISTRATIV"
+      1.1.34.1                → „Rental expenses" (are detalii, fără părinte)
+      B2C                     → „B2C" (text, fără părinte)
 
-      SELECT
-        CASE
-          WHEN BTRIM(COALESCE(gcv.detalii_gr_chelt_ven_postc, '')) = ''
-            OR BTRIM(gcv.detalii_gr_chelt_ven_postc) = gcv.gr_chelt_ven_postc
-          THEN COALESCE(gcv.gr_chelt_ven_postc_sup, dp.gr_chelt_ven_postc)
-          ELSE gcv.detalii_gr_chelt_ven_postc
-        END AS categorie,
-        SUM(dp.cant * dp.pret * COALESCE(d.curs,1)) AS total_lei
+    Reguli per nod în lanț:
+      - Eticheta nodului = `detalii_gr_chelt_ven_postc` dacă e text real (nenull,
+        nenul după BTRIM, diferit de codul însuși). Altfel eticheta = `gr_chelt_ven_postc`
+        (la părinți codul ESTE numele: „ENERGIE ELECTRICA", „ADMINISTRATIV" etc.).
+      - Frunza se OMITE din lanț dacă nu are detalii utile și are părinte (nu vrem
+        „2.2.6.48.Timisoara Bega → SALUBRIZAREA → …" — începe direct cu „SALUBRIZAREA").
+      - Oprește când parent = node (auto-ciclu, ex. „ADMINISTRATIV" → „ADMINISTRATIV"),
+        când parent IS NULL sau la adâncimea 10. Protejează și împotriva ciclurilor
+        mai lungi cu un array de noduri deja vizitate.
+
+    Pattern SQL standard (agregare facturi furnizor pe categorii, cale ierarhică):
+
+      WITH RECURSIVE cat_chain AS (
+        SELECT
+          l.gr_chelt_ven_postc AS leaf,
+          l.gr_chelt_ven_postc AS node,
+          l.gr_chelt_ven_postc_sup AS parent,
+          (CASE
+            WHEN BTRIM(COALESCE(l.detalii_gr_chelt_ven_postc, '')) <> ''
+             AND BTRIM(l.detalii_gr_chelt_ven_postc) <> l.gr_chelt_ven_postc
+              THEN l.detalii_gr_chelt_ven_postc
+            WHEN l.gr_chelt_ven_postc_sup IS NULL
+              OR l.gr_chelt_ven_postc_sup = l.gr_chelt_ven_postc
+              THEN l.gr_chelt_ven_postc
+            ELSE NULL       -- frunză-cod: omite, va fi reprezentată de părinte
+          END)::text AS label,
+          ARRAY[l.gr_chelt_ven_postc::text] AS visited,
+          0 AS depth
+        FROM gr_chelt_ven_postc l
+        UNION ALL
+        SELECT c.leaf, g.gr_chelt_ven_postc, g.gr_chelt_ven_postc_sup,
+          (CASE
+            WHEN BTRIM(COALESCE(g.detalii_gr_chelt_ven_postc, '')) <> ''
+             AND BTRIM(g.detalii_gr_chelt_ven_postc) <> g.gr_chelt_ven_postc
+              THEN g.detalii_gr_chelt_ven_postc
+            ELSE g.gr_chelt_ven_postc
+          END)::text,
+          c.visited || g.gr_chelt_ven_postc::text,
+          c.depth + 1
+        FROM cat_chain c
+        JOIN gr_chelt_ven_postc g ON g.gr_chelt_ven_postc = c.parent
+        WHERE c.parent IS NOT NULL
+          AND c.parent <> c.node
+          AND NOT (g.gr_chelt_ven_postc::text = ANY(c.visited))
+          AND c.depth < 10
+      ),
+      cat_label AS (
+        SELECT leaf,
+               string_agg(label, ' → ' ORDER BY depth)
+                 FILTER (WHERE label IS NOT NULL) AS category_path
+        FROM cat_chain GROUP BY leaf
+      )
+      SELECT cl.category_path,
+             SUM(dp.cant * dp.pret * COALESCE(d.curs, 1)) AS total_lei
       FROM doc d
-      JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
-      LEFT JOIN gr_chelt_ven_postc gcv ON gcv.gr_chelt_ven_postc = dp.gr_chelt_ven_postc
+      JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc)
+                       = (d.data_doc, d.tip_doc, d.nr_doc)
+      LEFT JOIN cat_label cl ON cl.leaf = dp.gr_chelt_ven_postc
       WHERE d.tip_doc IN ('FactFI','FactFE')
         AND d.data_doc BETWEEN :start AND :end
-        AND d.eu_punct_lucru = :punct_lucru       -- opțional
-      GROUP BY 1 ORDER BY total_lei DESC NULLS LAST LIMIT 50;
-
-    Dacă vrei rădăcina ierarhiei (ex. „UTILITATI" peste toate submulțimile), folosește CTE
-    recursiv pe `gr_chelt_ven_postc_sup`, oprindu-te când părintele = codul însuși
-    (există cicluri auto-referențiale la rădăcini, ex. „ADMINISTRATIV"->„ADMINISTRATIV") sau
-    când părintele devine NULL.
+      GROUP BY cl.category_path ORDER BY total_lei DESC NULLS LAST LIMIT 50;
 
     PLAN DE CONTURI (chart of accounts):
     `conts` — cont SINTETIC (ex. „411", „4426", „707"). PK `conts` (varchar 7).
