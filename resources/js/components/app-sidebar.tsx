@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     Building2,
     Contact,
+    FileCheck2,
     FileInput,
     FileOutput,
     FileText,
@@ -29,6 +30,7 @@ import { index as aiChatIndex } from '@/routes/ai-chat';
 import { index as companiesIndex } from '@/routes/companies';
 import { index as bankStatementsIndex } from '@/routes/bank-statements';
 import { index as departmentsIndex } from '@/routes/departments';
+import { index as eInvoicesIndex } from '@/routes/e-invoices';
 import { emise as facturiEmise, primite as facturiPrimite } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as usersIndex } from '@/routes/users';
@@ -54,6 +56,11 @@ const mainNavItems: NavItemOrGroup[] = [
                 title: 'Primite',
                 href: facturiPrimite(),
                 icon: FileInput,
+            },
+            {
+                title: 'eFacturi',
+                href: eInvoicesIndex(),
+                icon: FileCheck2,
             },
         ],
     },

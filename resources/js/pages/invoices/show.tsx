@@ -86,10 +86,10 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                     </Button>
                 </div>
 
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-semibold">
+                <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="text-2xl font-semibold break-all sm:break-normal">
                                 {invoice.nr_doc}
                             </h1>
                             <Badge
@@ -115,7 +115,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                 : ''}
                         </p>
                     </div>
-                    <div className="text-right">
+                    <div className="w-full rounded-xl border border-sidebar-border/70 bg-muted/30 p-3 text-left sm:w-auto sm:border-0 sm:bg-transparent sm:p-0 sm:text-right dark:border-sidebar-border">
                         <div className="text-xs text-muted-foreground">
                             Total
                         </div>
@@ -240,7 +240,8 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                     <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
                         Detalii
                     </div>
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-sm">
                         <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
                             <tr>
                                 <th className="w-12 px-4 py-2">#</th>
@@ -295,6 +296,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                             ))}
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
@@ -311,7 +313,8 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                 : 'tranzacții'}
                         </span>
                     </div>
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-sm">
                         <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
                             <tr>
                                 <th className="w-32 px-4 py-2">Repartizare</th>
@@ -371,6 +374,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                             ))}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
         </>

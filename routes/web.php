@@ -5,6 +5,7 @@ use App\Http\Controllers\BankStatementController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\SyncController;
@@ -28,6 +29,11 @@ Route::middleware([
     Route::get('facturi-primite', [InvoiceController::class, 'primite'])->name('invoices.primite');
     Route::get('facturi/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::post('facturi/{invoice}/approve', [InvoiceController::class, 'approve'])->name('invoices.approve');
+
+    Route::get('efacturi', [EInvoiceController::class, 'index'])->name('e-invoices.index');
+    Route::get('efacturi/{eInvoice}/detail', [EInvoiceController::class, 'detail'])->name('e-invoices.detail');
+    Route::get('efacturi/{eInvoice}/candidates', [EInvoiceController::class, 'searchCandidates'])->name('e-invoices.candidates');
+    Route::post('efacturi/{eInvoice}/match', [EInvoiceController::class, 'match'])->name('e-invoices.match');
 
     Route::get('extrase-bancare', [BankStatementController::class, 'index'])->name('bank-statements.index');
     Route::get('extrase-bancare/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');

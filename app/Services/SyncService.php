@@ -6,6 +6,7 @@ use App\Models\BankStatement;
 use App\Models\BankStatementLine;
 use App\Models\BankStatementLineAllocation;
 use App\Models\Company;
+use App\Models\EInvoice;
 use App\Models\Invoice;
 use App\Models\InvoiceDetail;
 use App\Models\InvoicePayment;
@@ -23,7 +24,7 @@ class SyncService
     public function __construct(private readonly RemoteConnection $remote) {}
 
     /**
-     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int, statements: int}
+     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int, statements: int, e_invoices: int}
      */
     public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null): array
     {
@@ -66,6 +67,8 @@ class SyncService
 
         $statementsCount = $this->syncBankStatements($company, $remote, $from, $to);
 
+        $eInvoicesCount = $this->syncEInvoices($company, $remote, $from, $to);
+
         $company->forceFill(['last_synced_at' => now()])->save();
 
         return [
@@ -75,7 +78,78 @@ class SyncService
             'bank_accounts' => $bankAccountsCount,
             'payments' => $paymentsCount,
             'statements' => $statementsCount,
+            'e_invoices' => $eInvoicesCount,
         ];
+    }
+
+    private function syncEInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
+    {
+        $rows = $remote->table('view_anaf_e_fact_furn_msg')
+            ->select([
+                'msg_id', 'msg_cif', 'msg_index_incarcare', 'msg_data_creare_d',
+                'msg_detalii', 'msg_xml', 'data_ins_omc', 'err_ins_omc',
+                'data_doc_xml', 'tip_doc_xml', 'nr_doc_xml', 'partener_xml', 'cod_cci_xml',
+            ])
+            ->where('msg_tip', 'FACTURA PRIMITA')
+            ->whereBetween('msg_data_creare_d', [$from->toDateTimeString(), $to->toDateTimeString()])
+            ->orderBy('msg_data_creare_d')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return 0;
+        }
+
+        $invoiceLookup = Invoice::where('company_id', $company->id)
+            ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+            ->pluck('id', 'nr_doc');
+
+        $partnerLookup = Partner::where('company_id', $company->id)
+            ->whereNotNull('cui')
+            ->get(['id', 'cui'])
+            ->mapWithKeys(fn ($p) => [$this->normalizeCui($p->cui) => $p->id]);
+
+        $count = 0;
+
+        foreach ($rows as $row) {
+            $nrDoc = $row->nr_doc_xml !== null ? trim((string) $row->nr_doc_xml) : null;
+            $invoiceId = $nrDoc !== null && $nrDoc !== '' ? ($invoiceLookup[$nrDoc] ?? null) : null;
+
+            $cci = $row->cod_cci_xml !== null ? $this->normalizeCui($row->cod_cci_xml) : null;
+            $partnerId = $cci !== null ? ($partnerLookup[$cci] ?? null) : null;
+
+            EInvoice::updateOrCreate(
+                [
+                    'company_id' => $company->id,
+                    'msg_id' => $row->msg_id,
+                ],
+                [
+                    'partner_id' => $partnerId,
+                    'invoice_id' => $invoiceId,
+                    'msg_cif' => $row->msg_cif,
+                    'msg_index_incarcare' => $row->msg_index_incarcare,
+                    'msg_data_creare_d' => $row->msg_data_creare_d,
+                    'data_doc_xml' => $row->data_doc_xml,
+                    'tip_doc_xml' => $row->tip_doc_xml,
+                    'nr_doc_xml' => $nrDoc,
+                    'partener_xml' => $row->partener_xml,
+                    'cod_cci_xml' => $row->cod_cci_xml,
+                    'msg_detalii' => $row->msg_detalii,
+                    'msg_xml' => $row->msg_xml,
+                    'data_ins_omc' => $row->data_ins_omc,
+                    'err_ins_omc' => $row->err_ins_omc,
+                ]
+            );
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private function normalizeCui(string $cui): string
+    {
+        $upper = strtoupper(trim($cui));
+
+        return str_starts_with($upper, 'RO') ? substr($upper, 2) : $upper;
     }
 
     private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int

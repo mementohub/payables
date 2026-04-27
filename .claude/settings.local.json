@@ -31,7 +31,10 @@
       "Bash(grep -n \"public \\\\$\\\\|public function\\\\|readonly\\\\|public.*conversationId\" /Users/ciungulete/Sites/centrofin/vendor/laravel/ai/src/Responses/AgentResponse.php)",
       "Bash(echo \"---exit=$?---\")",
       "Bash(npm install *)",
-      "Bash(php -r '$c=\\\\App\\\\Models\\\\Company::find\\(1\\); echo $c->db_password;')"
+      "Bash(php -r '$c=\\\\App\\\\Models\\\\Company::find\\(1\\); echo $c->db_password;')",
+      "Bash(npx tsc *)",
+      "mcp__laravel-boost__database-query",
+      "Bash(git stash *)"
     ]
   },
   "enableAllProjectMcpServers": true,
