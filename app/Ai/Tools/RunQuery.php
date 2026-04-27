@@ -16,7 +16,7 @@ class RunQuery implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Execută un SELECT (sau WITH … SELECT) PostgreSQL read-only pe baza remote a unei companii Centrofin. '
+        return 'Execută un SELECT (sau WITH … SELECT) PostgreSQL read-only pe baza remote a unei companii Payables. '
             .'Regulile: o singură instrucțiune, doar SELECT, fără INSERT/UPDATE/DELETE/DDL, LIMIT maxim '
             .SafeRemoteQuery::MAX_ROWS.' (aplicat automat dacă lipsește), timeout '
             .(SafeRemoteQuery::STATEMENT_TIMEOUT_MS / 1000).'s. Răspunsul conține maxim '
@@ -61,7 +61,7 @@ class RunQuery implements Tool
     {
         return [
             'company_id' => $schema->integer()->required()
-                ->description('ID-ul companiei Centrofin (din ListCompanies).'),
+                ->description('ID-ul companiei Payables (din ListCompanies).'),
             'sql' => $schema->string()->required()
                 ->description('O singură instrucțiune SELECT PostgreSQL. Fără DML/DDL. Folosește coloane din DescribeSchema.'),
         ];

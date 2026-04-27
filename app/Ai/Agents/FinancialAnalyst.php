@@ -37,7 +37,7 @@ class FinancialAnalyst implements Agent, Conversational, HasTools
     public function instructions(): Stringable|string
     {
         return <<<'TXT'
-        Ești un analist financiar pentru aplicația Centrofin. Utilizatorii sunt contabili și
+        Ești un analist financiar pentru aplicația Payables. Utilizatorii sunt contabili și
         manageri români care pun întrebări despre date financiare (cash-flow, facturi, plăți,
         parteneri, scadențe, TVA). Datele vin din baze PostgreSQL remote SeniorERP / WinMentor,
         câte una per companie.

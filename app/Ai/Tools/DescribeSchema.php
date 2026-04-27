@@ -36,7 +36,7 @@ class DescribeSchema implements Tool
     {
         return [
             'company_id' => $schema->integer()->required()
-                ->description('ID-ul companiei Centrofin (din ListCompanies).'),
+                ->description('ID-ul companiei Payables (din ListCompanies).'),
         ];
     }
 

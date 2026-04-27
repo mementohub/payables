@@ -1,11 +1,11 @@
 ---
 name: senior-erp-db
-description: Reference for the Romanian SeniorERP-style PostgreSQL database (christiantour and similar company DBs) that Centrofin imports from. Use whenever you need to query, sync, or understand the remote `doc` / `doc_poz` / `partener` / `partener_banca` / `doc_fin` / `tip_doc` tables; when interpreting Romanian column names (`da_nu_*`, `val_mon_*`, `tip_doc`); when mapping invoices, payments, partners, or bank accounts from the remote DB to Centrofin's local tables. Trigger on keywords: SeniorERP, WinMentor, christiantour, doc table, doc_poz, doc_fin, partener, partener_banca, tip_doc, FactFI, FactCI, val_mon, sync invoice, sync furnizor.
+description: Reference for the Romanian SeniorERP-style PostgreSQL database (christiantour and similar company DBs) that Payables imports from. Use whenever you need to query, sync, or understand the remote `doc` / `doc_poz` / `partener` / `partener_banca` / `doc_fin` / `tip_doc` tables; when interpreting Romanian column names (`da_nu_*`, `val_mon_*`, `tip_doc`); when mapping invoices, payments, partners, or bank accounts from the remote DB to Payables's local tables. Trigger on keywords: SeniorERP, WinMentor, christiantour, doc table, doc_poz, doc_fin, partener, partener_banca, tip_doc, FactFI, FactCI, val_mon, sync invoice, sync furnizor.
 ---
 
 # SeniorERP-style PostgreSQL source DB
 
-Each Centrofin company connects to its own PostgreSQL database (schema `public`, pgsql 13+). Defaults: `127.0.0.1:5432`, user `root`, encrypted per-company via `App\Models\Company`. The schema follows a Romanian ERP convention (SeniorERP / WinMentor lineage). Column names are Romanian — read this reference before writing SQL.
+Each Payables company connects to its own PostgreSQL database (schema `public`, pgsql 13+). Defaults: `127.0.0.1:5432`, user `root`, encrypted per-company via `App\Models\Company`. The schema follows a Romanian ERP convention (SeniorERP / WinMentor lineage). Column names are Romanian — read this reference before writing SQL.
 
 ## Naming conventions
 
@@ -269,7 +269,7 @@ Don't introduce a dedicated "paid" boolean from the remote DB — there isn't a 
 
 ## Partner-role logic
 
-Because `partener.da_nu_furnizor` / `da_nu_client` are over-permissive, in Centrofin:
+Because `partener.da_nu_furnizor` / `da_nu_client` are over-permissive, in Payables:
 
 ```php
 $role = in_array($row->tip_doc, ['FactFI','FactFE'], true) ? 'furnizor' : 'client';
@@ -298,7 +298,7 @@ Use these to size queries / pagination / job timeouts.
 
 **Always sync with a date range.** Never pull the full `doc` table without filtering `data_doc`.
 
-## Centrofin sync mapping (`App\Services\SyncService`)
+## Payables sync mapping (`App\Services\SyncService`)
 
 | Remote table       | Local table              | Scope / key                                                                 |
 | ------------------ | ------------------------ | --------------------------------------------------------------------------- |
