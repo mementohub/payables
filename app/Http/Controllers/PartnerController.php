@@ -20,6 +20,8 @@ class PartnerController extends Controller
 
     public function clienti(Request $request): Response
     {
+        abort_unless($request->user()?->isMaster(), 403);
+
         return $this->list($request, 'clienti');
     }
 

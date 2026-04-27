@@ -20,6 +20,8 @@ class InvoiceController extends Controller
 {
     public function emise(Request $request): Response
     {
+        abort_unless($request->user()?->isMaster(), 403);
+
         return $this->list($request, 'emise');
     }
 
@@ -30,6 +32,9 @@ class InvoiceController extends Controller
 
     private function list(Request $request, string $scope): Response
     {
+        $user = $request->user();
+        $isMaster = (bool) $user?->isMaster();
+
         $search = $request->string('search')->toString();
         $companyId = $request->integer('company_id');
         $payment = $request->string('payment')->toString();
@@ -51,6 +56,13 @@ class InvoiceController extends Controller
             ])
             ->when($scope === 'primite', fn ($q) => $q->furnizor())
             ->when($scope === 'emise', fn ($q) => $q->client())
+            ->when($scope === 'primite' && ! $isMaster, function ($q) use ($user) {
+                $deptIds = $user?->departmentIds() ?? [];
+                $q->where(function ($q) use ($deptIds) {
+                    $q->whereDoesntHave('partner.departments')
+                        ->orWhereHas('partner.departments', fn ($d) => $d->whereIn('departments.id', $deptIds));
+                });
+            })
             ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
             ->when($dataDocFrom, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($dataDocTo, fn ($q, $d) => $q->where('data_doc', '<=', $d))
@@ -116,8 +128,26 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function show(Invoice $invoice): Response
+    public function show(Request $request, Invoice $invoice): Response
     {
+        $user = $request->user();
+        $isMaster = (bool) $user?->isMaster();
+
+        if ($invoice->partener_type === 'client') {
+            abort_unless($isMaster, 403);
+        }
+
+        if ($invoice->partener_type === 'furnizor' && ! $isMaster) {
+            $invoice->loadMissing('partner.departments:id');
+            $partnerDeptIds = $invoice->partner?->departments->pluck('id') ?? collect();
+            $userDeptIds = collect($user?->departmentIds() ?? []);
+
+            abort_unless(
+                $partnerDeptIds->isEmpty() || $partnerDeptIds->intersect($userDeptIds)->isNotEmpty(),
+                403,
+            );
+        }
+
         $invoice->load([
             'partner',
             'partner.supervisorDepartments',

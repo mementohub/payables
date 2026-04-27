@@ -34,7 +34,10 @@
       "Bash(php -r '$c=\\\\App\\\\Models\\\\Company::find\\(1\\); echo $c->db_password;')",
       "Bash(npx tsc *)",
       "mcp__laravel-boost__database-query",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(php *)",
+      "Bash(git -C /Users/ciungulete/Sites/payables stash --include-untracked --quiet)",
+      "Bash(git -C /Users/ciungulete/Sites/payables stash pop --quiet)"
     ]
   },
   "enableAllProjectMcpServers": true,

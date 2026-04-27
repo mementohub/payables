@@ -35,4 +35,22 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Department::class)->withTimestamps();
     }
+
+    public function isMaster(): bool
+    {
+        return $this->departments()
+            ->where('type', Department::TYPE_MASTER)
+            ->exists();
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function departmentIds(?string $type = null): array
+    {
+        return $this->departments()
+            ->when($type, fn ($q, $t) => $q->where('type', $t))
+            ->pluck('departments.id')
+            ->all();
+    }
 }
