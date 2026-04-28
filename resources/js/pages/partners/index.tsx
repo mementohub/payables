@@ -25,35 +25,10 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
-import type { Paginated } from '@/types/pagination';
-
-type SupervisorDepartment = {
-    id: number;
-    name: string;
-};
-
-type Partner = {
-    id: number;
-    name: string;
-    cui: string | null;
-    reg_com: string | null;
-    city: string | null;
-    country: string | null;
-    phone: string | null;
-    email: string | null;
-    is_furnizor: boolean;
-    is_client: boolean;
-    invoices_count: number;
-    company: { id: number; name: string };
-    supervisor_departments: SupervisorDepartment[];
-};
-
-type Props = {
-    partners: Paginated<Partner>;
-    scope: 'furnizori' | 'clienti';
-    filters: { search: string | null; company_id: number | null };
-    companies: { id: number; name: string }[];
-};
+import type {
+    IndexProps as Props,
+    SupervisorDepartmentRef as SupervisorDepartment,
+} from './types';
 
 function DepartmentChips({
     departments,

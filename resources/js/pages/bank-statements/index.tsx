@@ -27,33 +27,7 @@ import {
     index as bankStatementsIndex,
     show as bankStatementsShow,
 } from '@/routes/bank-statements';
-import type { Paginated } from '@/types/pagination';
-
-type Statement = {
-    id: number;
-    data_extras: string;
-    banca: string | null;
-    iban: string;
-    operator: string | null;
-    moneda: string | null;
-    lines_count: number;
-    unallocated_count: number;
-    total_incoming: number;
-    total_outgoing: number;
-    total_unallocated: number;
-    company: { id: number; name: string };
-};
-
-type Props = {
-    statements: Paginated<Statement>;
-    filters: {
-        company_id: number | null;
-        from: string | null;
-        to: string | null;
-        only_unallocated: boolean;
-    };
-    companies: { id: number; name: string }[];
-};
+import type { IndexProps as Props } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

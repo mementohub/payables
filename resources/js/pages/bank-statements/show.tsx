@@ -39,67 +39,11 @@ import {
     show as bankStatementsShow,
 } from '@/routes/bank-statements';
 import { show as invoiceShow } from '@/routes/invoices';
-
-type InvoiceRef = {
-    id: number;
-    nr_doc: string;
-    tip_doc: string;
-    data_doc: string;
-    moneda: string | null;
-    val_mon: number;
-    val_mon_tva: number;
-    val_mon_paid: number;
-    partner: { id: number; name: string } | null;
-};
-
-type Allocation = {
-    id: number;
-    data_doc_com: string;
-    tip_doc_com: string;
-    nr_doc_com: string;
-    val_fin: number;
-    val_com: number;
-    invoice: InvoiceRef | null;
-};
-
-type Line = {
-    id: number;
-    data_doc: string;
-    tip_doc: string;
-    nr_doc: string;
-    direction: 'incoming' | 'outgoing';
-    partener_name: string | null;
-    partner: { id: number; name: string } | null;
-    emitent: string | null;
-    cine_preda: string | null;
-    cine_primeste: string | null;
-    obs_txt: string | null;
-    moneda: string | null;
-    val_mon: number;
-    val_allocated: number;
-    unallocated: number;
-    is_unallocated: boolean;
-    allocations: Allocation[];
-};
-
-type Statement = {
-    id: number;
-    data_extras: string;
-    banca: string | null;
-    iban: string;
-    operator: string | null;
-    moneda: string | null;
-    lines_count: number;
-    unallocated_count: number;
-    total_incoming: number;
-    total_outgoing: number;
-    total_unallocated: number;
-    company: { id: number; name: string };
-};
-
-type Filters = { only_unallocated: boolean; direction: string | null };
-
-type Props = { statement: Statement; lines: Line[]; filters: Filters };
+import type {
+    InvoiceRef,
+    ShowFilters as Filters,
+    ShowProps as Props,
+} from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

@@ -16,22 +16,7 @@ import {
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { index as departmentsIndex } from '@/routes/departments';
-
-type Member = { id: number; name: string; email: string };
-
-type Department = {
-    id: number;
-    name: string;
-    type: 'supervisor' | 'master';
-    members: Member[];
-};
-
-type User = { id: number; name: string; email: string };
-
-type Props = {
-    departments: Department[];
-    users: User[];
-};
+import type { Department, Props, UserOption as User } from './types';
 
 const typeLabels: Record<Department['type'], string> = {
     supervisor: 'Supervizor',

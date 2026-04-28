@@ -5,7 +5,6 @@ import PartnerController from '@/actions/App/Http/Controllers/PartnerController'
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
-import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,71 +35,11 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
-import type { Paginated } from '@/types/pagination';
-
-type BankAccount = {
-    id: number;
-    bank: string | null;
-    iban: string;
-    currency: string;
-    is_default: boolean;
-    is_discontinued: boolean;
-};
-
-type SupervisorDepartment = {
-    id: number;
-    name: string;
-    type: string;
-};
-
-type Partner = {
-    id: number;
-    name: string;
-    cui: string | null;
-    reg_com: string | null;
-    country: string | null;
-    city: string | null;
-    address: string | null;
-    phone: string | null;
-    email: string | null;
-    is_furnizor: boolean;
-    is_client: boolean;
-    company: { id: number; name: string };
-    bank_accounts: BankAccount[];
-    supervisor_departments: SupervisorDepartment[];
-};
-
-type InvoiceRow = {
-    id: number;
-    data_doc: string;
-    tip_doc: string;
-    nr_doc: string;
-    moneda: string | null;
-    val_mon: number;
-    val_mon_tva: number;
-    val_mon_paid: number;
-    payment_status: PaymentStatus;
-    data_scadenta: string | null;
-    data_inchidere: string | null;
-};
-
-type InvoiceFilters = {
-    search: string | null;
-    tip_doc: string | null;
-    from: string | null;
-    to: string | null;
-    payment: string | null;
-};
-
-type AvailableDepartment = { id: number; name: string; type: string };
-
-type Props = {
-    partner: Partner;
-    invoices: Paginated<InvoiceRow>;
-    invoiceFilters: InvoiceFilters;
-    availableTipDocs: string[];
-    availableDepartments: AvailableDepartment[];
-};
+import type {
+    InvoiceFilters,
+    PartnerDetail as Partner,
+    ShowProps as Props,
+} from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

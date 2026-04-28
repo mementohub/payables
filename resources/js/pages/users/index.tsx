@@ -17,20 +17,7 @@ import {
     edit as usersEdit,
     index as usersIndex,
 } from '@/routes/users';
-
-type UserRow = {
-    id: number;
-    name: string;
-    email: string;
-    initials: string;
-    departments_count: number;
-    created_at: string | null;
-};
-
-type Props = {
-    users: UserRow[];
-    current_user_id: number;
-};
+import type { IndexProps as Props } from './types';
 
 export default function UsersIndex({ users, current_user_id }: Props) {
     return (

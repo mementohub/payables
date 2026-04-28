@@ -7,8 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
 import { edit as usersEdit, index as usersIndex } from '@/routes/users';
-
-type User = { id: number; name: string; email: string };
+import type { EditUser as User } from './types';
 
 export default function UserEdit({ user }: { user: User }) {
     return (

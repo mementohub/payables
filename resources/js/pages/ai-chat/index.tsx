@@ -19,32 +19,7 @@ import {
     show as aiChatShow,
     stream as aiChatStream,
 } from '@/routes/ai-chat';
-
-type Conversation = {
-    id: string;
-    title: string;
-    updated_at: string | null;
-};
-
-type Message = {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    created_at: string | null;
-};
-
-type Props = {
-    conversations: Conversation[];
-    activeConversationId: string | null;
-    messages: Message[];
-};
-
-type StreamEvent =
-    | { type: 'delta'; text: string }
-    | { type: 'tool'; name: string }
-    | { type: 'tool_done' }
-    | { type: 'done'; conversation_id: string | null }
-    | { type: 'error'; message: string };
+import type { Message, Props, StreamEvent } from './types';
 
 function getCsrfToken(): string {
     return (

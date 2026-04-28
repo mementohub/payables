@@ -10,17 +10,7 @@ import {
     edit as companiesEdit,
     index as companiesIndex,
 } from '@/routes/companies';
-
-type Company = {
-    id: number;
-    name: string;
-    cui: string | null;
-    db_driver: string;
-    db_host: string;
-    db_port: string;
-    db_database: string;
-    db_username: string;
-};
+import type { CompanyEditPayload as Company } from './types';
 
 export default function CompanyEdit({ company }: { company: Company }) {
     return (

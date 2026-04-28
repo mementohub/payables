@@ -1,7 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import PaymentStatusBadge from '@/components/payment-status-badge';
-import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
@@ -10,57 +9,7 @@ import {
     primite as facturiPrimite,
 } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
-
-type Detail = {
-    id: number;
-    scv: number;
-    articol: string;
-    detaliu_articol: string | null;
-    cant: number;
-    um: string | null;
-    pret: number;
-    proc_tva: number;
-};
-
-type Payment = {
-    id: number;
-    data_doc: string;
-    tip_doc: string;
-    nr_doc: string;
-    data_repartizare: string | null;
-    val_fin: number;
-    val_com: number;
-    moneda: string | null;
-};
-
-type Invoice = {
-    id: number;
-    data_doc: string;
-    tip_doc: string;
-    nr_doc: string;
-    partener_type: 'furnizor' | 'client' | null;
-    moneda: string | null;
-    curs: number;
-    val_mon: number;
-    val_mon_tva: number;
-    val_mon_paid: number;
-    payment_status: PaymentStatus;
-    data_scadenta: string | null;
-    data_inchidere: string | null;
-    emitent: string | null;
-    payments: Payment[];
-    partner: {
-        id: number;
-        name: string;
-        cui: string | null;
-        address: string | null;
-        city: string | null;
-        country: string | null;
-        is_furnizor: boolean;
-    } | null;
-    company: { id: number; name: string };
-    details: Detail[];
-};
+import type { Invoice } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

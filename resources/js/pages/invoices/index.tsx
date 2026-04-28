@@ -3,7 +3,6 @@ import { Check, Clock, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
-import type { ApprovalStage } from '@/components/approval-status-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
 import {
@@ -13,7 +12,6 @@ import {
 } from '@/components/filter-field';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
-import type { PaymentStatus } from '@/components/payment-status-badge';
 import {
     SelectionBar,
     downloadXlsxFromForm,
@@ -44,77 +42,16 @@ import {
 } from '@/routes/invoices';
 import { exportMethod as exportEmise } from '@/routes/invoices/emise';
 import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
-import type { Paginated } from '@/types/pagination';
-
-type SupervisorStep = {
-    department_id: number;
-    department_name: string;
-    approved: boolean;
-    approved_by: { id: number; name: string } | null;
-    approved_at: string | null;
-};
-
-type MasterApproval = {
-    department_id: number;
-    department_name: string | null;
-    approved_by: { id: number; name: string } | null;
-    approved_at: string | null;
-} | null;
-
-type Approval = {
-    needs_approval: boolean;
-    stage: ApprovalStage;
-    supervisors_approved_at: string | null;
-    is_fully_approved: boolean;
-    fully_approved_at: string | null;
-    supervisor_steps: SupervisorStep[];
-    master: MasterApproval;
-};
-
-type InvoiceRow = {
-    id: number;
-    data_doc: string;
-    data_scadenta: string | null;
-    nr_doc: string;
-    partener_type: 'furnizor' | 'client' | null;
-    partner: { id: number; name: string; cui: string | null } | null;
-    company: { id: number; name: string };
-    moneda: string | null;
-    val_mon: number;
-    val_mon_tva: number;
-    val_mon_paid: number;
-    payment_status: PaymentStatus;
-    approval?: Approval;
-};
-
-type Scope = 'emise' | 'primite';
-
-type Filters = {
-    search: string | null;
-    company_id: number | null;
-    payment: string | null;
-    data_doc_from: string | null;
-    data_doc_to: string | null;
-    data_scadenta_from: string | null;
-    data_scadenta_to: string | null;
-    approval: string | null;
-    responsible_id: number | null;
-};
-
-type CurrentUser = {
-    id: number | null;
-    supervisor_department_ids: number[];
-    master_department_ids: number[];
-};
-
-type Props = {
-    invoices: Paginated<InvoiceRow>;
-    scope: Scope;
-    filters: Filters;
-    companies: { id: number; name: string }[];
-    currentUser: CurrentUser;
-    availableResponsibles: { id: number; name: string }[];
-};
+import type {
+    Approval,
+    CurrentUser,
+    IndexFilters as Filters,
+    IndexProps as Props,
+    InvoiceRow,
+    MasterApproval,
+    Scope,
+    SupervisorStep,
+} from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

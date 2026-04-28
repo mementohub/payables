@@ -21,18 +21,7 @@ import {
     edit as companiesEdit,
     index as companiesIndex,
 } from '@/routes/companies';
-
-type Company = {
-    id: number;
-    name: string;
-    cui: string | null;
-    db_host: string;
-    db_port: string;
-    db_database: string;
-    partners_count: number;
-    invoices_count: number;
-    last_synced_at: string | null;
-};
+import type { CompanyListItem as Company } from './types';
 
 function todayISO() {
     return new Date().toISOString().slice(0, 10);

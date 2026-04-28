@@ -39,50 +39,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
-
-type PaymentState = {
-    state: 'paid' | 'partial' | 'unpaid' | 'overdue';
-    label: string;
-    count: number;
-    total: number;
-    outstanding: number;
-};
-
-type AgingBucket = {
-    bucket: string;
-    count: number;
-    outstanding: number;
-};
-
-type TopSupplier = {
-    partner_id: number | null;
-    name: string;
-    invoices: number;
-    outstanding: number;
-};
-
-type CashflowPoint = {
-    week: string;
-    week_start: string;
-    incoming: number;
-    outgoing: number;
-};
-
-type Filters = {
-    company_id: number | null;
-    from: string | null;
-    to: string | null;
-    moneda: string;
-};
-
-type Props = {
-    filters: Filters;
-    companies: { id: number; name: string }[];
-    paymentBreakdown?: PaymentState[];
-    agingBuckets?: AgingBucket[];
-    topOverdueSuppliers?: TopSupplier[];
-    cashflow?: CashflowPoint[];
-};
+import type {
+    AgingBucket,
+    CashflowPoint,
+    Filters,
+    PaymentState,
+    Props,
+    TopSupplier,
+} from './dashboard.types';
 
 function formatMoney(value: number, moneda: string): string {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value)} ${moneda}`;
