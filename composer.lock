@@ -4,8 +4,70 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6a63c10193b8ba8aef6c9d670492625e",
+    "content-hash": "e044e429f3814781b31210dca19f98e0",
     "packages": [
+        {
+            "name": "andalisolutions/einvoicing",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/andalisolutions/einvoicing.git",
+                "reference": "1db984e8355abd9e0e1823ef6029c714de6130f3"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/andalisolutions/einvoicing/zipball/1db984e8355abd9e0e1823ef6029c714de6130f3",
+                "reference": "1db984e8355abd9e0e1823ef6029c714de6130f3",
+                "shasum": ""
+            },
+            "require": {
+                "josemmo/uxml": "^0.1.4",
+                "php": ">=7.1"
+            },
+            "require-dev": {
+                "ext-openssl": "*",
+                "phan/phan": "*",
+                "phpdocumentor/reflection": "^3.0|^5.1",
+                "phpunit/phpunit": "^10.5",
+                "symfony/phpunit-bridge": "*"
+            },
+            "default-branch": true,
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Einvoicing\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Andrei Ciungulete",
+                    "email": "andrei.ciungulete@andali.ro",
+                    "homepage": "https://github.com/ciungulete"
+                }
+            ],
+            "description": "Library for reading and creating European-compliant electronic invoices (EN 16931)",
+            "homepage": "https://github.com/andalisolutions/einvoicing",
+            "keywords": [
+                "cii",
+                "invoice",
+                "invoicing",
+                "peppol",
+                "ubl"
+            ],
+            "support": {
+                "source": "https://github.com/andalisolutions/einvoicing/tree/main",
+                "issues": "https://github.com/andalisolutions/einvoicing/issues"
+            },
+            "time": "2024-09-05T19:07:54+00:00"
+        },
         {
             "name": "aws/aws-crt-php",
             "version": "v1.2.7",
@@ -62,16 +124,16 @@
         },
         {
             "name": "aws/aws-sdk-php",
-            "version": "3.379.5",
+            "version": "3.379.8",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aws/aws-sdk-php.git",
-                "reference": "c81342df6e09bbc30d28ea57cc4644bb35c53ce2"
+                "reference": "856ddf3d241c29132fe1eb946e112351ab043542"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/c81342df6e09bbc30d28ea57cc4644bb35c53ce2",
-                "reference": "c81342df6e09bbc30d28ea57cc4644bb35c53ce2",
+                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/856ddf3d241c29132fe1eb946e112351ab043542",
+                "reference": "856ddf3d241c29132fe1eb946e112351ab043542",
                 "shasum": ""
             },
             "require": {
@@ -153,9 +215,9 @@
             "support": {
                 "forum": "https://github.com/aws/aws-sdk-php/discussions",
                 "issues": "https://github.com/aws/aws-sdk-php/issues",
-                "source": "https://github.com/aws/aws-sdk-php/tree/3.379.5"
+                "source": "https://github.com/aws/aws-sdk-php/tree/3.379.8"
             },
-            "time": "2026-04-22T18:13:16+00:00"
+            "time": "2026-04-27T19:13:21+00:00"
         },
         {
             "name": "brick/math",
@@ -1342,17 +1404,69 @@
             "time": "2026-04-10T14:29:45+00:00"
         },
         {
-            "name": "laravel/ai",
-            "version": "v0.6.3",
+            "name": "josemmo/uxml",
+            "version": "v0.1.5",
             "source": {
                 "type": "git",
-                "url": "https://github.com/laravel/ai.git",
-                "reference": "42cefc32ae2762b6fd1ec0b3c9272e894623b717"
+                "url": "https://github.com/josemmo/uxml.git",
+                "reference": "c902880d176f3626b9ffbd9c5e405f7d5987971f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/42cefc32ae2762b6fd1ec0b3c9272e894623b717",
-                "reference": "42cefc32ae2762b6fd1ec0b3c9272e894623b717",
+                "url": "https://api.github.com/repos/josemmo/uxml/zipball/c902880d176f3626b9ffbd9c5e405f7d5987971f",
+                "reference": "c902880d176f3626b9ffbd9c5e405f7d5987971f",
+                "shasum": ""
+            },
+            "require": {
+                "lib-libxml": "*",
+                "php": ">=7.1"
+            },
+            "require-dev": {
+                "phan/phan": "*",
+                "phpstan/phpstan": "*",
+                "phpstan/phpstan-strict-rules": "*",
+                "symfony/phpunit-bridge": "*"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "UXML\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "José Miguel Moreno",
+                    "email": "josemmo@pm.me",
+                    "homepage": "https://github.com/josemmo"
+                }
+            ],
+            "description": "Uncomplicated XML manipulation library with a clean and concise syntax",
+            "homepage": "https://github.com/josemmo/uxml",
+            "keywords": [
+                "xml"
+            ],
+            "support": {
+                "issues": "https://github.com/josemmo/uxml/issues",
+                "source": "https://github.com/josemmo/uxml/tree/v0.1.5"
+            },
+            "time": "2025-12-04T22:22:15+00:00"
+        },
+        {
+            "name": "laravel/ai",
+            "version": "v0.6.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/laravel/ai.git",
+                "reference": "32296ee5fc7a6a1dd007a66f32abb15d877b434b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/32296ee5fc7a6a1dd007a66f32abb15d877b434b",
+                "reference": "32296ee5fc7a6a1dd007a66f32abb15d877b434b",
                 "shasum": ""
             },
             "require": {
@@ -1407,7 +1521,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-04-22T21:16:19+00:00"
+            "time": "2026-04-28T05:42:50+00:00"
         },
         {
             "name": "laravel/framework",
@@ -4549,16 +4663,16 @@
         },
         {
             "name": "spatie/laravel-ray",
-            "version": "1.43.8",
+            "version": "1.43.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/spatie/laravel-ray.git",
-                "reference": "0de5b861cce7c17276bb649b4b34964b822e32b9"
+                "reference": "85137a6ea1d3ecd5ad3adcb43512fff9a5529e72"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/spatie/laravel-ray/zipball/0de5b861cce7c17276bb649b4b34964b822e32b9",
-                "reference": "0de5b861cce7c17276bb649b4b34964b822e32b9",
+                "url": "https://api.github.com/repos/spatie/laravel-ray/zipball/85137a6ea1d3ecd5ad3adcb43512fff9a5529e72",
+                "reference": "85137a6ea1d3ecd5ad3adcb43512fff9a5529e72",
                 "shasum": ""
             },
             "require": {
@@ -4622,7 +4736,7 @@
             ],
             "support": {
                 "issues": "https://github.com/spatie/laravel-ray/issues",
-                "source": "https://github.com/spatie/laravel-ray/tree/1.43.8"
+                "source": "https://github.com/spatie/laravel-ray/tree/1.43.9"
             },
             "funding": [
                 {
@@ -4634,7 +4748,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2026-04-16T11:52:31+00:00"
+            "time": "2026-04-28T06:07:04+00:00"
         },
         {
             "name": "spatie/macroable",
@@ -5807,7 +5921,7 @@
         },
         {
             "name": "symfony/polyfill-ctype",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-ctype.git",
@@ -5866,7 +5980,7 @@
                 "portable"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-ctype/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-ctype/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -5890,7 +6004,7 @@
         },
         {
             "name": "symfony/polyfill-iconv",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-iconv.git",
@@ -5950,7 +6064,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-iconv/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-iconv/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -5974,16 +6088,16 @@
         },
         {
             "name": "symfony/polyfill-intl-grapheme",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-intl-grapheme.git",
-                "reference": "ad1b7b9092976d6c948b8a187cec9faaea9ec1df"
+                "reference": "4864388bfbd3001ce88e234fab652acd91fdc57e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/polyfill-intl-grapheme/zipball/ad1b7b9092976d6c948b8a187cec9faaea9ec1df",
-                "reference": "ad1b7b9092976d6c948b8a187cec9faaea9ec1df",
+                "url": "https://api.github.com/repos/symfony/polyfill-intl-grapheme/zipball/4864388bfbd3001ce88e234fab652acd91fdc57e",
+                "reference": "4864388bfbd3001ce88e234fab652acd91fdc57e",
                 "shasum": ""
             },
             "require": {
@@ -6032,7 +6146,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-intl-grapheme/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-intl-grapheme/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6052,11 +6166,11 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-04-10T16:19:22+00:00"
+            "time": "2026-04-26T13:13:48+00:00"
         },
         {
             "name": "symfony/polyfill-intl-idn",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-intl-idn.git",
@@ -6119,7 +6233,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-intl-idn/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-intl-idn/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6143,7 +6257,7 @@
         },
         {
             "name": "symfony/polyfill-intl-normalizer",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-intl-normalizer.git",
@@ -6204,7 +6318,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-intl-normalizer/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-intl-normalizer/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6228,7 +6342,7 @@
         },
         {
             "name": "symfony/polyfill-mbstring",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-mbstring.git",
@@ -6289,7 +6403,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6313,7 +6427,7 @@
         },
         {
             "name": "symfony/polyfill-php80",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-php80.git",
@@ -6373,7 +6487,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-php80/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-php80/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6397,7 +6511,7 @@
         },
         {
             "name": "symfony/polyfill-php83",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-php83.git",
@@ -6453,7 +6567,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-php83/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-php83/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6477,7 +6591,7 @@
         },
         {
             "name": "symfony/polyfill-php84",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-php84.git",
@@ -6533,7 +6647,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-php84/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-php84/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6557,16 +6671,16 @@
         },
         {
             "name": "symfony/polyfill-php85",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-php85.git",
-                "reference": "2c408a6bb0313e6001a83628dc5506100474254e"
+                "reference": "fcfa4973a9917cef23f2e38774da74a2b7d115ee"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/polyfill-php85/zipball/2c408a6bb0313e6001a83628dc5506100474254e",
-                "reference": "2c408a6bb0313e6001a83628dc5506100474254e",
+                "url": "https://api.github.com/repos/symfony/polyfill-php85/zipball/fcfa4973a9917cef23f2e38774da74a2b7d115ee",
+                "reference": "fcfa4973a9917cef23f2e38774da74a2b7d115ee",
                 "shasum": ""
             },
             "require": {
@@ -6613,7 +6727,7 @@
                 "shim"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-php85/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-php85/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -6633,11 +6747,11 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-04-10T16:50:15+00:00"
+            "time": "2026-04-26T13:10:57+00:00"
         },
         {
             "name": "symfony/polyfill-uuid",
-            "version": "v1.36.0",
+            "version": "v1.37.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/polyfill-uuid.git",
@@ -6696,7 +6810,7 @@
                 "uuid"
             ],
             "support": {
-                "source": "https://github.com/symfony/polyfill-uuid/tree/v1.36.0"
+                "source": "https://github.com/symfony/polyfill-uuid/tree/v1.37.0"
             },
             "funding": [
                 {
@@ -7587,16 +7701,16 @@
         },
         {
             "name": "voku/portable-ascii",
-            "version": "2.1.0",
+            "version": "2.1.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/voku/portable-ascii.git",
-                "reference": "d870a33f0f79d2b4579740b0620200221ee44aeb"
+                "reference": "8e1051fe39379367aecf014f41744ce7539a856f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/voku/portable-ascii/zipball/d870a33f0f79d2b4579740b0620200221ee44aeb",
-                "reference": "d870a33f0f79d2b4579740b0620200221ee44aeb",
+                "url": "https://api.github.com/repos/voku/portable-ascii/zipball/8e1051fe39379367aecf014f41744ce7539a856f",
+                "reference": "8e1051fe39379367aecf014f41744ce7539a856f",
                 "shasum": ""
             },
             "require": {
@@ -7633,7 +7747,7 @@
             ],
             "support": {
                 "issues": "https://github.com/voku/portable-ascii/issues",
-                "source": "https://github.com/voku/portable-ascii/tree/2.1.0"
+                "source": "https://github.com/voku/portable-ascii/tree/2.1.1"
             },
             "funding": [
                 {
@@ -7657,7 +7771,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-04-16T23:10:39+00:00"
+            "time": "2026-04-26T05:33:54+00:00"
         },
         {
             "name": "workos/workos-php",
@@ -8365,16 +8479,16 @@
         },
         {
             "name": "laravel/boost",
-            "version": "v2.4.4",
+            "version": "v2.4.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/boost.git",
-                "reference": "db101b977897e00c6d2e40e9b610591cb0aa277e"
+                "reference": "60386c7723ff7cb388b62b6c137597244a9cf2f2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/boost/zipball/db101b977897e00c6d2e40e9b610591cb0aa277e",
-                "reference": "db101b977897e00c6d2e40e9b610591cb0aa277e",
+                "url": "https://api.github.com/repos/laravel/boost/zipball/60386c7723ff7cb388b62b6c137597244a9cf2f2",
+                "reference": "60386c7723ff7cb388b62b6c137597244a9cf2f2",
                 "shasum": ""
             },
             "require": {
@@ -8383,7 +8497,7 @@
                 "illuminate/contracts": "^11.45.3|^12.41.1|^13.0",
                 "illuminate/routing": "^11.45.3|^12.41.1|^13.0",
                 "illuminate/support": "^11.45.3|^12.41.1|^13.0",
-                "laravel/mcp": "^0.5.1|^0.6.0",
+                "laravel/mcp": "^0.5.1|^0.6.0|^0.7.0",
                 "laravel/prompts": "^0.3.10",
                 "laravel/roster": "^0.5.0",
                 "php": "^8.2"
@@ -8427,20 +8541,20 @@
                 "issues": "https://github.com/laravel/boost/issues",
                 "source": "https://github.com/laravel/boost"
             },
-            "time": "2026-04-16T16:53:05+00:00"
+            "time": "2026-04-22T13:29:20+00:00"
         },
         {
             "name": "laravel/mcp",
-            "version": "v0.6.7",
+            "version": "v0.7.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/mcp.git",
-                "reference": "c3775e57b95d7eadb580d543689d9971ec8721f2"
+                "reference": "3513b4feca5f1678be4d2261dcfa8e456436d02a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/mcp/zipball/c3775e57b95d7eadb580d543689d9971ec8721f2",
-                "reference": "c3775e57b95d7eadb580d543689d9971ec8721f2",
+                "url": "https://api.github.com/repos/laravel/mcp/zipball/3513b4feca5f1678be4d2261dcfa8e456436d02a",
+                "reference": "3513b4feca5f1678be4d2261dcfa8e456436d02a",
                 "shasum": ""
             },
             "require": {
@@ -8500,7 +8614,7 @@
                 "issues": "https://github.com/laravel/mcp/issues",
                 "source": "https://github.com/laravel/mcp"
             },
-            "time": "2026-04-15T08:30:42+00:00"
+            "time": "2026-04-21T10:23:03+00:00"
         },
         {
             "name": "laravel/pail",
@@ -9015,21 +9129,21 @@
         },
         {
             "name": "nunomaduro/pao",
-            "version": "v1.0.4",
+            "version": "v1.0.5",
             "source": {
                 "type": "git",
-                "url": "https://github.com/nunomaduro/pao.git",
-                "reference": "abb05092e543e031b035058894ede0f5e7dbfecf"
+                "url": "https://github.com/laravel/pao.git",
+                "reference": "4e2865b711ce4b220ff13612f991c486f5b0c8ec"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nunomaduro/pao/zipball/abb05092e543e031b035058894ede0f5e7dbfecf",
-                "reference": "abb05092e543e031b035058894ede0f5e7dbfecf",
+                "url": "https://api.github.com/repos/laravel/pao/zipball/4e2865b711ce4b220ff13612f991c486f5b0c8ec",
+                "reference": "4e2865b711ce4b220ff13612f991c486f5b0c8ec",
                 "shasum": ""
             },
             "require": {
                 "php": "^8.3",
-                "shipfastlabs/agent-detector": "^1.1.3"
+                "shipfastlabs/agent-detector": "^1.1.4"
             },
             "conflict": {
                 "laravel/framework": "<12.0",
@@ -9039,11 +9153,11 @@
             },
             "require-dev": {
                 "brianium/paratest": "^7.20.0",
-                "laravel/pint": "^1.29.0",
+                "laravel/pint": "^1.29.1",
                 "orchestra/testbench": "^10.11.0 || ^11.1.0",
                 "pestphp/pest": "^4.6.3 || ^5.0.0",
                 "pestphp/pest-plugin-type-coverage": "^4.0.4 || ^5.0.0",
-                "phpstan/phpstan": "^2.1.50",
+                "phpstan/phpstan": "^2.1.51",
                 "rector/rector": "^2.4.2",
                 "symfony/process": "^7.4.8 || ^8.1.0",
                 "symfony/var-dumper": "^7.4.8 || ^8.0.8"
@@ -9092,24 +9206,10 @@
                 "testing"
             ],
             "support": {
-                "issues": "https://github.com/nunomaduro/pao/issues",
-                "source": "https://github.com/nunomaduro/pao/tree/v1.0.4"
+                "issues": "https://github.com/laravel/pao/issues",
+                "source": "https://github.com/laravel/pao/tree/v1.0.5"
             },
-            "funding": [
-                {
-                    "url": "https://www.paypal.com/paypalme/enunomaduro",
-                    "type": "custom"
-                },
-                {
-                    "url": "https://github.com/nunomaduro",
-                    "type": "github"
-                },
-                {
-                    "url": "https://www.patreon.com/nunomaduro",
-                    "type": "patreon"
-                }
-            ],
-            "time": "2026-04-20T15:51:00+00:00"
+            "time": "2026-04-27T09:30:41+00:00"
         },
         {
             "name": "pestphp/pest",
@@ -11202,16 +11302,16 @@
         },
         {
             "name": "shipfastlabs/agent-detector",
-            "version": "v1.1.3",
+            "version": "v1.1.4",
             "source": {
                 "type": "git",
-                "url": "https://github.com/shipfastlabs/agent-detector.git",
-                "reference": "0faef92b88c6680b3fc53c8f349ea868181d2484"
+                "url": "https://github.com/laravel/agent-detector.git",
+                "reference": "7719ba7ebbed18911494467139c389549ed53467"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/shipfastlabs/agent-detector/zipball/0faef92b88c6680b3fc53c8f349ea868181d2484",
-                "reference": "0faef92b88c6680b3fc53c8f349ea868181d2484",
+                "url": "https://api.github.com/repos/laravel/agent-detector/zipball/7719ba7ebbed18911494467139c389549ed53467",
+                "reference": "7719ba7ebbed18911494467139c389549ed53467",
                 "shasum": ""
             },
             "require": {
@@ -11256,8 +11356,8 @@
                 "php"
             ],
             "support": {
-                "issues": "https://github.com/shipfastlabs/agent-detector/issues",
-                "source": "https://github.com/shipfastlabs/agent-detector/tree/v1.1.3"
+                "issues": "https://github.com/laravel/agent-detector/issues",
+                "source": "https://github.com/laravel/agent-detector/tree/v1.1.4"
             },
             "funding": [
                 {
@@ -11265,7 +11365,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-04-14T03:10:46+00:00"
+            "time": "2026-04-26T17:43:21+00:00"
         },
         {
             "name": "staabm/side-effects-detector",
@@ -11568,7 +11668,9 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": {
+        "andalisolutions/einvoicing": 20
+    },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {

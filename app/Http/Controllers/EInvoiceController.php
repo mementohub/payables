@@ -4,9 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\EInvoice;
-use App\Models\Invoice;
-use App\Services\SyncService;
-use Illuminate\Http\RedirectResponse;
+use Einvoicing\Invoice as EInvoicingInvoice;
+use Einvoicing\InvoiceLine;
+use Einvoicing\Party;
+use Einvoicing\Readers\UblReader;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +23,7 @@ class EInvoiceController extends Controller
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
 
-        if ($status === '' && ! $request->has('status')) {
+        if (! $request->has('status')) {
             $status = 'pending';
         }
 
@@ -58,7 +59,7 @@ class EInvoiceController extends Controller
             'filters' => [
                 'search' => $search ?: null,
                 'company_id' => $companyId ?: null,
-                'status' => $status ?: null,
+                'status' => $status === '' ? 'all' : $status,
                 'matched' => $matched ?: null,
                 'from' => $from ?: null,
                 'to' => $to ?: null,
@@ -80,62 +81,88 @@ class EInvoiceController extends Controller
         ];
     }
 
-    public function searchCandidates(Request $request, EInvoice $eInvoice): array
+    public function parsed(EInvoice $eInvoice): array
     {
-        $term = $request->string('q')->toString();
-
-        $query = Invoice::query()
-            ->where('company_id', $eInvoice->company_id)
-            ->whereIn('tip_doc', SyncService::FURNIZOR_DOC_TYPES)
-            ->with('partner:id,name,cui');
-
-        if ($term !== '') {
-            $query->where(function ($q) use ($term) {
-                $q->where('nr_doc', 'like', "%{$term}%")
-                    ->orWhereHas('partner', fn ($p) => $p->where('name', 'like', "%{$term}%"));
-            });
-        } elseif ($eInvoice->nr_doc_xml !== null) {
-            $query->where('nr_doc', 'like', '%'.$eInvoice->nr_doc_xml.'%');
+        if ($eInvoice->msg_xml === null || trim($eInvoice->msg_xml) === '') {
+            return ['parsed' => null, 'error' => 'XML indisponibil pentru această eFactură.'];
         }
 
-        $candidates = $query->orderByDesc('data_doc')->limit(20)->get();
+        try {
+            $invoice = (new UblReader)->import($eInvoice->msg_xml);
+        } catch (\Throwable $e) {
+            return ['parsed' => null, 'error' => 'Nu am putut citi XML-ul: '.$e->getMessage()];
+        }
+
+        return ['parsed' => $this->transformParsedInvoice($invoice), 'error' => null];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transformParsedInvoice(EInvoicingInvoice $invoice): array
+    {
+        $totals = $invoice->getTotals();
 
         return [
-            'candidates' => $candidates->map(fn (Invoice $invoice) => [
-                'id' => $invoice->id,
-                'data_doc' => $invoice->data_doc?->toDateString(),
-                'tip_doc' => $invoice->tip_doc,
-                'nr_doc' => $invoice->nr_doc,
-                'partner' => $invoice->partner ? [
-                    'id' => $invoice->partner->id,
-                    'name' => $invoice->partner->name,
-                    'cui' => $invoice->partner->cui,
-                ] : null,
-                'val_mon' => (float) $invoice->val_mon,
-                'moneda' => $invoice->moneda,
-            ])->all(),
+            'number' => $invoice->getNumber(),
+            'issue_date' => $invoice->getIssueDate()?->format('Y-m-d'),
+            'due_date' => $invoice->getDueDate()?->format('Y-m-d'),
+            'tax_point_date' => $invoice->getTaxPointDate()?->format('Y-m-d'),
+            'currency' => $invoice->getCurrency(),
+            'notes' => $invoice->getNotes(),
+            'buyer_reference' => $invoice->getBuyerReference(),
+            'purchase_order_reference' => $invoice->getPurchaseOrderReference(),
+            'contract_reference' => $invoice->getContractReference(),
+            'paid_amount' => $invoice->getPaidAmount(),
+            'rounding_amount' => $invoice->getRoundingAmount(),
+            'seller' => $this->transformParty($invoice->getSeller()),
+            'buyer' => $this->transformParty($invoice->getBuyer()),
+            'payee' => $this->transformParty($invoice->getPayee()),
+            'totals' => [
+                'currency' => $totals->currency,
+                'net_amount' => $totals->netAmount,
+                'allowances_amount' => $totals->allowancesAmount,
+                'charges_amount' => $totals->chargesAmount,
+                'tax_exclusive_amount' => $totals->taxExclusiveAmount,
+                'vat_amount' => $totals->vatAmount,
+                'tax_inclusive_amount' => $totals->taxInclusiveAmount,
+                'paid_amount' => $totals->paidAmount,
+                'rounding_amount' => $totals->roundingAmount,
+                'payable_amount' => $totals->payableAmount,
+            ],
+            'lines' => array_map(fn (InvoiceLine $line) => [
+                'name' => $line->getName(),
+                'description' => $line->getDescription(),
+                'quantity' => $line->getQuantity(),
+                'unit' => $line->getUnit(),
+                'price' => $line->getPrice(),
+                'net_amount' => $line->getNetAmount(),
+            ], $invoice->getLines()),
         ];
     }
 
-    public function match(Request $request, EInvoice $eInvoice): RedirectResponse
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function transformParty(?Party $party): ?array
     {
-        $validated = $request->validate([
-            'invoice_id' => ['nullable', 'integer', 'exists:invoices,id'],
-        ]);
-
-        if (isset($validated['invoice_id'])) {
-            $invoice = Invoice::query()
-                ->where('id', $validated['invoice_id'])
-                ->where('company_id', $eInvoice->company_id)
-                ->firstOrFail();
-            $eInvoice->forceFill(['invoice_id' => $invoice->id])->save();
-            Inertia::flash('toast', ['type' => 'success', 'message' => 'eFactură asociată cu factura.']);
-        } else {
-            $eInvoice->forceFill(['invoice_id' => null])->save();
-            Inertia::flash('toast', ['type' => 'success', 'message' => 'Asocierea cu factura a fost eliminată.']);
+        if ($party === null) {
+            return null;
         }
 
-        return back();
+        return [
+            'name' => $party->getName(),
+            'trading_name' => $party->getTradingName(),
+            'vat_number' => $party->getVatNumber(),
+            'company_id' => $party->getCompanyId()?->getValue(),
+            'address' => $party->getAddress(),
+            'city' => $party->getCity(),
+            'postal_code' => $party->getPostalCode(),
+            'country' => $party->getCountry(),
+            'contact_name' => $party->getContactName(),
+            'contact_phone' => $party->getContactPhone(),
+            'contact_email' => $party->getContactEmail(),
+        ];
     }
 
     private function transformForList(EInvoice $row): array

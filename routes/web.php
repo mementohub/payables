@@ -32,8 +32,7 @@ Route::middleware([
 
     Route::get('efacturi', [EInvoiceController::class, 'index'])->name('e-invoices.index');
     Route::get('efacturi/{eInvoice}/detail', [EInvoiceController::class, 'detail'])->name('e-invoices.detail');
-    Route::get('efacturi/{eInvoice}/candidates', [EInvoiceController::class, 'searchCandidates'])->name('e-invoices.candidates');
-    Route::post('efacturi/{eInvoice}/match', [EInvoiceController::class, 'match'])->name('e-invoices.match');
+    Route::get('efacturi/{eInvoice}/parsed', [EInvoiceController::class, 'parsed'])->name('e-invoices.parsed');
 
     Route::get('extrase-bancare', [BankStatementController::class, 'index'])->name('bank-statements.index');
     Route::get('extrase-bancare/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
