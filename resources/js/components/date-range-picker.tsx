@@ -209,7 +209,10 @@ export default function DateRangePicker({
                         variant="outline"
                         disabled={disabled}
                         className={cn(
-                            'min-h-11 w-full justify-start font-normal',
+                            'min-h-11 w-full justify-start font-normal transition-colors',
+                            hasValue
+                                ? 'border-solid border-primary/50'
+                                : 'border-dashed',
                             !hasValue && 'text-muted-foreground',
                             allowClear && hasValue && 'pr-9',
                         )}
@@ -235,7 +238,7 @@ export default function DateRangePicker({
                             e.stopPropagation();
                             clear();
                         }}
-                        className="absolute top-1/2 right-2 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        className="absolute top-1/2 right-2 inline-flex size-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-destructive transition-transform hover:scale-110 hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     >
                         <X className="size-3.5" />
                     </button>
@@ -243,7 +246,7 @@ export default function DateRangePicker({
             </div>
             <PopoverContent
                 align="start"
-                className="flex w-auto flex-col gap-0 p-0 sm:flex-row"
+                className="dark flex w-auto flex-col gap-0 bg-popover p-0 text-popover-foreground sm:flex-row"
             >
                 <div className="flex shrink-0 flex-col gap-1 border-b p-2 sm:w-[180px] sm:border-r sm:border-b-0">
                     {PRESETS.map((preset) => {

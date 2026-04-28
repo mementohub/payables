@@ -5,6 +5,11 @@ import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
 import EFactStatusBadge from '@/components/efact-status-badge';
 import type { EFactStatus } from '@/components/efact-status-badge';
+import {
+    FilterField,
+    filterInputClass,
+    filterTriggerClass,
+} from '@/components/filter-field';
 import Pagination from '@/components/pagination';
 import {
     SelectionBar,
@@ -31,6 +36,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import {
     detail as detailRoute,
     exportMethod as eInvoicesExport,
@@ -235,17 +241,29 @@ export default function EInvoicesIndex({
                         applyFilter({ search });
                     }}
                 >
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Caută</Label>
+                    <FilterField
+                        label="Caută"
+                        active={!!search}
+                        onClear={() => {
+                            setSearch('');
+                            applyFilter({ search: null });
+                        }}
+                    >
                         <Input
-                            className="min-h-11 w-full sm:w-65"
+                            className={cn(
+                                'min-h-11 w-full sm:w-65',
+                                filterInputClass(!!search),
+                            )}
                             placeholder="Număr factură, partener, CIF, msg_id…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                    </div>
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Companie</Label>
+                    </FilterField>
+                    <FilterField
+                        label="Companie"
+                        active={!!filters.company_id}
+                        onClear={() => applyFilter({ company_id: null })}
+                    >
                         <Select
                             value={
                                 filters.company_id
@@ -258,7 +276,12 @@ export default function EInvoicesIndex({
                                 })
                             }
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-50">
+                            <SelectTrigger
+                                className={cn(
+                                    'min-h-11 w-full sm:w-50',
+                                    filterTriggerClass(!!filters.company_id),
+                                )}
+                            >
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
@@ -272,14 +295,25 @@ export default function EInvoicesIndex({
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Status</Label>
+                    </FilterField>
+                    <FilterField
+                        label="Status"
+                        active={!!filters.status && filters.status !== 'all'}
+                        onClear={() => applyFilter({ status: 'all' })}
+                    >
                         <Select
                             value={filters.status ?? 'all'}
                             onValueChange={(v) => applyFilter({ status: v })}
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-45">
+                            <SelectTrigger
+                                className={cn(
+                                    'min-h-11 w-full sm:w-45',
+                                    filterTriggerClass(
+                                        !!filters.status &&
+                                            filters.status !== 'all',
+                                    ),
+                                )}
+                            >
                                 <SelectValue placeholder="Status" />
                             </SelectTrigger>
                             <SelectContent>
@@ -293,16 +327,24 @@ export default function EInvoicesIndex({
                                 </SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Asociere factură</Label>
+                    </FilterField>
+                    <FilterField
+                        label="Asociere factură"
+                        active={!!filters.matched}
+                        onClear={() => applyFilter({ matched: null })}
+                    >
                         <Select
                             value={filters.matched ?? 'all'}
                             onValueChange={(v) =>
                                 applyFilter({ matched: v === 'all' ? null : v })
                             }
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-42.5">
+                            <SelectTrigger
+                                className={cn(
+                                    'min-h-11 w-full sm:w-42.5',
+                                    filterTriggerClass(!!filters.matched),
+                                )}
+                            >
                                 <SelectValue placeholder="Asociere" />
                             </SelectTrigger>
                             <SelectContent>
@@ -311,7 +353,7 @@ export default function EInvoicesIndex({
                                 <SelectItem value="no">Neasociate</SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FilterField>
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Data primire</Label>
                         <DateRangePicker

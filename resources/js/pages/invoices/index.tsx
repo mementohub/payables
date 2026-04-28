@@ -6,6 +6,11 @@ import ApprovalStatusBadge from '@/components/approval-status-badge';
 import type { ApprovalStage } from '@/components/approval-status-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
+import {
+    FilterField,
+    filterInputClass,
+    filterTriggerClass,
+} from '@/components/filter-field';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import type { PaymentStatus } from '@/components/payment-status-badge';
@@ -31,6 +36,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import {
     emise as facturiEmise,
     primite as facturiPrimite,
@@ -216,10 +222,19 @@ export default function InvoicesIndex({
                         applyFilter({ search });
                     }}
                 >
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Caută</Label>
+                    <FilterField
+                        label="Caută"
+                        active={!!search}
+                        onClear={() => {
+                            setSearch('');
+                            applyFilter({ search: null });
+                        }}
+                    >
                         <Input
-                            className="min-h-11 w-full sm:w-[260px]"
+                            className={cn(
+                                'min-h-11 w-full sm:w-[260px]',
+                                filterInputClass(!!search),
+                            )}
                             placeholder={
                                 scope === 'emise'
                                     ? 'Număr factură sau client…'
@@ -228,9 +243,12 @@ export default function InvoicesIndex({
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                    </div>
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Companie</Label>
+                    </FilterField>
+                    <FilterField
+                        label="Companie"
+                        active={!!filters.company_id}
+                        onClear={() => applyFilter({ company_id: null })}
+                    >
                         <Select
                             value={
                                 filters.company_id
@@ -243,7 +261,12 @@ export default function InvoicesIndex({
                                 })
                             }
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
+                            <SelectTrigger
+                                className={cn(
+                                    'min-h-11 w-full sm:w-[200px]',
+                                    filterTriggerClass(!!filters.company_id),
+                                )}
+                            >
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
@@ -257,7 +280,7 @@ export default function InvoicesIndex({
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FilterField>
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Data factură</Label>
                         <DateRangePicker
@@ -286,15 +309,23 @@ export default function InvoicesIndex({
                             placeholder="Perioadă scadență"
                         />
                     </div>
-                    <div className="grid w-full gap-1 sm:w-auto">
-                        <Label className="text-xs">Plată</Label>
+                    <FilterField
+                        label="Plată"
+                        active={!!filters.payment}
+                        onClear={() => applyFilter({ payment: null })}
+                    >
                         <Select
                             value={filters.payment ?? 'all'}
                             onValueChange={(v) =>
                                 applyFilter({ payment: v === 'all' ? null : v })
                             }
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-[160px]">
+                            <SelectTrigger
+                                className={cn(
+                                    'min-h-11 w-full sm:w-[160px]',
+                                    filterTriggerClass(!!filters.payment),
+                                )}
+                            >
                                 <SelectValue placeholder="Plată" />
                             </SelectTrigger>
                             <SelectContent>
@@ -308,11 +339,14 @@ export default function InvoicesIndex({
                                 </SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FilterField>
                     {isPrimite && (
                         <>
-                            <div className="grid w-full gap-1 sm:w-auto">
-                                <Label className="text-xs">Bun de plată</Label>
+                            <FilterField
+                                label="Bun de plată"
+                                active={!!filters.approval}
+                                onClear={() => applyFilter({ approval: null })}
+                            >
                                 <Select
                                     value={filters.approval ?? 'all'}
                                     onValueChange={(v) =>
@@ -321,7 +355,14 @@ export default function InvoicesIndex({
                                         })
                                     }
                                 >
-                                    <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
+                                    <SelectTrigger
+                                        className={cn(
+                                            'min-h-11 w-full sm:w-[200px]',
+                                            filterTriggerClass(
+                                                !!filters.approval,
+                                            ),
+                                        )}
+                                    >
                                         <SelectValue placeholder="Bun de plată" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -345,9 +386,14 @@ export default function InvoicesIndex({
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
-                            </div>
-                            <div className="grid w-full gap-1 sm:w-auto">
-                                <Label className="text-xs">Responsabil</Label>
+                            </FilterField>
+                            <FilterField
+                                label="Responsabil"
+                                active={!!filters.responsible_id}
+                                onClear={() =>
+                                    applyFilter({ responsible_id: null })
+                                }
+                            >
                                 <Select
                                     value={
                                         filters.responsible_id
@@ -361,7 +407,14 @@ export default function InvoicesIndex({
                                         })
                                     }
                                 >
-                                    <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
+                                    <SelectTrigger
+                                        className={cn(
+                                            'min-h-11 w-full sm:w-[200px]',
+                                            filterTriggerClass(
+                                                !!filters.responsible_id,
+                                            ),
+                                        )}
+                                    >
                                         <SelectValue placeholder="Responsabil" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -378,7 +431,7 @@ export default function InvoicesIndex({
                                         ))}
                                     </SelectContent>
                                 </Select>
-                            </div>
+                            </FilterField>
                         </>
                     )}
                     <Button
