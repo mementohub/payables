@@ -3,18 +3,43 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const components: Components = {
-    p: ({ node, ...props }) => <p {...props} className="my-2 leading-relaxed first:mt-0 last:mb-0" />,
-    h1: ({ node, ...props }) => <h1 {...props} className="mb-2 mt-3 text-base font-semibold first:mt-0" />,
-    h2: ({ node, ...props }) => <h2 {...props} className="mb-2 mt-3 text-sm font-semibold first:mt-0" />,
-    h3: ({ node, ...props }) => <h3 {...props} className="mb-1 mt-2 text-sm font-semibold first:mt-0" />,
-    ul: ({ node, ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,
-    ol: ({ node, ...props }) => <ol {...props} className="my-2 list-decimal pl-5" />,
+    p: ({ node, ...props }) => (
+        <p {...props} className="my-2 leading-relaxed first:mt-0 last:mb-0" />
+    ),
+    h1: ({ node, ...props }) => (
+        <h1
+            {...props}
+            className="mt-3 mb-2 text-base font-semibold first:mt-0"
+        />
+    ),
+    h2: ({ node, ...props }) => (
+        <h2 {...props} className="mt-3 mb-2 text-sm font-semibold first:mt-0" />
+    ),
+    h3: ({ node, ...props }) => (
+        <h3 {...props} className="mt-2 mb-1 text-sm font-semibold first:mt-0" />
+    ),
+    ul: ({ node, ...props }) => (
+        <ul {...props} className="my-2 list-disc pl-5" />
+    ),
+    ol: ({ node, ...props }) => (
+        <ol {...props} className="my-2 list-decimal pl-5" />
+    ),
     li: ({ node, ...props }) => <li {...props} className="my-0.5" />,
-    strong: ({ node, ...props }) => <strong {...props} className="font-semibold" />,
+    strong: ({ node, ...props }) => (
+        <strong {...props} className="font-semibold" />
+    ),
     em: ({ node, ...props }) => <em {...props} className="italic" />,
-    a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="underline" />,
+    a: ({ node, ...props }) => (
+        <a
+            {...props}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+        />
+    ),
     code: ({ node, className, children, ...props }) => {
         const isBlock = /language-/.test(className ?? '');
+
         if (isBlock) {
             return (
                 <code {...props} className={(className ?? '') + ' block'}>
@@ -22,8 +47,12 @@ const components: Components = {
                 </code>
             );
         }
+
         return (
-            <code {...props} className="rounded bg-muted px-1 py-0.5 text-[0.85em] font-mono">
+            <code
+                {...props}
+                className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]"
+            >
                 {children}
             </code>
         );
@@ -31,7 +60,7 @@ const components: Components = {
     pre: ({ node, ...props }) => (
         <pre
             {...props}
-            className="my-2 overflow-x-auto rounded-md bg-muted p-2 text-xs font-mono"
+            className="my-2 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs"
         />
     ),
     blockquote: ({ node, ...props }) => (
@@ -41,7 +70,10 @@ const components: Components = {
         />
     ),
     hr: ({ node, ...props }) => (
-        <hr {...props} className="my-3 border-sidebar-border/70 dark:border-sidebar-border" />
+        <hr
+            {...props}
+            className="my-3 border-sidebar-border/70 dark:border-sidebar-border"
+        />
     ),
     table: ({ node, ...props }) => (
         <div className="my-2 overflow-x-auto">
@@ -67,7 +99,7 @@ const components: Components = {
 
 export default function MarkdownContent({ content }: { content: string }) {
     return (
-        <div className="break-words text-sm">
+        <div className="text-sm break-words">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
                 {content}
             </ReactMarkdown>

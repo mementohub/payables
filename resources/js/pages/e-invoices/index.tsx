@@ -156,7 +156,11 @@ function formatDateTime(value: string | null) {
     return value ?? '—';
 }
 
-export default function EInvoicesIndex({ eInvoices, filters, companies }: Props) {
+export default function EInvoicesIndex({
+    eInvoices,
+    filters,
+    companies,
+}: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const [openInfo, setOpenInfo] = useState<EInvoiceRow | null>(null);
     const [exporting, setExporting] = useState(false);
@@ -218,7 +222,8 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                 <div>
                     <h1 className="text-2xl font-semibold">eFacturi</h1>
                     <p className="text-sm text-muted-foreground">
-                        Mesaje e-factura primite de la ANAF (FACTURA PRIMITA), sincronizate din BD-urile companiilor.
+                        Mesaje e-factura primite de la ANAF (FACTURA PRIMITA),
+                        sincronizate din BD-urile companiilor.
                     </p>
                 </div>
 
@@ -242,14 +247,24 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Companie</Label>
                         <Select
-                            value={filters.company_id ? String(filters.company_id) : 'all'}
-                            onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
+                            value={
+                                filters.company_id
+                                    ? String(filters.company_id)
+                                    : 'all'
+                            }
+                            onValueChange={(v) =>
+                                applyFilter({
+                                    company_id: v === 'all' ? null : Number(v),
+                                })
+                            }
                         >
                             <SelectTrigger className="min-h-11 w-full sm:w-50">
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Toate companiile</SelectItem>
+                                <SelectItem value="all">
+                                    Toate companiile
+                                </SelectItem>
                                 {companies.map((c) => (
                                     <SelectItem key={c.id} value={String(c.id)}>
                                         {c.name}
@@ -269,9 +284,13 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Toate</SelectItem>
-                                <SelectItem value="pending">Neprocesate</SelectItem>
+                                <SelectItem value="pending">
+                                    Neprocesate
+                                </SelectItem>
                                 <SelectItem value="error">Cu erori</SelectItem>
-                                <SelectItem value="processed">Procesate</SelectItem>
+                                <SelectItem value="processed">
+                                    Procesate
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -279,7 +298,9 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                         <Label className="text-xs">Asociere factură</Label>
                         <Select
                             value={filters.matched ?? 'all'}
-                            onValueChange={(v) => applyFilter({ matched: v === 'all' ? null : v })}
+                            onValueChange={(v) =>
+                                applyFilter({ matched: v === 'all' ? null : v })
+                            }
                         >
                             <SelectTrigger className="min-h-11 w-full sm:w-42.5">
                                 <SelectValue placeholder="Asociere" />
@@ -296,11 +317,17 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                         <DateRangePicker
                             className="w-full sm:w-[230px]"
                             value={range}
-                            onChange={(v) => applyFilter({ from: v.from, to: v.to })}
+                            onChange={(v) =>
+                                applyFilter({ from: v.from, to: v.to })
+                            }
                             placeholder="Perioadă"
                         />
                     </div>
-                    <Button type="submit" variant="secondary" className="min-h-11 w-full sm:w-auto">
+                    <Button
+                        type="submit"
+                        variant="secondary"
+                        className="min-h-11 w-full sm:w-auto"
+                    >
                         Caută
                     </Button>
                     {hasActiveFilters && (
@@ -325,13 +352,15 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
 
                 <div className="hidden overflow-x-auto rounded-xl border border-sidebar-border/70 md:block dark:border-sidebar-border">
                     <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
                             <tr>
                                 <th className="w-10 px-4 py-3">
                                     <Checkbox
                                         aria-label="Selectează tot"
                                         checked={selection.pageCheckedValue}
-                                        onCheckedChange={() => selection.togglePage()}
+                                        onCheckedChange={() =>
+                                            selection.togglePage()
+                                        }
                                     />
                                 </th>
                                 <th className="px-4 py-3">Data primire</th>
@@ -347,8 +376,12 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                         <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                             {eInvoices.data.length === 0 && (
                                 <tr>
-                                    <td className="px-4 py-6 text-center text-muted-foreground" colSpan={9}>
-                                        Nicio eFactură. Pornește o sincronizare din pagina Companii.
+                                    <td
+                                        className="px-4 py-6 text-center text-muted-foreground"
+                                        colSpan={9}
+                                    >
+                                        Nicio eFactură. Pornește o sincronizare
+                                        din pagina Companii.
                                     </td>
                                 </tr>
                             )}
@@ -357,8 +390,12 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                     <td className="px-4 py-3">
                                         <Checkbox
                                             aria-label={`Selectează ${row.nr_doc_xml ?? row.msg_id}`}
-                                            checked={selection.isSelected(row.id)}
-                                            onCheckedChange={() => selection.toggle(row.id)}
+                                            checked={selection.isSelected(
+                                                row.id,
+                                            )}
+                                            onCheckedChange={() =>
+                                                selection.toggle(row.id)
+                                            }
                                         />
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap">
@@ -367,11 +404,16 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                     <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                                         {row.data_doc_xml ?? '—'}
                                     </td>
-                                    <td className="px-4 py-3 font-medium">{row.nr_doc_xml ?? '—'}</td>
+                                    <td className="px-4 py-3 font-medium">
+                                        {row.nr_doc_xml ?? '—'}
+                                    </td>
                                     <td className="max-w-65 px-4 py-3">
                                         {row.partener_xml ? (
                                             <div className="min-w-0">
-                                                <div className="truncate" title={row.partener_xml}>
+                                                <div
+                                                    className="truncate"
+                                                    title={row.partener_xml}
+                                                >
                                                     {row.partener_xml}
                                                 </div>
                                                 {row.msg_cif && (
@@ -381,10 +423,14 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                                 )}
                                             </div>
                                         ) : (
-                                            <span className="text-muted-foreground">—</span>
+                                            <span className="text-muted-foreground">
+                                                —
+                                            </span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3 text-muted-foreground">{row.company.name}</td>
+                                    <td className="px-4 py-3 text-muted-foreground">
+                                        {row.company.name}
+                                    </td>
                                     <td className="px-4 py-3">
                                         <EFactStatusBadge status={row.status} />
                                     </td>
@@ -392,12 +438,16 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                         {row.invoice ? (
                                             <Link
                                                 className="text-primary hover:underline"
-                                                href={invoicesShow(row.invoice.id)}
+                                                href={invoicesShow(
+                                                    row.invoice.id,
+                                                )}
                                             >
                                                 {row.invoice.nr_doc}
                                             </Link>
                                         ) : (
-                                            <span className="text-xs text-muted-foreground">Neasociată</span>
+                                            <span className="text-xs text-muted-foreground">
+                                                Neasociată
+                                            </span>
                                         )}
                                     </td>
                                     <td className="px-4 py-3">
@@ -420,7 +470,8 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                 <div className="space-y-3 md:hidden">
                     {eInvoices.data.length === 0 && (
                         <div className="rounded-xl border border-sidebar-border/70 bg-background p-6 text-center text-sm text-muted-foreground dark:border-sidebar-border">
-                            Nicio eFactură. Pornește o sincronizare din pagina Companii.
+                            Nicio eFactură. Pornește o sincronizare din pagina
+                            Companii.
                         </div>
                     )}
                     {eInvoices.data.map((row) => (
@@ -433,11 +484,15 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                     <Checkbox
                                         aria-label={`Selectează ${row.nr_doc_xml ?? row.msg_id}`}
                                         checked={selection.isSelected(row.id)}
-                                        onCheckedChange={() => selection.toggle(row.id)}
+                                        onCheckedChange={() =>
+                                            selection.toggle(row.id)
+                                        }
                                         className="mt-1"
                                     />
                                     <div className="min-w-0">
-                                        <div className="font-medium">{row.nr_doc_xml ?? '—'}</div>
+                                        <div className="font-medium">
+                                            {row.nr_doc_xml ?? '—'}
+                                        </div>
                                         <div className="truncate text-xs text-muted-foreground">
                                             {row.partener_xml ?? '—'}
                                         </div>
@@ -446,7 +501,10 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                 <EFactStatusBadge status={row.status} />
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                                <div>Primită: {formatDateTime(row.msg_data_creare_d)}</div>
+                                <div>
+                                    Primită:{' '}
+                                    {formatDateTime(row.msg_data_creare_d)}
+                                </div>
                                 <div>Data: {row.data_doc_xml ?? '—'}</div>
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2">
@@ -458,7 +516,9 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                         Factură {row.invoice.nr_doc}
                                     </Link>
                                 ) : (
-                                    <span className="text-xs text-muted-foreground">Neasociată</span>
+                                    <span className="text-xs text-muted-foreground">
+                                        Neasociată
+                                    </span>
                                 )}
                                 <Button
                                     type="button"
@@ -475,22 +535,22 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
 
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
-                        {eInvoices.from ?? 0}–{eInvoices.to ?? 0} din {eInvoices.total}
+                        {eInvoices.from ?? 0}–{eInvoices.to ?? 0} din{' '}
+                        {eInvoices.total}
                     </span>
                     <Pagination links={eInvoices.links} />
                 </div>
             </div>
 
-            <InfoDialog
-                row={openInfo}
-                onClose={() => setOpenInfo(null)}
-            />
+            <InfoDialog row={openInfo} onClose={() => setOpenInfo(null)} />
         </>
     );
 }
 
 EInvoicesIndex.layout = (page: React.ReactNode) => (
-    <AppLayout breadcrumbs={[{ title: 'eFacturi', href: eInvoicesIndex() }]}>{page}</AppLayout>
+    <AppLayout breadcrumbs={[{ title: 'eFacturi', href: eInvoicesIndex() }]}>
+        {page}
+    </AppLayout>
 );
 
 function InfoDialog({
@@ -513,11 +573,13 @@ function InfoDialog({
         }
 
         setLoading(true);
-        fetch(detailRoute(row.id).url, { headers: { Accept: 'application/json' } })
+        fetch(detailRoute(row.id).url, {
+            headers: { Accept: 'application/json' },
+        })
             .then(async (res) => {
                 if (!res.ok) {
-throw new Error('Eroare la încărcare');
-}
+                    throw new Error('Eroare la încărcare');
+                }
 
                 const data = await res.json();
                 setDetail((data?.eInvoice as DetailPayload) ?? null);
@@ -528,7 +590,10 @@ throw new Error('Eroare la încărcare');
 
     return (
         <>
-            <Dialog open={!!row && !parsedOpen} onOpenChange={(open) => !open && onClose()}>
+            <Dialog
+                open={!!row && !parsedOpen}
+                onOpenChange={(open) => !open && onClose()}
+            >
                 <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-3xl flex-col overflow-hidden p-0 sm:w-full">
                     <DialogHeader className="border-b px-4 py-3 sm:px-6">
                         <DialogTitle>Detalii eFactură</DialogTitle>
@@ -542,13 +607,27 @@ throw new Error('Eroare la încărcare');
                         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
                             <div className="grid grid-cols-2 gap-3">
                                 <Field label="msg_id">{row.msg_id}</Field>
-                                <Field label="Index încărcare">{row.msg_index_incarcare ?? '—'}</Field>
-                                <Field label="Data primire">{formatDateTime(row.msg_data_creare_d)}</Field>
-                                <Field label="Data factură">{row.data_doc_xml ?? '—'}</Field>
-                                <Field label="Tip doc XML">{row.tip_doc_xml ?? '—'}</Field>
-                                <Field label="CIF furnizor">{row.msg_cif ?? '—'}</Field>
-                                <Field label="Reg. com.">{row.cod_cci_xml ?? '—'}</Field>
-                                <Field label="Data ins. OMC">{formatDateTime(row.data_ins_omc)}</Field>
+                                <Field label="Index încărcare">
+                                    {row.msg_index_incarcare ?? '—'}
+                                </Field>
+                                <Field label="Data primire">
+                                    {formatDateTime(row.msg_data_creare_d)}
+                                </Field>
+                                <Field label="Data factură">
+                                    {row.data_doc_xml ?? '—'}
+                                </Field>
+                                <Field label="Tip doc XML">
+                                    {row.tip_doc_xml ?? '—'}
+                                </Field>
+                                <Field label="CIF furnizor">
+                                    {row.msg_cif ?? '—'}
+                                </Field>
+                                <Field label="Reg. com.">
+                                    {row.cod_cci_xml ?? '—'}
+                                </Field>
+                                <Field label="Data ins. OMC">
+                                    {formatDateTime(row.data_ins_omc)}
+                                </Field>
                                 <Field label="Status">
                                     <EFactStatusBadge status={row.status} />
                                 </Field>
@@ -556,23 +635,35 @@ throw new Error('Eroare la încărcare');
 
                             {row.err_ins_omc && (
                                 <div className="rounded-md border border-red-600/40 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-200">
-                                    <div className="mb-1 font-semibold">Eroare la inserare</div>
-                                    <pre className="whitespace-pre-wrap">{row.err_ins_omc}</pre>
+                                    <div className="mb-1 font-semibold">
+                                        Eroare la inserare
+                                    </div>
+                                    <pre className="whitespace-pre-wrap">
+                                        {row.err_ins_omc}
+                                    </pre>
                                 </div>
                             )}
 
                             <div>
                                 <Label className="text-xs">Detalii mesaj</Label>
                                 <div className="mt-1 rounded-md border border-sidebar-border/70 bg-muted/40 p-3 text-xs dark:border-sidebar-border">
-                                    {loading && <span className="text-muted-foreground">Se încarcă…</span>}
+                                    {loading && (
+                                        <span className="text-muted-foreground">
+                                            Se încarcă…
+                                        </span>
+                                    )}
                                     {!loading && (
-                                        <pre className="whitespace-pre-wrap break-words">{detail?.msg_detalii ?? row.partener_xml ?? '—'}</pre>
+                                        <pre className="break-words whitespace-pre-wrap">
+                                            {detail?.msg_detalii ??
+                                                row.partener_xml ??
+                                                '—'}
+                                        </pre>
                                     )}
                                 </div>
                             </div>
 
                             <details className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                <summary className="flex cursor-pointer select-none flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs font-medium">
+                                <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs font-medium select-none">
                                     <span>XML brut</span>
                                     <Button
                                         type="button"
@@ -585,22 +676,29 @@ throw new Error('Eroare la încărcare');
                                         }}
                                         disabled={!detail?.msg_xml}
                                     >
-                                        <FileText className="size-4" /> Vezi date eFactură
+                                        <FileText className="size-4" /> Vezi
+                                        date eFactură
                                     </Button>
                                 </summary>
-                                <pre className="max-h-[280px] overflow-auto whitespace-pre-wrap break-all bg-muted/40 p-3 text-[11px]">
-                                    {loading ? 'Se încarcă…' : (detail?.msg_xml ?? '—')}
+                                <pre className="max-h-[280px] overflow-auto bg-muted/40 p-3 text-[11px] break-all whitespace-pre-wrap">
+                                    {loading
+                                        ? 'Se încarcă…'
+                                        : (detail?.msg_xml ?? '—')}
                                 </pre>
                             </details>
 
                             {row.invoice && (
                                 <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
-                                    <Label className="text-xs">Factură asociată</Label>
+                                    <Label className="text-xs">
+                                        Factură asociată
+                                    </Label>
                                     <Link
                                         className="mt-1 block text-sm text-primary hover:underline"
                                         href={invoicesShow(row.invoice.id)}
                                     >
-                                        {row.invoice.tip_doc} {row.invoice.nr_doc} · {row.invoice.data_doc}
+                                        {row.invoice.tip_doc}{' '}
+                                        {row.invoice.nr_doc} ·{' '}
+                                        {row.invoice.data_doc}
                                     </Link>
                                 </div>
                             )}
@@ -608,7 +706,11 @@ throw new Error('Eroare la încărcare');
                     )}
 
                     <DialogFooter className="border-t px-4 py-3 sm:px-6">
-                        <Button type="button" variant="secondary" onClick={onClose}>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={onClose}
+                        >
                             Închide
                         </Button>
                     </DialogFooter>
@@ -637,15 +739,17 @@ function ParsedXmlDialog({
         setPayload(null);
 
         if (!row) {
-return;
-}
+            return;
+        }
 
         setLoading(true);
-        fetch(parsedRoute(row.id).url, { headers: { Accept: 'application/json' } })
+        fetch(parsedRoute(row.id).url, {
+            headers: { Accept: 'application/json' },
+        })
             .then(async (res) => {
                 if (!res.ok) {
-throw new Error('Eroare la încărcare');
-}
+                    throw new Error('Eroare la încărcare');
+                }
 
                 const data = (await res.json()) as ParsedPayload;
                 setPayload(data);
@@ -661,11 +765,18 @@ throw new Error('Eroare la încărcare');
             <DialogContent className="flex h-[95vh] w-[95vw] max-w-6xl flex-col overflow-hidden p-0 sm:h-[90vh] sm:w-full">
                 <DialogHeader className="border-b px-4 py-3 sm:px-6">
                     <DialogTitle>Date eFactură (XML)</DialogTitle>
-                    <DialogDescription>Informații extrase din XML conform standardului UBL / EN 16931.</DialogDescription>
+                    <DialogDescription>
+                        Informații extrase din XML conform standardului UBL / EN
+                        16931.
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
-                    {loading && <p className="text-sm text-muted-foreground">Se încarcă…</p>}
+                    {loading && (
+                        <p className="text-sm text-muted-foreground">
+                            Se încarcă…
+                        </p>
+                    )}
 
                     {!loading && payload?.error && (
                         <div className="rounded-md border border-red-600/40 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-200">
@@ -676,65 +787,152 @@ throw new Error('Eroare la încărcare');
                     {!loading && parsed && (
                         <div className="grid gap-4 text-sm">
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                                <Field label="Număr">{parsed.number ?? '—'}</Field>
-                                <Field label="Data emitere">{parsed.issue_date ?? '—'}</Field>
-                                <Field label="Scadență">{parsed.due_date ?? '—'}</Field>
-                                <Field label="Monedă">{parsed.currency || '—'}</Field>
-                                <Field label="Ref. cumpărător">{parsed.buyer_reference ?? '—'}</Field>
-                                <Field label="Ref. comandă">{parsed.purchase_order_reference ?? '—'}</Field>
+                                <Field label="Număr">
+                                    {parsed.number ?? '—'}
+                                </Field>
+                                <Field label="Data emitere">
+                                    {parsed.issue_date ?? '—'}
+                                </Field>
+                                <Field label="Scadență">
+                                    {parsed.due_date ?? '—'}
+                                </Field>
+                                <Field label="Monedă">
+                                    {parsed.currency || '—'}
+                                </Field>
+                                <Field label="Ref. cumpărător">
+                                    {parsed.buyer_reference ?? '—'}
+                                </Field>
+                                <Field label="Ref. comandă">
+                                    {parsed.purchase_order_reference ?? '—'}
+                                </Field>
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2">
-                                <PartyCard title="Furnizor (Seller)" party={parsed.seller} />
-                                <PartyCard title="Cumpărător (Buyer)" party={parsed.buyer} />
+                                <PartyCard
+                                    title="Furnizor (Seller)"
+                                    party={parsed.seller}
+                                />
+                                <PartyCard
+                                    title="Cumpărător (Buyer)"
+                                    party={parsed.buyer}
+                                />
                             </div>
 
-                            {parsed.payee && <PartyCard title="Beneficiar plată (Payee)" party={parsed.payee} />}
+                            {parsed.payee && (
+                                <PartyCard
+                                    title="Beneficiar plată (Payee)"
+                                    party={parsed.payee}
+                                />
+                            )}
 
                             <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                <div className="border-b px-3 py-2 text-xs font-semibold">Totaluri ({parsed.totals.currency ?? parsed.currency})</div>
+                                <div className="border-b px-3 py-2 text-xs font-semibold">
+                                    Totaluri (
+                                    {parsed.totals.currency ?? parsed.currency})
+                                </div>
                                 <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3">
-                                    <Field label="Net">{parsed.totals.net_amount.toFixed(2)}</Field>
-                                    <Field label="Reduceri">{parsed.totals.allowances_amount.toFixed(2)}</Field>
-                                    <Field label="Suplimente">{parsed.totals.charges_amount.toFixed(2)}</Field>
-                                    <Field label="Bază TVA">{parsed.totals.tax_exclusive_amount.toFixed(2)}</Field>
-                                    <Field label="TVA">{parsed.totals.vat_amount.toFixed(2)}</Field>
-                                    <Field label="Total cu TVA">{parsed.totals.tax_inclusive_amount.toFixed(2)}</Field>
-                                    <Field label="Plătit">{parsed.totals.paid_amount.toFixed(2)}</Field>
-                                    <Field label="Rotunjire">{parsed.totals.rounding_amount.toFixed(2)}</Field>
+                                    <Field label="Net">
+                                        {parsed.totals.net_amount.toFixed(2)}
+                                    </Field>
+                                    <Field label="Reduceri">
+                                        {parsed.totals.allowances_amount.toFixed(
+                                            2,
+                                        )}
+                                    </Field>
+                                    <Field label="Suplimente">
+                                        {parsed.totals.charges_amount.toFixed(
+                                            2,
+                                        )}
+                                    </Field>
+                                    <Field label="Bază TVA">
+                                        {parsed.totals.tax_exclusive_amount.toFixed(
+                                            2,
+                                        )}
+                                    </Field>
+                                    <Field label="TVA">
+                                        {parsed.totals.vat_amount.toFixed(2)}
+                                    </Field>
+                                    <Field label="Total cu TVA">
+                                        {parsed.totals.tax_inclusive_amount.toFixed(
+                                            2,
+                                        )}
+                                    </Field>
+                                    <Field label="Plătit">
+                                        {parsed.totals.paid_amount.toFixed(2)}
+                                    </Field>
+                                    <Field label="Rotunjire">
+                                        {parsed.totals.rounding_amount.toFixed(
+                                            2,
+                                        )}
+                                    </Field>
                                     <Field label="De plată">
-                                        <strong>{parsed.totals.payable_amount.toFixed(2)}</strong>
+                                        <strong>
+                                            {parsed.totals.payable_amount.toFixed(
+                                                2,
+                                            )}
+                                        </strong>
                                     </Field>
                                 </div>
                             </div>
 
                             {parsed.lines.length > 0 && (
                                 <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                    <div className="border-b px-3 py-2 text-xs font-semibold">Linii ({parsed.lines.length})</div>
+                                    <div className="border-b px-3 py-2 text-xs font-semibold">
+                                        Linii ({parsed.lines.length})
+                                    </div>
                                     <div className="hidden overflow-x-auto sm:block">
                                         <table className="w-full text-xs">
                                             <thead className="bg-muted/50 text-left text-muted-foreground">
                                                 <tr>
-                                                    <th className="px-3 py-2">Articol</th>
-                                                    <th className="px-3 py-2 text-right">Cant.</th>
-                                                    <th className="px-3 py-2">UM</th>
-                                                    <th className="px-3 py-2 text-right">Preț</th>
-                                                    <th className="px-3 py-2 text-right">Net</th>
+                                                    <th className="px-3 py-2">
+                                                        Articol
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Cant.
+                                                    </th>
+                                                    <th className="px-3 py-2">
+                                                        UM
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Preț
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Net
+                                                    </th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                                                 {parsed.lines.map((line, i) => (
                                                     <tr key={i}>
                                                         <td className="px-3 py-2">
-                                                            <div className="font-medium">{line.name ?? '—'}</div>
+                                                            <div className="font-medium">
+                                                                {line.name ??
+                                                                    '—'}
+                                                            </div>
                                                             {line.description && (
-                                                                <div className="text-muted-foreground">{line.description}</div>
+                                                                <div className="text-muted-foreground">
+                                                                    {
+                                                                        line.description
+                                                                    }
+                                                                </div>
                                                             )}
                                                         </td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">{line.quantity}</td>
-                                                        <td className="px-3 py-2 whitespace-nowrap">{line.unit}</td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">{line.price?.toFixed(2) ?? '—'}</td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">{line.net_amount?.toFixed(2) ?? '—'}</td>
+                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                            {line.quantity}
+                                                        </td>
+                                                        <td className="px-3 py-2 whitespace-nowrap">
+                                                            {line.unit}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                            {line.price?.toFixed(
+                                                                2,
+                                                            ) ?? '—'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                            {line.net_amount?.toFixed(
+                                                                2,
+                                                            ) ?? '—'}
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -742,16 +940,34 @@ throw new Error('Eroare la încărcare');
                                     </div>
                                     <ul className="divide-y divide-sidebar-border/70 sm:hidden dark:divide-sidebar-border">
                                         {parsed.lines.map((line, i) => (
-                                            <li key={i} className="space-y-1 px-3 py-2 text-xs">
-                                                <div className="font-medium">{line.name ?? '—'}</div>
+                                            <li
+                                                key={i}
+                                                className="space-y-1 px-3 py-2 text-xs"
+                                            >
+                                                <div className="font-medium">
+                                                    {line.name ?? '—'}
+                                                </div>
                                                 {line.description && (
-                                                    <div className="text-muted-foreground">{line.description}</div>
+                                                    <div className="text-muted-foreground">
+                                                        {line.description}
+                                                    </div>
                                                 )}
                                                 <div className="grid grid-cols-2 gap-2 pt-1 text-muted-foreground">
-                                                    <span>Cant.: {line.quantity} {line.unit}</span>
-                                                    <span className="text-right">Preț: {line.price?.toFixed(2) ?? '—'}</span>
+                                                    <span>
+                                                        Cant.: {line.quantity}{' '}
+                                                        {line.unit}
+                                                    </span>
+                                                    <span className="text-right">
+                                                        Preț:{' '}
+                                                        {line.price?.toFixed(
+                                                            2,
+                                                        ) ?? '—'}
+                                                    </span>
                                                     <span className="col-span-2 text-right font-medium text-foreground">
-                                                        Net: {line.net_amount?.toFixed(2) ?? '—'}
+                                                        Net:{' '}
+                                                        {line.net_amount?.toFixed(
+                                                            2,
+                                                        ) ?? '—'}
                                                     </span>
                                                 </div>
                                             </li>
@@ -784,7 +1000,13 @@ throw new Error('Eroare la încărcare');
     );
 }
 
-function PartyCard({ title, party }: { title: string; party: ParsedParty | null }) {
+function PartyCard({
+    title,
+    party,
+}: {
+    title: string;
+    party: ParsedParty | null;
+}) {
     if (!party) {
         return (
             <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
@@ -794,7 +1016,14 @@ function PartyCard({ title, party }: { title: string; party: ParsedParty | null 
         );
     }
 
-    const addressLine = [...party.address, party.postal_code, party.city, party.country].filter(Boolean).join(', ');
+    const addressLine = [
+        ...party.address,
+        party.postal_code,
+        party.city,
+        party.country,
+    ]
+        .filter(Boolean)
+        .join(', ');
 
     return (
         <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
@@ -802,21 +1031,45 @@ function PartyCard({ title, party }: { title: string; party: ParsedParty | null 
             <div className="mt-1 space-y-0.5 text-sm">
                 <div className="font-medium">{party.name ?? '—'}</div>
                 {party.trading_name && party.trading_name !== party.name && (
-                    <div className="text-xs text-muted-foreground">{party.trading_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                        {party.trading_name}
+                    </div>
                 )}
-                {party.vat_number && <div className="text-xs">CUI: {party.vat_number}</div>}
-                {addressLine && <div className="text-xs text-muted-foreground">{addressLine}</div>}
-                {party.contact_email && <div className="text-xs text-muted-foreground">{party.contact_email}</div>}
-                {party.contact_phone && <div className="text-xs text-muted-foreground">{party.contact_phone}</div>}
+                {party.vat_number && (
+                    <div className="text-xs">CUI: {party.vat_number}</div>
+                )}
+                {addressLine && (
+                    <div className="text-xs text-muted-foreground">
+                        {addressLine}
+                    </div>
+                )}
+                {party.contact_email && (
+                    <div className="text-xs text-muted-foreground">
+                        {party.contact_email}
+                    </div>
+                )}
+                {party.contact_phone && (
+                    <div className="text-xs text-muted-foreground">
+                        {party.contact_phone}
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+    label,
+    children,
+}: {
+    label: string;
+    children: React.ReactNode;
+}) {
     return (
         <div className="grid gap-0.5">
-            <Label className="text-[11px] uppercase text-muted-foreground">{label}</Label>
+            <Label className="text-[11px] text-muted-foreground uppercase">
+                {label}
+            </Label>
             <div className="text-sm">{children}</div>
         </div>
     );

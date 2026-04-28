@@ -1,11 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
-import AppLayout from '@/layouts/app-layout';
 import UserController from '@/actions/App/Http/Controllers/UserController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import AppLayout from '@/layouts/app-layout';
 import { create as usersCreate, index as usersIndex } from '@/routes/users';
 
 export default function UserCreate() {
@@ -24,7 +24,9 @@ export default function UserCreate() {
                 </div>
                 <h1 className="text-2xl font-semibold">Adaugă utilizator</h1>
                 <p className="text-sm text-muted-foreground">
-                    Utilizatorul va putea fi atribuit ca responsabil pe furnizori. Autentificarea este gestionată separat prin WorkOS.
+                    Utilizatorul va putea fi atribuit ca responsabil pe
+                    furnizori. Autentificarea este gestionată separat prin
+                    WorkOS.
                 </p>
 
                 <Form
@@ -41,10 +43,17 @@ export default function UserCreate() {
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="email">Email</Label>
-                                <Input id="email" name="email" type="email" required />
+                                <Input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    required
+                                />
                                 <InputError message={errors.email} />
                             </div>
-                            <Button disabled={processing}>Salvează utilizatorul</Button>
+                            <Button disabled={processing}>
+                                Salvează utilizatorul
+                            </Button>
                         </>
                     )}
                 </Form>

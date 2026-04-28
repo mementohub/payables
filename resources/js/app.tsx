@@ -1,8 +1,8 @@
 import { createInertiaApp } from '@inertiajs/react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { useFlashToast } from '@/hooks/use-flash-toast';
 import { initializeTheme } from '@/hooks/use-appearance';
+import { useFlashToast } from '@/hooks/use-flash-toast';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 
@@ -10,6 +10,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 function FlashToastBridge() {
     useFlashToast();
+
     return null;
 }
 

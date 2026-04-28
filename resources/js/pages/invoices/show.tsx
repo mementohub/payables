@@ -1,10 +1,14 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import AppLayout from '@/layouts/app-layout';
+import PaymentStatusBadge from '@/components/payment-status-badge';
+import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import PaymentStatusBadge, { type PaymentStatus } from '@/components/payment-status-badge';
-import { emise as facturiEmise, primite as facturiPrimite } from '@/routes/invoices';
+import AppLayout from '@/layouts/app-layout';
+import {
+    emise as facturiEmise,
+    primite as facturiPrimite,
+} from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 
 type Detail = {
@@ -241,61 +245,68 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                         Detalii
                     </div>
                     <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-sm">
-                        <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
-                            <tr>
-                                <th className="w-12 px-4 py-2">#</th>
-                                <th className="px-4 py-2">Articol</th>
-                                <th className="px-4 py-2 text-right">
-                                    Cantitate
-                                </th>
-                                <th className="px-4 py-2">UM</th>
-                                <th className="px-4 py-2 text-right">Preț</th>
-                                <th className="px-4 py-2 text-right">TVA %</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                            {invoice.details.length === 0 && (
+                        <table className="w-full min-w-[640px] text-sm">
+                            <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
                                 <tr>
-                                    <td
-                                        className="px-4 py-6 text-center text-muted-foreground"
-                                        colSpan={6}
-                                    >
-                                        Fără detalii.
-                                    </td>
+                                    <th className="w-12 px-4 py-2">#</th>
+                                    <th className="px-4 py-2">Articol</th>
+                                    <th className="px-4 py-2 text-right">
+                                        Cantitate
+                                    </th>
+                                    <th className="px-4 py-2">UM</th>
+                                    <th className="px-4 py-2 text-right">
+                                        Preț
+                                    </th>
+                                    <th className="px-4 py-2 text-right">
+                                        TVA %
+                                    </th>
                                 </tr>
-                            )}
-                            {invoice.details.map((row) => (
-                                <tr key={row.id}>
-                                    <td className="px-4 py-2 text-muted-foreground">
-                                        {row.scv}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <div className="font-medium">
-                                            {row.articol}
-                                        </div>
-                                        {row.detaliu_articol && (
-                                            <div className="text-xs text-muted-foreground">
-                                                {row.detaliu_articol}
+                            </thead>
+                            <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                {invoice.details.length === 0 && (
+                                    <tr>
+                                        <td
+                                            className="px-4 py-6 text-center text-muted-foreground"
+                                            colSpan={6}
+                                        >
+                                            Fără detalii.
+                                        </td>
+                                    </tr>
+                                )}
+                                {invoice.details.map((row) => (
+                                    <tr key={row.id}>
+                                        <td className="px-4 py-2 text-muted-foreground">
+                                            {row.scv}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <div className="font-medium">
+                                                {row.articol}
                                             </div>
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {row.cant}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        {row.um ?? '—'}
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {formatAmount(row.pret, invoice.moneda)}
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {row.proc_tva ?? 0}%
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                            {row.detaliu_articol && (
+                                                <div className="text-xs text-muted-foreground">
+                                                    {row.detaliu_articol}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2 text-right tabular-nums">
+                                            {row.cant}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            {row.um ?? '—'}
+                                        </td>
+                                        <td className="px-4 py-2 text-right tabular-nums">
+                                            {formatAmount(
+                                                row.pret,
+                                                invoice.moneda,
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2 text-right tabular-nums">
+                                            {row.proc_tva ?? 0}%
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -314,66 +325,71 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                         </span>
                     </div>
                     <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-sm">
-                        <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
-                            <tr>
-                                <th className="w-32 px-4 py-2">Repartizare</th>
-                                <th className="w-28 px-4 py-2">Dată doc.</th>
-                                <th className="w-28 px-4 py-2">Tip</th>
-                                <th className="px-4 py-2">Număr</th>
-                                <th className="px-4 py-2 text-right">
-                                    Alocat (monedă factură)
-                                </th>
-                                <th className="px-4 py-2 text-right">
-                                    Plătit (monedă plată)
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                            {invoice.payments.length === 0 && (
+                        <table className="w-full min-w-[720px] text-sm">
+                            <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
                                 <tr>
-                                    <td
-                                        className="px-4 py-6 text-center text-muted-foreground"
-                                        colSpan={6}
-                                    >
-                                        {invoice.partener_type === 'furnizor'
-                                            ? 'Nicio plată înregistrată.'
-                                            : 'Nicio încasare înregistrată.'}
-                                    </td>
+                                    <th className="w-32 px-4 py-2">
+                                        Repartizare
+                                    </th>
+                                    <th className="w-28 px-4 py-2">
+                                        Dată doc.
+                                    </th>
+                                    <th className="w-28 px-4 py-2">Tip</th>
+                                    <th className="px-4 py-2">Număr</th>
+                                    <th className="px-4 py-2 text-right">
+                                        Alocat (monedă factură)
+                                    </th>
+                                    <th className="px-4 py-2 text-right">
+                                        Plătit (monedă plată)
+                                    </th>
                                 </tr>
-                            )}
-                            {invoice.payments.map((payment) => (
-                                <tr key={payment.id}>
-                                    <td className="px-4 py-2">
-                                        {payment.data_repartizare ?? '—'}
-                                    </td>
-                                    <td className="px-4 py-2 text-muted-foreground">
-                                        {payment.data_doc}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                        <Badge variant="secondary">
-                                            {payment.tip_doc}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-4 py-2 font-medium">
-                                        {payment.nr_doc}
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {formatAmount(
-                                            payment.val_com,
-                                            invoice.moneda,
-                                        )}
-                                    </td>
-                                    <td className="px-4 py-2 text-right tabular-nums">
-                                        {formatAmount(
-                                            payment.val_fin,
-                                            payment.moneda,
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                {invoice.payments.length === 0 && (
+                                    <tr>
+                                        <td
+                                            className="px-4 py-6 text-center text-muted-foreground"
+                                            colSpan={6}
+                                        >
+                                            {invoice.partener_type ===
+                                            'furnizor'
+                                                ? 'Nicio plată înregistrată.'
+                                                : 'Nicio încasare înregistrată.'}
+                                        </td>
+                                    </tr>
+                                )}
+                                {invoice.payments.map((payment) => (
+                                    <tr key={payment.id}>
+                                        <td className="px-4 py-2">
+                                            {payment.data_repartizare ?? '—'}
+                                        </td>
+                                        <td className="px-4 py-2 text-muted-foreground">
+                                            {payment.data_doc}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <Badge variant="secondary">
+                                                {payment.tip_doc}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-4 py-2 font-medium">
+                                            {payment.nr_doc}
+                                        </td>
+                                        <td className="px-4 py-2 text-right tabular-nums">
+                                            {formatAmount(
+                                                payment.val_com,
+                                                invoice.moneda,
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2 text-right tabular-nums">
+                                            {formatAmount(
+                                                payment.val_fin,
+                                                payment.moneda,
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -384,6 +400,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
 function InvoiceShowLayout({ children }: { children: React.ReactNode }) {
     const { invoice } = usePage<{ invoice: Invoice }>().props;
     const isFurnizor = invoice.partener_type === 'furnizor';
+
     return (
         <AppLayout
             breadcrumbs={[
@@ -398,4 +415,6 @@ function InvoiceShowLayout({ children }: { children: React.ReactNode }) {
     );
 }
 
-InvoiceShow.layout = (page: React.ReactNode) => <InvoiceShowLayout>{page}</InvoiceShowLayout>;
+InvoiceShow.layout = (page: React.ReactNode) => (
+    <InvoiceShowLayout>{page}</InvoiceShowLayout>
+);

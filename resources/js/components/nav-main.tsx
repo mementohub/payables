@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { isNavGroup, type NavItem, type NavItemOrGroup } from '@/types/navigation';
+import { isNavGroup } from '@/types/navigation';
+import type { NavItem, NavItemOrGroup } from '@/types/navigation';
 
 export function NavMain({
     items = [],
@@ -54,7 +55,9 @@ export function NavMain({
                         return renderLeaf(item);
                     }
 
-                    const hasActiveChild = item.children.some((c) => isCurrentUrl(c.href));
+                    const hasActiveChild = item.children.some((c) =>
+                        isCurrentUrl(c.href),
+                    );
 
                     return (
                         <Collapsible
@@ -77,14 +80,25 @@ export function NavMain({
                                 <CollapsibleContent>
                                     <SidebarMenuSub>
                                         {item.children.map((child) => (
-                                            <SidebarMenuSubItem key={child.title}>
+                                            <SidebarMenuSubItem
+                                                key={child.title}
+                                            >
                                                 <SidebarMenuSubButton
                                                     asChild
-                                                    isActive={isCurrentUrl(child.href)}
+                                                    isActive={isCurrentUrl(
+                                                        child.href,
+                                                    )}
                                                 >
-                                                    <Link href={child.href} prefetch>
-                                                        {child.icon && <child.icon />}
-                                                        <span>{child.title}</span>
+                                                    <Link
+                                                        href={child.href}
+                                                        prefetch
+                                                    >
+                                                        {child.icon && (
+                                                            <child.icon />
+                                                        )}
+                                                        <span>
+                                                            {child.title}
+                                                        </span>
                                                     </Link>
                                                 </SidebarMenuSubButton>
                                             </SidebarMenuSubItem>

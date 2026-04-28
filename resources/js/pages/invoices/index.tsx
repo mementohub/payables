@@ -3,12 +3,12 @@ import { Check, Clock, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
-import type {ApprovalStage} from '@/components/approval-status-badge';
+import type { ApprovalStage } from '@/components/approval-status-badge';
 import DateRangePicker from '@/components/date-range-picker';
-import type {DateRangeValue} from '@/components/date-range-picker';
+import type { DateRangeValue } from '@/components/date-range-picker';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
-import type {PaymentStatus} from '@/components/payment-status-badge';
+import type { PaymentStatus } from '@/components/payment-status-badge';
 import {
     SelectionBar,
     downloadXlsxFromForm,
@@ -31,7 +31,11 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
-import { emise as facturiEmise, primite as facturiPrimite, show as invoicesShow } from '@/routes/invoices';
+import {
+    emise as facturiEmise,
+    primite as facturiPrimite,
+    show as invoicesShow,
+} from '@/routes/invoices';
 import { exportMethod as exportEmise } from '@/routes/invoices/emise';
 import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
 import type { Paginated } from '@/types/pagination';
@@ -111,9 +115,9 @@ function formatAmount(value: number, currency: string | null) {
 }
 
 function formatDateTime(iso: string | null) {
-    if (! iso) {
-return '';
-}
+    if (!iso) {
+        return '';
+    }
 
     const d = new Date(iso);
 
@@ -136,7 +140,8 @@ export default function InvoicesIndex({
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const label = scope === 'emise' ? 'Facturi emise' : 'Facturi primite';
-    const baseUrl = scope === 'emise' ? facturiEmise().url : facturiPrimite().url;
+    const baseUrl =
+        scope === 'emise' ? facturiEmise().url : facturiPrimite().url;
     const description =
         scope === 'emise'
             ? 'Facturi emise către clienți (FactCI / FactCE / FactINT) sincronizate din BD-urile companiilor.'
@@ -161,8 +166,14 @@ export default function InvoicesIndex({
         );
     };
 
-    const docRange: DateRangeValue = { from: filters.data_doc_from, to: filters.data_doc_to };
-    const scadentaRange: DateRangeValue = { from: filters.data_scadenta_from, to: filters.data_scadenta_to };
+    const docRange: DateRangeValue = {
+        from: filters.data_doc_from,
+        to: filters.data_doc_to,
+    };
+    const scadentaRange: DateRangeValue = {
+        from: filters.data_scadenta_from,
+        to: filters.data_scadenta_to,
+    };
     const isPrimite = scope === 'primite';
     const columnCount = (isPrimite ? 9 : 7) + 1;
     const [exporting, setExporting] = useState(false);
@@ -192,7 +203,9 @@ export default function InvoicesIndex({
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div>
                     <h1 className="text-2xl font-semibold">{label}</h1>
-                    <p className="text-sm text-muted-foreground">{description}</p>
+                    <p className="text-sm text-muted-foreground">
+                        {description}
+                    </p>
                 </div>
 
                 <form
@@ -219,14 +232,24 @@ export default function InvoicesIndex({
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Companie</Label>
                         <Select
-                            value={filters.company_id ? String(filters.company_id) : 'all'}
-                            onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
+                            value={
+                                filters.company_id
+                                    ? String(filters.company_id)
+                                    : 'all'
+                            }
+                            onValueChange={(v) =>
+                                applyFilter({
+                                    company_id: v === 'all' ? null : Number(v),
+                                })
+                            }
                         >
                             <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Toate companiile</SelectItem>
+                                <SelectItem value="all">
+                                    Toate companiile
+                                </SelectItem>
                                 {companies.map((c) => (
                                     <SelectItem key={c.id} value={String(c.id)}>
                                         {c.name}
@@ -240,7 +263,12 @@ export default function InvoicesIndex({
                         <DateRangePicker
                             className="w-full sm:w-[230px]"
                             value={docRange}
-                            onChange={(v) => applyFilter({ data_doc_from: v.from, data_doc_to: v.to })}
+                            onChange={(v) =>
+                                applyFilter({
+                                    data_doc_from: v.from,
+                                    data_doc_to: v.to,
+                                })
+                            }
                             placeholder="Perioadă data"
                         />
                     </div>
@@ -250,7 +278,10 @@ export default function InvoicesIndex({
                             className="w-full sm:w-[230px]"
                             value={scadentaRange}
                             onChange={(v) =>
-                                applyFilter({ data_scadenta_from: v.from, data_scadenta_to: v.to })
+                                applyFilter({
+                                    data_scadenta_from: v.from,
+                                    data_scadenta_to: v.to,
+                                })
                             }
                             placeholder="Perioadă scadență"
                         />
@@ -259,16 +290,22 @@ export default function InvoicesIndex({
                         <Label className="text-xs">Plată</Label>
                         <Select
                             value={filters.payment ?? 'all'}
-                            onValueChange={(v) => applyFilter({ payment: v === 'all' ? null : v })}
+                            onValueChange={(v) =>
+                                applyFilter({ payment: v === 'all' ? null : v })
+                            }
                         >
                             <SelectTrigger className="min-h-11 w-full sm:w-[160px]">
                                 <SelectValue placeholder="Plată" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Toate plățile</SelectItem>
+                                <SelectItem value="all">
+                                    Toate plățile
+                                </SelectItem>
                                 <SelectItem value="paid">Plătite</SelectItem>
                                 <SelectItem value="partial">Parțial</SelectItem>
-                                <SelectItem value="unpaid">Neplătite</SelectItem>
+                                <SelectItem value="unpaid">
+                                    Neplătite
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -278,36 +315,64 @@ export default function InvoicesIndex({
                                 <Label className="text-xs">Bun de plată</Label>
                                 <Select
                                     value={filters.approval ?? 'all'}
-                                    onValueChange={(v) => applyFilter({ approval: v === 'all' ? null : v })}
+                                    onValueChange={(v) =>
+                                        applyFilter({
+                                            approval: v === 'all' ? null : v,
+                                        })
+                                    }
                                 >
                                     <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
                                         <SelectValue placeholder="Bun de plată" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">Toate</SelectItem>
-                                        <SelectItem value="needs_approval">Necesită aprobare</SelectItem>
-                                        <SelectItem value="pending">Așteaptă supervizor</SelectItem>
-                                        <SelectItem value="supervisors_ok">Așteaptă master</SelectItem>
-                                        <SelectItem value="ok">Bun de plată</SelectItem>
-                                        <SelectItem value="na">Fără departament</SelectItem>
+                                        <SelectItem value="all">
+                                            Toate
+                                        </SelectItem>
+                                        <SelectItem value="needs_approval">
+                                            Necesită aprobare
+                                        </SelectItem>
+                                        <SelectItem value="pending">
+                                            Așteaptă supervizor
+                                        </SelectItem>
+                                        <SelectItem value="supervisors_ok">
+                                            Așteaptă master
+                                        </SelectItem>
+                                        <SelectItem value="ok">
+                                            Bun de plată
+                                        </SelectItem>
+                                        <SelectItem value="na">
+                                            Fără departament
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="grid w-full gap-1 sm:w-auto">
                                 <Label className="text-xs">Responsabil</Label>
                                 <Select
-                                    value={filters.responsible_id ? String(filters.responsible_id) : 'all'}
+                                    value={
+                                        filters.responsible_id
+                                            ? String(filters.responsible_id)
+                                            : 'all'
+                                    }
                                     onValueChange={(v) =>
-                                        applyFilter({ responsible_id: v === 'all' ? null : Number(v) })
+                                        applyFilter({
+                                            responsible_id:
+                                                v === 'all' ? null : Number(v),
+                                        })
                                     }
                                 >
                                     <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
                                         <SelectValue placeholder="Responsabil" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">Toți responsabilii</SelectItem>
+                                        <SelectItem value="all">
+                                            Toți responsabilii
+                                        </SelectItem>
                                         {availableResponsibles.map((u) => (
-                                            <SelectItem key={u.id} value={String(u.id)}>
+                                            <SelectItem
+                                                key={u.id}
+                                                value={String(u.id)}
+                                            >
                                                 {u.name}
                                             </SelectItem>
                                         ))}
@@ -316,7 +381,11 @@ export default function InvoicesIndex({
                             </div>
                         </>
                     )}
-                    <Button type="submit" variant="secondary" className="min-h-11 w-full sm:w-auto">
+                    <Button
+                        type="submit"
+                        variant="secondary"
+                        className="min-h-11 w-full sm:w-auto"
+                    >
                         Caută
                     </Button>
                 </form>
@@ -331,76 +400,114 @@ export default function InvoicesIndex({
 
                 <div className="hidden overflow-x-auto rounded-xl border border-sidebar-border/70 md:block dark:border-sidebar-border">
                     <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
                             <tr>
                                 <th className="w-10 px-4 py-3">
                                     <Checkbox
                                         aria-label="Selectează tot"
                                         checked={selection.pageCheckedValue}
-                                        onCheckedChange={() => selection.togglePage()}
+                                        onCheckedChange={() =>
+                                            selection.togglePage()
+                                        }
                                     />
                                 </th>
                                 <th className="px-4 py-3">Dată</th>
                                 <th className="px-4 py-3">Scadență</th>
                                 <th className="px-4 py-3">Număr</th>
-                                <th className="px-4 py-3">{scope === 'emise' ? 'Client' : 'Furnizor'}</th>
+                                <th className="px-4 py-3">
+                                    {scope === 'emise' ? 'Client' : 'Furnizor'}
+                                </th>
                                 <th className="px-4 py-3">Companie</th>
                                 <th className="px-4 py-3 text-right">Total</th>
                                 <th className="px-4 py-3">Plată</th>
-                                {isPrimite && <th className="px-4 py-3">Bun de plată</th>}
-                                {isPrimite && <th className="px-4 py-3">Acțiune</th>}
+                                {isPrimite && (
+                                    <th className="px-4 py-3">Bun de plată</th>
+                                )}
+                                {isPrimite && (
+                                    <th className="px-4 py-3">Acțiune</th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                             {invoices.data.length === 0 && (
                                 <tr>
-                                    <td className="px-4 py-6 text-center text-muted-foreground" colSpan={columnCount}>
-                                        Nicio factură încă. Pornește o sincronizare din pagina Companii.
+                                    <td
+                                        className="px-4 py-6 text-center text-muted-foreground"
+                                        colSpan={columnCount}
+                                    >
+                                        Nicio factură încă. Pornește o
+                                        sincronizare din pagina Companii.
                                     </td>
                                 </tr>
                             )}
                             {invoices.data.map((invoice) => (
-                                <tr key={invoice.id} className="hover:bg-muted/30">
+                                <tr
+                                    key={invoice.id}
+                                    className="hover:bg-muted/30"
+                                >
                                     <td className="px-4 py-3">
                                         <Checkbox
                                             aria-label={`Selectează ${invoice.nr_doc}`}
-                                            checked={selection.isSelected(invoice.id)}
-                                            onCheckedChange={() => selection.toggle(invoice.id)}
+                                            checked={selection.isSelected(
+                                                invoice.id,
+                                            )}
+                                            onCheckedChange={() =>
+                                                selection.toggle(invoice.id)
+                                            }
                                         />
                                     </td>
-                                    <td className="px-4 py-3">{invoice.data_doc}</td>
+                                    <td className="px-4 py-3">
+                                        {invoice.data_doc}
+                                    </td>
                                     <td className="px-4 py-3 text-muted-foreground">
                                         {invoice.data_scadenta ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 font-medium">
-                                        <Link className="hover:underline" href={invoicesShow(invoice.id)}>
+                                        <Link
+                                            className="hover:underline"
+                                            href={invoicesShow(invoice.id)}
+                                        >
                                             {invoice.nr_doc}
                                         </Link>
                                     </td>
                                     <td className="px-4 py-3">
                                         {invoice.partner ? (
                                             <div>
-                                                <div>{invoice.partner.name}</div>
+                                                <div>
+                                                    {invoice.partner.name}
+                                                </div>
                                                 {invoice.partner.cui && (
                                                     <div className="text-xs text-muted-foreground">
-                                                        CUI: {invoice.partner.cui}
+                                                        CUI:{' '}
+                                                        {invoice.partner.cui}
                                                     </div>
                                                 )}
                                             </div>
                                         ) : (
-                                            <span className="text-muted-foreground">—</span>
+                                            <span className="text-muted-foreground">
+                                                —
+                                            </span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3 text-muted-foreground">{invoice.company.name}</td>
+                                    <td className="px-4 py-3 text-muted-foreground">
+                                        {invoice.company.name}
+                                    </td>
                                     <td className="px-4 py-3 text-right tabular-nums">
-                                        {formatAmount(invoice.val_mon, invoice.moneda)}
+                                        {formatAmount(
+                                            invoice.val_mon,
+                                            invoice.moneda,
+                                        )}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <PaymentStatusBadge status={invoice.payment_status} />
+                                        <PaymentStatusBadge
+                                            status={invoice.payment_status}
+                                        />
                                     </td>
                                     {isPrimite && (
                                         <td className="px-4 py-3">
-                                            <ApprovalCell approval={invoice.approval} />
+                                            <ApprovalCell
+                                                approval={invoice.approval}
+                                            />
                                         </td>
                                     )}
                                     {isPrimite && (
@@ -420,7 +527,8 @@ export default function InvoicesIndex({
                 <div className="space-y-3 md:hidden">
                     {invoices.data.length === 0 && (
                         <div className="rounded-xl border border-sidebar-border/70 bg-background p-6 text-center text-sm text-muted-foreground dark:border-sidebar-border">
-                            Nicio factură încă. Pornește o sincronizare din pagina Companii.
+                            Nicio factură încă. Pornește o sincronizare din
+                            pagina Companii.
                         </div>
                     )}
                     {invoices.data.map((invoice) => (
@@ -438,7 +546,8 @@ export default function InvoicesIndex({
 
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
-                        {invoices.from ?? 0}–{invoices.to ?? 0} din {invoices.total}
+                        {invoices.from ?? 0}–{invoices.to ?? 0} din{' '}
+                        {invoices.total}
                     </span>
                     <Pagination links={invoices.links} />
                 </div>
@@ -448,11 +557,13 @@ export default function InvoicesIndex({
 }
 
 function ApprovalCell({ approval }: { approval?: Approval }) {
-    if (! approval || ! approval.needs_approval) {
+    if (!approval || !approval.needs_approval) {
         return <ApprovalStatusBadge stage="na" />;
     }
 
-    const supervisorsDone = approval.supervisor_steps.filter((s) => s.approved).length;
+    const supervisorsDone = approval.supervisor_steps.filter(
+        (s) => s.approved,
+    ).length;
     const supervisorsTotal = approval.supervisor_steps.length;
     const masterDone = approval.master !== null ? 1 : 0;
     const totalDone = supervisorsDone + masterDone;
@@ -462,21 +573,31 @@ function ApprovalCell({ approval }: { approval?: Approval }) {
         <div className="flex min-w-[180px] flex-col gap-1.5">
             <div className="flex items-center gap-2">
                 <ApprovalStatusBadge stage={approval.stage} />
-                <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
                     {totalDone}/{totalSteps}
                 </span>
             </div>
             <div className="flex flex-wrap items-center gap-1">
                 {approval.supervisor_steps.map((step, index) => (
-                    <div key={step.department_id} className="flex items-center gap-1">
+                    <div
+                        key={step.department_id}
+                        className="flex items-center gap-1"
+                    >
                         <SupervisorPill step={step} />
                         {index < approval.supervisor_steps.length - 1 && (
-                            <span aria-hidden className="text-muted-foreground/40">·</span>
+                            <span
+                                aria-hidden
+                                className="text-muted-foreground/40"
+                            >
+                                ·
+                            </span>
                         )}
                     </div>
                 ))}
                 {supervisorsTotal > 0 && (
-                    <span aria-hidden className="text-muted-foreground/40">·</span>
+                    <span aria-hidden className="text-muted-foreground/40">
+                        ·
+                    </span>
                 )}
                 <MasterPill master={approval.master} />
             </div>
@@ -493,9 +614,13 @@ function SupervisorPill({ step }: { step: SupervisorStep }) {
         <Tooltip>
             <TooltipTrigger asChild>
                 <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${cls}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none font-medium ${cls}`}
                 >
-                    {step.approved ? <Check className="size-3" /> : <Clock className="size-3" />}
+                    {step.approved ? (
+                        <Check className="size-3" />
+                    ) : (
+                        <Clock className="size-3" />
+                    )}
                     {step.department_name}
                 </span>
             </TooltipTrigger>
@@ -518,9 +643,13 @@ function MasterPill({ master }: { master: MasterApproval }) {
         <Tooltip>
             <TooltipTrigger asChild>
                 <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${cls}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none font-medium ${cls}`}
                 >
-                    {approved ? <Check className="size-3" /> : <ShieldCheck className="size-3" />}
+                    {approved ? (
+                        <Check className="size-3" />
+                    ) : (
+                        <ShieldCheck className="size-3" />
+                    )}
                     Master
                 </span>
             </TooltipTrigger>
@@ -567,7 +696,9 @@ function InvoiceMobileCard({
                         </Link>
                         <div className="mt-0.5 text-xs text-muted-foreground">
                             {invoice.data_doc}
-                            {invoice.data_scadenta ? ` · scadență ${invoice.data_scadenta}` : ''}
+                            {invoice.data_scadenta
+                                ? ` · scadență ${invoice.data_scadenta}`
+                                : ''}
                         </div>
                     </div>
                 </div>
@@ -577,7 +708,9 @@ function InvoiceMobileCard({
             <div className="mt-3 text-sm">
                 {invoice.partner ? (
                     <>
-                        <div className="font-medium">{invoice.partner.name}</div>
+                        <div className="font-medium">
+                            {invoice.partner.name}
+                        </div>
                         {invoice.partner.cui && (
                             <div className="text-xs text-muted-foreground">
                                 CUI: {invoice.partner.cui}
@@ -589,7 +722,9 @@ function InvoiceMobileCard({
                         Fără {scope === 'emise' ? 'client' : 'furnizor'}
                     </span>
                 )}
-                <div className="mt-0.5 text-xs text-muted-foreground">{invoice.company.name}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                    {invoice.company.name}
+                </div>
             </div>
 
             <div className="mt-3 flex items-end justify-between gap-3 border-t border-sidebar-border/70 pt-3 dark:border-sidebar-border">
@@ -602,12 +737,15 @@ function InvoiceMobileCard({
             {isPrimite && (
                 <div className="mt-3 space-y-3 border-t border-sidebar-border/70 pt-3 dark:border-sidebar-border">
                     <div>
-                        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <div className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                             Bun de plată
                         </div>
                         <ApprovalCell approval={invoice.approval} />
                     </div>
-                    <ApproveActions invoice={invoice} currentUser={currentUser} />
+                    <ApproveActions
+                        invoice={invoice}
+                        currentUser={currentUser}
+                    />
                 </div>
             )}
         </div>
@@ -623,12 +761,19 @@ function ApproveActions({
 }) {
     const approval = invoice.approval;
     const action = useMemo(() => {
-        if (! approval || ! approval.needs_approval || approval.is_fully_approved || ! currentUser.id) {
+        if (
+            !approval ||
+            !approval.needs_approval ||
+            approval.is_fully_approved ||
+            !currentUser.id
+        ) {
             return null;
         }
 
         const pendingStep = approval.supervisor_steps.find(
-            (s) => ! s.approved && currentUser.supervisor_department_ids.includes(s.department_id),
+            (s) =>
+                !s.approved &&
+                currentUser.supervisor_department_ids.includes(s.department_id),
         );
 
         if (pendingStep) {
@@ -651,7 +796,7 @@ function ApproveActions({
         return null;
     }, [approval, currentUser]);
 
-    if (! action) {
+    if (!action) {
         return <span className="text-xs text-muted-foreground">—</span>;
     }
 
@@ -662,8 +807,17 @@ function ApproveActions({
         >
             {({ processing }) => (
                 <>
-                    <input type="hidden" name="department_id" value={action.departmentId} />
-                    <Button type="submit" size="sm" disabled={processing} className="w-full md:w-auto">
+                    <input
+                        type="hidden"
+                        name="department_id"
+                        value={action.departmentId}
+                    />
+                    <Button
+                        type="submit"
+                        size="sm"
+                        disabled={processing}
+                        className="w-full md:w-auto"
+                    >
                         {action.label}
                     </Button>
                 </>
@@ -677,7 +831,9 @@ function InvoicesLayout({ children }: { children: React.ReactNode }) {
     const label = scope === 'emise' ? 'Facturi emise' : 'Facturi primite';
     const href = scope === 'emise' ? facturiEmise() : facturiPrimite();
 
-    return <AppLayout breadcrumbs={[{ title: label, href }]}>{children}</AppLayout>;
+    return (
+        <AppLayout breadcrumbs={[{ title: label, href }]}>{children}</AppLayout>
+    );
 }
 
 InvoicesIndex.layout = (page: React.ReactNode) => (

@@ -17,7 +17,8 @@ export default function Pagination({ links }: { links: PaginatedLink[] }) {
                     preserveState
                     className={cn(
                         'rounded-md border border-sidebar-border/70 px-3 py-1.5 text-sm dark:border-sidebar-border',
-                        link.active && 'bg-primary text-primary-foreground border-primary',
+                        link.active &&
+                            'border-primary bg-primary text-primary-foreground',
                         !link.url && 'pointer-events-none opacity-40',
                     )}
                     dangerouslySetInnerHTML={{ __html: link.label }}

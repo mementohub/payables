@@ -18,27 +18,53 @@ export type SelectionState = {
     payload: () => { ids?: number[]; select_all?: boolean };
 };
 
-export function useTableSelection<T extends Identifiable>(pageItems: T[], total: number): SelectionState {
+export function useTableSelection<T extends Identifiable>(
+    pageItems: T[],
+    total: number,
+): SelectionState {
     const [selected, setSelected] = useState<Set<number>>(new Set());
     const [selectAllAcrossPages, setSelectAll] = useState(false);
 
     const pageIds = useMemo(() => pageItems.map((i) => i.id), [pageItems]);
 
     useEffect(() => {
-        if (selectAllAcrossPages) return;
+        if (selectAllAcrossPages) {
+            return;
+        }
+
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelected((prev) => {
             const next = new Set<number>();
-            for (const id of prev) if (pageIds.includes(id)) next.add(id);
+
+            for (const id of prev) {
+                if (pageIds.includes(id)) {
+                    next.add(id);
+                }
+            }
+
             return next.size === prev.size ? prev : next;
         });
     }, [pageIds, selectAllAcrossPages]);
 
     const pageState = useMemo<'none' | 'partial' | 'all'>(() => {
-        if (selectAllAcrossPages) return 'all';
-        if (pageIds.length === 0) return 'none';
+        if (selectAllAcrossPages) {
+            return 'all';
+        }
+
+        if (pageIds.length === 0) {
+            return 'none';
+        }
+
         const onPage = pageIds.filter((id) => selected.has(id)).length;
-        if (onPage === 0) return 'none';
-        if (onPage === pageIds.length) return 'all';
+
+        if (onPage === 0) {
+            return 'none';
+        }
+
+        if (onPage === pageIds.length) {
+            return 'all';
+        }
+
         return 'partial';
     }, [selected, pageIds, selectAllAcrossPages]);
 
@@ -46,27 +72,39 @@ export function useTableSelection<T extends Identifiable>(pageItems: T[], total:
         if (selectAllAcrossPages) {
             setSelectAll(false);
             setSelected(new Set());
+
             return;
         }
+
         setSelected((prev) => {
             const next = new Set(prev);
             const allOnPage = pageIds.every((id) => next.has(id));
+
             if (allOnPage) {
                 pageIds.forEach((id) => next.delete(id));
             } else {
                 pageIds.forEach((id) => next.add(id));
             }
+
             return next;
         });
     }, [pageIds, selectAllAcrossPages]);
 
     const toggle = useCallback(
         (id: number) => {
-            if (selectAllAcrossPages) setSelectAll(false);
+            if (selectAllAcrossPages) {
+                setSelectAll(false);
+            }
+
             setSelected((prev) => {
                 const next = new Set(prev);
-                if (next.has(id)) next.delete(id);
-                else next.add(id);
+
+                if (next.has(id)) {
+                    next.delete(id);
+                } else {
+                    next.add(id);
+                }
+
                 return next;
             });
         },
@@ -86,7 +124,10 @@ export function useTableSelection<T extends Identifiable>(pageItems: T[], total:
     const selectionCount = selectAllAcrossPages ? total : selected.size;
 
     const payload = useCallback(
-        () => (selectAllAcrossPages ? { select_all: true } : { ids: Array.from(selected) }),
+        () =>
+            selectAllAcrossPages
+                ? { select_all: true }
+                : { ids: Array.from(selected) },
         [selectAllAcrossPages, selected],
     );
 
@@ -94,7 +135,12 @@ export function useTableSelection<T extends Identifiable>(pageItems: T[], total:
         selected,
         selectAllAcrossPages,
         pageState,
-        pageCheckedValue: pageState === 'all' ? true : pageState === 'partial' ? 'indeterminate' : false,
+        pageCheckedValue:
+            pageState === 'all'
+                ? true
+                : pageState === 'partial'
+                  ? 'indeterminate'
+                  : false,
         isSelected: (id: number) => selectAllAcrossPages || selected.has(id),
         toggle,
         togglePage,
@@ -118,10 +164,14 @@ export function SelectionBar({
     onExport: () => void;
     exporting: boolean;
 }) {
-    if (state.selectionCount === 0) return null;
+    if (state.selectionCount === 0) {
+        return null;
+    }
 
     const showSelectAcrossPages =
-        !state.selectAllAcrossPages && state.pageState === 'all' && total > pageCount;
+        !state.selectAllAcrossPages &&
+        state.pageState === 'all' &&
+        total > pageCount;
 
     return (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
@@ -132,16 +182,33 @@ export function SelectionBar({
             </span>
 
             {showSelectAcrossPages && (
-                <Button type="button" size="sm" variant="link" className="h-auto p-0" onClick={state.selectAcrossPages}>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="link"
+                    className="h-auto p-0"
+                    onClick={state.selectAcrossPages}
+                >
                     Selectează toate cele {total} rezultate filtrate
                 </Button>
             )}
 
             <div className="ml-auto flex items-center gap-2">
-                <Button type="button" size="sm" onClick={onExport} disabled={exporting}>
-                    <Download className="size-4" /> {exporting ? 'Export…' : 'Export XLSX'}
+                <Button
+                    type="button"
+                    size="sm"
+                    onClick={onExport}
+                    disabled={exporting}
+                >
+                    <Download className="size-4" />{' '}
+                    {exporting ? 'Export…' : 'Export XLSX'}
                 </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={state.clear}>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={state.clear}
+                >
                     <X className="size-4" /> Deselectează
                 </Button>
             </div>
@@ -149,17 +216,31 @@ export function SelectionBar({
     );
 }
 
-export function downloadXlsxFromForm(url: string, payload: { ids?: number[]; select_all?: boolean }, queryParams: Record<string, string | number | null | undefined>) {
+export function downloadXlsxFromForm(
+    url: string,
+    payload: { ids?: number[]; select_all?: boolean },
+    queryParams: Record<string, string | number | null | undefined>,
+) {
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = url;
     form.target = '_self';
 
-    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
-    if (csrf) appendInput(form, '_token', csrf);
+    const csrf = document.querySelector<HTMLMetaElement>(
+        'meta[name="csrf-token"]',
+    )?.content;
 
-    if (payload.select_all) appendInput(form, 'select_all', '1');
-    for (const id of payload.ids ?? []) appendInput(form, 'ids[]', String(id));
+    if (csrf) {
+        appendInput(form, '_token', csrf);
+    }
+
+    if (payload.select_all) {
+        appendInput(form, 'select_all', '1');
+    }
+
+    for (const id of payload.ids ?? []) {
+        appendInput(form, 'ids[]', String(id));
+    }
 
     for (const [key, value] of Object.entries(queryParams)) {
         if (value !== null && value !== undefined && value !== '') {

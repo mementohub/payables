@@ -1,6 +1,6 @@
 import { Deferred, Head, router } from '@inertiajs/react';
-import { useMemo, type ReactNode } from 'react';
-import AppLayout from '@/layouts/app-layout';
+import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import {
     Bar,
     BarChart,
@@ -13,7 +13,8 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
-import DateRangePicker, { type DateRangeValue } from '@/components/date-range-picker';
+import DateRangePicker from '@/components/date-range-picker';
+import type { DateRangeValue } from '@/components/date-range-picker';
 import {
     Card,
     CardContent,
@@ -25,8 +26,8 @@ import {
     ChartContainer,
     ChartTooltip,
     ChartTooltipContent,
-    type ChartConfig,
 } from '@/components/ui/chart';
+import type { ChartConfig } from '@/components/ui/chart';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -36,6 +37,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
 
 type PaymentState = {
@@ -139,7 +141,8 @@ export default function Dashboard({
                 <div>
                     <h1 className="text-2xl font-semibold">Panou principal</h1>
                     <p className="text-sm text-muted-foreground">
-                        Privire de ansamblu asupra facturilor primite și a fluxului de numerar.
+                        Privire de ansamblu asupra facturilor primite și a
+                        fluxului de numerar.
                     </p>
                 </div>
 
@@ -151,14 +154,24 @@ export default function Dashboard({
                     <div className="grid gap-1">
                         <Label className="text-xs">Companie</Label>
                         <Select
-                            value={filters.company_id ? String(filters.company_id) : 'all'}
-                            onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
+                            value={
+                                filters.company_id
+                                    ? String(filters.company_id)
+                                    : 'all'
+                            }
+                            onValueChange={(v) =>
+                                applyFilter({
+                                    company_id: v === 'all' ? null : Number(v),
+                                })
+                            }
                         >
                             <SelectTrigger className="min-h-11 w-[200px]">
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Toate companiile</SelectItem>
+                                <SelectItem value="all">
+                                    Toate companiile
+                                </SelectItem>
                                 {companies.map((c) => (
                                     <SelectItem key={c.id} value={String(c.id)}>
                                         {c.name}
@@ -172,12 +185,20 @@ export default function Dashboard({
                         <DateRangePicker
                             className="w-[260px]"
                             value={dateRange}
-                            onChange={(v) => applyFilter({ from: v.from ?? null, to: v.to ?? null })}
+                            onChange={(v) =>
+                                applyFilter({
+                                    from: v.from ?? null,
+                                    to: v.to ?? null,
+                                })
+                            }
                         />
                     </div>
                     <div className="grid gap-1">
                         <Label className="text-xs">Monedă</Label>
-                        <Select value={moneda} onValueChange={(v) => applyFilter({ moneda: v })}>
+                        <Select
+                            value={moneda}
+                            onValueChange={(v) => applyFilter({ moneda: v })}
+                        >
                             <SelectTrigger className="min-h-11 w-[100px]">
                                 <SelectValue />
                             </SelectTrigger>
@@ -192,20 +213,52 @@ export default function Dashboard({
                 </form>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <Deferred data="paymentBreakdown" fallback={<ChartSkeleton title="Facturi primite după stare" />}>
-                        <PaymentBreakdownCard data={paymentBreakdown ?? []} moneda={moneda} />
+                    <Deferred
+                        data="paymentBreakdown"
+                        fallback={
+                            <ChartSkeleton title="Facturi primite după stare" />
+                        }
+                    >
+                        <PaymentBreakdownCard
+                            data={paymentBreakdown ?? []}
+                            moneda={moneda}
+                        />
                     </Deferred>
 
-                    <Deferred data="agingBuckets" fallback={<ChartSkeleton title="Vechime facturi restante" />}>
-                        <AgingBucketsCard data={agingBuckets ?? []} moneda={moneda} />
+                    <Deferred
+                        data="agingBuckets"
+                        fallback={
+                            <ChartSkeleton title="Vechime facturi restante" />
+                        }
+                    >
+                        <AgingBucketsCard
+                            data={agingBuckets ?? []}
+                            moneda={moneda}
+                        />
                     </Deferred>
 
-                    <Deferred data="topOverdueSuppliers" fallback={<ChartSkeleton title="Top furnizori restanți" />}>
-                        <TopSuppliersCard data={topOverdueSuppliers ?? []} moneda={moneda} />
+                    <Deferred
+                        data="topOverdueSuppliers"
+                        fallback={
+                            <ChartSkeleton title="Top furnizori restanți" />
+                        }
+                    >
+                        <TopSuppliersCard
+                            data={topOverdueSuppliers ?? []}
+                            moneda={moneda}
+                        />
                     </Deferred>
                 </div>
 
-                <Deferred data="cashflow" fallback={<ChartSkeleton title="Flux de numerar săptămânal" wide />}>
+                <Deferred
+                    data="cashflow"
+                    fallback={
+                        <ChartSkeleton
+                            title="Flux de numerar săptămânal"
+                            wide
+                        />
+                    }
+                >
                     <CashflowCard data={cashflow ?? []} moneda={moneda} />
                 </Deferred>
             </div>
@@ -213,7 +266,13 @@ export default function Dashboard({
     );
 }
 
-function ChartSkeleton({ title, wide = false }: { title: string; wide?: boolean }) {
+function ChartSkeleton({
+    title,
+    wide = false,
+}: {
+    title: string;
+    wide?: boolean;
+}) {
     return (
         <Card className={wide ? 'md:col-span-2 lg:col-span-3' : undefined}>
             <CardHeader>
@@ -226,7 +285,13 @@ function ChartSkeleton({ title, wide = false }: { title: string; wide?: boolean 
     );
 }
 
-function PaymentBreakdownCard({ data, moneda }: { data: PaymentState[]; moneda: string }) {
+function PaymentBreakdownCard({
+    data,
+    moneda,
+}: {
+    data: PaymentState[];
+    moneda: string;
+}) {
     const config = useMemo<ChartConfig>(
         () => ({
             paid: { label: 'Achitate', color: STATE_COLORS.paid },
@@ -245,11 +310,15 @@ function PaymentBreakdownCard({ data, moneda }: { data: PaymentState[]; moneda: 
             <CardHeader>
                 <CardTitle>Facturi primite după stare</CardTitle>
                 <CardDescription>
-                    {totalCount.toLocaleString('ro-RO')} facturi · neachitat: {formatMoney(totalOutstanding, moneda)}
+                    {totalCount.toLocaleString('ro-RO')} facturi · neachitat:{' '}
+                    {formatMoney(totalOutstanding, moneda)}
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <ChartContainer config={config} className="mx-auto aspect-square max-h-[240px]">
+                <ChartContainer
+                    config={config}
+                    className="mx-auto aspect-square max-h-[240px]"
+                >
                     <PieChart>
                         <ChartTooltip
                             content={
@@ -258,17 +327,31 @@ function PaymentBreakdownCard({ data, moneda }: { data: PaymentState[]; moneda: 
                                     formatter={(value, _name, item) => (
                                         <div className="flex min-w-[180px] items-center justify-between gap-2">
                                             <span className="text-muted-foreground">
-                                                {(item.payload as PaymentState).label}
+                                                {
+                                                    (
+                                                        item.payload as PaymentState
+                                                    ).label
+                                                }
                                             </span>
                                             <span className="font-medium tabular-nums">
-                                                {Number(value).toLocaleString('ro-RO')} facturi
+                                                {Number(value).toLocaleString(
+                                                    'ro-RO',
+                                                )}{' '}
+                                                facturi
                                             </span>
                                         </div>
                                     )}
                                 />
                             }
                         />
-                        <Pie data={pieData} dataKey="count" nameKey="label" innerRadius={60} outerRadius={95} strokeWidth={2}>
+                        <Pie
+                            data={pieData}
+                            dataKey="count"
+                            nameKey="label"
+                            innerRadius={60}
+                            outerRadius={95}
+                            strokeWidth={2}
+                        >
                             {pieData.map((entry) => (
                                 <Cell key={entry.state} fill={entry.fill} />
                             ))}
@@ -277,13 +360,22 @@ function PaymentBreakdownCard({ data, moneda }: { data: PaymentState[]; moneda: 
                 </ChartContainer>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                     {data.map((row) => (
-                        <div key={row.state} className="flex items-center gap-2">
+                        <div
+                            key={row.state}
+                            className="flex items-center gap-2"
+                        >
                             <span
                                 className="size-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: STATE_COLORS[row.state] }}
+                                style={{
+                                    backgroundColor: STATE_COLORS[row.state],
+                                }}
                             />
-                            <span className="text-muted-foreground">{row.label}</span>
-                            <span className="ml-auto font-medium tabular-nums">{row.count}</span>
+                            <span className="text-muted-foreground">
+                                {row.label}
+                            </span>
+                            <span className="ml-auto font-medium tabular-nums">
+                                {row.count}
+                            </span>
                         </div>
                     ))}
                 </div>
@@ -292,7 +384,13 @@ function PaymentBreakdownCard({ data, moneda }: { data: PaymentState[]; moneda: 
     );
 }
 
-function AgingBucketsCard({ data, moneda }: { data: AgingBucket[]; moneda: string }) {
+function AgingBucketsCard({
+    data,
+    moneda,
+}: {
+    data: AgingBucket[];
+    moneda: string;
+}) {
     const config = useMemo<ChartConfig>(
         () => ({
             outstanding: { label: 'Restant', color: AGING_COLORS['31-60'] },
@@ -300,37 +398,58 @@ function AgingBucketsCard({ data, moneda }: { data: AgingBucket[]; moneda: strin
         [],
     );
     const total = data.reduce((s, r) => s + r.outstanding, 0);
-    const chartData = data.map((r) => ({ ...r, fill: AGING_COLORS[r.bucket] ?? 'var(--chart-1)' }));
+    const chartData = data.map((r) => ({
+        ...r,
+        fill: AGING_COLORS[r.bucket] ?? 'var(--chart-1)',
+    }));
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Vechime facturi restante</CardTitle>
                 <CardDescription>
-                    Sumă restantă pe intervale de întârziere · total: {formatMoney(total, moneda)}
+                    Sumă restantă pe intervale de întârziere · total:{' '}
+                    {formatMoney(total, moneda)}
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <ChartContainer config={config} className="h-[240px] w-full">
-                    <BarChart data={chartData} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
+                    <BarChart
+                        data={chartData}
+                        margin={{ left: 0, right: 10, top: 10, bottom: 0 }}
+                    >
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="bucket" tickLine={false} axisLine={false} />
+                        <XAxis
+                            dataKey="bucket"
+                            tickLine={false}
+                            axisLine={false}
+                        />
                         <YAxis
                             tickLine={false}
                             axisLine={false}
                             width={80}
-                            tickFormatter={(v) => new Intl.NumberFormat('ro-RO', { notation: 'compact' }).format(Number(v))}
+                            tickFormatter={(v) =>
+                                new Intl.NumberFormat('ro-RO', {
+                                    notation: 'compact',
+                                }).format(Number(v))
+                            }
                         />
                         <ChartTooltip
                             content={
                                 <ChartTooltipContent
                                     formatter={(_value, _name, item) => {
                                         const row = item.payload as AgingBucket;
+
                                         return (
                                             <div className="flex min-w-[200px] flex-col">
-                                                <span className="text-muted-foreground">{row.bucket} zile</span>
+                                                <span className="text-muted-foreground">
+                                                    {row.bucket} zile
+                                                </span>
                                                 <span className="font-medium tabular-nums">
-                                                    {formatMoney(row.outstanding, moneda)}
+                                                    {formatMoney(
+                                                        row.outstanding,
+                                                        moneda,
+                                                    )}
                                                 </span>
                                                 <span className="text-xs text-muted-foreground">
                                                     {row.count} facturi
@@ -353,9 +472,17 @@ function AgingBucketsCard({ data, moneda }: { data: AgingBucket[]; moneda: strin
     );
 }
 
-function TopSuppliersCard({ data, moneda }: { data: TopSupplier[]; moneda: string }) {
+function TopSuppliersCard({
+    data,
+    moneda,
+}: {
+    data: TopSupplier[];
+    moneda: string;
+}) {
     const config = useMemo<ChartConfig>(
-        () => ({ outstanding: { label: 'Restant', color: STATE_COLORS.overdue } }),
+        () => ({
+            outstanding: { label: 'Restant', color: STATE_COLORS.overdue },
+        }),
         [],
     );
 
@@ -363,26 +490,39 @@ function TopSuppliersCard({ data, moneda }: { data: TopSupplier[]; moneda: strin
         <Card>
             <CardHeader>
                 <CardTitle>Top furnizori restanți</CardTitle>
-                <CardDescription>Sumă restantă pe primii 5 furnizori</CardDescription>
+                <CardDescription>
+                    Sumă restantă pe primii 5 furnizori
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 {data.length === 0 ? (
                     <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-                        Niciun furnizor cu facturi restante în perioada selectată.
+                        Niciun furnizor cu facturi restante în perioada
+                        selectată.
                     </div>
                 ) : (
-                    <ChartContainer config={config} className="h-[240px] w-full">
+                    <ChartContainer
+                        config={config}
+                        className="h-[240px] w-full"
+                    >
                         <BarChart
                             data={data}
                             layout="vertical"
                             margin={{ left: 10, right: 10, top: 10, bottom: 0 }}
                         >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                horizontal={false}
+                            />
                             <XAxis
                                 type="number"
                                 tickLine={false}
                                 axisLine={false}
-                                tickFormatter={(v) => new Intl.NumberFormat('ro-RO', { notation: 'compact' }).format(Number(v))}
+                                tickFormatter={(v) =>
+                                    new Intl.NumberFormat('ro-RO', {
+                                        notation: 'compact',
+                                    }).format(Number(v))
+                                }
                             />
                             <YAxis
                                 dataKey="name"
@@ -390,21 +530,31 @@ function TopSuppliersCard({ data, moneda }: { data: TopSupplier[]; moneda: strin
                                 tickLine={false}
                                 axisLine={false}
                                 width={170}
-                                tickFormatter={(v: string) => (v.length > 24 ? `${v.slice(0, 24)}…` : v)}
+                                tickFormatter={(v: string) =>
+                                    v.length > 24 ? `${v.slice(0, 24)}…` : v
+                                }
                             />
                             <ChartTooltip
                                 content={
                                     <ChartTooltipContent
                                         formatter={(_value, _name, item) => {
-                                            const row = item.payload as TopSupplier;
+                                            const row =
+                                                item.payload as TopSupplier;
+
                                             return (
                                                 <div className="flex min-w-[220px] flex-col">
-                                                    <span className="font-medium">{row.name}</span>
+                                                    <span className="font-medium">
+                                                        {row.name}
+                                                    </span>
                                                     <span className="text-muted-foreground tabular-nums">
-                                                        {formatMoney(row.outstanding, moneda)}
+                                                        {formatMoney(
+                                                            row.outstanding,
+                                                            moneda,
+                                                        )}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
-                                                        {row.invoices} facturi restante
+                                                        {row.invoices} facturi
+                                                        restante
                                                     </span>
                                                 </div>
                                             );
@@ -412,7 +562,11 @@ function TopSuppliersCard({ data, moneda }: { data: TopSupplier[]; moneda: strin
                                     />
                                 }
                             />
-                            <Bar dataKey="outstanding" fill={STATE_COLORS.overdue} radius={[0, 6, 6, 0]} />
+                            <Bar
+                                dataKey="outstanding"
+                                fill={STATE_COLORS.overdue}
+                                radius={[0, 6, 6, 0]}
+                            />
                         </BarChart>
                     </ChartContainer>
                 )}
@@ -421,7 +575,13 @@ function TopSuppliersCard({ data, moneda }: { data: TopSupplier[]; moneda: strin
     );
 }
 
-function CashflowCard({ data, moneda }: { data: CashflowPoint[]; moneda: string }) {
+function CashflowCard({
+    data,
+    moneda,
+}: {
+    data: CashflowPoint[];
+    moneda: string;
+}) {
     const config = useMemo<ChartConfig>(
         () => ({
             incoming: { label: 'Încasări', color: CASHFLOW_COLORS.incoming },
@@ -434,7 +594,9 @@ function CashflowCard({ data, moneda }: { data: CashflowPoint[]; moneda: string 
         <Card className="md:col-span-2 lg:col-span-3">
             <CardHeader>
                 <CardTitle>Flux de numerar săptămânal</CardTitle>
-                <CardDescription>Total încasări vs. plăți pe săptămână din extrasele bancare</CardDescription>
+                <CardDescription>
+                    Total încasări vs. plăți pe săptămână din extrasele bancare
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 {data.length === 0 ? (
@@ -442,33 +604,59 @@ function CashflowCard({ data, moneda }: { data: CashflowPoint[]; moneda: string 
                         Niciun extras bancar în perioada selectată.
                     </div>
                 ) : (
-                    <ChartContainer config={config} className="h-[280px] w-full">
-                        <LineChart data={data} margin={{ left: 0, right: 20, top: 10, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <ChartContainer
+                        config={config}
+                        className="h-[280px] w-full"
+                    >
+                        <LineChart
+                            data={data}
+                            margin={{ left: 0, right: 20, top: 10, bottom: 0 }}
+                        >
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                            />
                             <XAxis
                                 dataKey="week"
                                 tickLine={false}
                                 axisLine={false}
-                                tickFormatter={(v: string) => v.replace(/^\d{4}-/, '')}
+                                tickFormatter={(v: string) =>
+                                    v.replace(/^\d{4}-/, '')
+                                }
                             />
                             <YAxis
                                 tickLine={false}
                                 axisLine={false}
                                 width={80}
-                                tickFormatter={(v) => new Intl.NumberFormat('ro-RO', { notation: 'compact' }).format(Number(v))}
+                                tickFormatter={(v) =>
+                                    new Intl.NumberFormat('ro-RO', {
+                                        notation: 'compact',
+                                    }).format(Number(v))
+                                }
                             />
                             <ChartTooltip
                                 content={
                                     <ChartTooltipContent
                                         labelFormatter={(_v, payload) => {
-                                            const row = payload?.[0]?.payload as CashflowPoint | undefined;
-                                            return row ? `Săptămâna ${row.week}` : '';
+                                            const row = payload?.[0]
+                                                ?.payload as
+                                                | CashflowPoint
+                                                | undefined;
+
+                                            return row
+                                                ? `Săptămâna ${row.week}`
+                                                : '';
                                         }}
                                         formatter={(value, name) => (
                                             <div className="flex min-w-[180px] items-center justify-between gap-2">
-                                                <span className="text-muted-foreground capitalize">{String(name)}</span>
+                                                <span className="text-muted-foreground capitalize">
+                                                    {String(name)}
+                                                </span>
                                                 <span className="font-medium tabular-nums">
-                                                    {formatMoney(Number(value), moneda)}
+                                                    {formatMoney(
+                                                        Number(value),
+                                                        moneda,
+                                                    )}
                                                 </span>
                                             </div>
                                         )}
@@ -498,5 +686,7 @@ function CashflowCard({ data, moneda }: { data: CashflowPoint[]; moneda: string 
 }
 
 Dashboard.layout = (page: ReactNode) => (
-    <AppLayout breadcrumbs={[{ title: 'Panou principal', href: dashboard() }]}>{page}</AppLayout>
+    <AppLayout breadcrumbs={[{ title: 'Panou principal', href: dashboard() }]}>
+        {page}
+    </AppLayout>
 );

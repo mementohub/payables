@@ -1,12 +1,24 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { Loader2, MessageSquarePlus, PanelLeft, Send, Sparkles, Trash2, X } from 'lucide-react';
+import {
+    Loader2,
+    MessageSquarePlus,
+    PanelLeft,
+    Send,
+    Sparkles,
+    Trash2,
+    X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import AppLayout from '@/layouts/app-layout';
 import AiChatController from '@/actions/App/Http/Controllers/AiChatController';
 import MarkdownContent from '@/components/markdown-content';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { index as aiChatIndex, show as aiChatShow, stream as aiChatStream } from '@/routes/ai-chat';
+import AppLayout from '@/layouts/app-layout';
+import {
+    index as aiChatIndex,
+    show as aiChatShow,
+    stream as aiChatStream,
+} from '@/routes/ai-chat';
 
 type Conversation = {
     id: string;
@@ -35,14 +47,23 @@ type StreamEvent =
     | { type: 'error'; message: string };
 
 function getCsrfToken(): string {
-    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+    return (
+        document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+            ?.content ?? ''
+    );
 }
 
-export default function AiChatIndex({ conversations, activeConversationId, messages }: Props) {
+export default function AiChatIndex({
+    conversations,
+    activeConversationId,
+    messages,
+}: Props) {
     const [draft, setDraft] = useState('');
     const [pendingUser, setPendingUser] = useState<string | null>(null);
     const [streamText, setStreamText] = useState('');
-    const [streamPhase, setStreamPhase] = useState<'idle' | 'running' | 'tool'>('idle');
+    const [streamPhase, setStreamPhase] = useState<'idle' | 'running' | 'tool'>(
+        'idle',
+    );
     const [activeTool, setActiveTool] = useState<string | null>(null);
     const [errorText, setErrorText] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -76,14 +97,20 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
     const busy = streamPhase !== 'idle';
 
     const startNew = () => {
-        if (busy) return;
+        if (busy) {
+            return;
+        }
+
         router.visit(aiChatIndex().url);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const message = draft.trim();
-        if (! message || busy) return;
+
+        if (!message || busy) {
+            return;
+        }
 
         setErrorText(null);
         setPendingUser(message);
@@ -112,33 +139,46 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                 }),
             });
 
-            if (! response.ok || ! response.body) {
+            if (!response.ok || !response.body) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
-            let finalConversationId: string | null = activeConversationId ?? null;
+            let finalConversationId: string | null =
+                activeConversationId ?? null;
             let sawError: string | null = null;
 
             while (true) {
                 const { value, done } = await reader.read();
-                if (done) break;
+
+                if (done) {
+                    break;
+                }
 
                 buffer += decoder.decode(value, { stream: true });
 
                 let boundary = buffer.indexOf('\n\n');
+
                 while (boundary !== -1) {
                     const chunk = buffer.slice(0, boundary);
                     buffer = buffer.slice(boundary + 2);
                     boundary = buffer.indexOf('\n\n');
 
                     for (const line of chunk.split('\n')) {
-                        if (! line.startsWith('data:')) continue;
+                        if (!line.startsWith('data:')) {
+                            continue;
+                        }
+
                         const payload = line.slice(5).trim();
-                        if (! payload) continue;
+
+                        if (!payload) {
+                            continue;
+                        }
+
                         let ev: StreamEvent;
+
                         try {
                             ev = JSON.parse(payload) as StreamEvent;
                         } catch {
@@ -156,7 +196,8 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                             setActiveTool(null);
                             setStreamPhase('running');
                         } else if (ev.type === 'done') {
-                            finalConversationId = ev.conversation_id ?? finalConversationId;
+                            finalConversationId =
+                                ev.conversation_id ?? finalConversationId;
                         } else if (ev.type === 'error') {
                             sawError = ev.message;
                         }
@@ -168,13 +209,19 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                 throw new Error(sawError);
             }
 
-            if (finalConversationId && finalConversationId !== activeConversationId) {
+            if (
+                finalConversationId &&
+                finalConversationId !== activeConversationId
+            ) {
                 router.visit(aiChatShow(finalConversationId).url, {
                     preserveScroll: true,
                     replace: false,
                 });
             } else {
-                router.reload({ only: ['conversations', 'messages'], preserveScroll: true });
+                router.reload({
+                    only: ['conversations', 'messages'],
+                    preserveScroll: true,
+                });
             }
         } catch (err) {
             if ((err as Error).name === 'AbortError') {
@@ -196,20 +243,32 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
     };
 
     const statusLabel = useMemo(() => {
-        if (streamPhase === 'tool' && activeTool) return `Rulez ${activeTool}…`;
-        if (streamPhase === 'running') return 'Scriu răspunsul…';
+        if (streamPhase === 'tool' && activeTool) {
+            return `Rulez ${activeTool}…`;
+        }
+
+        if (streamPhase === 'running') {
+            return 'Scriu răspunsul…';
+        }
+
         return '';
     }, [streamPhase, activeTool]);
 
     const activeTitle = useMemo(() => {
-        if (! activeConversationId) return 'Conversație nouă';
-        return conversations.find((c) => c.id === activeConversationId)?.title ?? 'Asistent AI';
+        if (!activeConversationId) {
+            return 'Conversație nouă';
+        }
+
+        return (
+            conversations.find((c) => c.id === activeConversationId)?.title ??
+            'Asistent AI'
+        );
     }, [activeConversationId, conversations]);
 
     const sidebar = (
         <div className="flex h-full flex-col gap-2 p-3">
             <div className="flex items-center justify-between gap-2 md:block">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase md:hidden">
                     Conversații
                 </h2>
                 <button
@@ -221,7 +280,12 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                     <X className="size-4" />
                 </button>
             </div>
-            <Button variant="secondary" size="sm" onClick={startNew} disabled={busy}>
+            <Button
+                variant="secondary"
+                size="sm"
+                onClick={startNew}
+                disabled={busy}
+            >
                 <MessageSquarePlus />
                 Conversație nouă
             </Button>
@@ -233,12 +297,17 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                         </li>
                     )}
                     {conversations.map((c) => (
-                        <li key={c.id} className="group flex items-center gap-1">
+                        <li
+                            key={c.id}
+                            className="group flex items-center gap-1"
+                        >
                             <Link
                                 href={aiChatShow(c.id)}
                                 className={
                                     'flex-1 truncate rounded-md px-2 py-2 text-xs hover:bg-muted md:py-1.5 ' +
-                                    (c.id === activeConversationId ? 'bg-muted font-medium' : '')
+                                    (c.id === activeConversationId
+                                        ? 'bg-muted font-medium'
+                                        : '')
                                 }
                             >
                                 {c.title}
@@ -299,7 +368,9 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                         >
                             <PanelLeft className="size-4" />
                         </button>
-                        <h1 className="flex-1 truncate text-sm font-medium">{activeTitle}</h1>
+                        <h1 className="flex-1 truncate text-sm font-medium">
+                            {activeTitle}
+                        </h1>
                         <button
                             type="button"
                             onClick={startNew}
@@ -315,7 +386,9 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                         ref={threadRef}
                         className="flex-1 overflow-y-auto px-3 py-4 md:p-4"
                     >
-                        {messages.length === 0 && ! pendingUser && <EmptyState />}
+                        {messages.length === 0 && !pendingUser && (
+                            <EmptyState />
+                        )}
                         <div className="mx-auto flex max-w-3xl flex-col gap-3 md:gap-4">
                             {messages.map((m) => (
                                 <MessageBubble key={m.id} message={m} />
@@ -331,7 +404,10 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                                 />
                             )}
                             {(streamText || streamPhase !== 'idle') && (
-                                <StreamingBubble text={streamText} status={statusLabel} />
+                                <StreamingBubble
+                                    text={streamText}
+                                    status={statusLabel}
+                                />
                             )}
                             {errorText && (
                                 <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -343,7 +419,10 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
 
                     <div
                         className="border-t border-sidebar-border/70 px-3 py-3 dark:border-sidebar-border"
-                        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+                        style={{
+                            paddingBottom:
+                                'max(0.75rem, env(safe-area-inset-bottom))',
+                        }}
                     >
                         <form
                             onSubmit={handleSubmit}
@@ -356,10 +435,15 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                                 required
                                 disabled={busy}
                                 placeholder="Întreabă…"
-                                className="min-h-[2.75rem] max-h-40 w-full resize-none rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 md:min-h-[4.5rem] md:text-sm dark:border-sidebar-border"
+                                className="max-h-40 min-h-[2.75rem] w-full resize-none rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-base focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50 md:min-h-[4.5rem] md:text-sm dark:border-sidebar-border"
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                        (e.target as HTMLTextAreaElement).form?.requestSubmit();
+                                    if (
+                                        e.key === 'Enter' &&
+                                        (e.metaKey || e.ctrlKey)
+                                    ) {
+                                        (
+                                            e.target as HTMLTextAreaElement
+                                        ).form?.requestSubmit();
                                     }
                                 }}
                             />
@@ -373,23 +457,28 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
                                     aria-label="Oprește"
                                 >
                                     <X className="md:hidden" />
-                                    <span className="hidden md:inline">Oprește</span>
+                                    <span className="hidden md:inline">
+                                        Oprește
+                                    </span>
                                 </Button>
                             ) : (
                                 <Button
                                     type="submit"
                                     size="icon"
-                                    disabled={! draft.trim()}
+                                    disabled={!draft.trim()}
                                     className="md:size-auto md:px-4"
                                     aria-label="Trimite"
                                 >
                                     <Send />
-                                    <span className="hidden md:inline">Trimite</span>
+                                    <span className="hidden md:inline">
+                                        Trimite
+                                    </span>
                                 </Button>
                             )}
                         </form>
                         <p className="mx-auto mt-1 hidden max-w-3xl text-[10px] text-muted-foreground md:block">
-                            Ctrl/⌘ + Enter trimite. Răspunsul apare în timp real; interogările complexe pot dura 10–60s.
+                            Ctrl/⌘ + Enter trimite. Răspunsul apare în timp
+                            real; interogările complexe pot dura 10–60s.
                         </p>
                     </div>
                 </section>
@@ -400,15 +489,22 @@ export default function AiChatIndex({ conversations, activeConversationId, messa
 
 function MessageBubble({ message }: { message: Message }) {
     const isUser = message.role === 'user';
+
     return (
         <div className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>
             <Card
                 className={
                     'max-w-[92%] px-3 py-2 text-sm md:max-w-[85%] ' +
-                    (isUser ? 'whitespace-pre-wrap bg-primary text-primary-foreground' : '')
+                    (isUser
+                        ? 'bg-primary whitespace-pre-wrap text-primary-foreground'
+                        : '')
                 }
             >
-                {isUser ? message.content : <MarkdownContent content={message.content} />}
+                {isUser ? (
+                    message.content
+                ) : (
+                    <MarkdownContent content={message.content} />
+                )}
             </Card>
         </div>
     );
@@ -453,8 +549,9 @@ function EmptyState() {
             <div>
                 <h1 className="text-lg font-semibold">Asistent financiar AI</h1>
                 <p className="text-sm text-muted-foreground">
-                    Întreabă despre facturi, plăți, cash-flow sau parteneri. Agentul execută SELECT-uri
-                    read-only pe baza companiei alese și răspunde în română.
+                    Întreabă despre facturi, plăți, cash-flow sau parteneri.
+                    Agentul execută SELECT-uri read-only pe baza companiei alese
+                    și răspunde în română.
                 </p>
             </div>
             <ul className="grid w-full gap-2 sm:grid-cols-2">
@@ -473,12 +570,15 @@ function EmptyState() {
 
 function AiChatLayout({ children }: { children: React.ReactNode }) {
     const { activeConversationId } = usePage<Props>().props;
+
     return (
         <AppLayout
             breadcrumbs={[
                 {
                     title: 'Asistent AI',
-                    href: activeConversationId ? aiChatShow(activeConversationId) : aiChatIndex(),
+                    href: activeConversationId
+                        ? aiChatShow(activeConversationId)
+                        : aiChatIndex(),
                 },
             ]}
         >
@@ -487,4 +587,6 @@ function AiChatLayout({ children }: { children: React.ReactNode }) {
     );
 }
 
-AiChatIndex.layout = (page: React.ReactNode) => <AiChatLayout>{page}</AiChatLayout>;
+AiChatIndex.layout = (page: React.ReactNode) => (
+    <AiChatLayout>{page}</AiChatLayout>
+);

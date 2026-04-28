@@ -24,7 +24,8 @@ export default function DeleteUser() {
                 <div className="relative space-y-0.5 text-red-600 dark:text-red-100">
                     <p className="font-medium">Atenție</p>
                     <p className="text-sm">
-                        Procedează cu precauție, această acțiune nu poate fi anulată.
+                        Procedează cu precauție, această acțiune nu poate fi
+                        anulată.
                     </p>
                 </div>
 
@@ -37,7 +38,9 @@ export default function DeleteUser() {
                             Sigur dorești să îți ștergi contul?
                         </DialogTitle>
                         <DialogDescription>
-                            După ștergere, toate resursele și datele asociate vor fi eliminate definitiv. Confirmă că dorești să ștergi contul permanent.
+                            După ștergere, toate resursele și datele asociate
+                            vor fi eliminate definitiv. Confirmă că dorești să
+                            ștergi contul permanent.
                         </DialogDescription>
                         <Form
                             {...destroy.form()}

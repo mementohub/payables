@@ -1,7 +1,12 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useAppearance, type Appearance } from '@/hooks/use-appearance';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useAppearance } from '@/hooks/use-appearance';
+import type { Appearance } from '@/hooks/use-appearance';
 
 const NEXT: Record<Appearance, Appearance> = {
     light: 'dark',
@@ -17,7 +22,8 @@ const LABEL: Record<Appearance, string> = {
 
 export function AppearanceToggle() {
     const { appearance, updateAppearance } = useAppearance();
-    const Icon = appearance === 'light' ? Sun : appearance === 'dark' ? Moon : Monitor;
+    const Icon =
+        appearance === 'light' ? Sun : appearance === 'dark' ? Moon : Monitor;
 
     return (
         <Tooltip>

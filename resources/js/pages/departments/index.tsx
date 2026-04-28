@@ -1,7 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
 import { Plus, Trash2, UserMinus, UserPlus } from 'lucide-react';
 import { useState } from 'react';
-import AppLayout from '@/layouts/app-layout';
 import DepartmentController from '@/actions/App/Http/Controllers/DepartmentController';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import AppLayout from '@/layouts/app-layout';
 import { index as departmentsIndex } from '@/routes/departments';
 
 type Member = { id: number; name: string; email: string };
@@ -53,14 +53,17 @@ export default function DepartmentsIndex({ departments, users }: Props) {
                 <div>
                     <h1 className="text-2xl font-semibold">Departamente</h1>
                     <p className="text-sm text-muted-foreground">
-                        Supervizorii aprobă facturi pe furnizorii la care sunt atribuiți. Masterii dau OK final după
-                        etapa supervizorilor, indiferent de furnizor.
+                        Supervizorii aprobă facturi pe furnizorii la care sunt
+                        atribuiți. Masterii dau OK final după etapa
+                        supervizorilor, indiferent de furnizor.
                     </p>
                 </div>
 
                 <Card className="gap-2 py-3">
                     <CardHeader className="px-4 pb-0">
-                        <CardTitle className="text-sm">Creează departament</CardTitle>
+                        <CardTitle className="text-sm">
+                            Creează departament
+                        </CardTitle>
                     </CardHeader>
                     <CardContent className="px-4 pb-3">
                         <Form
@@ -79,7 +82,9 @@ export default function DepartmentsIndex({ departments, users }: Props) {
                                         <Input
                                             name="name"
                                             value={name}
-                                            onChange={(e) => setName(e.target.value)}
+                                            onChange={(e) =>
+                                                setName(e.target.value)
+                                            }
                                             placeholder="Ex: Operațional transport"
                                             className="min-h-10 w-[260px]"
                                         />
@@ -88,19 +93,36 @@ export default function DepartmentsIndex({ departments, users }: Props) {
                                         <Label className="text-xs">Tip</Label>
                                         <Select
                                             value={type}
-                                            onValueChange={(v) => setType(v as 'supervisor' | 'master')}
+                                            onValueChange={(v) =>
+                                                setType(
+                                                    v as
+                                                        | 'supervisor'
+                                                        | 'master',
+                                                )
+                                            }
                                         >
                                             <SelectTrigger className="min-h-10 w-[180px]">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="supervisor">Supervizor</SelectItem>
-                                                <SelectItem value="master">Master</SelectItem>
+                                                <SelectItem value="supervisor">
+                                                    Supervizor
+                                                </SelectItem>
+                                                <SelectItem value="master">
+                                                    Master
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
-                                        <input type="hidden" name="type" value={type} />
+                                        <input
+                                            type="hidden"
+                                            name="type"
+                                            value={type}
+                                        />
                                     </div>
-                                    <Button type="submit" disabled={processing || ! name.trim()}>
+                                    <Button
+                                        type="submit"
+                                        disabled={processing || !name.trim()}
+                                    >
                                         <Plus />
                                         Creează
                                     </Button>
@@ -110,8 +132,16 @@ export default function DepartmentsIndex({ departments, users }: Props) {
                     </CardContent>
                 </Card>
 
-                <DepartmentGroup title="Supervizori" items={supervisorDepts} users={users} />
-                <DepartmentGroup title="Masteri" items={masterDepts} users={users} />
+                <DepartmentGroup
+                    title="Supervizori"
+                    items={supervisorDepts}
+                    users={users}
+                />
+                <DepartmentGroup
+                    title="Masteri"
+                    items={masterDepts}
+                    users={users}
+                />
             </div>
         </>
     );
@@ -128,13 +158,21 @@ function DepartmentGroup({
 }) {
     return (
         <div className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                {title}
+            </h2>
             {items.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Niciun departament.</p>
+                <p className="text-xs text-muted-foreground">
+                    Niciun departament.
+                </p>
             ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                     {items.map((dept) => (
-                        <DepartmentCard key={dept.id} dept={dept} users={users} />
+                        <DepartmentCard
+                            key={dept.id}
+                            dept={dept}
+                            users={users}
+                        />
                     ))}
                 </div>
             )}
@@ -145,7 +183,7 @@ function DepartmentGroup({
 function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
     const [addUserId, setAddUserId] = useState('');
     const memberIds = new Set(dept.members.map((m) => m.id));
-    const available = users.filter((u) => ! memberIds.has(u.id));
+    const available = users.filter((u) => !memberIds.has(u.id));
 
     return (
         <Card className="gap-2 py-3">
@@ -159,7 +197,9 @@ function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
                 <Form
                     {...DepartmentController.destroy.form(dept.id)}
                     options={{ preserveScroll: true }}
-                    onBefore={() => confirm(`Ștergi departamentul ${dept.name}?`)}
+                    onBefore={() =>
+                        confirm(`Ștergi departamentul ${dept.name}?`)
+                    }
                 >
                     {({ processing }) => (
                         <Button size="sm" variant="ghost" disabled={processing}>
@@ -170,7 +210,9 @@ function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
             </CardHeader>
             <CardContent className="space-y-2 px-4 pb-3">
                 {dept.members.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Niciun membru.</p>
+                    <p className="text-xs text-muted-foreground">
+                        Niciun membru.
+                    </p>
                 ) : (
                     <ul className="flex flex-col gap-1">
                         {dept.members.map((member) => (
@@ -179,15 +221,26 @@ function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
                                 className="flex items-center justify-between rounded-md border border-sidebar-border/70 px-2 py-1 text-xs dark:border-sidebar-border"
                             >
                                 <div>
-                                    <div className="font-medium">{member.name}</div>
-                                    <div className="text-muted-foreground">{member.email}</div>
+                                    <div className="font-medium">
+                                        {member.name}
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                        {member.email}
+                                    </div>
                                 </div>
                                 <Form
-                                    {...DepartmentController.detachMember.form([dept.id, member.id])}
+                                    {...DepartmentController.detachMember.form([
+                                        dept.id,
+                                        member.id,
+                                    ])}
                                     options={{ preserveScroll: true }}
                                 >
                                     {({ processing }) => (
-                                        <Button size="sm" variant="ghost" disabled={processing}>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            disabled={processing}
+                                        >
                                             <UserMinus className="size-4" />
                                         </Button>
                                     )}
@@ -206,21 +259,37 @@ function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
                     >
                         {({ processing }) => (
                             <>
-                                <Select value={addUserId} onValueChange={setAddUserId}>
+                                <Select
+                                    value={addUserId}
+                                    onValueChange={setAddUserId}
+                                >
                                     <SelectTrigger size="sm" className="w-full">
                                         <SelectValue placeholder="Adaugă utilizator…" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {available.map((u) => (
-                                            <SelectItem key={u.id} value={String(u.id)}>
+                                            <SelectItem
+                                                key={u.id}
+                                                value={String(u.id)}
+                                            >
                                                 {u.name}
-                                                <span className="ml-2 text-xs text-muted-foreground">{u.email}</span>
+                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                    {u.email}
+                                                </span>
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <input type="hidden" name="user_id" value={addUserId} />
-                                <Button size="sm" type="submit" disabled={processing || ! addUserId}>
+                                <input
+                                    type="hidden"
+                                    name="user_id"
+                                    value={addUserId}
+                                />
+                                <Button
+                                    size="sm"
+                                    type="submit"
+                                    disabled={processing || !addUserId}
+                                >
                                     <UserPlus className="size-4" />
                                 </Button>
                             </>
@@ -233,5 +302,9 @@ function DepartmentCard({ dept, users }: { dept: Department; users: User[] }) {
 }
 
 DepartmentsIndex.layout = (page: React.ReactNode) => (
-    <AppLayout breadcrumbs={[{ title: 'Departamente', href: departmentsIndex() }]}>{page}</AppLayout>
+    <AppLayout
+        breadcrumbs={[{ title: 'Departamente', href: departmentsIndex() }]}
+    >
+        {page}
+    </AppLayout>
 );

@@ -17,7 +17,11 @@ import { useMemo, useState } from 'react';
 import type { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 export type DateRangeValue = {
@@ -33,43 +37,59 @@ type PresetKey =
     | 'current_year'
     | 'last_year';
 
-const PRESETS: { key: PresetKey; label: string; compute: () => { from: Date; to: Date } }[] = [
+const PRESETS: {
+    key: PresetKey;
+    label: string;
+    compute: () => { from: Date; to: Date };
+}[] = [
     {
         key: 'current_month',
         label: 'Luna curentă',
-        compute: () => ({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) }),
+        compute: () => ({
+            from: startOfMonth(new Date()),
+            to: endOfMonth(new Date()),
+        }),
     },
     {
         key: 'last_month',
         label: 'Luna trecută',
         compute: () => {
             const prev = subMonths(new Date(), 1);
+
             return { from: startOfMonth(prev), to: endOfMonth(prev) };
         },
     },
     {
         key: 'current_quarter',
         label: 'Trimestrul curent',
-        compute: () => ({ from: startOfQuarter(new Date()), to: endOfQuarter(new Date()) }),
+        compute: () => ({
+            from: startOfQuarter(new Date()),
+            to: endOfQuarter(new Date()),
+        }),
     },
     {
         key: 'last_quarter',
         label: 'Trimestrul trecut',
         compute: () => {
             const prev = subQuarters(new Date(), 1);
+
             return { from: startOfQuarter(prev), to: endOfQuarter(prev) };
         },
     },
     {
         key: 'current_year',
         label: 'Anul curent',
-        compute: () => ({ from: startOfYear(new Date()), to: endOfYear(new Date()) }),
+        compute: () => ({
+            from: startOfYear(new Date()),
+            to: endOfYear(new Date()),
+        }),
     },
     {
         key: 'last_year',
         label: 'Anul trecut',
         compute: () => {
             const prev = subYears(new Date(), 1);
+
             return { from: startOfYear(prev), to: endOfYear(prev) };
         },
     },
@@ -79,24 +99,36 @@ function parseISO(value: string | null): Date | undefined {
     if (!value) {
         return undefined;
     }
+
     const d = parse(value, 'yyyy-MM-dd', new Date());
+
     return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 function sameDay(a: Date, b: Date): boolean {
-    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    return (
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate()
+    );
 }
 
-function matchPreset(from: Date | undefined, to: Date | undefined): PresetKey | null {
+function matchPreset(
+    from: Date | undefined,
+    to: Date | undefined,
+): PresetKey | null {
     if (!from || !to) {
         return null;
     }
+
     for (const preset of PRESETS) {
         const { from: pFrom, to: pTo } = preset.compute();
+
         if (sameDay(from, pFrom) && sameDay(to, pTo)) {
             return preset.key;
         }
     }
+
     return null;
 }
 
@@ -121,24 +153,36 @@ export default function DateRangePicker({
     const toDate = parseISO(value.to);
     const [open, setOpen] = useState(false);
 
-    const activePreset = useMemo(() => matchPreset(fromDate, toDate), [fromDate, toDate]);
+    const activePreset = useMemo(
+        () => matchPreset(fromDate, toDate),
+        [fromDate, toDate],
+    );
 
     const label = useMemo(() => {
         if (activePreset) {
-            return PRESETS.find((p) => p.key === activePreset)?.label ?? placeholder;
+            return (
+                PRESETS.find((p) => p.key === activePreset)?.label ??
+                placeholder
+            );
         }
+
         if (fromDate && toDate) {
             return `${format(fromDate, 'd MMM yyyy', { locale: ro })} – ${format(toDate, 'd MMM yyyy', { locale: ro })}`;
         }
+
         if (fromDate) {
             return `${format(fromDate, 'd MMM yyyy', { locale: ro })} – ...`;
         }
+
         return placeholder;
     }, [activePreset, fromDate, toDate, placeholder]);
 
     const applyPreset = (preset: (typeof PRESETS)[number]) => {
         const { from, to } = preset.compute();
-        onChange({ from: format(from, 'yyyy-MM-dd'), to: format(to, 'yyyy-MM-dd') });
+        onChange({
+            from: format(from, 'yyyy-MM-dd'),
+            to: format(to, 'yyyy-MM-dd'),
+        });
         setOpen(false);
     };
 
@@ -197,10 +241,14 @@ export default function DateRangePicker({
                     </button>
                 )}
             </div>
-            <PopoverContent align="start" className="flex w-auto flex-col gap-0 p-0 sm:flex-row">
+            <PopoverContent
+                align="start"
+                className="flex w-auto flex-col gap-0 p-0 sm:flex-row"
+            >
                 <div className="flex shrink-0 flex-col gap-1 border-b p-2 sm:w-[180px] sm:border-r sm:border-b-0">
                     {PRESETS.map((preset) => {
                         const isActive = activePreset === preset.key;
+
                         return (
                             <Button
                                 key={preset.key}
@@ -217,7 +265,9 @@ export default function DateRangePicker({
                     <div className="my-1 border-t" />
                     <Button
                         type="button"
-                        variant={!activePreset && hasValue ? 'secondary' : 'ghost'}
+                        variant={
+                            !activePreset && hasValue ? 'secondary' : 'ghost'
+                        }
                         size="sm"
                         className="justify-start font-normal"
                         onClick={() => {
@@ -242,7 +292,11 @@ export default function DateRangePicker({
                     mode="range"
                     locale={ro}
                     numberOfMonths={2}
-                    selected={fromDate || toDate ? { from: fromDate, to: toDate } : undefined}
+                    selected={
+                        fromDate || toDate
+                            ? { from: fromDate, to: toDate }
+                            : undefined
+                    }
                     onSelect={handleSelect}
                     defaultMonth={fromDate ?? new Date()}
                     captionLayout="dropdown"

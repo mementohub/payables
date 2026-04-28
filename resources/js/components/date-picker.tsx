@@ -4,7 +4,11 @@ import { CalendarIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -24,7 +28,9 @@ function parseISO(value: string | null): Date | undefined {
     if (!value) {
         return undefined;
     }
+
     const d = parse(value, 'yyyy-MM-dd', new Date());
+
     return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
@@ -59,7 +65,9 @@ export default function DatePicker({
                         )}
                     >
                         <CalendarIcon className="mr-2 size-4" />
-                        {selected ? format(selected, 'dd MMM yyyy', { locale: ro }) : placeholder}
+                        {selected
+                            ? format(selected, 'dd MMM yyyy', { locale: ro })
+                            : placeholder}
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-auto p-0">
@@ -77,13 +85,20 @@ export default function DatePicker({
                             }
                         }}
                         defaultMonth={selected}
-                        startMonth={fromYear ? new Date(fromYear, 0) : undefined}
+                        startMonth={
+                            fromYear ? new Date(fromYear, 0) : undefined
+                        }
                         endMonth={toYear ? new Date(toYear, 11) : undefined}
                     />
                 </PopoverContent>
             </Popover>
             {name && (
-                <input type="hidden" name={name} value={value ?? ''} required={required} />
+                <input
+                    type="hidden"
+                    name={name}
+                    value={value ?? ''}
+                    required={required}
+                />
             )}
         </>
     );
