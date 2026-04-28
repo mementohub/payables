@@ -308,7 +308,7 @@ export default function BankStatementsIndex({
                     </Table>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
                     <span className="text-xs text-muted-foreground">
                         {statements.from ?? 0}–{statements.to ?? 0} din{' '}
                         {statements.total}

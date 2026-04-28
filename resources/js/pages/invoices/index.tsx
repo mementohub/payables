@@ -597,7 +597,7 @@ export default function InvoicesIndex({
                     ))}
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
                     <span className="text-xs text-muted-foreground">
                         {invoices.from ?? 0}–{invoices.to ?? 0} din{' '}
                         {invoices.total}
