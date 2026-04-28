@@ -30,6 +30,12 @@ class SyncService
     {
         $remote = $this->remote->connection($company);
 
+        try {
+            $remote->getPdo();
+        } catch (\Throwable $e) {
+            throw new \RuntimeException("Cannot reach remote database for company {$company->getKey()}: {$e->getMessage()}", 0, $e);
+        }
+
         $tipDocs = [...self::FURNIZOR_DOC_TYPES, ...self::CLIENT_DOC_TYPES];
 
         if ($to === null) {
