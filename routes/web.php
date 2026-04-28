@@ -10,10 +10,11 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
-Route::inertia('/', 'welcome')->name('home');
+Route::get('/', fn () => Auth::check() ? redirect()->route('dashboard') : redirect()->route('login'))->name('home');
 
 Route::middleware([
     'auth',
@@ -26,11 +27,14 @@ Route::middleware([
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
 
     Route::get('facturi-emise', [InvoiceController::class, 'emise'])->name('invoices.emise');
+    Route::post('facturi-emise/export', [InvoiceController::class, 'exportEmise'])->name('invoices.emise.export');
     Route::get('facturi-primite', [InvoiceController::class, 'primite'])->name('invoices.primite');
+    Route::post('facturi-primite/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
     Route::get('facturi/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::post('facturi/{invoice}/approve', [InvoiceController::class, 'approve'])->name('invoices.approve');
 
     Route::get('efacturi', [EInvoiceController::class, 'index'])->name('e-invoices.index');
+    Route::post('efacturi/export', [EInvoiceController::class, 'export'])->name('e-invoices.export');
     Route::get('efacturi/{eInvoice}/detail', [EInvoiceController::class, 'detail'])->name('e-invoices.detail');
     Route::get('efacturi/{eInvoice}/parsed', [EInvoiceController::class, 'parsed'])->name('e-invoices.parsed');
 

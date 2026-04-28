@@ -4,30 +4,100 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\EInvoice;
+use App\Services\Xlsx\XlsxWriter;
 use Einvoicing\Invoice as EInvoicingInvoice;
 use Einvoicing\InvoiceLine;
 use Einvoicing\Party;
 use Einvoicing\Readers\UblReader;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EInvoiceController extends Controller
 {
     public function index(Request $request): Response
     {
+        $eInvoices = $this->buildListQuery($request)
+            ->orderByDesc('msg_data_creare_d')
+            ->paginate(25)
+            ->withQueryString()
+            ->through(fn (EInvoice $row) => $this->transformForList($row));
+
         $search = $request->string('search')->toString();
         $companyId = $request->integer('company_id');
-        $status = $request->string('status')->toString();
+        $status = $this->resolveStatus($request);
         $matched = $request->string('matched')->toString();
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
 
-        if (! $request->has('status')) {
-            $status = 'pending';
+        return Inertia::render('e-invoices/index', [
+            'eInvoices' => $eInvoices,
+            'filters' => [
+                'search' => $search ?: null,
+                'company_id' => $companyId ?: null,
+                'status' => $status === '' ? 'all' : $status,
+                'matched' => $matched ?: null,
+                'from' => $from ?: null,
+                'to' => $to ?: null,
+            ],
+            'companies' => Company::orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $ids = $request->input('ids');
+        $selectAll = $request->boolean('select_all');
+
+        if (! $selectAll && (! is_array($ids) || empty($ids))) {
+            abort(422, 'Selecție goală.');
         }
 
-        $eInvoices = EInvoice::query()
+        $query = $this->buildListQuery($request)->orderByDesc('msg_data_creare_d');
+
+        if (! $selectAll) {
+            $idList = array_values(array_filter(array_map('intval', $ids), fn ($id) => $id > 0));
+            $query->whereIn('e_invoices.id', $idList);
+        }
+
+        $headers = ['Data primire', 'Data factură', 'Tip doc XML', 'Număr', 'Furnizor', 'CIF', 'Reg. com.', 'Companie', 'Status', 'Asociere', 'Index încărcare', 'Eroare'];
+
+        $rows = function () use ($query) {
+            foreach ($query->lazy(500) as $row) {
+                yield [
+                    $row->msg_data_creare_d?->format('Y-m-d H:i') ?? '',
+                    $row->data_doc_xml?->toDateString() ?? '',
+                    $row->tip_doc_xml ?? '',
+                    $row->nr_doc_xml ?? '',
+                    $row->partener_xml ?? '',
+                    $row->msg_cif ?? '',
+                    $row->cod_cci_xml ?? '',
+                    $row->company->name,
+                    $this->statusLabel($row),
+                    $row->invoice_id ? 'Asociată' : 'Neasociată',
+                    $row->msg_index_incarcare ?? '',
+                    $row->err_ins_omc ?? '',
+                ];
+            }
+        };
+
+        $filename = 'efacturi-'.now()->format('Ymd-His').'.xlsx';
+
+        return XlsxWriter::streamDownload($filename, $headers, $rows(), 'eFacturi');
+    }
+
+    private function buildListQuery(Request $request): Builder
+    {
+        $search = $request->string('search')->toString();
+        $companyId = $request->integer('company_id');
+        $status = $this->resolveStatus($request);
+        $matched = $request->string('matched')->toString();
+        $from = $request->string('from')->toString();
+        $to = $request->string('to')->toString();
+
+        return EInvoice::query()
             ->with([
                 'company:id,name',
                 'partner:id,name,cui',
@@ -48,24 +118,29 @@ class EInvoiceController extends Controller
                         ->orWhere('cod_cci_xml', 'like', "%{$term}%")
                         ->orWhere('msg_id', 'like', "%{$term}%");
                 });
-            })
-            ->orderByDesc('msg_data_creare_d')
-            ->paginate(25)
-            ->withQueryString()
-            ->through(fn (EInvoice $row) => $this->transformForList($row));
+            });
+    }
 
-        return Inertia::render('e-invoices/index', [
-            'eInvoices' => $eInvoices,
-            'filters' => [
-                'search' => $search ?: null,
-                'company_id' => $companyId ?: null,
-                'status' => $status === '' ? 'all' : $status,
-                'matched' => $matched ?: null,
-                'from' => $from ?: null,
-                'to' => $to ?: null,
-            ],
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
-        ]);
+    private function resolveStatus(Request $request): string
+    {
+        $status = $request->string('status')->toString();
+        if (! $request->has('status')) {
+            return 'pending';
+        }
+
+        return $status;
+    }
+
+    private function statusLabel(EInvoice $row): string
+    {
+        if ($row->err_ins_omc !== null && $row->err_ins_omc !== '') {
+            return 'Cu erori';
+        }
+        if ($row->data_ins_omc !== null) {
+            return 'Procesată';
+        }
+
+        return 'Neprocesată';
     }
 
     public function detail(EInvoice $eInvoice): array
@@ -170,14 +245,15 @@ class EInvoiceController extends Controller
         return [
             'id' => $row->id,
             'msg_id' => $row->msg_id,
+            'msg_cif' => $row->msg_cif,
             'msg_index_incarcare' => $row->msg_index_incarcare,
-            'msg_data_creare_d' => $row->msg_data_creare_d?->toIso8601String(),
+            'msg_data_creare_d' => $row->msg_data_creare_d?->format('Y-m-d H:i'),
             'data_doc_xml' => $row->data_doc_xml?->toDateString(),
             'tip_doc_xml' => $row->tip_doc_xml,
             'nr_doc_xml' => $row->nr_doc_xml,
             'partener_xml' => $row->partener_xml,
             'cod_cci_xml' => $row->cod_cci_xml,
-            'data_ins_omc' => $row->data_ins_omc?->toIso8601String(),
+            'data_ins_omc' => $row->data_ins_omc?->format('Y-m-d H:i'),
             'err_ins_omc' => $row->err_ins_omc,
             'status' => $row->status,
             'company' => ['id' => $row->company->id, 'name' => $row->company->name],

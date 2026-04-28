@@ -7,7 +7,9 @@ use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceApproval;
 use App\Models\User;
+use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InvoiceController extends Controller
 {
@@ -32,6 +35,113 @@ class InvoiceController extends Controller
 
     private function list(Request $request, string $scope): Response
     {
+        $invoices = $this->buildListQuery($request, $scope)
+            ->orderByDesc('data_doc')
+            ->paginate(25)
+            ->withQueryString()
+            ->through(fn (Invoice $invoice) => $this->transformForList($invoice, $scope));
+
+        $search = $request->string('search')->toString();
+        $companyId = $request->integer('company_id');
+        $payment = $request->string('payment')->toString();
+        $dataDocFrom = $request->string('data_doc_from')->toString();
+        $dataDocTo = $request->string('data_doc_to')->toString();
+        $scadentaFrom = $request->string('data_scadenta_from')->toString();
+        $scadentaTo = $request->string('data_scadenta_to')->toString();
+        $approval = $request->string('approval')->toString();
+        $responsibleId = $request->integer('responsible_id');
+
+        return Inertia::render('invoices/index', [
+            'invoices' => $invoices,
+            'scope' => $scope,
+            'filters' => [
+                'search' => $search ?: null,
+                'company_id' => $companyId ?: null,
+                'payment' => $payment ?: null,
+                'data_doc_from' => $dataDocFrom ?: null,
+                'data_doc_to' => $dataDocTo ?: null,
+                'data_scadenta_from' => $scadentaFrom ?: null,
+                'data_scadenta_to' => $scadentaTo ?: null,
+                'approval' => $approval ?: null,
+                'responsible_id' => $responsibleId ?: null,
+            ],
+            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'currentUser' => $this->currentUserContext($request),
+            'availableResponsibles' => $scope === 'primite'
+                ? User::query()
+                    ->whereHas('departments', fn ($d) => $d->where('type', Department::TYPE_SUPERVISOR))
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                : [],
+        ]);
+    }
+
+    public function exportEmise(Request $request): StreamedResponse
+    {
+        abort_unless($request->user()?->isMaster(), 403);
+
+        return $this->export($request, 'emise');
+    }
+
+    public function exportPrimite(Request $request): StreamedResponse
+    {
+        return $this->export($request, 'primite');
+    }
+
+    private function export(Request $request, string $scope): StreamedResponse
+    {
+        $ids = $request->input('ids');
+        $selectAll = $request->boolean('select_all');
+
+        if (! $selectAll && (! is_array($ids) || empty($ids))) {
+            abort(422, 'Selecție goală.');
+        }
+
+        $query = $this->buildListQuery($request, $scope)->orderByDesc('data_doc');
+
+        if (! $selectAll) {
+            $idList = array_values(array_filter(array_map('intval', $ids), fn ($id) => $id > 0));
+            $query->whereIn('invoices.id', $idList);
+        }
+
+        $headers = $scope === 'emise'
+            ? ['Data', 'Scadență', 'Tip doc', 'Număr', 'Client', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată']
+            : ['Data', 'Scadență', 'Tip doc', 'Număr', 'Furnizor', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată', 'Bun de plată'];
+
+        $rows = function () use ($query, $scope) {
+            foreach ($query->lazy(500) as $invoice) {
+                $rest = round((float) $invoice->val_mon - (float) $invoice->val_mon_paid, 2);
+                $row = [
+                    $invoice->data_doc?->toDateString() ?? '',
+                    $invoice->data_scadenta?->toDateString() ?? '',
+                    $invoice->tip_doc,
+                    $invoice->nr_doc,
+                    $invoice->partner?->name ?? '',
+                    $invoice->partner?->cui ?? '',
+                    $invoice->company->name,
+                    $invoice->moneda ?? '',
+                    (float) $invoice->val_mon,
+                    (float) $invoice->val_mon_tva,
+                    (float) $invoice->val_mon_paid,
+                    $rest,
+                    $this->paymentStatusLabel($invoice->payment_status),
+                ];
+
+                if ($scope === 'primite') {
+                    $row[] = $this->approvalStageLabel($invoice);
+                }
+
+                yield $row;
+            }
+        };
+
+        $filename = ($scope === 'emise' ? 'facturi-emise' : 'facturi-primite').'-'.now()->format('Ymd-His').'.xlsx';
+
+        return XlsxWriter::streamDownload($filename, $headers, $rows(), $scope === 'emise' ? 'Facturi emise' : 'Facturi primite');
+    }
+
+    private function buildListQuery(Request $request, string $scope): Builder
+    {
         $user = $request->user();
         $isMaster = (bool) $user?->isMaster();
 
@@ -45,7 +155,7 @@ class InvoiceController extends Controller
         $approval = $request->string('approval')->toString();
         $responsibleId = $request->integer('responsible_id');
 
-        $invoices = Invoice::query()
+        return Invoice::query()
             ->with([
                 'partner:id,name,cui',
                 'partner.supervisorDepartments:id,name,type',
@@ -97,35 +207,34 @@ class InvoiceController extends Controller
                     $q->where('nr_doc', 'like', "%{$term}%")
                         ->orWhereHas('partner', fn ($p) => $p->where('name', 'like', "%{$term}%"));
                 });
-            })
-            ->orderByDesc('data_doc')
-            ->paginate(25)
-            ->withQueryString()
-            ->through(fn (Invoice $invoice) => $this->transformForList($invoice, $scope));
+            });
+    }
 
-        return Inertia::render('invoices/index', [
-            'invoices' => $invoices,
-            'scope' => $scope,
-            'filters' => [
-                'search' => $search ?: null,
-                'company_id' => $companyId ?: null,
-                'payment' => $payment ?: null,
-                'data_doc_from' => $dataDocFrom ?: null,
-                'data_doc_to' => $dataDocTo ?: null,
-                'data_scadenta_from' => $scadentaFrom ?: null,
-                'data_scadenta_to' => $scadentaTo ?: null,
-                'approval' => $approval ?: null,
-                'responsible_id' => $responsibleId ?: null,
-            ],
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
-            'currentUser' => $this->currentUserContext($request),
-            'availableResponsibles' => $scope === 'primite'
-                ? User::query()
-                    ->whereHas('departments', fn ($d) => $d->where('type', Department::TYPE_SUPERVISOR))
-                    ->orderBy('name')
-                    ->get(['id', 'name'])
-                : [],
-        ]);
+    private function paymentStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'paid' => 'Plătită',
+            'unpaid' => 'Neplătită',
+            'partial' => 'Parțial',
+            default => $status,
+        };
+    }
+
+    private function approvalStageLabel(Invoice $invoice): string
+    {
+        $supervisorDepts = $invoice->partner?->supervisorDepartments ?? collect();
+        if ($supervisorDepts->isEmpty()) {
+            return 'Fără departament';
+        }
+
+        if ($invoice->is_fully_approved) {
+            return 'Bun de plată';
+        }
+        if ($invoice->supervisors_approved_at !== null) {
+            return 'Așteaptă master';
+        }
+
+        return 'Așteaptă supervizor';
     }
 
     public function show(Request $request, Invoice $invoice): Response

@@ -1,12 +1,18 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { FileText, Info, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import EFactStatusBadge from '@/components/efact-status-badge';
-import type { EFactStatus } from '@/components/efact-status-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
+import EFactStatusBadge from '@/components/efact-status-badge';
+import type { EFactStatus } from '@/components/efact-status-badge';
 import Pagination from '@/components/pagination';
+import {
+    SelectionBar,
+    downloadXlsxFromForm,
+    useTableSelection,
+} from '@/components/table-selection';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -25,7 +31,12 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
-import { detail as detailRoute, index as eInvoicesIndex, parsed as parsedRoute } from '@/routes/e-invoices';
+import {
+    detail as detailRoute,
+    exportMethod as eInvoicesExport,
+    index as eInvoicesIndex,
+    parsed as parsedRoute,
+} from '@/routes/e-invoices';
 import { show as invoicesShow } from '@/routes/invoices';
 import type { Paginated } from '@/types/pagination';
 
@@ -45,6 +56,7 @@ type Partner = {
 type EInvoiceRow = {
     id: number;
     msg_id: string;
+    msg_cif: string | null;
     msg_index_incarcare: string | null;
     msg_data_creare_d: string | null;
     data_doc_xml: string | null;
@@ -140,23 +152,28 @@ type ParsedPayload = {
     error: string | null;
 };
 
-function formatDateTime(iso: string | null) {
-    if (!iso) {
-        return '—';
-    }
-
-    return new Date(iso).toLocaleString('ro-RO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+function formatDateTime(value: string | null) {
+    return value ?? '—';
 }
 
 export default function EInvoicesIndex({ eInvoices, filters, companies }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const [openInfo, setOpenInfo] = useState<EInvoiceRow | null>(null);
+    const [exporting, setExporting] = useState(false);
+    const selection = useTableSelection(eInvoices.data, eInvoices.total);
+
+    const handleExport = () => {
+        setExporting(true);
+        downloadXlsxFromForm(eInvoicesExport().url, selection.payload(), {
+            search: filters.search,
+            company_id: filters.company_id,
+            status: filters.status ?? 'all',
+            matched: filters.matched,
+            from: filters.from,
+            to: filters.to,
+        });
+        setTimeout(() => setExporting(false), 1500);
+    };
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
@@ -216,7 +233,7 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Caută</Label>
                         <Input
-                            className="min-h-11 w-full sm:w-[260px]"
+                            className="min-h-11 w-full sm:w-65"
                             placeholder="Număr factură, partener, CIF, msg_id…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -228,7 +245,7 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                             value={filters.company_id ? String(filters.company_id) : 'all'}
                             onValueChange={(v) => applyFilter({ company_id: v === 'all' ? null : Number(v) })}
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-[200px]">
+                            <SelectTrigger className="min-h-11 w-full sm:w-50">
                                 <SelectValue placeholder="Companie" />
                             </SelectTrigger>
                             <SelectContent>
@@ -247,7 +264,7 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                             value={filters.status ?? 'all'}
                             onValueChange={(v) => applyFilter({ status: v })}
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-[180px]">
+                            <SelectTrigger className="min-h-11 w-full sm:w-45">
                                 <SelectValue placeholder="Status" />
                             </SelectTrigger>
                             <SelectContent>
@@ -264,7 +281,7 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                             value={filters.matched ?? 'all'}
                             onValueChange={(v) => applyFilter({ matched: v === 'all' ? null : v })}
                         >
-                            <SelectTrigger className="min-h-11 w-full sm:w-[170px]">
+                            <SelectTrigger className="min-h-11 w-full sm:w-42.5">
                                 <SelectValue placeholder="Asociere" />
                             </SelectTrigger>
                             <SelectContent>
@@ -298,10 +315,25 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                     )}
                 </form>
 
+                <SelectionBar
+                    state={selection}
+                    total={eInvoices.total}
+                    pageCount={eInvoices.data.length}
+                    onExport={handleExport}
+                    exporting={exporting}
+                />
+
                 <div className="hidden overflow-x-auto rounded-xl border border-sidebar-border/70 md:block dark:border-sidebar-border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                             <tr>
+                                <th className="w-10 px-4 py-3">
+                                    <Checkbox
+                                        aria-label="Selectează tot"
+                                        checked={selection.pageCheckedValue}
+                                        onCheckedChange={() => selection.togglePage()}
+                                    />
+                                </th>
                                 <th className="px-4 py-3">Data primire</th>
                                 <th className="px-4 py-3">Data factură</th>
                                 <th className="px-4 py-3">Număr</th>
@@ -315,13 +347,20 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                         <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                             {eInvoices.data.length === 0 && (
                                 <tr>
-                                    <td className="px-4 py-6 text-center text-muted-foreground" colSpan={8}>
+                                    <td className="px-4 py-6 text-center text-muted-foreground" colSpan={9}>
                                         Nicio eFactură. Pornește o sincronizare din pagina Companii.
                                     </td>
                                 </tr>
                             )}
                             {eInvoices.data.map((row) => (
                                 <tr key={row.id} className="hover:bg-muted/30">
+                                    <td className="px-4 py-3">
+                                        <Checkbox
+                                            aria-label={`Selectează ${row.nr_doc_xml ?? row.msg_id}`}
+                                            checked={selection.isSelected(row.id)}
+                                            onCheckedChange={() => selection.toggle(row.id)}
+                                        />
+                                    </td>
                                     <td className="px-4 py-3 whitespace-nowrap">
                                         {formatDateTime(row.msg_data_creare_d)}
                                     </td>
@@ -329,13 +368,15 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                                         {row.data_doc_xml ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 font-medium">{row.nr_doc_xml ?? '—'}</td>
-                                    <td className="px-4 py-3">
+                                    <td className="max-w-65 px-4 py-3">
                                         {row.partener_xml ? (
-                                            <div>
-                                                <div>{row.partener_xml}</div>
-                                                {row.cod_cci_xml && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        CIF: {row.cod_cci_xml}
+                                            <div className="min-w-0">
+                                                <div className="truncate" title={row.partener_xml}>
+                                                    {row.partener_xml}
+                                                </div>
+                                                {row.msg_cif && (
+                                                    <div className="truncate text-xs text-muted-foreground">
+                                                        CUI: {row.msg_cif}
                                                     </div>
                                                 )}
                                             </div>
@@ -388,10 +429,18 @@ export default function EInvoicesIndex({ eInvoices, filters, companies }: Props)
                             className="rounded-xl border border-sidebar-border/70 bg-background p-4 shadow-sm dark:border-sidebar-border"
                         >
                             <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <div className="font-medium">{row.nr_doc_xml ?? '—'}</div>
-                                    <div className="truncate text-xs text-muted-foreground">
-                                        {row.partener_xml ?? '—'}
+                                <div className="flex min-w-0 items-start gap-3">
+                                    <Checkbox
+                                        aria-label={`Selectează ${row.nr_doc_xml ?? row.msg_id}`}
+                                        checked={selection.isSelected(row.id)}
+                                        onCheckedChange={() => selection.toggle(row.id)}
+                                        className="mt-1"
+                                    />
+                                    <div className="min-w-0">
+                                        <div className="font-medium">{row.nr_doc_xml ?? '—'}</div>
+                                        <div className="truncate text-xs text-muted-foreground">
+                                            {row.partener_xml ?? '—'}
+                                        </div>
                                     </div>
                                 </div>
                                 <EFactStatusBadge status={row.status} />
@@ -458,6 +507,7 @@ function InfoDialog({
     useEffect(() => {
         setDetail(null);
         setParsedOpen(false);
+
         if (!row) {
             return;
         }
@@ -465,7 +515,10 @@ function InfoDialog({
         setLoading(true);
         fetch(detailRoute(row.id).url, { headers: { Accept: 'application/json' } })
             .then(async (res) => {
-                if (!res.ok) throw new Error('Eroare la încărcare');
+                if (!res.ok) {
+throw new Error('Eroare la încărcare');
+}
+
                 const data = await res.json();
                 setDetail((data?.eInvoice as DetailPayload) ?? null);
             })
@@ -493,7 +546,8 @@ function InfoDialog({
                                 <Field label="Data primire">{formatDateTime(row.msg_data_creare_d)}</Field>
                                 <Field label="Data factură">{row.data_doc_xml ?? '—'}</Field>
                                 <Field label="Tip doc XML">{row.tip_doc_xml ?? '—'}</Field>
-                                <Field label="CIF furnizor">{row.cod_cci_xml ?? '—'}</Field>
+                                <Field label="CIF furnizor">{row.msg_cif ?? '—'}</Field>
+                                <Field label="Reg. com.">{row.cod_cci_xml ?? '—'}</Field>
                                 <Field label="Data ins. OMC">{formatDateTime(row.data_ins_omc)}</Field>
                                 <Field label="Status">
                                     <EFactStatusBadge status={row.status} />
@@ -581,12 +635,18 @@ function ParsedXmlDialog({
 
     useEffect(() => {
         setPayload(null);
-        if (!row) return;
+
+        if (!row) {
+return;
+}
 
         setLoading(true);
         fetch(parsedRoute(row.id).url, { headers: { Accept: 'application/json' } })
             .then(async (res) => {
-                if (!res.ok) throw new Error('Eroare la încărcare');
+                if (!res.ok) {
+throw new Error('Eroare la încărcare');
+}
+
                 const data = (await res.json()) as ParsedPayload;
                 setPayload(data);
             })
@@ -744,8 +804,7 @@ function PartyCard({ title, party }: { title: string; party: ParsedParty | null 
                 {party.trading_name && party.trading_name !== party.name && (
                     <div className="text-xs text-muted-foreground">{party.trading_name}</div>
                 )}
-                {party.vat_number && <div className="text-xs">CIF: {party.vat_number}</div>}
-                {party.company_id && <div className="text-xs text-muted-foreground">Reg. com.: {party.company_id}</div>}
+                {party.vat_number && <div className="text-xs">CUI: {party.vat_number}</div>}
                 {addressLine && <div className="text-xs text-muted-foreground">{addressLine}</div>}
                 {party.contact_email && <div className="text-xs text-muted-foreground">{party.contact_email}</div>}
                 {party.contact_phone && <div className="text-xs text-muted-foreground">{party.contact_phone}</div>}

@@ -9,7 +9,13 @@ import type {DateRangeValue} from '@/components/date-range-picker';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import type {PaymentStatus} from '@/components/payment-status-badge';
+import {
+    SelectionBar,
+    downloadXlsxFromForm,
+    useTableSelection,
+} from '@/components/table-selection';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,6 +32,8 @@ import {
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import { emise as facturiEmise, primite as facturiPrimite, show as invoicesShow } from '@/routes/invoices';
+import { exportMethod as exportEmise } from '@/routes/invoices/emise';
+import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
 import type { Paginated } from '@/types/pagination';
 
 type SupervisorStep = {
@@ -156,7 +164,26 @@ export default function InvoicesIndex({
     const docRange: DateRangeValue = { from: filters.data_doc_from, to: filters.data_doc_to };
     const scadentaRange: DateRangeValue = { from: filters.data_scadenta_from, to: filters.data_scadenta_to };
     const isPrimite = scope === 'primite';
-    const columnCount = isPrimite ? 9 : 7;
+    const columnCount = (isPrimite ? 9 : 7) + 1;
+    const [exporting, setExporting] = useState(false);
+    const selection = useTableSelection(invoices.data, invoices.total);
+
+    const handleExport = () => {
+        setExporting(true);
+        const url = (scope === 'emise' ? exportEmise() : exportPrimite()).url;
+        downloadXlsxFromForm(url, selection.payload(), {
+            search: filters.search,
+            company_id: filters.company_id,
+            payment: filters.payment,
+            data_doc_from: filters.data_doc_from,
+            data_doc_to: filters.data_doc_to,
+            data_scadenta_from: filters.data_scadenta_from,
+            data_scadenta_to: filters.data_scadenta_to,
+            approval: filters.approval,
+            responsible_id: filters.responsible_id,
+        });
+        setTimeout(() => setExporting(false), 1500);
+    };
 
     return (
         <>
@@ -294,10 +321,25 @@ export default function InvoicesIndex({
                     </Button>
                 </form>
 
+                <SelectionBar
+                    state={selection}
+                    total={invoices.total}
+                    pageCount={invoices.data.length}
+                    onExport={handleExport}
+                    exporting={exporting}
+                />
+
                 <div className="hidden overflow-x-auto rounded-xl border border-sidebar-border/70 md:block dark:border-sidebar-border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                             <tr>
+                                <th className="w-10 px-4 py-3">
+                                    <Checkbox
+                                        aria-label="Selectează tot"
+                                        checked={selection.pageCheckedValue}
+                                        onCheckedChange={() => selection.togglePage()}
+                                    />
+                                </th>
                                 <th className="px-4 py-3">Dată</th>
                                 <th className="px-4 py-3">Scadență</th>
                                 <th className="px-4 py-3">Număr</th>
@@ -319,6 +361,13 @@ export default function InvoicesIndex({
                             )}
                             {invoices.data.map((invoice) => (
                                 <tr key={invoice.id} className="hover:bg-muted/30">
+                                    <td className="px-4 py-3">
+                                        <Checkbox
+                                            aria-label={`Selectează ${invoice.nr_doc}`}
+                                            checked={selection.isSelected(invoice.id)}
+                                            onCheckedChange={() => selection.toggle(invoice.id)}
+                                        />
+                                    </td>
                                     <td className="px-4 py-3">{invoice.data_doc}</td>
                                     <td className="px-4 py-3 text-muted-foreground">
                                         {invoice.data_scadenta ?? '—'}
@@ -381,6 +430,8 @@ export default function InvoicesIndex({
                             scope={scope}
                             isPrimite={isPrimite}
                             currentUser={currentUser}
+                            selected={selection.isSelected(invoice.id)}
+                            onToggle={() => selection.toggle(invoice.id)}
                         />
                     ))}
                 </div>
@@ -487,25 +538,37 @@ function InvoiceMobileCard({
     scope,
     isPrimite,
     currentUser,
+    selected,
+    onToggle,
 }: {
     invoice: InvoiceRow;
     scope: Scope;
     isPrimite: boolean;
     currentUser: CurrentUser;
+    selected: boolean;
+    onToggle: () => void;
 }) {
     return (
         <div className="rounded-xl border border-sidebar-border/70 bg-background p-4 shadow-sm dark:border-sidebar-border">
             <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <Link
-                        href={invoicesShow(invoice.id)}
-                        className="text-base font-semibold hover:underline"
-                    >
-                        {invoice.nr_doc}
-                    </Link>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                        {invoice.data_doc}
-                        {invoice.data_scadenta ? ` · scadență ${invoice.data_scadenta}` : ''}
+                <div className="flex min-w-0 items-start gap-3">
+                    <Checkbox
+                        aria-label={`Selectează ${invoice.nr_doc}`}
+                        checked={selected}
+                        onCheckedChange={onToggle}
+                        className="mt-1"
+                    />
+                    <div className="min-w-0">
+                        <Link
+                            href={invoicesShow(invoice.id)}
+                            className="text-base font-semibold hover:underline"
+                        >
+                            {invoice.nr_doc}
+                        </Link>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                            {invoice.data_doc}
+                            {invoice.data_scadenta ? ` · scadență ${invoice.data_scadenta}` : ''}
+                        </div>
                     </div>
                 </div>
                 <PaymentStatusBadge status={invoice.payment_status} />
