@@ -23,4 +23,9 @@ class InvoicePayment extends Model
     {
         return $this->belongsTo(Invoice::class);
     }
+
+    public function bankStatementLine(): BelongsTo
+    {
+        return $this->belongsTo(BankStatementLine::class);
+    }
 }

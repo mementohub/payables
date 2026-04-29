@@ -165,7 +165,7 @@ class InvoiceController extends Controller
             'partner.responsabilDepartments',
             'company',
             'details',
-            'payments',
+            'payments.bankStatementLine.statement:id,data_extras,banca,iban',
             'approvals.user:id,name,email',
             'approvals.department:id,name,type',
         ]);
@@ -206,16 +206,27 @@ class InvoiceController extends Controller
                     'pret' => (float) $row->pret,
                     'proc_tva' => (float) $row->proc_tva,
                 ]),
-                'payments' => $invoice->payments->map(fn ($payment) => [
-                    'id' => $payment->id,
-                    'data_doc' => $payment->data_doc?->toDateString(),
-                    'tip_doc' => $payment->tip_doc,
-                    'nr_doc' => $payment->nr_doc,
-                    'data_repartizare' => $payment->data_repartizare?->toDateString(),
-                    'val_fin' => (float) $payment->val_fin,
-                    'val_com' => (float) $payment->val_com,
-                    'moneda' => $payment->moneda,
-                ]),
+                'payments' => $invoice->payments->map(function ($payment) {
+                    $statement = $payment->bankStatementLine?->statement;
+
+                    return [
+                        'id' => $payment->id,
+                        'data_doc' => $payment->data_doc?->toDateString(),
+                        'tip_doc' => $payment->tip_doc,
+                        'nr_doc' => $payment->nr_doc,
+                        'data_repartizare' => $payment->data_repartizare?->toDateString(),
+                        'val_fin' => (float) $payment->val_fin,
+                        'val_com' => (float) $payment->val_com,
+                        'moneda' => $payment->moneda,
+                        'bank_statement' => $statement ? [
+                            'id' => $statement->id,
+                            'line_id' => $payment->bank_statement_line_id,
+                            'data_extras' => $statement->data_extras?->toDateString(),
+                            'banca' => $statement->banca,
+                            'iban' => $statement->iban,
+                        ] : null,
+                    ];
+                }),
                 'approval' => $this->presenter->approvalPayload($invoice),
             ],
         ]);

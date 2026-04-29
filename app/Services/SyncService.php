@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\EInvoices\MatchInvoiceToEInvoice;
 use App\Models\BankStatement;
 use App\Models\BankStatementLine;
 use App\Models\BankStatementLineAllocation;
@@ -12,6 +13,7 @@ use App\Models\InvoiceDetail;
 use App\Models\InvoicePayment;
 use App\Models\Partner;
 use App\Models\PartnerBankAccount;
+use App\Services\EInvoices\EInvoiceXmlParser;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 
@@ -21,7 +23,11 @@ class SyncService
 
     public const array CLIENT_DOC_TYPES = ['FactCI', 'FactCE', 'FactINT'];
 
-    public function __construct(private readonly RemoteConnection $remote) {}
+    public function __construct(
+        private readonly RemoteConnection $remote,
+        private readonly EInvoiceXmlParser $xmlParser = new EInvoiceXmlParser,
+        private readonly MatchInvoiceToEInvoice $matcher = new MatchInvoiceToEInvoice,
+    ) {}
 
     /**
      * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int, statements: int, e_invoices: int}
@@ -105,10 +111,6 @@ class SyncService
             return 0;
         }
 
-        $invoiceLookup = Invoice::where('company_id', $company->id)
-            ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
-            ->pluck('id', 'nr_doc');
-
         $partnerLookup = Partner::where('company_id', $company->id)
             ->whereNotNull('cui')
             ->get(['id', 'cui'])
@@ -118,19 +120,19 @@ class SyncService
 
         foreach ($rows as $row) {
             $nrDoc = $row->nr_doc_xml !== null ? trim((string) $row->nr_doc_xml) : null;
-            $invoiceId = $nrDoc !== null && $nrDoc !== '' ? ($invoiceLookup[$nrDoc] ?? null) : null;
 
             $cci = $row->cod_cci_xml !== null ? $this->normalizeCui($row->cod_cci_xml) : null;
             $partnerId = $cci !== null ? ($partnerLookup[$cci] ?? null) : null;
 
-            EInvoice::updateOrCreate(
+            $totals = $this->xmlParser->extractTotals($row->msg_xml);
+
+            $eInvoice = EInvoice::updateOrCreate(
                 [
                     'company_id' => $company->id,
                     'msg_id' => $row->msg_id,
                 ],
                 [
                     'partner_id' => $partnerId,
-                    'invoice_id' => $invoiceId,
                     'msg_cif' => $row->msg_cif,
                     'msg_index_incarcare' => $row->msg_index_incarcare,
                     'msg_data_creare_d' => $row->msg_data_creare_d,
@@ -139,12 +141,26 @@ class SyncService
                     'nr_doc_xml' => $nrDoc,
                     'partener_xml' => $row->partener_xml,
                     'cod_cci_xml' => $row->cod_cci_xml,
+                    'total_amount' => $totals['total_amount'],
+                    'total_vat' => $totals['total_vat'],
                     'msg_detalii' => $row->msg_detalii,
                     'msg_xml' => $row->msg_xml,
                     'data_ins_omc' => $row->data_ins_omc,
                     'err_ins_omc' => $row->err_ins_omc,
                 ]
             );
+
+            $matchedInvoice = $this->matcher->find($eInvoice);
+
+            if ($matchedInvoice !== null && $eInvoice->invoice_id !== $matchedInvoice->id) {
+                $eInvoice->forceFill(['invoice_id' => $matchedInvoice->id])->save();
+            } elseif ($matchedInvoice === null && $eInvoice->invoice_id !== null) {
+                $existing = Invoice::find($eInvoice->invoice_id);
+                if ($existing === null || $existing->partner_id !== $partnerId) {
+                    $eInvoice->forceFill(['invoice_id' => null])->save();
+                }
+            }
+
             $count++;
         }
 
@@ -349,6 +365,8 @@ class SyncService
 
         InvoicePayment::whereIn('invoice_id', array_values($lookup))->delete();
 
+        $bankLineLookup = $this->buildBankStatementLineLookup($company);
+
         $count = 0;
         foreach ($rows as $row) {
             $key = $row->data_doc_com.'|'.$row->tip_doc_com.'|'.$row->nr_doc_com;
@@ -356,6 +374,9 @@ class SyncService
             if ($invoiceId === null) {
                 continue;
             }
+
+            $paymentKey = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
+            $bankStatementLineId = $bankLineLookup[$paymentKey] ?? null;
 
             InvoicePayment::updateOrCreate(
                 [
@@ -369,12 +390,34 @@ class SyncService
                     'val_fin' => $row->val_fin ?? 0,
                     'val_com' => $row->val_com ?? 0,
                     'moneda' => $row->fin_moneda,
+                    'bank_statement_line_id' => $bankStatementLineId,
                 ]
             );
             $count++;
         }
 
         return $count;
+    }
+
+    /**
+     * Map bank statement line key (data_doc|tip_doc|nr_doc) → line id, scoped to a company.
+     *
+     * @return array<string, int>
+     */
+    private function buildBankStatementLineLookup(Company $company): array
+    {
+        $lookup = [];
+
+        BankStatementLine::query()
+            ->whereHas('statement', fn ($q) => $q->where('company_id', $company->id))
+            ->select(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+            ->lazy(1000)
+            ->each(function (BankStatementLine $line) use (&$lookup) {
+                $key = $line->data_doc->toDateString().'|'.$line->tip_doc.'|'.$line->nr_doc;
+                $lookup[$key] = $line->id;
+            });
+
+        return $lookup;
     }
 
     /**

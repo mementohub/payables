@@ -48,10 +48,26 @@ return new class extends Migration
             );
             $table->index(['bank_statement_id', 'direction']);
         });
+
+        Schema::table('invoice_payments', function (Blueprint $table) {
+            $table->foreignId('bank_statement_line_id')
+                ->nullable()
+                ->after('moneda')
+                ->constrained('bank_statement_lines')
+                ->nullOnDelete();
+
+            $table->index('bank_statement_line_id', 'invoice_payments_bsl_idx');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('invoice_payments', function (Blueprint $table) {
+            $table->dropForeign(['bank_statement_line_id']);
+            $table->dropIndex('invoice_payments_bsl_idx');
+            $table->dropColumn('bank_statement_line_id');
+        });
+
         Schema::dropIfExists('bank_statement_lines');
         Schema::dropIfExists('bank_statements');
     }

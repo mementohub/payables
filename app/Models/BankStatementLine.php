@@ -24,6 +24,11 @@ class BankStatementLine extends Model
         return $this->hasMany(BankStatementLineAllocation::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(InvoicePayment::class);
+    }
+
     public function statement(): BelongsTo
     {
         return $this->belongsTo(BankStatement::class, 'bank_statement_id');

@@ -1,5 +1,11 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { FileText, Info, X } from 'lucide-react';
+import {
+    AlertTriangle,
+    Check,
+    ChevronsUpDown,
+    Info,
+    X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
@@ -15,8 +21,17 @@ import {
     downloadXlsxFromForm,
     useTableSelection,
 } from '@/components/table-selection';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 import {
     Dialog,
     DialogContent,
@@ -27,6 +42,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import {
     Select,
     SelectContent,
@@ -44,6 +64,7 @@ import {
 } from '@/routes/e-invoices';
 import { show as invoicesShow } from '@/routes/invoices';
 import type {
+    DepartmentRef,
     DetailPayload,
     EInvoiceRow,
     Filters,
@@ -56,10 +77,99 @@ function formatDateTime(value: string | null) {
     return value ?? '—';
 }
 
+function formatAmount(value: number | null, currency: string | null = null) {
+    if (value === null || value === undefined) {
+        return '—';
+    }
+    const formatted = new Intl.NumberFormat('ro-RO', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(value);
+
+    return currency ? `${formatted} ${currency}` : formatted;
+}
+
+function DepartmentMultiSelect({
+    options,
+    selected,
+    onChange,
+}: {
+    options: DepartmentRef[];
+    selected: number[];
+    onChange: (next: number[]) => void;
+}) {
+    const [open, setOpen] = useState(false);
+
+    const toggle = (id: number) => {
+        onChange(
+            selected.includes(id)
+                ? selected.filter((s) => s !== id)
+                : [...selected, id],
+        );
+    };
+
+    const label =
+        selected.length === 0
+            ? 'Toate'
+            : selected.length === 1
+              ? (options.find((o) => o.id === selected[0])?.name ?? '1 selectat')
+              : `${selected.length} selectate`;
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className={cn(
+                        'min-h-11 w-full justify-between font-normal sm:w-50',
+                        filterTriggerClass(selected.length > 0),
+                    )}
+                >
+                    <span className="truncate">{label}</span>
+                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-0" align="start">
+                <Command>
+                    <CommandInput placeholder="Caută departament…" />
+                    <CommandList>
+                        <CommandEmpty>Niciun departament.</CommandEmpty>
+                        <CommandGroup>
+                            {options.map((dept) => {
+                                const isSelected = selected.includes(dept.id);
+                                return (
+                                    <CommandItem
+                                        key={dept.id}
+                                        value={dept.name}
+                                        onSelect={() => toggle(dept.id)}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                'mr-2 size-4',
+                                                isSelected
+                                                    ? 'opacity-100'
+                                                    : 'opacity-0',
+                                            )}
+                                        />
+                                        {dept.name}
+                                    </CommandItem>
+                                );
+                            })}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 export default function EInvoicesIndex({
     eInvoices,
     filters,
     companies,
+    availableDepartments,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const [openInfo, setOpenInfo] = useState<EInvoiceRow | null>(null);
@@ -75,12 +185,15 @@ export default function EInvoicesIndex({
             matched: filters.matched,
             from: filters.from,
             to: filters.to,
+            department_ids: filters.department_ids,
         });
         setTimeout(() => setExporting(false), 1500);
     };
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
+        const departmentIds = merged.department_ids ?? [];
+
         router.get(
             eInvoicesIndex().url,
             {
@@ -90,6 +203,8 @@ export default function EInvoicesIndex({
                 matched: merged.matched ?? undefined,
                 from: merged.from ?? undefined,
                 to: merged.to ?? undefined,
+                department_ids:
+                    departmentIds.length > 0 ? departmentIds : undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -110,7 +225,8 @@ export default function EInvoicesIndex({
         (filters.status !== null && filters.status !== 'all') ||
         !!filters.matched ||
         !!filters.from ||
-        !!filters.to;
+        !!filters.to ||
+        filters.department_ids.length > 0;
 
     const range: DateRangeValue = { from: filters.from, to: filters.to };
 
@@ -248,6 +364,23 @@ export default function EInvoicesIndex({
                             </SelectContent>
                         </Select>
                     </FilterField>
+                    {availableDepartments.length > 0 && (
+                        <FilterField
+                            label="Departamente"
+                            active={filters.department_ids.length > 0}
+                            onClear={() =>
+                                applyFilter({ department_ids: [] })
+                            }
+                        >
+                            <DepartmentMultiSelect
+                                options={availableDepartments}
+                                selected={filters.department_ids}
+                                onChange={(ids) =>
+                                    applyFilter({ department_ids: ids })
+                                }
+                            />
+                        </FilterField>
+                    )}
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Data primire</Label>
                         <DateRangePicker
@@ -303,6 +436,9 @@ export default function EInvoicesIndex({
                                 <th className="px-4 py-3">Data factură</th>
                                 <th className="px-4 py-3">Număr</th>
                                 <th className="px-4 py-3">Furnizor</th>
+                                <th className="px-4 py-3">Departamente</th>
+                                <th className="px-4 py-3 text-right">Total</th>
+                                <th className="px-4 py-3 text-right">TVA</th>
                                 <th className="px-4 py-3">Companie</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Factură asociată</th>
@@ -314,7 +450,7 @@ export default function EInvoicesIndex({
                                 <tr>
                                     <td
                                         className="px-4 py-6 text-center text-muted-foreground"
-                                        colSpan={9}
+                                        colSpan={12}
                                     >
                                         Nicio eFactură. Pornește o sincronizare
                                         din pagina Companii.
@@ -322,7 +458,14 @@ export default function EInvoicesIndex({
                                 </tr>
                             )}
                             {eInvoices.data.map((row) => (
-                                <tr key={row.id} className="hover:bg-muted/30">
+                                <tr
+                                    key={row.id}
+                                    className={cn(
+                                        'hover:bg-muted/30',
+                                        row.mismatch.any &&
+                                            'bg-amber-50/60 dark:bg-amber-500/10',
+                                    )}
+                                >
                                     <td className="px-4 py-3">
                                         <Checkbox
                                             aria-label={`Selectează ${row.nr_doc_xml ?? row.msg_id}`}
@@ -341,7 +484,15 @@ export default function EInvoicesIndex({
                                         {row.data_doc_xml ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 font-medium">
-                                        {row.nr_doc_xml ?? '—'}
+                                        <div className="flex items-center gap-1.5">
+                                            {row.nr_doc_xml ?? '—'}
+                                            {row.mismatch.any && (
+                                                <AlertTriangle
+                                                    className="size-4 text-amber-600 dark:text-amber-400"
+                                                    aria-label="Diferențe între eFactură și factură"
+                                                />
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="max-w-65 px-4 py-3">
                                         {row.partener_xml ? (
@@ -363,6 +514,34 @@ export default function EInvoicesIndex({
                                                 —
                                             </span>
                                         )}
+                                    </td>
+                                    <td className="max-w-55 px-4 py-3">
+                                        {row.responsabil_departments.length ===
+                                        0 ? (
+                                            <span className="text-xs text-muted-foreground">
+                                                —
+                                            </span>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1">
+                                                {row.responsabil_departments.map(
+                                                    (d) => (
+                                                        <Badge
+                                                            key={d.id}
+                                                            variant="outline"
+                                                            className="text-[10px]"
+                                                        >
+                                                            {d.name}
+                                                        </Badge>
+                                                    ),
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                        {formatAmount(row.total_amount)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                                        {formatAmount(row.total_vat)}
                                     </td>
                                     <td className="px-4 py-3 text-muted-foreground">
                                         {row.company.name}
@@ -413,7 +592,11 @@ export default function EInvoicesIndex({
                     {eInvoices.data.map((row) => (
                         <div
                             key={row.id}
-                            className="rounded-xl border border-sidebar-border/70 bg-background p-4 shadow-sm dark:border-sidebar-border"
+                            className={cn(
+                                'rounded-xl border border-sidebar-border/70 bg-background p-4 shadow-sm dark:border-sidebar-border',
+                                row.mismatch.any &&
+                                    'border-amber-500/50 bg-amber-50/60 dark:bg-amber-500/10',
+                            )}
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="flex min-w-0 items-start gap-3">
@@ -426,8 +609,11 @@ export default function EInvoicesIndex({
                                         className="mt-1"
                                     />
                                     <div className="min-w-0">
-                                        <div className="font-medium">
+                                        <div className="flex items-center gap-1.5 font-medium">
                                             {row.nr_doc_xml ?? '—'}
+                                            {row.mismatch.any && (
+                                                <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+                                            )}
                                         </div>
                                         <div className="truncate text-xs text-muted-foreground">
                                             {row.partener_xml ?? '—'}
@@ -442,6 +628,10 @@ export default function EInvoicesIndex({
                                     {formatDateTime(row.msg_data_creare_d)}
                                 </div>
                                 <div>Data: {row.data_doc_xml ?? '—'}</div>
+                                <div>
+                                    Total: {formatAmount(row.total_amount)}
+                                </div>
+                                <div>TVA: {formatAmount(row.total_vat)}</div>
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2">
                                 {row.invoice ? (
@@ -497,15 +687,17 @@ function InfoDialog({
     onClose: () => void;
 }) {
     const [detail, setDetail] = useState<DetailPayload | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [parsedOpen, setParsedOpen] = useState(false);
+    const [parsed, setParsed] = useState<ParsedPayload | null>(null);
+    const [loadingDetail, setLoadingDetail] = useState(false);
+    const [loadingParsed, setLoadingParsed] = useState(false);
     const [lastRowId, setLastRowId] = useState<number | null>(row?.id ?? null);
 
     if ((row?.id ?? null) !== lastRowId) {
         setLastRowId(row?.id ?? null);
         setDetail(null);
-        setParsedOpen(false);
-        setLoading(!!row);
+        setParsed(null);
+        setLoadingDetail(!!row);
+        setLoadingParsed(!!row);
     }
 
     useEffect(() => {
@@ -520,31 +712,59 @@ function InfoDialog({
                 if (!res.ok) {
                     throw new Error('Eroare la încărcare');
                 }
-
                 const data = await res.json();
                 setDetail((data?.eInvoice as DetailPayload) ?? null);
             })
             .catch(() => setDetail(null))
-            .finally(() => setLoading(false));
+            .finally(() => setLoadingDetail(false));
+
+        fetch(parsedRoute(row.id).url, {
+            headers: { Accept: 'application/json' },
+        })
+            .then(async (res) => {
+                if (!res.ok) {
+                    throw new Error('Eroare la încărcare');
+                }
+                const data = (await res.json()) as ParsedPayload;
+                setParsed(data);
+            })
+            .catch((e: Error) =>
+                setParsed({ parsed: null, error: e.message }),
+            )
+            .finally(() => setLoadingParsed(false));
     }, [row]);
 
-    return (
-        <>
-            <Dialog
-                open={!!row && !parsedOpen}
-                onOpenChange={(open) => !open && onClose()}
-            >
-                <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-3xl flex-col overflow-hidden p-0 sm:w-full">
-                    <DialogHeader className="border-b px-4 py-3 sm:px-6">
-                        <DialogTitle>Detalii eFactură</DialogTitle>
-                        <DialogDescription>
-                            {row?.nr_doc_xml ? `${row.nr_doc_xml} · ` : ''}
-                            {row?.partener_xml ?? ''}
-                        </DialogDescription>
-                    </DialogHeader>
+    const parsedInvoice = parsed?.parsed ?? null;
 
-                    {row && (
-                        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text-sm sm:px-6">
+    return (
+        <Dialog open={!!row} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="flex h-[95vh] w-[95vw] max-w-[1400px] flex-col overflow-hidden p-0">
+                <DialogHeader className="border-b px-6 py-3">
+                    <DialogTitle className="flex items-center gap-2">
+                        Detalii eFactură
+                        {row?.mismatch.any && (
+                            <Badge
+                                variant="outline"
+                                className="border-amber-600/50 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                            >
+                                <AlertTriangle className="mr-1 size-3" />
+                                Diferențe față de factură
+                            </Badge>
+                        )}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {row?.nr_doc_xml ? `${row.nr_doc_xml} · ` : ''}
+                        {row?.partener_xml ?? ''}
+                    </DialogDescription>
+                </DialogHeader>
+
+                {row && (
+                    <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-2">
+                        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto border-b px-6 py-4 text-sm lg:border-r lg:border-b-0">
+                            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                Mesaj eFactură
+                            </h3>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <Field label="msg_id">{row.msg_id}</Field>
                                 <Field label="Index încărcare">
@@ -571,7 +791,16 @@ function InfoDialog({
                                 <Field label="Status">
                                     <EFactStatusBadge status={row.status} />
                                 </Field>
+                                <Field label="Departamente">
+                                    {row.responsabil_departments.length === 0
+                                        ? '—'
+                                        : row.responsabil_departments
+                                              .map((d) => d.name)
+                                              .join(', ')}
+                                </Field>
                             </div>
+
+                            <ComparisonCard row={row} />
 
                             {row.err_ins_omc && (
                                 <div className="rounded-md border border-red-600/40 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-200">
@@ -587,12 +816,12 @@ function InfoDialog({
                             <div>
                                 <Label className="text-xs">Detalii mesaj</Label>
                                 <div className="mt-1 rounded-md border border-sidebar-border/70 bg-muted/40 p-3 text-xs dark:border-sidebar-border">
-                                    {loading && (
+                                    {loadingDetail && (
                                         <span className="text-muted-foreground">
                                             Se încarcă…
                                         </span>
                                     )}
-                                    {!loading && (
+                                    {!loadingDetail && (
                                         <pre className="break-words whitespace-pre-wrap">
                                             {detail?.msg_detalii ??
                                                 row.partener_xml ??
@@ -603,344 +832,347 @@ function InfoDialog({
                             </div>
 
                             <details className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs font-medium select-none">
-                                    <span>XML brut</span>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            setParsedOpen(true);
-                                        }}
-                                        disabled={!detail?.msg_xml}
-                                    >
-                                        <FileText className="size-4" /> Vezi
-                                        date eFactură
-                                    </Button>
+                                <summary className="cursor-pointer px-3 py-2 text-xs font-medium select-none">
+                                    XML brut
                                 </summary>
-                                <pre className="max-h-[280px] overflow-auto bg-muted/40 p-3 text-[11px] break-all whitespace-pre-wrap">
-                                    {loading
+                                <pre className="max-h-[300px] overflow-auto bg-muted/40 p-3 text-[11px] break-all whitespace-pre-wrap">
+                                    {loadingDetail
                                         ? 'Se încarcă…'
                                         : (detail?.msg_xml ?? '—')}
                                 </pre>
                             </details>
-
-                            {row.invoice && (
-                                <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
-                                    <Label className="text-xs">
-                                        Factură asociată
-                                    </Label>
-                                    <Link
-                                        className="mt-1 block text-sm text-primary hover:underline"
-                                        href={invoicesShow(row.invoice.id)}
-                                    >
-                                        {row.invoice.tip_doc}{' '}
-                                        {row.invoice.nr_doc} ·{' '}
-                                        {row.invoice.data_doc}
-                                    </Link>
-                                </div>
-                            )}
                         </div>
-                    )}
 
-                    <DialogFooter className="border-t px-4 py-3 sm:px-6">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={onClose}
-                        >
-                            Închide
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-4 text-sm">
+                            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                                Date eFactură (XML parsat)
+                            </h3>
 
-            <ParsedXmlDialog
-                row={parsedOpen ? row : null}
-                onClose={() => setParsedOpen(false)}
-            />
-        </>
-    );
-}
-
-function ParsedXmlDialog({
-    row,
-    onClose,
-}: {
-    row: EInvoiceRow | null;
-    onClose: () => void;
-}) {
-    const [payload, setPayload] = useState<ParsedPayload | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [lastRowId, setLastRowId] = useState<number | null>(row?.id ?? null);
-
-    if ((row?.id ?? null) !== lastRowId) {
-        setLastRowId(row?.id ?? null);
-        setPayload(null);
-        setLoading(!!row);
-    }
-
-    useEffect(() => {
-        if (!row) {
-            return;
-        }
-
-        fetch(parsedRoute(row.id).url, {
-            headers: { Accept: 'application/json' },
-        })
-            .then(async (res) => {
-                if (!res.ok) {
-                    throw new Error('Eroare la încărcare');
-                }
-
-                const data = (await res.json()) as ParsedPayload;
-                setPayload(data);
-            })
-            .catch((e: Error) => setPayload({ parsed: null, error: e.message }))
-            .finally(() => setLoading(false));
-    }, [row]);
-
-    const parsed = payload?.parsed ?? null;
-
-    return (
-        <Dialog open={!!row} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="flex h-[95vh] w-[95vw] max-w-6xl flex-col overflow-hidden p-0 sm:h-[90vh] sm:w-full">
-                <DialogHeader className="border-b px-4 py-3 sm:px-6">
-                    <DialogTitle>Date eFactură (XML)</DialogTitle>
-                    <DialogDescription>
-                        Informații extrase din XML conform standardului UBL / EN
-                        16931.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
-                    {loading && (
-                        <p className="text-sm text-muted-foreground">
-                            Se încarcă…
-                        </p>
-                    )}
-
-                    {!loading && payload?.error && (
-                        <div className="rounded-md border border-red-600/40 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-200">
-                            {payload.error}
-                        </div>
-                    )}
-
-                    {!loading && parsed && (
-                        <div className="grid gap-4 text-sm">
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                                <Field label="Număr">
-                                    {parsed.number ?? '—'}
-                                </Field>
-                                <Field label="Data emitere">
-                                    {parsed.issue_date ?? '—'}
-                                </Field>
-                                <Field label="Scadență">
-                                    {parsed.due_date ?? '—'}
-                                </Field>
-                                <Field label="Monedă">
-                                    {parsed.currency || '—'}
-                                </Field>
-                                <Field label="Ref. cumpărător">
-                                    {parsed.buyer_reference ?? '—'}
-                                </Field>
-                                <Field label="Ref. comandă">
-                                    {parsed.purchase_order_reference ?? '—'}
-                                </Field>
-                            </div>
-
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <PartyCard
-                                    title="Furnizor (Seller)"
-                                    party={parsed.seller}
-                                />
-                                <PartyCard
-                                    title="Cumpărător (Buyer)"
-                                    party={parsed.buyer}
-                                />
-                            </div>
-
-                            {parsed.payee && (
-                                <PartyCard
-                                    title="Beneficiar plată (Payee)"
-                                    party={parsed.payee}
-                                />
+                            {loadingParsed && (
+                                <p className="text-muted-foreground">
+                                    Se încarcă…
+                                </p>
                             )}
 
-                            <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                <div className="border-b px-3 py-2 text-xs font-semibold">
-                                    Totaluri (
-                                    {parsed.totals.currency ?? parsed.currency})
+                            {!loadingParsed && parsed?.error && (
+                                <div className="rounded-md border border-red-600/40 bg-red-50 p-3 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-200">
+                                    {parsed.error}
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3">
-                                    <Field label="Net">
-                                        {parsed.totals.net_amount.toFixed(2)}
-                                    </Field>
-                                    <Field label="Reduceri">
-                                        {parsed.totals.allowances_amount.toFixed(
-                                            2,
-                                        )}
-                                    </Field>
-                                    <Field label="Suplimente">
-                                        {parsed.totals.charges_amount.toFixed(
-                                            2,
-                                        )}
-                                    </Field>
-                                    <Field label="Bază TVA">
-                                        {parsed.totals.tax_exclusive_amount.toFixed(
-                                            2,
-                                        )}
-                                    </Field>
-                                    <Field label="TVA">
-                                        {parsed.totals.vat_amount.toFixed(2)}
-                                    </Field>
-                                    <Field label="Total cu TVA">
-                                        {parsed.totals.tax_inclusive_amount.toFixed(
-                                            2,
-                                        )}
-                                    </Field>
-                                    <Field label="Plătit">
-                                        {parsed.totals.paid_amount.toFixed(2)}
-                                    </Field>
-                                    <Field label="Rotunjire">
-                                        {parsed.totals.rounding_amount.toFixed(
-                                            2,
-                                        )}
-                                    </Field>
-                                    <Field label="De plată">
-                                        <strong>
-                                            {parsed.totals.payable_amount.toFixed(
-                                                2,
-                                            )}
-                                        </strong>
-                                    </Field>
-                                </div>
-                            </div>
+                            )}
 
-                            {parsed.lines.length > 0 && (
-                                <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
-                                    <div className="border-b px-3 py-2 text-xs font-semibold">
-                                        Linii ({parsed.lines.length})
+                            {!loadingParsed && parsedInvoice && (
+                                <div className="grid gap-4">
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                        <Field label="Număr">
+                                            {parsedInvoice.number ?? '—'}
+                                        </Field>
+                                        <Field label="Emitere">
+                                            {parsedInvoice.issue_date ?? '—'}
+                                        </Field>
+                                        <Field label="Scadență">
+                                            {parsedInvoice.due_date ?? '—'}
+                                        </Field>
+                                        <Field label="Monedă">
+                                            {parsedInvoice.currency || '—'}
+                                        </Field>
+                                        <Field label="Ref. cumpărător">
+                                            {parsedInvoice.buyer_reference ??
+                                                '—'}
+                                        </Field>
+                                        <Field label="Ref. comandă">
+                                            {parsedInvoice.purchase_order_reference ??
+                                                '—'}
+                                        </Field>
                                     </div>
-                                    <div className="hidden overflow-x-auto sm:block">
-                                        <table className="w-full text-xs">
-                                            <thead className="bg-muted/50 text-left text-muted-foreground">
-                                                <tr>
-                                                    <th className="px-3 py-2">
-                                                        Articol
-                                                    </th>
-                                                    <th className="px-3 py-2 text-right">
-                                                        Cant.
-                                                    </th>
-                                                    <th className="px-3 py-2">
-                                                        UM
-                                                    </th>
-                                                    <th className="px-3 py-2 text-right">
-                                                        Preț
-                                                    </th>
-                                                    <th className="px-3 py-2 text-right">
-                                                        Net
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                                                {parsed.lines.map((line, i) => (
-                                                    <tr key={i}>
-                                                        <td className="px-3 py-2">
-                                                            <div className="font-medium">
-                                                                {line.name ??
-                                                                    '—'}
-                                                            </div>
-                                                            {line.description && (
-                                                                <div className="text-muted-foreground">
-                                                                    {
-                                                                        line.description
-                                                                    }
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                            {line.quantity}
-                                                        </td>
-                                                        <td className="px-3 py-2 whitespace-nowrap">
-                                                            {line.unit}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                            {line.price?.toFixed(
-                                                                2,
-                                                            ) ?? '—'}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                            {line.net_amount?.toFixed(
-                                                                2,
-                                                            ) ?? '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <PartyCard
+                                            title="Furnizor"
+                                            party={parsedInvoice.seller}
+                                        />
+                                        <PartyCard
+                                            title="Cumpărător"
+                                            party={parsedInvoice.buyer}
+                                        />
                                     </div>
-                                    <ul className="divide-y divide-sidebar-border/70 sm:hidden dark:divide-sidebar-border">
-                                        {parsed.lines.map((line, i) => (
-                                            <li
-                                                key={i}
-                                                className="space-y-1 px-3 py-2 text-xs"
-                                            >
-                                                <div className="font-medium">
-                                                    {line.name ?? '—'}
-                                                </div>
-                                                {line.description && (
-                                                    <div className="text-muted-foreground">
-                                                        {line.description}
-                                                    </div>
+
+                                    {parsedInvoice.payee && (
+                                        <PartyCard
+                                            title="Beneficiar plată"
+                                            party={parsedInvoice.payee}
+                                        />
+                                    )}
+
+                                    <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
+                                        <div className="border-b px-3 py-2 text-xs font-semibold">
+                                            Totaluri (
+                                            {parsedInvoice.totals.currency ??
+                                                parsedInvoice.currency}
+                                            )
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3">
+                                            <Field label="Net">
+                                                {parsedInvoice.totals.net_amount.toFixed(
+                                                    2,
                                                 )}
-                                                <div className="grid grid-cols-2 gap-2 pt-1 text-muted-foreground">
-                                                    <span>
-                                                        Cant.: {line.quantity}{' '}
-                                                        {line.unit}
-                                                    </span>
-                                                    <span className="text-right">
-                                                        Preț:{' '}
-                                                        {line.price?.toFixed(
-                                                            2,
-                                                        ) ?? '—'}
-                                                    </span>
-                                                    <span className="col-span-2 text-right font-medium text-foreground">
-                                                        Net:{' '}
-                                                        {line.net_amount?.toFixed(
-                                                            2,
-                                                        ) ?? '—'}
-                                                    </span>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                                            </Field>
+                                            <Field label="Reduceri">
+                                                {parsedInvoice.totals.allowances_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="Suplimente">
+                                                {parsedInvoice.totals.charges_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="Bază TVA">
+                                                {parsedInvoice.totals.tax_exclusive_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="TVA">
+                                                {parsedInvoice.totals.vat_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="Total cu TVA">
+                                                {parsedInvoice.totals.tax_inclusive_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="Plătit">
+                                                {parsedInvoice.totals.paid_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="Rotunjire">
+                                                {parsedInvoice.totals.rounding_amount.toFixed(
+                                                    2,
+                                                )}
+                                            </Field>
+                                            <Field label="De plată">
+                                                <strong>
+                                                    {parsedInvoice.totals.payable_amount.toFixed(
+                                                        2,
+                                                    )}
+                                                </strong>
+                                            </Field>
+                                        </div>
+                                    </div>
 
-                            {parsed.notes.length > 0 && (
-                                <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
-                                    <Label className="text-xs">Note</Label>
-                                    <ul className="mt-1 list-inside list-disc space-y-1 text-xs">
-                                        {parsed.notes.map((n, i) => (
-                                            <li key={i}>{n}</li>
-                                        ))}
-                                    </ul>
+                                    {parsedInvoice.lines.length > 0 && (
+                                        <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
+                                            <div className="border-b px-3 py-2 text-xs font-semibold">
+                                                Linii ({parsedInvoice.lines.length})
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-muted/50 text-left text-muted-foreground">
+                                                        <tr>
+                                                            <th className="px-3 py-2">
+                                                                Articol
+                                                            </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                Cant.
+                                                            </th>
+                                                            <th className="px-3 py-2">
+                                                                UM
+                                                            </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                Preț
+                                                            </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                Net
+                                                            </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                TVA %
+                                                            </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                TVA
+                                                            </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                                        {parsedInvoice.lines.map(
+                                                            (line, i) => (
+                                                                <tr key={i}>
+                                                                    <td className="px-3 py-2">
+                                                                        <div className="font-medium">
+                                                                            {line.name ??
+                                                                                '—'}
+                                                                        </div>
+                                                                        {line.description && (
+                                                                            <div className="text-muted-foreground">
+                                                                                {
+                                                                                    line.description
+                                                                                }
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                        {
+                                                                            line.quantity
+                                                                        }
+                                                                    </td>
+                                                                    <td className="px-3 py-2 whitespace-nowrap">
+                                                                        {
+                                                                            line.unit
+                                                                        }
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                        {line.price?.toFixed(
+                                                                            2,
+                                                                        ) ??
+                                                                            '—'}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                        {line.net_amount?.toFixed(
+                                                                            2,
+                                                                        ) ??
+                                                                            '—'}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right whitespace-nowrap text-muted-foreground">
+                                                                        {line.vat_rate !==
+                                                                        null
+                                                                            ? `${line.vat_rate}%`
+                                                                            : '—'}
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                        {line.vat_amount?.toFixed(
+                                                                            2,
+                                                                        ) ??
+                                                                            '—'}
+                                                                    </td>
+                                                                </tr>
+                                                            ),
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {parsedInvoice.notes.length > 0 && (
+                                        <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
+                                            <Label className="text-xs">
+                                                Note
+                                            </Label>
+                                            <ul className="mt-1 list-inside list-disc space-y-1 text-xs">
+                                                {parsedInvoice.notes.map(
+                                                    (n, i) => (
+                                                        <li key={i}>{n}</li>
+                                                    ),
+                                                )}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
 
-                <DialogFooter className="border-t px-4 py-3 sm:px-6">
+                <DialogFooter className="border-t px-6 py-3">
                     <Button type="button" variant="secondary" onClick={onClose}>
-                        Înapoi
+                        Închide
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function ComparisonCard({ row }: { row: EInvoiceRow }) {
+    if (!row.invoice) {
+        return null;
+    }
+
+    const totalDiff =
+        row.total_amount !== null && row.invoice.val_mon !== null
+            ? row.total_amount - row.invoice.val_mon
+            : null;
+    const vatDiff =
+        row.total_vat !== null && row.invoice.val_mon_tva !== null
+            ? row.total_vat - row.invoice.val_mon_tva
+            : null;
+
+    return (
+        <div
+            className={cn(
+                'rounded-md border p-3',
+                row.mismatch.any
+                    ? 'border-amber-500/50 bg-amber-50/50 dark:bg-amber-500/10'
+                    : 'border-sidebar-border/70 dark:border-sidebar-border',
+            )}
+        >
+            <div className="mb-2 flex items-center justify-between">
+                <Label className="text-xs">Factură asociată</Label>
+                <Link
+                    className="text-xs text-primary hover:underline"
+                    href={invoicesShow(row.invoice.id)}
+                >
+                    {row.invoice.tip_doc} {row.invoice.nr_doc} ·{' '}
+                    {row.invoice.data_doc}
+                </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="text-muted-foreground" />
+                <div className="text-center font-semibold text-muted-foreground">
+                    eFactură
+                </div>
+                <div className="text-center font-semibold text-muted-foreground">
+                    Factură
+                </div>
+
+                <div className="text-muted-foreground">Total</div>
+                <div
+                    className={cn(
+                        'text-center tabular-nums',
+                        row.mismatch.total &&
+                            'font-semibold text-amber-700 dark:text-amber-300',
+                    )}
+                >
+                    {formatAmount(row.total_amount)}
+                </div>
+                <div className="text-center tabular-nums">
+                    {formatAmount(row.invoice.val_mon, row.invoice.moneda)}
+                </div>
+
+                <div className="text-muted-foreground">TVA</div>
+                <div
+                    className={cn(
+                        'text-center tabular-nums',
+                        row.mismatch.vat &&
+                            'font-semibold text-amber-700 dark:text-amber-300',
+                    )}
+                >
+                    {formatAmount(row.total_vat)}
+                </div>
+                <div className="text-center tabular-nums">
+                    {formatAmount(row.invoice.val_mon_tva)}
+                </div>
+
+                {(totalDiff !== null || vatDiff !== null) &&
+                    row.mismatch.any && (
+                        <div className="col-span-3 mt-1 rounded border border-amber-500/40 bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                            {totalDiff !== null && row.mismatch.total && (
+                                <div>
+                                    Diferență total:{' '}
+                                    {totalDiff > 0 ? '+' : ''}
+                                    {totalDiff.toFixed(2)}
+                                </div>
+                            )}
+                            {vatDiff !== null && row.mismatch.vat && (
+                                <div>
+                                    Diferență TVA: {vatDiff > 0 ? '+' : ''}
+                                    {vatDiff.toFixed(2)}
+                                </div>
+                            )}
+                        </div>
+                    )}
+            </div>
+        </div>
     );
 }
 

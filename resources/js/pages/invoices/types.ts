@@ -92,6 +92,13 @@ export type Payment = {
     val_fin: number;
     val_com: number;
     moneda: string | null;
+    bank_statement: {
+        id: number;
+        line_id: number;
+        data_extras: string;
+        banca: string | null;
+        iban: string;
+    } | null;
 };
 
 export type Invoice = {

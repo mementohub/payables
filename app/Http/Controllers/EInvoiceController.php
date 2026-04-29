@@ -3,13 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\EInvoice;
 use App\Models\Invoice;
+use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\Xlsx\XlsxWriter;
-use Einvoicing\Invoice as EInvoicingInvoice;
-use Einvoicing\InvoiceLine;
-use Einvoicing\Party;
-use Einvoicing\Readers\UblReader;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EInvoiceController extends Controller
 {
+    public function __construct(private readonly EInvoiceXmlParser $xmlParser) {}
+
     public function index(Request $request): Response
     {
         $eInvoices = $this->buildListQuery($request)
@@ -33,6 +33,7 @@ class EInvoiceController extends Controller
         $matched = $request->string('matched')->toString();
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
+        $departmentIds = $this->parseDepartmentIds($request);
 
         return Inertia::render('e-invoices/index', [
             'eInvoices' => $eInvoices,
@@ -43,8 +44,12 @@ class EInvoiceController extends Controller
                 'matched' => $matched ?: null,
                 'from' => $from ?: null,
                 'to' => $to ?: null,
+                'department_ids' => $departmentIds,
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'availableDepartments' => Department::responsabili()
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -64,7 +69,7 @@ class EInvoiceController extends Controller
             $query->whereIn('e_invoices.id', $idList);
         }
 
-        $headers = ['Data primire', 'Data factură', 'Tip doc XML', 'Număr', 'Furnizor', 'CIF', 'Reg. com.', 'Companie', 'Status', 'Asociere', 'Index încărcare', 'Eroare'];
+        $headers = ['Data primire', 'Data factură', 'Tip doc XML', 'Număr', 'Furnizor', 'CIF', 'Reg. com.', 'Companie', 'Total', 'TVA', 'Status', 'Asociere', 'Index încărcare', 'Eroare'];
 
         $rows = function () use ($query) {
             foreach ($query->lazy(500) as $row) {
@@ -77,6 +82,8 @@ class EInvoiceController extends Controller
                     $row->msg_cif ?? '',
                     $row->cod_cci_xml ?? '',
                     $row->company->name,
+                    $row->total_amount !== null ? (float) $row->total_amount : '',
+                    $row->total_vat !== null ? (float) $row->total_vat : '',
                     $this->statusLabel($row),
                     $row->invoice_id ? 'Asociată' : 'Neasociată',
                     $row->msg_index_incarcare ?? '',
@@ -98,12 +105,14 @@ class EInvoiceController extends Controller
         $matched = $request->string('matched')->toString();
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
+        $departmentIds = $this->parseDepartmentIds($request);
 
         return EInvoice::query()
             ->with([
                 'company:id,name',
                 'partner:id,name,cui',
-                'invoice:id,data_doc,tip_doc,nr_doc',
+                'partner.responsabilDepartments:id,name,type',
+                'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda',
             ])
             ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
             ->when($status === 'pending', fn ($q) => $q->whereNull('data_ins_omc'))
@@ -113,6 +122,13 @@ class EInvoiceController extends Controller
             ->when($matched === 'no', fn ($q) => $q->whereNull('invoice_id'))
             ->when($from, fn ($q, $d) => $q->where('msg_data_creare_d', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('msg_data_creare_d', '<=', $d.' 23:59:59'))
+            ->when(
+                ! empty($departmentIds),
+                fn ($q) => $q->whereHas(
+                    'partner.responsabilDepartments',
+                    fn ($d) => $d->whereIn('departments.id', $departmentIds),
+                ),
+            )
             ->when($search, function ($q, $term) {
                 $q->where(function ($q) use ($term) {
                     $q->where('nr_doc_xml', 'like', "%{$term}%")
@@ -121,6 +137,18 @@ class EInvoiceController extends Controller
                         ->orWhere('msg_id', 'like', "%{$term}%");
                 });
             });
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseDepartmentIds(Request $request): array
+    {
+        return collect($request->input('department_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
     }
 
     private function resolveStatus(Request $request): string
@@ -150,7 +178,8 @@ class EInvoiceController extends Controller
         $eInvoice->load([
             'company:id,name',
             'partner:id,name,cui',
-            'invoice:id,data_doc,tip_doc,nr_doc',
+            'partner.responsabilDepartments:id,name,type',
+            'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda',
         ]);
 
         return [
@@ -202,90 +231,25 @@ class EInvoiceController extends Controller
 
     public function parsed(EInvoice $eInvoice): array
     {
-        if ($eInvoice->msg_xml === null || trim($eInvoice->msg_xml) === '') {
-            return ['parsed' => null, 'error' => 'XML indisponibil pentru această eFactură.'];
-        }
+        $payload = $this->xmlParser->parse($eInvoice->msg_xml);
 
-        try {
-            $invoice = (new UblReader)->import($eInvoice->msg_xml);
-        } catch (\Throwable $e) {
-            return ['parsed' => null, 'error' => 'Nu am putut citi XML-ul: '.$e->getMessage()];
-        }
-
-        return ['parsed' => $this->transformParsedInvoice($invoice), 'error' => null];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function transformParsedInvoice(EInvoicingInvoice $invoice): array
-    {
-        $totals = $invoice->getTotals();
-
-        return [
-            'number' => $invoice->getNumber(),
-            'issue_date' => $invoice->getIssueDate()?->format('Y-m-d'),
-            'due_date' => $invoice->getDueDate()?->format('Y-m-d'),
-            'tax_point_date' => $invoice->getTaxPointDate()?->format('Y-m-d'),
-            'currency' => $invoice->getCurrency(),
-            'notes' => $invoice->getNotes(),
-            'buyer_reference' => $invoice->getBuyerReference(),
-            'purchase_order_reference' => $invoice->getPurchaseOrderReference(),
-            'contract_reference' => $invoice->getContractReference(),
-            'paid_amount' => $invoice->getPaidAmount(),
-            'rounding_amount' => $invoice->getRoundingAmount(),
-            'seller' => $this->transformParty($invoice->getSeller()),
-            'buyer' => $this->transformParty($invoice->getBuyer()),
-            'payee' => $this->transformParty($invoice->getPayee()),
-            'totals' => [
-                'currency' => $totals->currency,
-                'net_amount' => $totals->netAmount,
-                'allowances_amount' => $totals->allowancesAmount,
-                'charges_amount' => $totals->chargesAmount,
-                'tax_exclusive_amount' => $totals->taxExclusiveAmount,
-                'vat_amount' => $totals->vatAmount,
-                'tax_inclusive_amount' => $totals->taxInclusiveAmount,
-                'paid_amount' => $totals->paidAmount,
-                'rounding_amount' => $totals->roundingAmount,
-                'payable_amount' => $totals->payableAmount,
-            ],
-            'lines' => array_map(fn (InvoiceLine $line) => [
-                'name' => $line->getName(),
-                'description' => $line->getDescription(),
-                'quantity' => $line->getQuantity(),
-                'unit' => $line->getUnit(),
-                'price' => $line->getPrice(),
-                'net_amount' => $line->getNetAmount(),
-            ], $invoice->getLines()),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function transformParty(?Party $party): ?array
-    {
-        if ($party === null) {
-            return null;
-        }
-
-        return [
-            'name' => $party->getName(),
-            'trading_name' => $party->getTradingName(),
-            'vat_number' => $party->getVatNumber(),
-            'company_id' => $party->getCompanyId()?->getValue(),
-            'address' => $party->getAddress(),
-            'city' => $party->getCity(),
-            'postal_code' => $party->getPostalCode(),
-            'country' => $party->getCountry(),
-            'contact_name' => $party->getContactName(),
-            'contact_phone' => $party->getContactPhone(),
-            'contact_email' => $party->getContactEmail(),
-        ];
+        return ['parsed' => $payload['parsed'], 'error' => $payload['error']];
     }
 
     private function transformForList(EInvoice $row): array
     {
+        $invoiceTotal = $row->invoice ? (float) $row->invoice->val_mon : null;
+        $invoiceVat = $row->invoice ? (float) $row->invoice->val_mon_tva : null;
+        $eTotal = $row->total_amount !== null ? (float) $row->total_amount : null;
+        $eVat = $row->total_vat !== null ? (float) $row->total_vat : null;
+
+        $totalMismatch = $row->invoice && $eTotal !== null && $invoiceTotal !== null
+            ? abs($eTotal - $invoiceTotal) > 0.01
+            : false;
+        $vatMismatch = $row->invoice && $eVat !== null && $invoiceVat !== null
+            ? abs($eVat - $invoiceVat) > 0.01
+            : false;
+
         return [
             'id' => $row->id,
             'msg_id' => $row->msg_id,
@@ -297,6 +261,8 @@ class EInvoiceController extends Controller
             'nr_doc_xml' => $row->nr_doc_xml,
             'partener_xml' => $row->partener_xml,
             'cod_cci_xml' => $row->cod_cci_xml,
+            'total_amount' => $eTotal,
+            'total_vat' => $eVat,
             'data_ins_omc' => $row->data_ins_omc?->format('Y-m-d H:i'),
             'err_ins_omc' => $row->err_ins_omc,
             'status' => $row->status,
@@ -306,12 +272,26 @@ class EInvoiceController extends Controller
                 'name' => $row->partner->name,
                 'cui' => $row->partner->cui,
             ] : null,
+            'responsabil_departments' => $row->partner
+                ? $row->partner->responsabilDepartments->map(fn (Department $d) => [
+                    'id' => $d->id,
+                    'name' => $d->name,
+                ])->values()
+                : [],
             'invoice' => $row->invoice ? [
                 'id' => $row->invoice->id,
                 'data_doc' => $row->invoice->data_doc?->toDateString(),
                 'tip_doc' => $row->invoice->tip_doc,
                 'nr_doc' => $row->invoice->nr_doc,
+                'val_mon' => $invoiceTotal,
+                'val_mon_tva' => $invoiceVat,
+                'moneda' => $row->invoice->moneda,
             ] : null,
+            'mismatch' => [
+                'total' => $totalMismatch,
+                'vat' => $vatMismatch,
+                'any' => $totalMismatch || $vatMismatch,
+            ],
         ];
     }
 

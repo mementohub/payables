@@ -1,9 +1,10 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Landmark } from 'lucide-react';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
+import { show as bankStatementShow } from '@/routes/bank-statements';
 import {
     emise as facturiEmise,
     primite as facturiPrimite,
@@ -291,6 +292,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <th className="px-4 py-2 text-right">
                                         Plătit (monedă plată)
                                     </th>
+                                    <th className="px-4 py-2">Extras</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
@@ -298,7 +300,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <tr>
                                         <td
                                             className="px-4 py-6 text-center text-muted-foreground"
-                                            colSpan={6}
+                                            colSpan={7}
                                         >
                                             {invoice.partener_type ===
                                             'furnizor'
@@ -333,6 +335,34 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                             {formatAmount(
                                                 payment.val_fin,
                                                 payment.moneda,
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            {payment.bank_statement ? (
+                                                <Link
+                                                    href={`${bankStatementShow(payment.bank_statement.id).url}#line-${payment.bank_statement.line_id}`}
+                                                    className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                                                >
+                                                    <Landmark className="size-3.5" />
+                                                    <span>
+                                                        {
+                                                            payment
+                                                                .bank_statement
+                                                                .data_extras
+                                                        }
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {payment.bank_statement
+                                                            .banca ??
+                                                            payment
+                                                                .bank_statement
+                                                                .iban}
+                                                    </span>
+                                                </Link>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">
+                                                    —
+                                                </span>
                                             )}
                                         </td>
                                     </tr>

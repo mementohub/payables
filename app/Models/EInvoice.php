@@ -16,6 +16,8 @@ class EInvoice extends Model
             'msg_data_creare_d' => 'datetime',
             'data_doc_xml' => 'date',
             'data_ins_omc' => 'datetime',
+            'total_amount' => 'decimal:2',
+            'total_vat' => 'decimal:2',
         ];
     }
 

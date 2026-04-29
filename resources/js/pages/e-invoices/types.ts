@@ -6,12 +6,26 @@ export type Invoice = {
     data_doc: string | null;
     tip_doc: string;
     nr_doc: string;
+    val_mon: number | null;
+    val_mon_tva: number | null;
+    moneda: string | null;
 };
 
 export type Partner = {
     id: number;
     name: string;
     cui: string | null;
+};
+
+export type DepartmentRef = {
+    id: number;
+    name: string;
+};
+
+export type MismatchInfo = {
+    total: boolean;
+    vat: boolean;
+    any: boolean;
 };
 
 export type EInvoiceRow = {
@@ -25,12 +39,16 @@ export type EInvoiceRow = {
     nr_doc_xml: string | null;
     partener_xml: string | null;
     cod_cci_xml: string | null;
+    total_amount: number | null;
+    total_vat: number | null;
     data_ins_omc: string | null;
     err_ins_omc: string | null;
     status: EFactStatus;
     company: { id: number; name: string };
     partner: Partner | null;
+    responsabil_departments: DepartmentRef[];
     invoice: Invoice | null;
+    mismatch: MismatchInfo;
 };
 
 export type Filters = {
@@ -40,12 +58,14 @@ export type Filters = {
     matched: string | null;
     from: string | null;
     to: string | null;
+    department_ids: number[];
 };
 
 export type Props = {
     eInvoices: Paginated<EInvoiceRow>;
     filters: Filters;
     companies: { id: number; name: string }[];
+    availableDepartments: DepartmentRef[];
 };
 
 export type DetailPayload = EInvoiceRow & {
@@ -87,6 +107,9 @@ export type ParsedLine = {
     unit: string;
     price: number | null;
     net_amount: number | null;
+    vat_rate: number | null;
+    vat_amount: number | null;
+    vat_category: string | null;
 };
 
 export type ParsedInvoice = {

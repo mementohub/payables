@@ -34,6 +34,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import {
     index as bankStatementsIndex,
     show as bankStatementsShow,
@@ -281,7 +282,13 @@ export default function BankStatementShow({
 
                                 return (
                                     <Fragment key={line.id}>
-                                        <TableRow className={rowClass}>
+                                        <TableRow
+                                            id={`line-${line.id}`}
+                                            className={cn(
+                                                rowClass,
+                                                'scroll-mt-24 target:bg-sky-100/70 target:dark:bg-sky-500/20',
+                                            )}
+                                        >
                                             <TableCell className="p-0 text-center">
                                                 {hasAllocations && (
                                                     <button

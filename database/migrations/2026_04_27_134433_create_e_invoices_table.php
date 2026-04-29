@@ -25,6 +25,9 @@ return new class extends Migration
             $table->string('partener_xml')->nullable();
             $table->string('cod_cci_xml', 30)->nullable();
 
+            $table->decimal('total_amount', 15, 2)->nullable();
+            $table->decimal('total_vat', 15, 2)->nullable();
+
             $table->text('msg_detalii')->nullable();
             $table->longText('msg_xml')->nullable();
             $table->timestamp('data_ins_omc')->nullable();
