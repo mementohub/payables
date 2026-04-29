@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Builders\InvoiceBuilder;
 use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,6 +12,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Invoice extends Model
 {
+    public function newEloquentBuilder($query): InvoiceBuilder
+    {
+        return new InvoiceBuilder($query);
+    }
+
     /** @use HasFactory<InvoiceFactory> */
     use HasFactory;
 
