@@ -1,5 +1,5 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { Check, Clock, ShieldCheck } from 'lucide-react';
+import { Check, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
@@ -48,9 +48,7 @@ import type {
     IndexFilters as Filters,
     IndexProps as Props,
     InvoiceRow,
-    MasterApproval,
     Scope,
-    SupervisorStep,
 } from './types';
 
 function formatAmount(value: number, currency: string | null) {
@@ -551,102 +549,49 @@ function ApprovalCell({ approval }: { approval?: Approval }) {
         return <ApprovalStatusBadge stage="na" />;
     }
 
-    const supervisorsDone = approval.supervisor_steps.filter(
-        (s) => s.approved,
-    ).length;
-    const supervisorsTotal = approval.supervisor_steps.length;
-    const masterDone = approval.master !== null ? 1 : 0;
-    const totalDone = supervisorsDone + masterDone;
-    const totalSteps = supervisorsTotal + 1;
-
     return (
-        <div className="flex min-w-[180px] flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-                <ApprovalStatusBadge stage={approval.stage} />
-                <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
-                    {totalDone}/{totalSteps}
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span className="inline-flex cursor-help items-center">
+                    <ApprovalStatusBadge stage={approval.stage} />
                 </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-1">
-                {approval.supervisor_steps.map((step, index) => (
+            </TooltipTrigger>
+            <TooltipContent className="flex max-w-sm flex-col items-stretch gap-1.5 text-left">
+                {approval.supervisor_steps.map((step) => (
                     <div
                         key={step.department_id}
-                        className="flex items-center gap-1"
+                        className="flex flex-col gap-0.5"
                     >
-                        <SupervisorPill step={step} />
-                        {index < approval.supervisor_steps.length - 1 && (
-                            <span
-                                aria-hidden
-                                className="text-muted-foreground/40"
-                            >
-                                ·
-                            </span>
-                        )}
+                        <div className="flex items-center gap-1.5 font-medium">
+                            {step.approved ? (
+                                <Check className="size-3 text-green-500" />
+                            ) : (
+                                <span className="inline-block size-1.5 rounded-full bg-amber-400" />
+                            )}
+                            {step.department_name}
+                        </div>
+                        <div className="pl-4.5 text-muted-foreground">
+                            {step.approved && step.approved_by
+                                ? `${step.approved_by.name} · ${formatDateTime(step.approved_at)}`
+                                : 'în așteptare'}
+                        </div>
                     </div>
                 ))}
-                {supervisorsTotal > 0 && (
-                    <span aria-hidden className="text-muted-foreground/40">
-                        ·
-                    </span>
-                )}
-                <MasterPill master={approval.master} />
-            </div>
-        </div>
-    );
-}
-
-function SupervisorPill({ step }: { step: SupervisorStep }) {
-    const cls = step.approved
-        ? 'border-green-600/40 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-300'
-        : 'border-amber-600/40 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
-
-    return (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none font-medium ${cls}`}
-                >
-                    {step.approved ? (
-                        <Check className="size-3" />
-                    ) : (
-                        <Clock className="size-3" />
-                    )}
-                    {step.department_name}
-                </span>
-            </TooltipTrigger>
-            <TooltipContent>
-                {step.approved && step.approved_by
-                    ? `${step.approved_by.name} · ${formatDateTime(step.approved_at)}`
-                    : 'În așteptare supervizor'}
-            </TooltipContent>
-        </Tooltip>
-    );
-}
-
-function MasterPill({ master }: { master: MasterApproval }) {
-    const approved = master !== null;
-    const cls = approved
-        ? 'border-green-600/40 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-300'
-        : 'border-sky-600/40 bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300';
-
-    return (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none font-medium ${cls}`}
-                >
-                    {approved ? (
-                        <Check className="size-3" />
-                    ) : (
-                        <ShieldCheck className="size-3" />
-                    )}
-                    Master
-                </span>
-            </TooltipTrigger>
-            <TooltipContent>
-                {approved
-                    ? `${master.approved_by?.name ?? 'Master'}${master.approved_at ? ` · ${formatDateTime(master.approved_at)}` : ''}`
-                    : 'În așteptare master'}
+                <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5 font-medium">
+                        {approval.master ? (
+                            <Check className="size-3 text-green-500" />
+                        ) : (
+                            <ShieldCheck className="size-3 text-sky-500" />
+                        )}
+                        Master
+                    </div>
+                    <div className="pl-4.5 text-muted-foreground">
+                        {approval.master
+                            ? `${approval.master.approved_by?.name ?? 'Master'}${approval.master.approved_at ? ` · ${formatDateTime(approval.master.approved_at)}` : ''}`
+                            : 'în așteptare'}
+                    </div>
+                </div>
             </TooltipContent>
         </Tooltip>
     );
@@ -735,6 +680,7 @@ function InvoiceMobileCard({
                     <ApproveActions
                         invoice={invoice}
                         currentUser={currentUser}
+                        fullWidth
                     />
                 </div>
             )}
@@ -745,9 +691,11 @@ function InvoiceMobileCard({
 function ApproveActions({
     invoice,
     currentUser,
+    fullWidth = false,
 }: {
     invoice: InvoiceRow;
     currentUser: CurrentUser;
+    fullWidth?: boolean;
 }) {
     const approval = invoice.approval;
     const action = useMemo(() => {
@@ -769,7 +717,9 @@ function ApproveActions({
         if (pendingStep) {
             return {
                 departmentId: pendingStep.department_id,
-                label: `OK supervizor (${pendingStep.department_name})`,
+                kind: 'supervisor' as const,
+                label: 'Aprobă',
+                hint: pendingStep.department_name,
             };
         }
 
@@ -779,7 +729,9 @@ function ApproveActions({
         ) {
             return {
                 departmentId: currentUser.master_department_ids[0],
-                label: 'OK master',
+                kind: 'master' as const,
+                label: 'Aprobă',
+                hint: 'final',
             };
         }
 
@@ -789,6 +741,12 @@ function ApproveActions({
     if (!action) {
         return <span className="text-xs text-muted-foreground">—</span>;
     }
+
+    const isSupervisor = action.kind === 'supervisor';
+    const Icon = isSupervisor ? Check : ShieldCheck;
+    const colorClass = isSupervisor
+        ? 'border-green-600/40 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20'
+        : 'border-sky-600/40 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20';
 
     return (
         <Form
@@ -802,14 +760,28 @@ function ApproveActions({
                         name="department_id"
                         value={action.departmentId}
                     />
-                    <Button
-                        type="submit"
-                        size="sm"
-                        disabled={processing}
-                        className="w-full md:w-auto"
-                    >
-                        {action.label}
-                    </Button>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                type="submit"
+                                size="sm"
+                                variant="outline"
+                                disabled={processing}
+                                className={cn(
+                                    colorClass,
+                                    fullWidth && 'w-full',
+                                )}
+                            >
+                                <Icon />
+                                {action.label}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            {isSupervisor
+                                ? `Aprobă ca supervizor (${action.hint})`
+                                : 'Aprobă ca master (semnătura finală)'}
+                        </TooltipContent>
+                    </Tooltip>
                 </>
             )}
         </Form>

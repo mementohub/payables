@@ -1,13 +1,17 @@
+import type { Paginated } from '@/types/pagination';
+
 export type Member = {
     id: number;
     name: string;
     email: string;
 };
 
+export type DepartmentType = 'supervisor' | 'master';
+
 export type Department = {
     id: number;
     name: string;
-    type: 'supervisor' | 'master';
+    type: DepartmentType;
     members: Member[];
 };
 
@@ -17,7 +21,13 @@ export type UserOption = {
     email: string;
 };
 
+export type Filters = {
+    search: string | null;
+    type: DepartmentType | null;
+};
+
 export type Props = {
-    departments: Department[];
+    departments: Paginated<Department>;
     users: UserOption[];
+    filters: Filters;
 };

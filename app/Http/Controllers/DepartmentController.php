@@ -12,14 +12,28 @@ use Inertia\Response;
 
 class DepartmentController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $search = $request->string('search')->toString();
+        $type = $request->string('type')->toString();
+
         $departments = Department::query()
             ->with('members:id,name,email')
+            ->when(in_array($type, Department::TYPES, true), fn ($q) => $q->where('type', $type))
+            ->when($search, function ($q, $term) {
+                $q->where(function ($q) use ($term) {
+                    $q->where('name', 'like', "%{$term}%")
+                        ->orWhereHas('members', function ($q) use ($term) {
+                            $q->where('users.name', 'like', "%{$term}%")
+                                ->orWhere('users.email', 'like', "%{$term}%");
+                        });
+                });
+            })
             ->orderBy('type')
             ->orderBy('name')
-            ->get()
-            ->map(fn (Department $dept) => [
+            ->paginate(25)
+            ->withQueryString()
+            ->through(fn (Department $dept) => [
                 'id' => $dept->id,
                 'name' => $dept->name,
                 'type' => $dept->type,
@@ -35,6 +49,10 @@ class DepartmentController extends Controller
             'users' => User::query()
                 ->orderBy('name')
                 ->get(['id', 'name', 'email']),
+            'filters' => [
+                'search' => $search ?: null,
+                'type' => in_array($type, Department::TYPES, true) ? $type : null,
+            ],
         ]);
     }
 
