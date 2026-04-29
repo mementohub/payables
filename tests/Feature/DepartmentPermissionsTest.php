@@ -11,7 +11,7 @@ uses(RefreshDatabase::class);
 function makeMaster(): User
 {
     $dept = Department::firstOrCreate(['name' => 'developers', 'type' => Department::TYPE_MASTER]);
-    $user = User::factory()->create(['workos_id' => 'm-'.fake()->uuid()]);
+    $user = User::factory()->create();
     $dept->members()->attach($user->id);
 
     return $user;
@@ -20,7 +20,7 @@ function makeMaster(): User
 function makeSupervisor(string $name = 'Op'): array
 {
     $dept = Department::create(['name' => $name, 'type' => Department::TYPE_SUPERVISOR]);
-    $user = User::factory()->create(['workos_id' => 's-'.fake()->uuid()]);
+    $user = User::factory()->create();
     $dept->members()->attach($user->id);
 
     return [$user, $dept];
@@ -36,7 +36,7 @@ it('blocks non-masters from facturi emise', function () {
     [$user] = makeSupervisor();
 
     $this->actingAs($user)->get('/facturi-emise')->assertForbidden();
-    $this->actingAs(User::factory()->create(['workos_id' => 'plain-'.fake()->uuid()]))
+    $this->actingAs(User::factory()->create())
         ->get('/facturi-emise')->assertForbidden();
 });
 

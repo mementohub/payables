@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Upload } from 'lucide-react';
 import UserController from '@/actions/App/Http/Controllers/UserController';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,8 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import {
-    create as usersCreate,
     edit as usersEdit,
+    importMethod as usersImport,
     index as usersIndex,
 } from '@/routes/users';
 import type { IndexProps as Props } from './types';
@@ -34,9 +34,9 @@ export default function UsersIndex({ users, current_user_id }: Props) {
                         </p>
                     </div>
                     <Button asChild>
-                        <Link href={usersCreate()}>
-                            <Plus />
-                            Adaugă utilizator
+                        <Link href={usersImport()}>
+                            <Upload />
+                            Importă utilizatori
                         </Link>
                     </Button>
                 </div>

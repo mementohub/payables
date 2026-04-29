@@ -32,7 +32,7 @@ function makeEInvoice(array $attrs = []): EInvoice
 }
 
 beforeEach(function () {
-    $this->user = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $this->user = User::factory()->create();
 });
 
 it('lists e-invoices and defaults to pending status', function () {

@@ -11,9 +11,8 @@
         "ai-sdk-development",
         "laravel-best-practices",
         "configuring-horizon",
+        "socialite-development",
         "wayfinder-development",
-        "pest-testing",
-        "inertia-react-development",
-        "tailwindcss-development"
+        "pest-testing"
     ]
 }

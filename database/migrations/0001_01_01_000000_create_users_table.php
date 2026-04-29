@@ -16,9 +16,10 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('workos_id')->unique();
+            $table->string('password')->nullable();
+            $table->string('microsoft_id')->nullable()->unique();
             $table->rememberToken();
-            $table->text('avatar');
+            $table->text('avatar')->nullable();
             $table->timestamps();
         });
 

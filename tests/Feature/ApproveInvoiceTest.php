@@ -23,7 +23,7 @@ function makeFurnizorInvoice(array $supervisorDepartments = []): Invoice
 
 it('lets a supervisor mark a furnizor invoice as ok on behalf of their department', function () {
     $dept = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
-    $user = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $user = User::factory()->create();
     $dept->members()->attach($user->id);
 
     $invoice = makeFurnizorInvoice([$dept]);
@@ -40,8 +40,8 @@ it('lets a supervisor mark a furnizor invoice as ok on behalf of their departmen
 it('only flips supervisors_approved_at once every assigned supervisor dept has approved', function () {
     $dept1 = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
     $dept2 = Department::create(['name' => 'Finance', 'type' => Department::TYPE_SUPERVISOR]);
-    $user1 = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
-    $user2 = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $user1 = User::factory()->create();
+    $user2 = User::factory()->create();
     $dept1->members()->attach($user1->id);
     $dept2->members()->attach($user2->id);
 
@@ -59,7 +59,7 @@ it('only flips supervisors_approved_at once every assigned supervisor dept has a
 it('blocks a master approval before supervisors are done', function () {
     $sup = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
     $master = Department::create(['name' => 'Direcțiune', 'type' => Department::TYPE_MASTER]);
-    $masterUser = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $masterUser = User::factory()->create();
     $master->members()->attach($masterUser->id);
 
     $invoice = makeFurnizorInvoice([$sup]);
@@ -74,8 +74,8 @@ it('blocks a master approval before supervisors are done', function () {
 it('flips is_fully_approved once a master approves after supervisors', function () {
     $sup = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
     $master = Department::create(['name' => 'Direcțiune', 'type' => Department::TYPE_MASTER]);
-    $supUser = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
-    $masterUser = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $supUser = User::factory()->create();
+    $masterUser = User::factory()->create();
     $sup->members()->attach($supUser->id);
     $master->members()->attach($masterUser->id);
 
@@ -92,7 +92,7 @@ it('flips is_fully_approved once a master approves after supervisors', function 
 
 it('rejects an approval from a user outside the chosen department', function () {
     $sup = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
-    $outsider = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $outsider = User::factory()->create();
 
     $invoice = makeFurnizorInvoice([$sup]);
 
@@ -104,7 +104,7 @@ it('rejects an approval from a user outside the chosen department', function () 
 it('rejects an approval from a supervisor whose dept is not assigned to the furnizor', function () {
     $assigned = Department::create(['name' => 'Op', 'type' => Department::TYPE_SUPERVISOR]);
     $unassigned = Department::create(['name' => 'Compliance', 'type' => Department::TYPE_SUPERVISOR]);
-    $user = User::factory()->create(['workos_id' => 'u-'.fake()->uuid()]);
+    $user = User::factory()->create();
     $unassigned->members()->attach($user->id);
 
     $invoice = makeFurnizorInvoice([$assigned]);

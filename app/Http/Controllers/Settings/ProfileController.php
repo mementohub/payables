@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
-use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
-use Laravel\WorkOS\Http\Requests\AuthKitAccountDeletionRequest;
 
 class ProfileController extends Controller
 {
@@ -38,10 +37,17 @@ class ProfileController extends Controller
     /**
      * Delete the user's account.
      */
-    public function destroy(AuthKitAccountDeletionRequest $request): RedirectResponse
+    public function destroy(Request $request): RedirectResponse
     {
-        return $request->delete(
-            using: fn (User $user) => $user->delete(),
-        );
+        $user = $request->user();
+
+        Auth::logout();
+
+        $user->delete();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect('/');
     }
 }

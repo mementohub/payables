@@ -14,9 +14,10 @@
         "laravel/ai": "^0.6.3",
         "laravel/framework": "^13.0",
         "laravel/horizon": "^5.46",
+        "laravel/socialite": "^5.18",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
-        "laravel/workos": "^0.6.0",
+        "socialiteproviders/microsoft": "^4.6",
         "spatie/laravel-ray": "^1.43",
         "andalisolutions/einvoicing": "dev-main"
     },

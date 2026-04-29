@@ -118,7 +118,9 @@ export default function AiChatIndex({
             });
 
             if (!response.ok || !response.body) {
-                throw new Error(`HTTP ${response.status}`);
+                setErrorText(`HTTP ${response.status}`);
+
+                return;
             }
 
             const reader = response.body.getReader();
@@ -184,7 +186,9 @@ export default function AiChatIndex({
             }
 
             if (sawError) {
-                throw new Error(sawError);
+                setErrorText(sawError);
+
+                return;
             }
 
             if (
@@ -196,6 +200,7 @@ export default function AiChatIndex({
                     replace: false,
                 });
             } else {
+                // @ts-ignore
                 router.reload({
                     only: ['conversations', 'messages'],
                     preserveScroll: true,
@@ -317,7 +322,7 @@ export default function AiChatIndex({
         <>
             <Head title="Asistent AI" />
 
-            <div className="flex h-[100dvh] flex-1 flex-col md:grid md:h-[calc(100vh-4rem)] md:grid-cols-[260px_1fr]">
+            <div className="flex h-dvh flex-1 flex-col md:grid md:h-[calc(100vh-4rem)] md:grid-cols-[260px_1fr]">
                 <aside className="hidden border-r border-sidebar-border/70 md:block dark:border-sidebar-border">
                     {sidebar}
                 </aside>
@@ -413,7 +418,7 @@ export default function AiChatIndex({
                                 required
                                 disabled={busy}
                                 placeholder="Întreabă…"
-                                className="max-h-40 min-h-[2.75rem] w-full resize-none rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-base focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50 md:min-h-[4.5rem] md:text-sm dark:border-sidebar-border"
+                                className="max-h-40 min-h-11 w-full resize-none rounded-lg border border-sidebar-border/70 bg-background px-3 py-2 text-base focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-50 md:min-h-[4.5rem] md:text-sm dark:border-sidebar-border"
                                 onKeyDown={(e) => {
                                     if (
                                         e.key === 'Enter' &&

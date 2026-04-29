@@ -12,18 +12,16 @@ use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use Laravel\WorkOS\Http\Middleware\ValidateSessionWithWorkOS;
 
 Route::get('/', fn () => Auth::check() ? redirect()->route('dashboard') : redirect()->route('login'))->name('home');
 
-Route::middleware([
-    'auth',
-    ValidateSessionWithWorkOS::class,
-])->group(function () {
+Route::middleware('auth')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::resource('companies', CompanyController::class)->except('show');
-    Route::resource('users', UserController::class)->except('show');
+    Route::get('users/import', [UserController::class, 'importForm'])->name('users.import');
+    Route::post('users/import', [UserController::class, 'import'])->name('users.import.store');
+    Route::resource('users', UserController::class)->except(['show', 'create', 'store']);
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
 
     Route::get('facturi-emise', [InvoiceController::class, 'emise'])->name('invoices.emise');

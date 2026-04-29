@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'workos_id', 'avatar'])]
-#[Hidden(['workos_id', 'remember_token'])]
+#[Fillable(['name', 'email', 'password', 'microsoft_id', 'avatar', 'email_verified_at'])]
+#[Hidden(['password', 'microsoft_id', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */

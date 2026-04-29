@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\ImportUsersRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -33,21 +33,40 @@ class UserController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function importForm(): Response
     {
-        return Inertia::render('users/create');
+        return Inertia::render('users/import');
     }
 
-    public function store(StoreUserRequest $request): RedirectResponse
+    public function import(ImportUsersRequest $request): RedirectResponse
     {
-        User::create([
-            'name' => $request->string('name'),
-            'email' => $request->string('email'),
-            'workos_id' => 'manual_'.(string) Str::uuid(),
-            'avatar' => '',
-        ]);
+        $emails = collect(preg_split('/[\s,;]+/', (string) $request->string('emails')))
+            ->map(fn (string $email) => mb_strtolower(trim($email)))
+            ->filter(fn (string $email) => filter_var($email, FILTER_VALIDATE_EMAIL))
+            ->unique()
+            ->values();
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Utilizator adăugat.']);
+        $existing = User::whereIn('email', $emails)->pluck('email')->all();
+
+        $created = 0;
+
+        foreach ($emails->diff($existing) as $email) {
+            User::create([
+                'name' => Str::before($email, '@'),
+                'email' => $email,
+                'password' => Str::random(24),
+                'email_verified_at' => now(),
+            ]);
+
+            $created++;
+        }
+
+        $skipped = count($existing);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "Importați: {$created}. Existenți (omiși): {$skipped}.",
+        ]);
 
         return to_route('users.index');
     }

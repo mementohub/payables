@@ -110,7 +110,8 @@ export default function DepartmentsIndex({
                         value={filters.type ?? 'all'}
                         onValueChange={(v) =>
                             applyFilter({
-                                type: v === 'all' ? null : (v as DepartmentType),
+                                type:
+                                    v === 'all' ? null : (v as DepartmentType),
                             })
                         }
                     >
