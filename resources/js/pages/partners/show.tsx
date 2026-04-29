@@ -193,17 +193,17 @@ export default function PartnerShow({
                     <Card className="gap-2 py-3">
                         <CardHeader className="px-4 pb-0">
                             <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                                Departamente supervizori
+                                Departamente responsabili
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2 px-4 pb-2">
-                            {partner.supervisor_departments.length === 0 ? (
+                            {partner.responsabil_departments.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">
                                     Niciun departament atribuit.
                                 </p>
                             ) : (
                                 <ul className="flex flex-wrap gap-1.5">
-                                    {partner.supervisor_departments.map(
+                                    {partner.responsabil_departments.map(
                                         (dept) => (
                                             <li
                                                 key={dept.id}
@@ -211,7 +211,7 @@ export default function PartnerShow({
                                             >
                                                 <span>{dept.name}</span>
                                                 <Form
-                                                    {...PartnerController.detachSupervisorDepartment.form(
+                                                    {...PartnerController.detachResponsabilDepartment.form(
                                                         [partner.id, dept.id],
                                                     )}
                                                     options={{
@@ -240,7 +240,7 @@ export default function PartnerShow({
 
                             {availableDepartments.length > 0 && (
                                 <Form
-                                    {...PartnerController.attachSupervisorDepartment.form(
+                                    {...PartnerController.attachResponsabilDepartment.form(
                                         partner.id,
                                     )}
                                     options={{ preserveScroll: true }}

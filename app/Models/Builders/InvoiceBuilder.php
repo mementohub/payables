@@ -16,7 +16,7 @@ class InvoiceBuilder extends Builder
     {
         return $this->with([
             'partner:id,name,cui',
-            'partner.supervisorDepartments:id,name,type',
+            'partner.responsabilDepartments:id,name,type',
             'company:id,name',
             'approvals:id,invoice_id,department_id,user_id,role,approved_at',
             'approvals.user:id,name,email',
@@ -35,16 +35,7 @@ class InvoiceBuilder extends Builder
 
     public function visibleToFurnizorUser(?User $user): self
     {
-        if ($user === null || $user->isMaster()) {
-            return $this;
-        }
-
-        $deptIds = $user->departmentIds();
-
-        return $this->where(function ($q) use ($deptIds) {
-            $q->whereDoesntHave('partner.departments')
-                ->orWhereHas('partner.departments', fn ($d) => $d->whereIn('departments.id', $deptIds));
-        });
+        return $this;
     }
 
     public function forCompany(?int $companyId): self
@@ -82,14 +73,14 @@ class InvoiceBuilder extends Builder
     {
         return match ($stage) {
             'ok' => $this->where('is_fully_approved', true),
-            'supervisors_ok' => $this
+            'responsabili_ok' => $this
                 ->where('is_fully_approved', false)
-                ->whereNotNull('supervisors_approved_at'),
+                ->whereNotNull('responsabili_approved_at'),
             'pending' => $this
                 ->where('is_fully_approved', false)
-                ->whereHas('partner.supervisorDepartments'),
-            'needs_approval' => $this->whereHas('partner.supervisorDepartments'),
-            'na' => $this->whereDoesntHave('partner.supervisorDepartments'),
+                ->whereHas('partner.responsabilDepartments'),
+            'needs_approval' => $this->whereHas('partner.responsabilDepartments'),
+            'na' => $this->whereDoesntHave('partner.responsabilDepartments'),
             default => $this,
         };
     }
@@ -101,7 +92,7 @@ class InvoiceBuilder extends Builder
         }
 
         return $this->whereHas(
-            'partner.supervisorDepartments.members',
+            'partner.responsabilDepartments.members',
             fn ($m) => $m->where('users.id', $userId),
         );
     }

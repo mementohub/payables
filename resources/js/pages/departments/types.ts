@@ -6,7 +6,7 @@ export type Member = {
     email: string;
 };
 
-export type DepartmentType = 'supervisor' | 'master';
+export type DepartmentType = 'responsabil' | 'ordonator';
 
 export type Department = {
     id: number;

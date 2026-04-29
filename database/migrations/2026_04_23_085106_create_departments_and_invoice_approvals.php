@@ -53,8 +53,8 @@ return new class extends Migration
         });
 
         Schema::table('invoices', function (Blueprint $table) {
-            $table->timestamp('supervisors_approved_at')->nullable()->after('val_mon_paid');
-            $table->boolean('is_fully_approved')->default(false)->index()->after('supervisors_approved_at');
+            $table->timestamp('responsabili_approved_at')->nullable()->after('val_mon_paid');
+            $table->boolean('is_fully_approved')->default(false)->index()->after('responsabili_approved_at');
             $table->timestamp('fully_approved_at')->nullable()->after('is_fully_approved');
         });
 
@@ -73,7 +73,7 @@ return new class extends Migration
         });
 
         Schema::table('invoices', function (Blueprint $table) {
-            $table->dropColumn(['supervisors_approved_at', 'is_fully_approved', 'fully_approved_at']);
+            $table->dropColumn(['responsabili_approved_at', 'is_fully_approved', 'fully_approved_at']);
         });
 
         Schema::dropIfExists('invoice_approvals');

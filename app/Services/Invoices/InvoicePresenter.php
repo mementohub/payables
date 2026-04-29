@@ -44,14 +44,14 @@ class InvoicePresenter
      */
     public function approvalPayload(Invoice $invoice): array
     {
-        $supervisorDepts = $invoice->partner?->supervisorDepartments ?? collect();
+        $responsabilDepts = $invoice->partner?->responsabilDepartments ?? collect();
 
-        $supervisorApprovalsByDept = $invoice->approvals
-            ->where('role', InvoiceApproval::ROLE_SUPERVISOR)
+        $responsabilApprovalsByDept = $invoice->approvals
+            ->where('role', InvoiceApproval::ROLE_RESPONSABIL)
             ->keyBy('department_id');
 
-        $supervisorSteps = $supervisorDepts->map(function (Department $dept) use ($supervisorApprovalsByDept) {
-            $approval = $supervisorApprovalsByDept->get($dept->id);
+        $responsabilSteps = $responsabilDepts->map(function (Department $dept) use ($responsabilApprovalsByDept) {
+            $approval = $responsabilApprovalsByDept->get($dept->id);
 
             return [
                 'department_id' => $dept->id,
@@ -65,33 +65,33 @@ class InvoicePresenter
             ];
         })->values();
 
-        $masterApproval = $invoice->approvals->firstWhere('role', InvoiceApproval::ROLE_MASTER);
-        $needsApproval = $supervisorDepts->isNotEmpty();
+        $ordonatorApproval = $invoice->approvals->firstWhere('role', InvoiceApproval::ROLE_ORDONATOR);
+        $needsApproval = $responsabilDepts->isNotEmpty();
 
         return [
             'needs_approval' => $needsApproval,
             'stage' => $this->stage($invoice, $needsApproval),
-            'supervisors_approved_at' => $invoice->supervisors_approved_at?->toIso8601String(),
+            'responsabili_approved_at' => $invoice->responsabili_approved_at?->toIso8601String(),
             'is_fully_approved' => (bool) $invoice->is_fully_approved,
             'fully_approved_at' => $invoice->fully_approved_at?->toIso8601String(),
-            'supervisor_steps' => $supervisorSteps,
-            'master' => $masterApproval ? [
-                'department_id' => $masterApproval->department_id,
-                'department_name' => $masterApproval->department?->name,
-                'approved_by' => $masterApproval->user ? [
-                    'id' => $masterApproval->user->id,
-                    'name' => $masterApproval->user->name,
+            'responsabil_steps' => $responsabilSteps,
+            'ordonator' => $ordonatorApproval ? [
+                'department_id' => $ordonatorApproval->department_id,
+                'department_name' => $ordonatorApproval->department?->name,
+                'approved_by' => $ordonatorApproval->user ? [
+                    'id' => $ordonatorApproval->user->id,
+                    'name' => $ordonatorApproval->user->name,
                 ] : null,
-                'approved_at' => $masterApproval->approved_at?->toIso8601String(),
+                'approved_at' => $ordonatorApproval->approved_at?->toIso8601String(),
             ] : null,
         ];
     }
 
     public function exportApprovalLabel(Invoice $invoice): string
     {
-        $supervisorDepts = $invoice->partner?->supervisorDepartments ?? collect();
+        $responsabilDepts = $invoice->partner?->responsabilDepartments ?? collect();
 
-        if ($supervisorDepts->isEmpty()) {
+        if ($responsabilDepts->isEmpty()) {
             return 'Fără departament';
         }
 
@@ -99,11 +99,11 @@ class InvoicePresenter
             return 'Bun de plată';
         }
 
-        if ($invoice->supervisors_approved_at !== null) {
-            return 'Așteaptă master';
+        if ($invoice->responsabili_approved_at !== null) {
+            return 'Așteaptă ordonator';
         }
 
-        return 'Așteaptă supervizor';
+        return 'Așteaptă responsabil';
     }
 
     public function paymentStatusLabel(string $status): string
@@ -126,8 +126,8 @@ class InvoicePresenter
             return 'ok';
         }
 
-        if ($invoice->supervisors_approved_at !== null) {
-            return 'supervisors_ok';
+        if ($invoice->responsabili_approved_at !== null) {
+            return 'responsabili_ok';
         }
 
         return 'pending';

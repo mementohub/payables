@@ -11,7 +11,7 @@ class DepartmentSeeder extends Seeder
     public function run(): void
     {
         $developers = Department::firstOrCreate(
-            ['name' => 'developers', 'type' => Department::TYPE_MASTER],
+            ['name' => 'developers', 'type' => Department::TYPE_ORDONATOR],
         );
 
         $userIds = User::whereIn('id', [1, 2])->pluck('id')->all();

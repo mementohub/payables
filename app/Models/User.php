@@ -36,10 +36,10 @@ class User extends Authenticatable
         return $this->belongsToMany(Department::class)->withTimestamps();
     }
 
-    public function isMaster(): bool
+    public function isOrdonator(): bool
     {
         return $this->departments()
-            ->where('type', Department::TYPE_MASTER)
+            ->where('type', Department::TYPE_ORDONATOR)
             ->exists();
     }
 

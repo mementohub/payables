@@ -46,10 +46,10 @@ class Partner extends Model
         return $this->belongsToMany(Department::class, 'partner_department')->withTimestamps();
     }
 
-    public function supervisorDepartments(): BelongsToMany
+    public function responsabilDepartments(): BelongsToMany
     {
         return $this->belongsToMany(Department::class, 'partner_department')
-            ->where('type', Department::TYPE_SUPERVISOR)
+            ->where('type', Department::TYPE_RESPONSABIL)
             ->withTimestamps();
     }
 

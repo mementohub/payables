@@ -19,7 +19,6 @@ class AiChatController extends Controller
     public function index(Request $request, ?string $conversation = null): Response
     {
         $user = $request->user();
-        abort_unless($user?->isMaster(), 403);
 
         $conversations = DB::table('agent_conversations')
             ->where('user_id', $user->id)
@@ -73,7 +72,6 @@ class AiChatController extends Controller
         ]);
 
         $user = $request->user();
-        abort_unless($user?->isMaster(), 403);
 
         $incomingId = $validated['conversation_id'] ?? null;
         $isNewConversation = $incomingId === null;
@@ -155,7 +153,6 @@ class AiChatController extends Controller
     public function destroy(Request $request, string $conversation): RedirectResponse
     {
         $user = $request->user();
-        abort_unless($user?->isMaster(), 403);
 
         $owned = DB::table('agent_conversations')
             ->where('id', $conversation)

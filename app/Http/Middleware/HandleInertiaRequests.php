@@ -42,7 +42,7 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $user ? array_merge($user->toArray(), [
-                    'is_master' => $user->isMaster(),
+                    'is_ordonator' => $user->isOrdonator(),
                 ]) : null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

@@ -42,8 +42,8 @@ import type {
 } from './types';
 
 const typeLabels: Record<DepartmentType, string> = {
-    supervisor: 'Supervizor',
-    master: 'Master',
+    responsabil: 'Responsabil',
+    ordonator: 'Ordonator',
 };
 
 export default function DepartmentsIndex({
@@ -82,9 +82,9 @@ export default function DepartmentsIndex({
                     <div>
                         <h1 className="text-2xl font-semibold">Departamente</h1>
                         <p className="text-sm text-muted-foreground">
-                            Supervizorii aprobă facturi pe furnizorii la care
-                            sunt atribuiți. Masterii dau OK final după etapa
-                            supervizorilor, indiferent de furnizor.
+                            Responsabilii aprobă facturi pe furnizorii la care
+                            sunt atribuiți. Ordonatorii dau OK final după etapa
+                            responsabililor, indiferent de furnizor.
                         </p>
                     </div>
                     <CreateDialog
@@ -120,10 +120,10 @@ export default function DepartmentsIndex({
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Toate tipurile</SelectItem>
-                            <SelectItem value="supervisor">
-                                Supervizori
+                            <SelectItem value="responsabil">
+                                Responsabili
                             </SelectItem>
-                            <SelectItem value="master">Masteri</SelectItem>
+                            <SelectItem value="ordonator">Ordonatori</SelectItem>
                         </SelectContent>
                     </Select>
                     <Button type="submit" variant="secondary">
@@ -264,11 +264,11 @@ function CreateDialog({
     onOpenChange: (v: boolean) => void;
 }) {
     const [name, setName] = useState('');
-    const [type, setType] = useState<DepartmentType>('supervisor');
+    const [type, setType] = useState<DepartmentType>('responsabil');
 
     const reset = () => {
         setName('');
-        setType('supervisor');
+        setType('responsabil');
     };
 
     return (
@@ -292,7 +292,7 @@ function CreateDialog({
                 <DialogHeader>
                     <DialogTitle>Departament nou</DialogTitle>
                     <DialogDescription>
-                        Crează un departament de tip supervizor sau master.
+                        Crează un departament de tip responsabil sau ordonator.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
@@ -334,11 +334,11 @@ function CreateDialog({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="supervisor">
-                                            Supervizor
+                                        <SelectItem value="responsabil">
+                                            Responsabil
                                         </SelectItem>
-                                        <SelectItem value="master">
-                                            Master
+                                        <SelectItem value="ordonator">
+                                            Ordonator
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -430,11 +430,11 @@ function EditDialogContent({
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="supervisor">
-                                        Supervizor
+                                    <SelectItem value="responsabil">
+                                        Responsabil
                                     </SelectItem>
-                                    <SelectItem value="master">
-                                        Master
+                                    <SelectItem value="ordonator">
+                                        Ordonator
                                     </SelectItem>
                                 </SelectContent>
                             </Select>

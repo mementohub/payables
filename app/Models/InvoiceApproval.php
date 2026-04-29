@@ -7,9 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceApproval extends Model
 {
-    public const ROLE_SUPERVISOR = 'supervisor';
+    public const ROLE_RESPONSABIL = 'responsabil';
 
-    public const ROLE_MASTER = 'master';
+    public const ROLE_ORDONATOR = 'ordonator';
 
     protected $guarded = [];
 

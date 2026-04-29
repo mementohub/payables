@@ -23,29 +23,29 @@ class InvoiceApprovalService
             throw new AuthorizationException('Nu faci parte din acest departament.');
         }
 
-        $invoice->loadMissing('partner.supervisorDepartments');
+        $invoice->loadMissing('partner.responsabilDepartments');
 
         DB::transaction(function () use ($invoice, $department, $user) {
             $fresh = Invoice::whereKey($invoice->id)->lockForUpdate()->first();
 
             match ($department->type) {
-                Department::TYPE_SUPERVISOR => $this->recordSupervisorApproval($fresh, $department, $user),
-                Department::TYPE_MASTER => $this->recordMasterApproval($fresh, $department, $user),
+                Department::TYPE_RESPONSABIL => $this->recordResponsabilApproval($fresh, $department, $user),
+                Department::TYPE_ORDONATOR => $this->recordOrdonatorApproval($fresh, $department, $user),
                 default => throw ValidationException::withMessages(['department_id' => 'Tip departament necunoscut.']),
             };
         });
     }
 
-    private function recordSupervisorApproval(Invoice $invoice, Department $department, User $user): void
+    private function recordResponsabilApproval(Invoice $invoice, Department $department, User $user): void
     {
-        $assigned = $invoice->partner?->supervisorDepartments ?? collect();
+        $assigned = $invoice->partner?->responsabilDepartments ?? collect();
 
         if (! $assigned->contains('id', $department->id)) {
             throw new AuthorizationException('Departamentul nu este atribuit acestui furnizor.');
         }
 
-        if ($invoice->supervisors_approved_at !== null) {
-            throw ValidationException::withMessages(['department_id' => 'Etapa de supervizori este deja închisă.']);
+        if ($invoice->responsabili_approved_at !== null) {
+            throw ValidationException::withMessages(['department_id' => 'Etapa de responsabili este deja închisă.']);
         }
 
         $alreadyApproved = InvoiceApproval::where('invoice_id', $invoice->id)
@@ -62,23 +62,23 @@ class InvoiceApprovalService
             'invoice_id' => $invoice->id,
             'department_id' => $department->id,
             'user_id' => $user->id,
-            'role' => InvoiceApproval::ROLE_SUPERVISOR,
+            'role' => InvoiceApproval::ROLE_RESPONSABIL,
             'approved_at' => $now,
         ]);
 
         $approvedDeptIds = InvoiceApproval::where('invoice_id', $invoice->id)
-            ->where('role', InvoiceApproval::ROLE_SUPERVISOR)
+            ->where('role', InvoiceApproval::ROLE_RESPONSABIL)
             ->pluck('department_id');
 
         if ($assigned->pluck('id')->diff($approvedDeptIds)->isEmpty()) {
-            $invoice->forceFill(['supervisors_approved_at' => $now])->save();
+            $invoice->forceFill(['responsabili_approved_at' => $now])->save();
         }
     }
 
-    private function recordMasterApproval(Invoice $invoice, Department $department, User $user): void
+    private function recordOrdonatorApproval(Invoice $invoice, Department $department, User $user): void
     {
-        if ($invoice->supervisors_approved_at === null) {
-            throw ValidationException::withMessages(['department_id' => 'Masterii pot aproba doar după supervizori.']);
+        if ($invoice->responsabili_approved_at === null) {
+            throw ValidationException::withMessages(['department_id' => 'Ordonatorii pot aproba doar după responsabili.']);
         }
 
         if ($invoice->is_fully_approved) {
@@ -91,7 +91,7 @@ class InvoiceApprovalService
             'invoice_id' => $invoice->id,
             'department_id' => $department->id,
             'user_id' => $user->id,
-            'role' => InvoiceApproval::ROLE_MASTER,
+            'role' => InvoiceApproval::ROLE_ORDONATOR,
             'approved_at' => $now,
         ]);
 

@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import {
     Building2,
     Contact,
@@ -38,84 +38,62 @@ import {
 } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as usersIndex } from '@/routes/users';
-import type { NavItem, NavItemOrGroup } from '@/types/navigation';
-import { isNavGroup } from '@/types/navigation';
+import type { NavItemOrGroup } from '@/types/navigation';
 
-function buildMainNavItems(isMaster: boolean): NavItemOrGroup[] {
-    const facturiChildren: NavItem[] = [
-        ...(isMaster
-            ? [
-                  {
-                      title: 'Emise',
-                      href: facturiEmise(),
-                      icon: FileOutput,
-                  },
-              ]
-            : []),
-        {
-            title: 'Primite',
-            href: facturiPrimite(),
-            icon: FileInput,
-        },
-        {
-            title: 'eFacturi',
-            href: eInvoicesIndex(),
-            icon: FileCheck2,
-        },
-    ];
-
-    const parteneriChildren: NavItem[] = [
-        {
-            title: 'Furnizori',
-            href: furnizori(),
-            icon: Truck,
-        },
-        ...(isMaster
-            ? [
-                  {
-                      title: 'Clienți',
-                      href: clienti(),
-                      icon: Users,
-                  },
-              ]
-            : []),
-    ];
-
-    const items: NavItemOrGroup[] = [
-        {
-            title: 'Panou principal',
-            href: dashboard(),
-            icon: LayoutGrid,
-        },
-        {
-            title: 'Facturi',
-            icon: FileText,
-            children: facturiChildren,
-        },
-        {
-            title: 'Parteneri',
-            icon: Contact,
-            children: parteneriChildren,
-        },
-        {
-            title: 'Extrase bancare',
-            href: bankStatementsIndex(),
-            icon: Landmark,
-        },
-    ];
-
-    if (isMaster) {
-        items.push({
-            title: 'Asistent AI',
-            href: aiChatIndex(),
-            icon: Sparkles,
-        });
-    }
-
-    return items.filter(
-        (item) => !isNavGroup(item) || item.children.length > 0,
-    );
-}
+const mainNavItems: NavItemOrGroup[] = [
+    {
+        title: 'Panou principal',
+        href: dashboard(),
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Facturi',
+        icon: FileText,
+        children: [
+            {
+                title: 'Emise',
+                href: facturiEmise(),
+                icon: FileOutput,
+            },
+            {
+                title: 'Primite',
+                href: facturiPrimite(),
+                icon: FileInput,
+            },
+            {
+                title: 'eFacturi',
+                href: eInvoicesIndex(),
+                icon: FileCheck2,
+            },
+        ],
+    },
+    {
+        title: 'Parteneri',
+        icon: Contact,
+        children: [
+            {
+                title: 'Furnizori',
+                href: furnizori(),
+                icon: Truck,
+            },
+            {
+                title: 'Clienți',
+                href: clienti(),
+                icon: Users,
+            },
+        ],
+    },
+    {
+        title: 'Extrase bancare',
+        href: bankStatementsIndex(),
+        icon: Landmark,
+    },
+    {
+        title: 'Asistent AI',
+        href: aiChatIndex(),
+        icon: Sparkles,
+    },
+];
 
 const settingsNavItems: NavItemOrGroup[] = [
     {
@@ -136,12 +114,6 @@ const settingsNavItems: NavItemOrGroup[] = [
 ];
 
 export function AppSidebar() {
-    const { auth } = usePage<{
-        auth: { user: { is_master?: boolean } | null };
-    }>().props;
-    const isMaster = Boolean(auth?.user?.is_master);
-    const mainNavItems = buildMainNavItems(isMaster);
-
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>

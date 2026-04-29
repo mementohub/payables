@@ -2,7 +2,7 @@ import type { ApprovalStage } from '@/components/approval-status-badge';
 import type { PaymentStatus } from '@/components/payment-status-badge';
 import type { Paginated } from '@/types/pagination';
 
-export type SupervisorStep = {
+export type ResponsabilStep = {
     department_id: number;
     department_name: string;
     approved: boolean;
@@ -10,7 +10,7 @@ export type SupervisorStep = {
     approved_at: string | null;
 };
 
-export type MasterApproval = {
+export type OrdonatorApproval = {
     department_id: number;
     department_name: string | null;
     approved_by: { id: number; name: string } | null;
@@ -20,11 +20,11 @@ export type MasterApproval = {
 export type Approval = {
     needs_approval: boolean;
     stage: ApprovalStage;
-    supervisors_approved_at: string | null;
+    responsabili_approved_at: string | null;
     is_fully_approved: boolean;
     fully_approved_at: string | null;
-    supervisor_steps: SupervisorStep[];
-    master: MasterApproval;
+    responsabil_steps: ResponsabilStep[];
+    ordonator: OrdonatorApproval;
 };
 
 export type InvoiceRow = {
@@ -59,8 +59,8 @@ export type IndexFilters = {
 
 export type CurrentUser = {
     id: number | null;
-    supervisor_department_ids: number[];
-    master_department_ids: number[];
+    responsabil_department_ids: number[];
+    ordonator_department_ids: number[];
 };
 
 export type IndexProps = {

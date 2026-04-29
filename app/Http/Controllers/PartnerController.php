@@ -20,8 +20,6 @@ class PartnerController extends Controller
 
     public function clienti(Request $request): Response
     {
-        abort_unless($request->user()?->isMaster(), 403);
-
         return $this->list($request, 'clienti');
     }
 
@@ -32,10 +30,10 @@ class PartnerController extends Controller
         $partner->load([
             'company:id,name',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
-            'supervisorDepartments:id,name,type',
+            'responsabilDepartments:id,name,type',
         ]);
 
-        $assignedDeptIds = $partner->supervisorDepartments->pluck('id');
+        $assignedDeptIds = $partner->responsabilDepartments->pluck('id');
 
         $invoiceSearch = $request->string('invoice_search')->toString();
         $invoiceTipDoc = $request->string('invoice_tip_doc')->toString();
@@ -102,7 +100,7 @@ class PartnerController extends Controller
                         'is_default' => $account->is_default,
                         'is_discontinued' => $account->is_discontinued,
                     ]),
-                'supervisor_departments' => $partner->supervisorDepartments->map(fn (Department $dept) => [
+                'responsabil_departments' => $partner->responsabilDepartments->map(fn (Department $dept) => [
                     'id' => $dept->id,
                     'name' => $dept->name,
                     'type' => $dept->type,
@@ -117,7 +115,7 @@ class PartnerController extends Controller
                 'payment' => $invoicePayment ?: null,
             ],
             'availableTipDocs' => $availableTipDocs,
-            'availableDepartments' => Department::supervisors()
+            'availableDepartments' => Department::responsabili()
                 ->whereNotIn('id', $assignedDeptIds)
                 ->orderBy('name')
                 ->get(['id', 'name', 'type'])
@@ -129,7 +127,7 @@ class PartnerController extends Controller
         ]);
     }
 
-    public function attachSupervisorDepartment(Request $request, Partner $partner): RedirectResponse
+    public function attachResponsabilDepartment(Request $request, Partner $partner): RedirectResponse
     {
         abort_unless($partner->is_furnizor, 404);
 
@@ -138,7 +136,7 @@ class PartnerController extends Controller
         ]);
 
         $department = Department::findOrFail($validated['department_id']);
-        abort_unless($department->type === Department::TYPE_SUPERVISOR, 422, 'Doar departamentele de supervizori pot fi atribuite.');
+        abort_unless($department->type === Department::TYPE_RESPONSABIL, 422, 'Doar departamentele de responsabili pot fi atribuite.');
 
         $partner->departments()->syncWithoutDetaching([$department->id]);
 
@@ -147,7 +145,7 @@ class PartnerController extends Controller
         return back();
     }
 
-    public function detachSupervisorDepartment(Partner $partner, Department $department): RedirectResponse
+    public function detachResponsabilDepartment(Partner $partner, Department $department): RedirectResponse
     {
         abort_unless($partner->is_furnizor, 404);
 
@@ -162,14 +160,26 @@ class PartnerController extends Controller
     {
         $search = $request->string('search')->toString();
         $companyId = $request->integer('company_id');
+        $departmentIds = collect($request->input('department_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
 
         $partners = Partner::query()
             ->with(['company:id,name'])
-            ->when($scope === 'furnizori', fn ($q) => $q->with('supervisorDepartments:id,name,type'))
+            ->when($scope === 'furnizori', fn ($q) => $q->with('responsabilDepartments:id,name,type'))
             ->withCount('invoices')
             ->when($scope === 'furnizori', fn ($q) => $q->furnizori())
             ->when($scope === 'clienti', fn ($q) => $q->clienti())
             ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when(
+                $scope === 'furnizori' && ! empty($departmentIds),
+                fn ($q) => $q->whereHas(
+                    'responsabilDepartments',
+                    fn ($d) => $d->whereIn('departments.id', $departmentIds),
+                ),
+            )
             ->when($search, function ($q, $term) {
                 $q->where(function ($q) use ($term) {
                     $q->where('name', 'like', "%{$term}%")
@@ -192,8 +202,8 @@ class PartnerController extends Controller
                 'is_client' => $partner->is_client,
                 'invoices_count' => $partner->invoices_count,
                 'company' => ['id' => $partner->company->id, 'name' => $partner->company->name],
-                'supervisor_departments' => $scope === 'furnizori'
-                    ? $partner->supervisorDepartments->map(fn (Department $dept) => [
+                'responsabil_departments' => $scope === 'furnizori'
+                    ? $partner->responsabilDepartments->map(fn (Department $dept) => [
                         'id' => $dept->id,
                         'name' => $dept->name,
                     ])->values()
@@ -206,8 +216,12 @@ class PartnerController extends Controller
             'filters' => [
                 'search' => $search ?: null,
                 'company_id' => $companyId ?: null,
+                'department_ids' => $scope === 'furnizori' ? $departmentIds : [],
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'availableDepartments' => $scope === 'furnizori'
+                ? Department::responsabili()->orderBy('name')->get(['id', 'name'])
+                : [],
         ]);
     }
 }

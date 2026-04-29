@@ -25,8 +25,6 @@ class InvoiceController extends Controller
 
     public function emise(Request $request): Response
     {
-        abort_unless($request->user()?->isMaster(), 403);
-
         return $this->list($request, 'emise');
     }
 
@@ -37,8 +35,6 @@ class InvoiceController extends Controller
 
     public function exportEmise(Request $request): StreamedResponse
     {
-        abort_unless($request->user()?->isMaster(), 403);
-
         return $this->export($request, 'emise');
     }
 
@@ -65,7 +61,7 @@ class InvoiceController extends Controller
             'currentUser' => $this->currentUserContext($request),
             'availableResponsibles' => $scope === 'primite'
                 ? User::query()
-                    ->whereHas('departments', fn ($d) => $d->where('type', Department::TYPE_SUPERVISOR))
+                    ->whereHas('departments', fn ($d) => $d->where('type', Department::TYPE_RESPONSABIL))
                     ->orderBy('name')
                     ->get(['id', 'name'])
                 : [],
@@ -166,7 +162,7 @@ class InvoiceController extends Controller
 
         $invoice->load([
             'partner',
-            'partner.supervisorDepartments',
+            'partner.responsabilDepartments',
             'company',
             'details',
             'payments',
@@ -245,49 +241,31 @@ class InvoiceController extends Controller
 
     private function authorizeShow(Request $request, Invoice $invoice): void
     {
-        $user = $request->user();
-        $isMaster = (bool) $user?->isMaster();
-
-        if ($invoice->partener_type === 'client') {
-            abort_unless($isMaster, 403);
-
-            return;
-        }
-
-        if ($invoice->partener_type === 'furnizor' && ! $isMaster) {
-            $invoice->loadMissing('partner.departments:id');
-            $partnerDeptIds = $invoice->partner?->departments->pluck('id') ?? collect();
-            $userDeptIds = collect($user?->departmentIds() ?? []);
-
-            abort_unless(
-                $partnerDeptIds->isEmpty() || $partnerDeptIds->intersect($userDeptIds)->isNotEmpty(),
-                403,
-            );
-        }
+        // Authorization temporarily disabled — all data visible to every authenticated user.
     }
 
     /**
-     * @return array{id: ?int, supervisor_department_ids: list<int>, master_department_ids: list<int>}
+     * @return array{id: ?int, responsabil_department_ids: list<int>, ordonator_department_ids: list<int>}
      */
     private function currentUserContext(Request $request): array
     {
         $user = $request->user();
 
         if (! $user) {
-            return ['id' => null, 'supervisor_department_ids' => [], 'master_department_ids' => []];
+            return ['id' => null, 'responsabil_department_ids' => [], 'ordonator_department_ids' => []];
         }
 
         $departments = $user->departments()->get(['departments.id', 'departments.type']);
 
         return [
             'id' => $user->id,
-            'supervisor_department_ids' => $departments
-                ->where('type', Department::TYPE_SUPERVISOR)
+            'responsabil_department_ids' => $departments
+                ->where('type', Department::TYPE_RESPONSABIL)
                 ->pluck('id')
                 ->values()
                 ->all(),
-            'master_department_ids' => $departments
-                ->where('type', Department::TYPE_MASTER)
+            'ordonator_department_ids' => $departments
+                ->where('type', Department::TYPE_ORDONATOR)
                 ->pluck('id')
                 ->values()
                 ->all(),

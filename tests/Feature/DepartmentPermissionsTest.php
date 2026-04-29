@@ -8,67 +8,37 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-function makeMaster(): User
+function makeResponsabil(string $name = 'Op'): array
 {
-    $dept = Department::firstOrCreate(['name' => 'developers', 'type' => Department::TYPE_MASTER]);
-    $user = User::factory()->create();
-    $dept->members()->attach($user->id);
-
-    return $user;
-}
-
-function makeSupervisor(string $name = 'Op'): array
-{
-    $dept = Department::create(['name' => $name, 'type' => Department::TYPE_SUPERVISOR]);
+    $dept = Department::create(['name' => $name, 'type' => Department::TYPE_RESPONSABIL]);
     $user = User::factory()->create();
     $dept->members()->attach($user->id);
 
     return [$user, $dept];
 }
 
-it('lets masters see facturi emise', function () {
-    $this->actingAs(makeMaster())
-        ->get('/facturi-emise')
-        ->assertOk();
-});
-
-it('blocks non-masters from facturi emise', function () {
-    [$user] = makeSupervisor();
-
-    $this->actingAs($user)->get('/facturi-emise')->assertForbidden();
+it('lets any authenticated user see facturi emise', function () {
     $this->actingAs(User::factory()->create())
-        ->get('/facturi-emise')->assertForbidden();
-});
-
-it('lets masters see clienti', function () {
-    $this->actingAs(makeMaster())
-        ->get('/clienti')
+        ->get('/invoices/issued')
         ->assertOk();
 });
 
-it('blocks non-masters from clienti', function () {
-    [$user] = makeSupervisor();
-
-    $this->actingAs($user)->get('/clienti')->assertForbidden();
-});
-
-it('lets masters open the AI assistant', function () {
-    $this->actingAs(makeMaster())
-        ->get('/asistent-ai')
+it('lets any authenticated user see clienti', function () {
+    $this->actingAs(User::factory()->create())
+        ->get('/clients')
         ->assertOk();
 });
 
-it('blocks non-masters from the AI assistant', function () {
-    [$user] = makeSupervisor();
-
-    $this->actingAs($user)->get('/asistent-ai')->assertForbidden();
-    $this->actingAs($user)->post('/asistent-ai/stream', ['message' => 'hi'])->assertForbidden();
+it('lets any authenticated user open the AI assistant', function () {
+    $this->actingAs(User::factory()->create())
+        ->get('/ai-assistant')
+        ->assertOk();
 });
 
-it('shows masters every received invoice on facturi primite', function () {
-    $master = makeMaster();
-    [, $deptA] = makeSupervisor('A');
-    [, $deptB] = makeSupervisor('B');
+it('shows every received invoice on facturi primite to any user', function () {
+    $user = User::factory()->create();
+    [, $deptA] = makeResponsabil('A');
+    [, $deptB] = makeResponsabil('B');
 
     $partnerA = Partner::factory()->furnizor()->create();
     $partnerA->departments()->attach($deptA->id);
@@ -86,50 +56,15 @@ it('shows masters every received invoice on facturi primite', function () {
         ]);
     }
 
-    $response = $this->actingAs($master)->get('/facturi-primite')->assertOk();
+    $response = $this->actingAs($user)->get('/invoices/received')->assertOk();
     $invoices = $response->viewData('page')['props']['invoices']['data'];
 
     expect($invoices)->toHaveCount(3);
 });
 
-it('limits non-master facturi primite to their department + unassigned furnizori', function () {
-    [$user, $deptA] = makeSupervisor('A');
-    [, $deptB] = makeSupervisor('B');
-
-    $partnerA = Partner::factory()->furnizor()->create();
-    $partnerA->departments()->attach($deptA->id);
-
-    $partnerB = Partner::factory()->furnizor()->create();
-    $partnerB->departments()->attach($deptB->id);
-
-    $partnerNone = Partner::factory()->furnizor()->create();
-
-    $invoiceA = Invoice::factory()->create([
-        'company_id' => $partnerA->company_id,
-        'partner_id' => $partnerA->id,
-        'partener_type' => 'furnizor',
-    ]);
-    $invoiceB = Invoice::factory()->create([
-        'company_id' => $partnerB->company_id,
-        'partner_id' => $partnerB->id,
-        'partener_type' => 'furnizor',
-    ]);
-    $invoiceNone = Invoice::factory()->create([
-        'company_id' => $partnerNone->company_id,
-        'partner_id' => $partnerNone->id,
-        'partener_type' => 'furnizor',
-    ]);
-
-    $response = $this->actingAs($user)->get('/facturi-primite')->assertOk();
-    $ids = collect($response->viewData('page')['props']['invoices']['data'])->pluck('id')->all();
-
-    expect($ids)->toContain($invoiceA->id, $invoiceNone->id)
-        ->not->toContain($invoiceB->id);
-});
-
-it('blocks non-master from showing a furnizor invoice outside their department', function () {
-    [$user] = makeSupervisor('A');
-    [, $deptB] = makeSupervisor('B');
+it('lets any user view a furnizor invoice regardless of department', function () {
+    $user = User::factory()->create();
+    [, $deptB] = makeResponsabil('B');
 
     $partner = Partner::factory()->furnizor()->create();
     $partner->departments()->attach($deptB->id);
@@ -140,11 +75,11 @@ it('blocks non-master from showing a furnizor invoice outside their department',
         'partener_type' => 'furnizor',
     ]);
 
-    $this->actingAs($user)->get("/facturi/{$invoice->id}")->assertForbidden();
+    $this->actingAs($user)->get("/invoices/{$invoice->id}")->assertOk();
 });
 
-it('blocks non-master from showing a client invoice', function () {
-    [$user] = makeSupervisor();
+it('lets any user view a client invoice', function () {
+    [$user] = makeResponsabil();
 
     $partner = Partner::factory()->create(['is_furnizor' => false, 'is_client' => true]);
     $invoice = Invoice::factory()->create([
@@ -153,5 +88,5 @@ it('blocks non-master from showing a client invoice', function () {
         'partener_type' => 'client',
     ]);
 
-    $this->actingAs($user)->get("/facturi/{$invoice->id}")->assertForbidden();
+    $this->actingAs($user)->get("/invoices/{$invoice->id}")->assertOk();
 });

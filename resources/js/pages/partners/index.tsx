@@ -1,9 +1,23 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { useState } from 'react';
 import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import {
     Select,
     SelectContent,
@@ -19,6 +33,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import AppLayout from '@/layouts/app-layout';
 import {
     clienti as clientiRoute,
@@ -27,13 +42,13 @@ import {
 } from '@/routes/partners';
 import type {
     IndexProps as Props,
-    SupervisorDepartmentRef as SupervisorDepartment,
+    ResponsabilDepartmentRef as ResponsabilDepartment,
 } from './types';
 
 function DepartmentChips({
     departments,
 }: {
-    departments: SupervisorDepartment[];
+    departments: ResponsabilDepartment[];
 }) {
     if (departments.length === 0) {
         return <span className="text-xs text-muted-foreground">—</span>;
@@ -50,11 +65,100 @@ function DepartmentChips({
     );
 }
 
+function DepartmentMultiSelect({
+    options,
+    selected,
+    onChange,
+}: {
+    options: { id: number; name: string }[];
+    selected: number[];
+    onChange: (next: number[]) => void;
+}) {
+    const [open, setOpen] = useState(false);
+
+    const toggle = (id: number) => {
+        onChange(
+            selected.includes(id)
+                ? selected.filter((s) => s !== id)
+                : [...selected, id],
+        );
+    };
+
+    const label =
+        selected.length === 0
+            ? 'Toate departamentele'
+            : selected.length === 1
+              ? (options.find((o) => o.id === selected[0])?.name ?? '1 selectat')
+              : `${selected.length} selectate`;
+
+    return (
+        <div className="flex items-center gap-1">
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={open}
+                        className="w-[240px] justify-between font-normal"
+                    >
+                        <span className="truncate">{label}</span>
+                        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[260px] p-0" align="start">
+                    <Command>
+                        <CommandInput placeholder="Caută departament…" />
+                        <CommandList>
+                            <CommandEmpty>Niciun departament.</CommandEmpty>
+                            <CommandGroup>
+                                {options.map((dept) => {
+                                    const isSelected = selected.includes(
+                                        dept.id,
+                                    );
+                                    return (
+                                        <CommandItem
+                                            key={dept.id}
+                                            value={dept.name}
+                                            onSelect={() => toggle(dept.id)}
+                                        >
+                                            <Check
+                                                className={cn(
+                                                    'mr-2 size-4',
+                                                    isSelected
+                                                        ? 'opacity-100'
+                                                        : 'opacity-0',
+                                                )}
+                                            />
+                                            {dept.name}
+                                        </CommandItem>
+                                    );
+                                })}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            {selected.length > 0 && (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Șterge filtrul"
+                    onClick={() => onChange([])}
+                >
+                    <X className="size-4" />
+                </Button>
+            )}
+        </div>
+    );
+}
+
 export default function PartnersIndex({
     partners,
     scope,
     filters,
     companies,
+    availableDepartments,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const label = scope === 'furnizori' ? 'Furnizori' : 'Clienti';
@@ -62,11 +166,16 @@ export default function PartnersIndex({
     const baseUrl = href.url;
 
     const applyFilter = (next: Partial<Props['filters']>) => {
+        const departmentIds =
+            next.department_ids ?? filters.department_ids ?? [];
+
         router.get(
             baseUrl,
             {
                 search: next.search ?? filters.search ?? undefined,
                 company_id: next.company_id ?? filters.company_id ?? undefined,
+                department_ids:
+                    departmentIds.length > 0 ? departmentIds : undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -130,6 +239,16 @@ export default function PartnersIndex({
                             ))}
                         </SelectContent>
                     </Select>
+                    {scope === 'furnizori' &&
+                        availableDepartments.length > 0 && (
+                            <DepartmentMultiSelect
+                                options={availableDepartments}
+                                selected={filters.department_ids}
+                                onChange={(ids) =>
+                                    applyFilter({ department_ids: ids })
+                                }
+                            />
+                        )}
                     <Button type="submit" variant="secondary">
                         Caută
                     </Button>
@@ -144,7 +263,7 @@ export default function PartnersIndex({
                                 <TableHead>Locație</TableHead>
                                 <TableHead>Contact</TableHead>
                                 {scope === 'furnizori' && (
-                                    <TableHead>Supervizori</TableHead>
+                                    <TableHead>Responsabili</TableHead>
                                 )}
                                 <TableHead>Companie</TableHead>
                                 <TableHead className="text-right">
@@ -209,7 +328,7 @@ export default function PartnersIndex({
                                         <TableCell>
                                             <DepartmentChips
                                                 departments={
-                                                    partner.supervisor_departments
+                                                    partner.responsabil_departments
                                                 }
                                             />
                                         </TableCell>

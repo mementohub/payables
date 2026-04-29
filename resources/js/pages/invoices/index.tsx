@@ -308,10 +308,10 @@ export default function InvoicesIndex({
                                             Necesită aprobare
                                         </SelectItem>
                                         <SelectItem value="pending">
-                                            Așteaptă supervizor
+                                            Așteaptă responsabil
                                         </SelectItem>
-                                        <SelectItem value="supervisors_ok">
-                                            Așteaptă master
+                                        <SelectItem value="responsabili_ok">
+                                            Așteaptă ordonator
                                         </SelectItem>
                                         <SelectItem value="ok">
                                             Bun de plată
@@ -557,7 +557,7 @@ function ApprovalCell({ approval }: { approval?: Approval }) {
                 </span>
             </TooltipTrigger>
             <TooltipContent className="flex max-w-sm flex-col items-stretch gap-1.5 text-left">
-                {approval.supervisor_steps.map((step) => (
+                {approval.responsabil_steps.map((step) => (
                     <div
                         key={step.department_id}
                         className="flex flex-col gap-0.5"
@@ -579,16 +579,16 @@ function ApprovalCell({ approval }: { approval?: Approval }) {
                 ))}
                 <div className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-1.5 font-medium">
-                        {approval.master ? (
+                        {approval.ordonator ? (
                             <Check className="size-3 text-green-500" />
                         ) : (
                             <ShieldCheck className="size-3 text-sky-500" />
                         )}
-                        Master
+                        Ordonator
                     </div>
                     <div className="pl-4.5 text-muted-foreground">
-                        {approval.master
-                            ? `${approval.master.approved_by?.name ?? 'Master'}${approval.master.approved_at ? ` · ${formatDateTime(approval.master.approved_at)}` : ''}`
+                        {approval.ordonator
+                            ? `${approval.ordonator.approved_by?.name ?? 'Ordonator'}${approval.ordonator.approved_at ? ` · ${formatDateTime(approval.ordonator.approved_at)}` : ''}`
                             : 'în așteptare'}
                     </div>
                 </div>
@@ -708,28 +708,28 @@ function ApproveActions({
             return null;
         }
 
-        const pendingStep = approval.supervisor_steps.find(
+        const pendingStep = approval.responsabil_steps.find(
             (s) =>
                 !s.approved &&
-                currentUser.supervisor_department_ids.includes(s.department_id),
+                currentUser.responsabil_department_ids.includes(s.department_id),
         );
 
         if (pendingStep) {
             return {
                 departmentId: pendingStep.department_id,
-                kind: 'supervisor' as const,
+                kind: 'responsabil' as const,
                 label: 'Aprobă',
                 hint: pendingStep.department_name,
             };
         }
 
         if (
-            approval.supervisors_approved_at !== null &&
-            currentUser.master_department_ids.length > 0
+            approval.responsabili_approved_at !== null &&
+            currentUser.ordonator_department_ids.length > 0
         ) {
             return {
-                departmentId: currentUser.master_department_ids[0],
-                kind: 'master' as const,
+                departmentId: currentUser.ordonator_department_ids[0],
+                kind: 'ordonator' as const,
                 label: 'Aprobă',
                 hint: 'final',
             };
@@ -742,9 +742,9 @@ function ApproveActions({
         return <span className="text-xs text-muted-foreground">—</span>;
     }
 
-    const isSupervisor = action.kind === 'supervisor';
-    const Icon = isSupervisor ? Check : ShieldCheck;
-    const colorClass = isSupervisor
+    const isResponsabil = action.kind === 'responsabil';
+    const Icon = isResponsabil ? Check : ShieldCheck;
+    const colorClass = isResponsabil
         ? 'border-green-600/40 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20'
         : 'border-sky-600/40 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20';
 
@@ -777,9 +777,9 @@ function ApproveActions({
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            {isSupervisor
-                                ? `Aprobă ca supervizor (${action.hint})`
-                                : 'Aprobă ca master (semnătura finală)'}
+                            {isResponsabil
+                                ? `Aprobă ca responsabil (${action.hint})`
+                                : 'Aprobă ca ordonator (semnătura finală)'}
                         </TooltipContent>
                     </Tooltip>
                 </>

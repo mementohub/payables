@@ -32,7 +32,7 @@ class Invoice extends Model
             'val_mon' => 'decimal:4',
             'val_mon_tva' => 'decimal:4',
             'val_mon_paid' => 'decimal:4',
-            'supervisors_approved_at' => 'datetime',
+            'responsabili_approved_at' => 'datetime',
             'is_fully_approved' => 'boolean',
             'fully_approved_at' => 'datetime',
         ];

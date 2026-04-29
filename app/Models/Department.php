@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Department extends Model
 {
-    public const TYPE_SUPERVISOR = 'supervisor';
+    public const TYPE_RESPONSABIL = 'responsabil';
 
-    public const TYPE_MASTER = 'master';
+    public const TYPE_ORDONATOR = 'ordonator';
 
-    public const TYPES = [self::TYPE_SUPERVISOR, self::TYPE_MASTER];
+    public const TYPES = [self::TYPE_RESPONSABIL, self::TYPE_ORDONATOR];
 
     protected $guarded = [];
 
@@ -26,13 +26,13 @@ class Department extends Model
         return $this->belongsToMany(Partner::class, 'partner_department')->withTimestamps();
     }
 
-    public function scopeSupervisors(Builder $query): Builder
+    public function scopeResponsabili(Builder $query): Builder
     {
-        return $query->where('type', self::TYPE_SUPERVISOR);
+        return $query->where('type', self::TYPE_RESPONSABIL);
     }
 
-    public function scopeMasters(Builder $query): Builder
+    public function scopeOrdonatori(Builder $query): Builder
     {
-        return $query->where('type', self::TYPE_MASTER);
+        return $query->where('type', self::TYPE_ORDONATOR);
     }
 }

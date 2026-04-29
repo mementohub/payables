@@ -1,12 +1,12 @@
 import type { PaymentStatus } from '@/components/payment-status-badge';
 import type { Paginated } from '@/types/pagination';
 
-export type SupervisorDepartmentRef = {
+export type ResponsabilDepartmentRef = {
     id: number;
     name: string;
 };
 
-export type SupervisorDepartmentDetail = SupervisorDepartmentRef & {
+export type ResponsabilDepartmentDetail = ResponsabilDepartmentRef & {
     type: string;
 };
 
@@ -23,14 +23,19 @@ export type PartnerListItem = {
     is_client: boolean;
     invoices_count: number;
     company: { id: number; name: string };
-    supervisor_departments: SupervisorDepartmentRef[];
+    responsabil_departments: ResponsabilDepartmentRef[];
 };
 
 export type IndexProps = {
     partners: Paginated<PartnerListItem>;
     scope: 'furnizori' | 'clienti';
-    filters: { search: string | null; company_id: number | null };
+    filters: {
+        search: string | null;
+        company_id: number | null;
+        department_ids: number[];
+    };
     companies: { id: number; name: string }[];
+    availableDepartments: { id: number; name: string }[];
 };
 
 export type BankAccount = {
@@ -56,7 +61,7 @@ export type PartnerDetail = {
     is_client: boolean;
     company: { id: number; name: string };
     bank_accounts: BankAccount[];
-    supervisor_departments: SupervisorDepartmentDetail[];
+    responsabil_departments: ResponsabilDepartmentDetail[];
 };
 
 export type InvoiceRow = {
