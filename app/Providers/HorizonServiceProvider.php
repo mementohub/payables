@@ -33,7 +33,8 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
             }
 
             return in_array(optional($user)->email, [
-                //
+                'andrei.ciungulete@andali.ro',
+                'bogdan.cismariu@mementogroup.com',
             ]);
         });
     }
