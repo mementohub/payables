@@ -28,6 +28,8 @@ class Invoice extends Model
             'data_doc' => 'date',
             'data_scadenta' => 'date',
             'data_inchidere' => 'date',
+            'data_calatoriei' => 'date',
+            'data_doc_baza' => 'date',
             'curs' => 'decimal:6',
             'val_mon' => 'decimal:4',
             'val_mon_tva' => 'decimal:4',
@@ -77,6 +79,16 @@ class Invoice extends Model
     public function approvals(): HasMany
     {
         return $this->hasMany(InvoiceApproval::class);
+    }
+
+    public function sourceCompany(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'source_company_id');
+    }
+
+    public function sourceInvoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'source_invoice_id');
     }
 
     public function scopeFurnizor(Builder $query): Builder

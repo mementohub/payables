@@ -81,6 +81,8 @@ class SyncService
 
         $eInvoicesCount = $this->syncEInvoices($company, $remote, $from, $to);
 
+        $this->resolveCrossCompanyLinks($company);
+
         $company->forceFill(['last_synced_at' => now()])->save();
 
         return [
@@ -92,6 +94,77 @@ class SyncService
             'statements' => $statementsCount,
             'e_invoices' => $eInvoicesCount,
         ];
+    }
+
+    /**
+     * Link FactFI invoices in `$company` to the matching emitted invoice in another
+     * synced company, when the supplier on the FactFI is itself a synced company
+     * (matched by CUI). Sets `source_company_id` and `source_invoice_id`.
+     */
+    private function resolveCrossCompanyLinks(Company $company): void
+    {
+        $companyByCui = Company::query()
+            ->where('id', '!=', $company->id)
+            ->whereNotNull('cui')
+            ->where('cui', '!=', '')
+            ->get(['id', 'cui'])
+            ->mapWithKeys(fn (Company $c) => [$this->normalizeCui($c->cui) => $c->id]);
+
+        if ($companyByCui->isEmpty()) {
+            return;
+        }
+
+        Invoice::query()
+            ->where('company_id', $company->id)
+            ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+            ->whereHas('partner', fn ($q) => $q->whereNotNull('cui')->where('cui', '!=', ''))
+            ->with('partner:id,cui')
+            ->lazy(500)
+            ->each(function (Invoice $invoice) use ($companyByCui) {
+                $partnerCui = $invoice->partner?->cui;
+                $sourceCompanyId = $partnerCui
+                    ? ($companyByCui[$this->normalizeCui($partnerCui)] ?? null)
+                    : null;
+
+                $sourceInvoiceId = $sourceCompanyId
+                    ? Invoice::query()
+                        ->where('company_id', $sourceCompanyId)
+                        ->whereIn('tip_doc', self::CLIENT_DOC_TYPES)
+                        ->where('nr_doc', $invoice->nr_doc)
+                        ->where('data_doc', $invoice->data_doc)
+                        ->value('id')
+                    : null;
+
+                if (
+                    $invoice->source_company_id !== $sourceCompanyId
+                    || $invoice->source_invoice_id !== $sourceInvoiceId
+                ) {
+                    $invoice->forceFill([
+                        'source_company_id' => $sourceCompanyId,
+                        'source_invoice_id' => $sourceInvoiceId,
+                    ])->save();
+                }
+            });
+
+        // Reverse pass: when *this* company's emitted invoices have receivers
+        // that are themselves synced companies, the receivers' FactFI rows
+        // referencing this invoice should be linked back as well.
+        Invoice::query()
+            ->where('source_company_id', $company->id)
+            ->whereNull('source_invoice_id')
+            ->lazy(500)
+            ->each(function (Invoice $invoice) {
+                $sourceInvoiceId = Invoice::query()
+                    ->where('company_id', $invoice->source_company_id)
+                    ->whereIn('tip_doc', self::CLIENT_DOC_TYPES)
+                    ->where('nr_doc', $invoice->nr_doc)
+                    ->where('data_doc', $invoice->data_doc)
+                    ->value('id');
+
+                if ($sourceInvoiceId !== null) {
+                    $invoice->forceFill(['source_invoice_id' => $sourceInvoiceId])->save();
+                }
+            });
     }
 
     private function syncEInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
@@ -536,7 +609,8 @@ class SyncService
             ->select([
                 'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'curs',
                 'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl',
-                'data_scadenta', 'data_inchidere', 'emitent',
+                'data_scadenta', 'data_inchidere', 'emitent', 'com_int',
+                'data_doc_baza', 'tip_doc_baza', 'nr_doc_baza',
             ])
             ->whereIn('tip_doc', $tipDocs)
             ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
@@ -545,9 +619,27 @@ class SyncService
                 $invoiceIds = [];
                 $rowsByKey = [];
 
+                $clientComIntCodes = collect($chunk)
+                    ->filter(fn ($r) => in_array($r->tip_doc, self::CLIENT_DOC_TYPES, true) && ! empty($r->com_int))
+                    ->pluck('com_int')
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $travelDates = empty($clientComIntCodes)
+                    ? []
+                    : $remote->table('com_int')
+                        ->whereIn('com_int', $clientComIntCodes)
+                        ->pluck('data_incep', 'com_int')
+                        ->all();
+
                 foreach ($chunk as $row) {
                     $type = in_array($row->tip_doc, self::FURNIZOR_DOC_TYPES, true) ? 'furnizor' : 'client';
                     $paid = $type === 'furnizor' ? $row->val_mon_pl : $row->val_mon_inc;
+                    $rawTravel = $type === 'client' && ! empty($row->com_int)
+                        ? ($travelDates[$row->com_int] ?? null)
+                        : null;
+                    $dataCalatoriei = is_string($rawTravel) && trim($rawTravel) === '' ? null : $rawTravel;
 
                     $invoice = Invoice::updateOrCreate(
                         [
@@ -567,6 +659,11 @@ class SyncService
                             'data_scadenta' => $row->data_scadenta,
                             'data_inchidere' => $row->data_inchidere,
                             'emitent' => $row->emitent,
+                            'com_int' => $row->com_int ?: null,
+                            'data_calatoriei' => $dataCalatoriei,
+                            'data_doc_baza' => ! empty($row->data_doc_baza) ? $row->data_doc_baza : null,
+                            'tip_doc_baza' => $row->tip_doc_baza ?: null,
+                            'nr_doc_baza' => $row->nr_doc_baza ?: null,
                         ]
                     );
 

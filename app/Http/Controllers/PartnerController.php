@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\Partner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -25,8 +26,6 @@ class PartnerController extends Controller
 
     public function show(Request $request, Partner $partner): Response
     {
-        abort_unless($partner->is_furnizor, 404);
-
         $partner->load([
             'company:id,name',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
@@ -34,6 +33,7 @@ class PartnerController extends Controller
         ]);
 
         $assignedDeptIds = $partner->responsabilDepartments->pluck('id');
+        $stats = $this->computeStats($partner);
 
         $invoiceSearch = $request->string('invoice_search')->toString();
         $invoiceTipDoc = $request->string('invoice_tip_doc')->toString();
@@ -115,16 +115,89 @@ class PartnerController extends Controller
                 'payment' => $invoicePayment ?: null,
             ],
             'availableTipDocs' => $availableTipDocs,
-            'availableDepartments' => Department::responsabili()
-                ->whereNotIn('id', $assignedDeptIds)
-                ->orderBy('name')
-                ->get(['id', 'name', 'type'])
-                ->map(fn (Department $dept) => [
-                    'id' => $dept->id,
-                    'name' => $dept->name,
-                    'type' => $dept->type,
-                ]),
+            'availableDepartments' => $partner->is_furnizor
+                ? Department::responsabili()
+                    ->whereNotIn('id', $assignedDeptIds)
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'type'])
+                    ->map(fn (Department $dept) => [
+                        'id' => $dept->id,
+                        'name' => $dept->name,
+                        'type' => $dept->type,
+                    ])
+                : [],
+            'stats' => $stats,
         ]);
+    }
+
+    /**
+     * @return array{
+     *   totals: list<array{moneda: ?string, count: int, val_mon: float, val_mon_paid: float, sold: float}>,
+     *   counts: array{paid: int, partial: int, unpaid: int, total: int},
+     *   oldest_unpaid: array{id: int, nr_doc: string, tip_doc: string, data_doc: ?string, data_scadenta: ?string, days_overdue: ?int, val_mon: float, moneda: ?string}|null,
+     *   last_invoice_date: ?string,
+     *   first_invoice_date: ?string
+     * }
+     */
+    private function computeStats(Partner $partner): array
+    {
+        $base = $partner->invoices();
+
+        $totals = (clone $base)
+            ->selectRaw('moneda, COUNT(*) as cnt, SUM(val_mon) as v, SUM(val_mon_paid) as p')
+            ->groupBy('moneda')
+            ->orderBy('moneda')
+            ->get()
+            ->map(fn ($row) => [
+                'moneda' => $row->moneda,
+                'count' => (int) $row->cnt,
+                'val_mon' => round((float) $row->v, 2),
+                'val_mon_paid' => round((float) $row->p, 2),
+                'sold' => round((float) $row->v - (float) $row->p, 2),
+            ])
+            ->values()
+            ->all();
+
+        $paid = (clone $base)->whereColumn('val_mon_paid', '>=', DB::raw('val_mon - 0.01'))->count();
+        $unpaid = (clone $base)->where('val_mon_paid', '<=', 0.009)->count();
+        $partial = (clone $base)
+            ->where('val_mon_paid', '>', 0.009)
+            ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
+            ->count();
+        $total = (clone $base)->count();
+
+        $oldestUnpaid = (clone $base)
+            ->where('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
+            ->whereNotNull('data_scadenta')
+            ->orderBy('data_scadenta')
+            ->first(['id', 'tip_doc', 'nr_doc', 'data_doc', 'data_scadenta', 'val_mon', 'val_mon_paid', 'moneda']);
+
+        $lastInvoiceDate = (clone $base)->max('data_doc');
+        $firstInvoiceDate = (clone $base)->min('data_doc');
+
+        return [
+            'totals' => $totals,
+            'counts' => [
+                'paid' => $paid,
+                'partial' => $partial,
+                'unpaid' => $unpaid,
+                'total' => $total,
+            ],
+            'oldest_unpaid' => $oldestUnpaid ? [
+                'id' => $oldestUnpaid->id,
+                'tip_doc' => $oldestUnpaid->tip_doc,
+                'nr_doc' => $oldestUnpaid->nr_doc,
+                'data_doc' => $oldestUnpaid->data_doc?->toDateString(),
+                'data_scadenta' => $oldestUnpaid->data_scadenta?->toDateString(),
+                'days_overdue' => $oldestUnpaid->data_scadenta
+                    ? max(0, $oldestUnpaid->data_scadenta->diffInDays(now(), false))
+                    : null,
+                'val_mon' => round((float) $oldestUnpaid->val_mon - (float) $oldestUnpaid->val_mon_paid, 2),
+                'moneda' => $oldestUnpaid->moneda,
+            ] : null,
+            'last_invoice_date' => $lastInvoiceDate ? Carbon::parse($lastInvoiceDate)->toDateString() : null,
+            'first_invoice_date' => $firstInvoiceDate ? Carbon::parse($firstInvoiceDate)->toDateString() : null,
+        ];
     }
 
     public function attachResponsabilDepartment(Request $request, Partner $partner): RedirectResponse

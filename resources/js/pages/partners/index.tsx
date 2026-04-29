@@ -289,16 +289,12 @@ export default function PartnersIndex({
                                     className="align-top"
                                 >
                                     <TableCell className="font-medium">
-                                        {scope === 'furnizori' ? (
-                                            <Link
-                                                className="hover:underline"
-                                                href={partnerShow(partner.id)}
-                                            >
-                                                {partner.name}
-                                            </Link>
-                                        ) : (
-                                            partner.name
-                                        )}
+                                        <Link
+                                            className="hover:underline"
+                                            href={partnerShow(partner.id)}
+                                        >
+                                            {partner.name}
+                                        </Link>
                                     </TableCell>
                                     <TableCell>
                                         <div>{partner.cui ?? '—'}</div>

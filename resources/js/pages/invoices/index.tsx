@@ -470,6 +470,30 @@ export default function InvoicesIndex({
                                                         {invoice.partner.cui}
                                                     </div>
                                                 )}
+                                                {invoice.source_invoice
+                                                    ?.real_supplier && (
+                                                    <Link
+                                                        href={invoicesShow(
+                                                            invoice
+                                                                .source_invoice
+                                                                .id,
+                                                        )}
+                                                        className="mt-1 inline-flex items-center gap-1 rounded border border-sky-600/40 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300"
+                                                        title={`Sursa originală în ${invoice.source_invoice.company?.name ?? ''}`}
+                                                    >
+                                                        <span className="font-medium">
+                                                            ↳ furnizor real:
+                                                        </span>
+                                                        <span>
+                                                            {
+                                                                invoice
+                                                                    .source_invoice
+                                                                    .real_supplier
+                                                                    .name
+                                                            }
+                                                        </span>
+                                                    </Link>
+                                                )}
                                             </div>
                                         ) : (
                                             <span className="text-muted-foreground">
@@ -650,6 +674,22 @@ function InvoiceMobileCard({
                             <div className="text-xs text-muted-foreground">
                                 CUI: {invoice.partner.cui}
                             </div>
+                        )}
+                        {invoice.source_invoice?.real_supplier && (
+                            <Link
+                                href={invoicesShow(invoice.source_invoice.id)}
+                                className="mt-1 inline-flex items-center gap-1 rounded border border-sky-600/40 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+                            >
+                                <span className="font-medium">
+                                    ↳ furnizor real:
+                                </span>
+                                <span>
+                                    {
+                                        invoice.source_invoice.real_supplier
+                                            .name
+                                    }
+                                </span>
+                            </Link>
                         )}
                     </>
                 ) : (

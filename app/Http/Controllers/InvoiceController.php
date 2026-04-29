@@ -168,6 +168,9 @@ class InvoiceController extends Controller
             'payments.bankStatementLine.statement:id,data_extras,banca,iban',
             'approvals.user:id,name,email',
             'approvals.department:id,name,type',
+            'sourceCompany:id,name',
+            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc',
+            'sourceInvoice.partner:id,name,cui',
         ]);
 
         return Inertia::render('invoices/show', [
@@ -228,6 +231,8 @@ class InvoiceController extends Controller
                     ];
                 }),
                 'approval' => $this->presenter->approvalPayload($invoice),
+                'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
+                'baza' => $this->presenter->bazaPayload($invoice),
             ],
         ]);
     }

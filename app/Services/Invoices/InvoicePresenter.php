@@ -30,6 +30,8 @@ class InvoicePresenter
             'val_mon_tva' => (float) $invoice->val_mon_tva,
             'val_mon_paid' => (float) $invoice->val_mon_paid,
             'payment_status' => $invoice->payment_status,
+            'source_invoice' => $this->sourceInvoicePayload($invoice),
+            'baza' => $this->bazaPayload($invoice),
         ];
 
         if ($scope === 'primite') {
@@ -37,6 +39,49 @@ class InvoicePresenter
         }
 
         return $row;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function sourceInvoicePayload(Invoice $invoice): ?array
+    {
+        $source = $invoice->sourceInvoice;
+
+        if ($source === null) {
+            return null;
+        }
+
+        return [
+            'id' => $source->id,
+            'data_doc' => $source->data_doc?->toDateString(),
+            'tip_doc' => $source->tip_doc,
+            'nr_doc' => $source->nr_doc,
+            'company' => $invoice->sourceCompany
+                ? ['id' => $invoice->sourceCompany->id, 'name' => $invoice->sourceCompany->name]
+                : null,
+            'real_supplier' => $source->partner ? [
+                'id' => $source->partner->id,
+                'name' => $source->partner->name,
+                'cui' => $source->partner->cui,
+            ] : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function bazaPayload(Invoice $invoice): ?array
+    {
+        if ($invoice->nr_doc_baza === null && $invoice->tip_doc_baza === null) {
+            return null;
+        }
+
+        return [
+            'data_doc' => $invoice->data_doc_baza?->toDateString(),
+            'tip_doc' => $invoice->tip_doc_baza,
+            'nr_doc' => $invoice->nr_doc_baza,
+        ];
     }
 
     /**

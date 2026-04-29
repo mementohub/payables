@@ -27,6 +27,21 @@ export type Approval = {
     ordonator: OrdonatorApproval;
 };
 
+export type SourceInvoiceRef = {
+    id: number;
+    data_doc: string | null;
+    tip_doc: string;
+    nr_doc: string;
+    company: { id: number; name: string } | null;
+    real_supplier: { id: number; name: string; cui: string | null } | null;
+};
+
+export type BazaRef = {
+    data_doc: string | null;
+    tip_doc: string | null;
+    nr_doc: string | null;
+};
+
 export type InvoiceRow = {
     id: number;
     data_doc: string;
@@ -40,6 +55,8 @@ export type InvoiceRow = {
     val_mon_tva: number;
     val_mon_paid: number;
     payment_status: PaymentStatus;
+    source_invoice: SourceInvoiceRef | null;
+    baza: BazaRef | null;
     approval?: Approval;
 };
 
@@ -128,4 +145,6 @@ export type Invoice = {
     } | null;
     company: { id: number; name: string };
     details: Detail[];
+    source_invoice: SourceInvoiceRef | null;
+    baza: BazaRef | null;
 };

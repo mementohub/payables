@@ -92,10 +92,43 @@ export type AvailableDepartment = {
     type: string;
 };
 
+export type CurrencyTotal = {
+    moneda: string | null;
+    count: number;
+    val_mon: number;
+    val_mon_paid: number;
+    sold: number;
+};
+
+export type OldestUnpaid = {
+    id: number;
+    tip_doc: string;
+    nr_doc: string;
+    data_doc: string | null;
+    data_scadenta: string | null;
+    days_overdue: number | null;
+    val_mon: number;
+    moneda: string | null;
+};
+
+export type PartnerStats = {
+    totals: CurrencyTotal[];
+    counts: {
+        paid: number;
+        partial: number;
+        unpaid: number;
+        total: number;
+    };
+    oldest_unpaid: OldestUnpaid | null;
+    last_invoice_date: string | null;
+    first_invoice_date: string | null;
+};
+
 export type ShowProps = {
     partner: PartnerDetail;
     invoices: Paginated<InvoiceRow>;
     invoiceFilters: InvoiceFilters;
     availableTipDocs: string[];
     availableDepartments: AvailableDepartment[];
+    stats: PartnerStats;
 };

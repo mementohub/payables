@@ -71,50 +71,28 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                     </div>
                     <div className="w-full rounded-xl border border-sidebar-border/70 bg-muted/30 p-3 text-left sm:w-auto sm:border-0 sm:bg-transparent sm:p-0 sm:text-right dark:border-sidebar-border">
                         <div className="text-xs text-muted-foreground">
-                            Total
+                            {invoice.partener_type === 'furnizor'
+                                ? 'Plătit'
+                                : 'Încasat'}
                         </div>
                         <div className="text-xl font-semibold tabular-nums">
-                            {formatAmount(invoice.val_mon, invoice.moneda)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                            net{' '}
                             {formatAmount(
-                                invoice.val_mon - invoice.val_mon_tva,
+                                invoice.val_mon_paid,
                                 invoice.moneda,
-                            )}{' '}
-                            · TVA{' '}
-                            {formatAmount(invoice.val_mon_tva, invoice.moneda)}
-                        </div>
-                        <div className="mt-1 text-xs">
-                            <span className="text-muted-foreground">
-                                {invoice.partener_type === 'furnizor'
-                                    ? 'plătit'
-                                    : 'încasat'}
-                                :
-                            </span>{' '}
-                            <span className="font-medium tabular-nums">
-                                {formatAmount(
-                                    invoice.val_mon_paid,
-                                    invoice.moneda,
-                                )}
-                            </span>
-                            {invoice.payment_status === 'partial' && (
-                                <>
-                                    {' '}
-                                    ·{' '}
-                                    <span className="text-muted-foreground">
-                                        rămas:
-                                    </span>{' '}
-                                    <span className="font-medium tabular-nums">
-                                        {formatAmount(
-                                            invoice.val_mon -
-                                                invoice.val_mon_paid,
-                                            invoice.moneda,
-                                        )}
-                                    </span>
-                                </>
                             )}
                         </div>
+                        {invoice.payment_status === 'partial' && (
+                            <div className="text-xs text-muted-foreground">
+                                rămas{' '}
+                                <span className="font-medium tabular-nums">
+                                    {formatAmount(
+                                        invoice.val_mon -
+                                            invoice.val_mon_paid,
+                                        invoice.moneda,
+                                    )}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -190,12 +168,68 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                     </div>
                 </div>
 
+                {(invoice.source_invoice || invoice.baza) && (
+                    <div className="rounded-xl border border-sky-600/30 bg-sky-50/40 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
+                        <h2 className="text-sm font-semibold text-muted-foreground uppercase">
+                            Document sursă
+                        </h2>
+                        <div className="mt-2 space-y-2 text-sm">
+                            {invoice.source_invoice && (
+                                <div className="space-y-1">
+                                    <div className="text-xs text-muted-foreground">
+                                        Furnizor real (din{' '}
+                                        {invoice.source_invoice.company?.name ??
+                                            'altă companie'}
+                                        )
+                                    </div>
+                                    <div className="font-medium">
+                                        {invoice.source_invoice.real_supplier
+                                            ?.name ?? '—'}
+                                        {invoice.source_invoice.real_supplier
+                                            ?.cui && (
+                                            <span className="ml-2 text-xs text-muted-foreground">
+                                                CUI:{' '}
+                                                {
+                                                    invoice.source_invoice
+                                                        .real_supplier.cui
+                                                }
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Link
+                                        href={`/invoices/${invoice.source_invoice.id}`}
+                                        className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
+                                    >
+                                        <ExternalLink className="size-3" />
+                                        Deschide factura sursă (
+                                        {invoice.source_invoice.tip_doc}{' '}
+                                        {invoice.source_invoice.nr_doc} ·{' '}
+                                        {invoice.source_invoice.data_doc})
+                                    </Link>
+                                </div>
+                            )}
+                            {invoice.baza && (
+                                <div className="text-xs text-muted-foreground">
+                                    Bază doc:{' '}
+                                    <span className="font-medium text-foreground">
+                                        {invoice.baza.tip_doc ?? ''}{' '}
+                                        {invoice.baza.nr_doc ?? ''}
+                                    </span>
+                                    {invoice.baza.data_doc && (
+                                        <span> · {invoice.baza.data_doc}</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                     <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
                         Detalii
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[640px] text-sm">
+                        <table className="w-full min-w-[760px] text-sm">
                             <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
                                 <tr>
                                     <th className="w-12 px-4 py-2">#</th>
@@ -210,6 +244,9 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <th className="px-4 py-2 text-right">
                                         TVA %
                                     </th>
+                                    <th className="px-4 py-2 text-right">
+                                        TVA
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
@@ -217,45 +254,104 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <tr>
                                         <td
                                             className="px-4 py-6 text-center text-muted-foreground"
-                                            colSpan={6}
+                                            colSpan={7}
                                         >
                                             Fără detalii.
                                         </td>
                                     </tr>
                                 )}
-                                {invoice.details.map((row) => (
-                                    <tr key={row.id}>
-                                        <td className="px-4 py-2 text-muted-foreground">
-                                            {row.scv}
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            <div className="font-medium">
-                                                {row.articol}
-                                            </div>
-                                            {row.detaliu_articol && (
-                                                <div className="text-xs text-muted-foreground">
-                                                    {row.detaliu_articol}
+                                {invoice.details.map((row) => {
+                                    const lineNet = row.cant * row.pret;
+                                    const lineVat =
+                                        (lineNet * (row.proc_tva ?? 0)) / 100;
+
+                                    return (
+                                        <tr key={row.id}>
+                                            <td className="px-4 py-2 text-muted-foreground">
+                                                {row.scv}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                                <div className="font-medium">
+                                                    {row.articol}
                                                 </div>
-                                            )}
+                                                {row.detaliu_articol && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {row.detaliu_articol}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums">
+                                                {row.cant}
+                                            </td>
+                                            <td className="px-4 py-2">
+                                                {row.um ?? '—'}
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums">
+                                                {formatAmount(
+                                                    row.pret,
+                                                    invoice.moneda,
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                                                {row.proc_tva ?? 0}%
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums">
+                                                {formatAmount(
+                                                    lineVat,
+                                                    invoice.moneda,
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            {invoice.details.length > 0 && (
+                                <tfoot className="border-t border-sidebar-border/70 bg-muted/40 text-sm dark:border-sidebar-border">
+                                    <tr>
+                                        <td
+                                            className="px-4 py-2 text-right text-xs text-muted-foreground uppercase"
+                                            colSpan={6}
+                                        >
+                                            Total fără TVA
                                         </td>
-                                        <td className="px-4 py-2 text-right tabular-nums">
-                                            {row.cant}
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            {row.um ?? '—'}
-                                        </td>
-                                        <td className="px-4 py-2 text-right tabular-nums">
+                                        <td className="px-4 py-2 text-right font-medium tabular-nums">
                                             {formatAmount(
-                                                row.pret,
+                                                invoice.val_mon -
+                                                    invoice.val_mon_tva,
                                                 invoice.moneda,
                                             )}
                                         </td>
-                                        <td className="px-4 py-2 text-right tabular-nums">
-                                            {row.proc_tva ?? 0}%
+                                    </tr>
+                                    <tr>
+                                        <td
+                                            className="px-4 py-2 text-right text-xs text-muted-foreground uppercase"
+                                            colSpan={6}
+                                        >
+                                            Total TVA
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-medium tabular-nums">
+                                            {formatAmount(
+                                                invoice.val_mon_tva,
+                                                invoice.moneda,
+                                            )}
                                         </td>
                                     </tr>
-                                ))}
-                            </tbody>
+                                    <tr>
+                                        <td
+                                            className="px-4 py-2 text-right text-xs font-semibold uppercase"
+                                            colSpan={6}
+                                        >
+                                            Total
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-base font-semibold tabular-nums">
+                                            {formatAmount(
+                                                invoice.val_mon,
+                                                invoice.moneda,
+                                            )}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            )}
                         </table>
                     </div>
                 </div>

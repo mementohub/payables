@@ -32,6 +32,7 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { show as invoiceShow } from '@/routes/invoices';
 import {
+    clienti as clientiRoute,
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
@@ -47,6 +48,7 @@ export default function PartnerShow({
     invoiceFilters,
     availableTipDocs,
     availableDepartments,
+    stats,
 }: Props) {
     const [selectedDepartmentId, setSelectedDepartmentId] =
         useState<string>('');
@@ -90,9 +92,16 @@ export default function PartnerShow({
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div>
                     <Button asChild variant="ghost" size="sm">
-                        <Link href={furnizoriRoute()}>
+                        <Link
+                            href={
+                                partner.is_furnizor
+                                    ? furnizoriRoute()
+                                    : clientiRoute()
+                            }
+                        >
                             <ArrowLeft />
-                            Înapoi la furnizori
+                            Înapoi la{' '}
+                            {partner.is_furnizor ? 'furnizori' : 'clienți'}
                         </Link>
                     </Button>
                 </div>
@@ -117,6 +126,8 @@ export default function PartnerShow({
                         </p>
                     </div>
                 </div>
+
+                <StatsCards stats={stats} />
 
                 {activeBankAccounts.length > 0 && (
                     <div className="flex flex-wrap gap-2">
@@ -519,16 +530,196 @@ export default function PartnerShow({
 
 function PartnerShowLayout({ children }: { children: React.ReactNode }) {
     const { partner } = usePage<Props>().props;
+    const isFurnizor = partner.is_furnizor;
 
     return (
         <AppLayout
             breadcrumbs={[
-                { title: 'Furnizori', href: furnizoriRoute() },
+                {
+                    title: isFurnizor ? 'Furnizori' : 'Clienți',
+                    href: isFurnizor ? furnizoriRoute() : clientiRoute(),
+                },
                 { title: partner.name, href: partnerShow(partner.id) },
             ]}
         >
             {children}
         </AppLayout>
+    );
+}
+
+function StatsCards({
+    stats,
+}: {
+    stats: import('./types').PartnerStats;
+}) {
+    const { totals, counts, oldest_unpaid, last_invoice_date } = stats;
+
+    return (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="gap-1 py-3">
+                <CardHeader className="px-4 pb-0">
+                    <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        Total facturi
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-2">
+                    <div className="text-2xl font-semibold tabular-nums">
+                        {counts.total}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>
+                            <span className="text-green-700 dark:text-green-400">
+                                {counts.paid}
+                            </span>{' '}
+                            plătite
+                        </span>
+                        {counts.partial > 0 && (
+                            <span>
+                                <span className="text-amber-700 dark:text-amber-400">
+                                    {counts.partial}
+                                </span>{' '}
+                                parțial
+                            </span>
+                        )}
+                        {counts.unpaid > 0 && (
+                            <span>
+                                <span className="text-red-700 dark:text-red-400">
+                                    {counts.unpaid}
+                                </span>{' '}
+                                neplătite
+                            </span>
+                        )}
+                    </div>
+                    {last_invoice_date && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                            Ultima: {last_invoice_date}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card className="gap-1 py-3">
+                <CardHeader className="px-4 pb-0">
+                    <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        Total facturat
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-0.5 px-4 pb-2">
+                    {totals.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">—</div>
+                    ) : (
+                        totals.map((t) => (
+                            <div
+                                key={t.moneda ?? '—'}
+                                className="flex items-baseline justify-between gap-2 text-sm tabular-nums"
+                            >
+                                <span className="font-semibold">
+                                    {formatAmount(t.val_mon, t.moneda)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    {t.count}
+                                </span>
+                            </div>
+                        ))
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card className="gap-1 py-3">
+                <CardHeader className="px-4 pb-0">
+                    <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        Achitat
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-0.5 px-4 pb-2">
+                    {totals.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">—</div>
+                    ) : (
+                        totals.map((t) => {
+                            const pct =
+                                t.val_mon > 0
+                                    ? Math.round(
+                                          (t.val_mon_paid / t.val_mon) * 100,
+                                      )
+                                    : 0;
+                            return (
+                                <div
+                                    key={t.moneda ?? '—'}
+                                    className="flex items-baseline justify-between gap-2 text-sm tabular-nums"
+                                >
+                                    <span className="font-semibold text-green-700 dark:text-green-400">
+                                        {formatAmount(t.val_mon_paid, t.moneda)}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {pct}%
+                                    </span>
+                                </div>
+                            );
+                        })
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card
+                className={
+                    'gap-1 py-3 ' +
+                    (totals.some((t) => t.sold > 0.01)
+                        ? 'border-amber-500/40'
+                        : '')
+                }
+            >
+                <CardHeader className="px-4 pb-0">
+                    <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        Sold rămas
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-0.5 px-4 pb-2">
+                    {totals.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">—</div>
+                    ) : (
+                        totals.map((t) => (
+                            <div
+                                key={t.moneda ?? '—'}
+                                className={
+                                    'text-sm font-semibold tabular-nums ' +
+                                    (t.sold > 0.01
+                                        ? 'text-amber-700 dark:text-amber-400'
+                                        : 'text-muted-foreground')
+                                }
+                            >
+                                {formatAmount(t.sold, t.moneda)}
+                            </div>
+                        ))
+                    )}
+                    {oldest_unpaid && (
+                        <Link
+                            href={invoiceShow(oldest_unpaid.id)}
+                            className="mt-1 block border-t pt-1 text-xs text-muted-foreground hover:underline"
+                        >
+                            Cea mai veche neplătită:{' '}
+                            <span className="text-foreground">
+                                {oldest_unpaid.nr_doc}
+                            </span>{' '}
+                            ·{' '}
+                            <span className="text-foreground">
+                                {formatAmount(
+                                    oldest_unpaid.val_mon,
+                                    oldest_unpaid.moneda,
+                                )}
+                            </span>
+                            {oldest_unpaid.days_overdue !== null &&
+                                oldest_unpaid.days_overdue > 0 && (
+                                    <span className="text-red-700 dark:text-red-400">
+                                        {' '}
+                                        · {oldest_unpaid.days_overdue}z
+                                        întârziere
+                                    </span>
+                                )}
+                        </Link>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
     );
 }
 
