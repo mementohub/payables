@@ -738,7 +738,7 @@ function InfoDialog({
 
     return (
         <Dialog open={!!row} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="flex h-[95vh] w-[95vw] max-w-[1400px] flex-col overflow-hidden p-0">
+            <DialogContent className="flex h-screen max-h-screen w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 ring-0 sm:max-w-none">
                 <DialogHeader className="border-b px-6 py-3">
                     <DialogTitle className="flex items-center gap-2">
                         Detalii eFactură
