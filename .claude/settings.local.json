@@ -39,7 +39,9 @@
       "Bash(git -C /Users/ciungulete/Sites/payables stash --include-untracked --quiet)",
       "Bash(git -C /Users/ciungulete/Sites/payables stash pop --quiet)",
       "Bash(grep -n 'table\\\\|protected $table' /Users/ciungulete/Sites/payables/app/Models/EInvoice.php /Users/ciungulete/Sites/payables/app/Models/Invoice.php)",
-      "Bash(unzip -p /tmp/sample.xlsx xl/worksheets/sheet1.xml)"
+      "Bash(unzip -p /tmp/sample.xlsx xl/worksheets/sheet1.xml)",
+      "Bash(npx eslint *)",
+      "Bash(npx prettier *)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -35,11 +35,7 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
-import type {
-    InvoiceFilters,
-    PartnerDetail as Partner,
-    ShowProps as Props,
-} from './types';
+import type { InvoiceFilters, ShowProps as Props } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();

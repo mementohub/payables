@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\EInvoice;
+use App\Models\Invoice;
 use App\Services\Xlsx\XlsxWriter;
 use Einvoicing\Invoice as EInvoicingInvoice;
 use Einvoicing\InvoiceLine;
 use Einvoicing\Party;
 use Einvoicing\Readers\UblReader;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -154,6 +156,48 @@ class EInvoiceController extends Controller
         return [
             'eInvoice' => $this->transformForDetail($eInvoice),
         ];
+    }
+
+    public function candidates(EInvoice $eInvoice): array
+    {
+        $candidates = Invoice::query()
+            ->where('company_id', $eInvoice->company_id)
+            ->where('tip_doc', 'FactFI')
+            ->when($eInvoice->nr_doc_xml, fn ($q, $nr) => $q->where('nr_doc', $nr))
+            ->orderByDesc('data_doc')
+            ->limit(20)
+            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc', 'val_mon', 'moneda'])
+            ->map(fn (Invoice $invoice) => [
+                'id' => $invoice->id,
+                'data_doc' => $invoice->data_doc?->toDateString(),
+                'tip_doc' => $invoice->tip_doc,
+                'nr_doc' => $invoice->nr_doc,
+                'val_mon' => $invoice->val_mon,
+                'moneda' => $invoice->moneda,
+            ]);
+
+        return ['candidates' => $candidates->all()];
+    }
+
+    public function match(Request $request, EInvoice $eInvoice): RedirectResponse
+    {
+        $invoiceId = $request->input('invoice_id');
+
+        if ($invoiceId === null || $invoiceId === '') {
+            $eInvoice->update(['invoice_id' => null]);
+
+            return back();
+        }
+
+        $invoice = Invoice::where('id', $invoiceId)
+            ->where('company_id', $eInvoice->company_id)
+            ->first();
+
+        abort_if($invoice === null, 404);
+
+        $eInvoice->update(['invoice_id' => $invoice->id]);
+
+        return back();
     }
 
     public function parsed(EInvoice $eInvoice): array

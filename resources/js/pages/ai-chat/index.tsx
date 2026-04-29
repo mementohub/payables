@@ -42,12 +42,15 @@ export default function AiChatIndex({
     const [activeTool, setActiveTool] = useState<string | null>(null);
     const [errorText, setErrorText] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [lastConversationId, setLastConversationId] =
+        useState(activeConversationId);
     const threadRef = useRef<HTMLDivElement | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
-    useEffect(() => {
+    if (lastConversationId !== activeConversationId) {
+        setLastConversationId(activeConversationId);
         setSidebarOpen(false);
-    }, [activeConversationId]);
+    }
 
     const scrollToBottom = useCallback(() => {
         if (threadRef.current) {

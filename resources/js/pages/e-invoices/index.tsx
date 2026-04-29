@@ -499,16 +499,20 @@ function InfoDialog({
     const [detail, setDetail] = useState<DetailPayload | null>(null);
     const [loading, setLoading] = useState(false);
     const [parsedOpen, setParsedOpen] = useState(false);
+    const [lastRowId, setLastRowId] = useState<number | null>(row?.id ?? null);
 
-    useEffect(() => {
+    if ((row?.id ?? null) !== lastRowId) {
+        setLastRowId(row?.id ?? null);
         setDetail(null);
         setParsedOpen(false);
+        setLoading(!!row);
+    }
 
+    useEffect(() => {
         if (!row) {
             return;
         }
 
-        setLoading(true);
         fetch(detailRoute(row.id).url, {
             headers: { Accept: 'application/json' },
         })
@@ -670,15 +674,19 @@ function ParsedXmlDialog({
 }) {
     const [payload, setPayload] = useState<ParsedPayload | null>(null);
     const [loading, setLoading] = useState(false);
+    const [lastRowId, setLastRowId] = useState<number | null>(row?.id ?? null);
+
+    if ((row?.id ?? null) !== lastRowId) {
+        setLastRowId(row?.id ?? null);
+        setPayload(null);
+        setLoading(!!row);
+    }
 
     useEffect(() => {
-        setPayload(null);
-
         if (!row) {
             return;
         }
 
-        setLoading(true);
         fetch(parsedRoute(row.id).url, {
             headers: { Accept: 'application/json' },
         })

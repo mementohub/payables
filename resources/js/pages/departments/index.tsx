@@ -277,6 +277,7 @@ function CreateDialog({
                 if (!v) {
                     reset();
                 }
+
                 onOpenChange(v);
             }}
         >

@@ -3,33 +3,27 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const components: Components = {
-    p: ({ node, ...props }) => (
+    p: ({ ...props }) => (
         <p {...props} className="my-2 leading-relaxed first:mt-0 last:mb-0" />
     ),
-    h1: ({ node, ...props }) => (
+    h1: ({ ...props }) => (
         <h1
             {...props}
             className="mt-3 mb-2 text-base font-semibold first:mt-0"
         />
     ),
-    h2: ({ node, ...props }) => (
+    h2: ({ ...props }) => (
         <h2 {...props} className="mt-3 mb-2 text-sm font-semibold first:mt-0" />
     ),
-    h3: ({ node, ...props }) => (
+    h3: ({ ...props }) => (
         <h3 {...props} className="mt-2 mb-1 text-sm font-semibold first:mt-0" />
     ),
-    ul: ({ node, ...props }) => (
-        <ul {...props} className="my-2 list-disc pl-5" />
-    ),
-    ol: ({ node, ...props }) => (
-        <ol {...props} className="my-2 list-decimal pl-5" />
-    ),
-    li: ({ node, ...props }) => <li {...props} className="my-0.5" />,
-    strong: ({ node, ...props }) => (
-        <strong {...props} className="font-semibold" />
-    ),
-    em: ({ node, ...props }) => <em {...props} className="italic" />,
-    a: ({ node, ...props }) => (
+    ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-5" />,
+    ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-5" />,
+    li: ({ ...props }) => <li {...props} className="my-0.5" />,
+    strong: ({ ...props }) => <strong {...props} className="font-semibold" />,
+    em: ({ ...props }) => <em {...props} className="italic" />,
+    a: ({ ...props }) => (
         <a
             {...props}
             target="_blank"
@@ -37,7 +31,7 @@ const components: Components = {
             className="underline"
         />
     ),
-    code: ({ node, className, children, ...props }) => {
+    code: ({ className, children, ...props }) => {
         const isBlock = /language-/.test(className ?? '');
 
         if (isBlock) {
@@ -57,25 +51,25 @@ const components: Components = {
             </code>
         );
     },
-    pre: ({ node, ...props }) => (
+    pre: ({ ...props }) => (
         <pre
             {...props}
             className="my-2 overflow-x-auto rounded-md bg-muted p-2 font-mono text-xs"
         />
     ),
-    blockquote: ({ node, ...props }) => (
+    blockquote: ({ ...props }) => (
         <blockquote
             {...props}
             className="my-2 border-l-2 border-sidebar-border/70 pl-3 text-muted-foreground dark:border-sidebar-border"
         />
     ),
-    hr: ({ node, ...props }) => (
+    hr: ({ ...props }) => (
         <hr
             {...props}
             className="my-3 border-sidebar-border/70 dark:border-sidebar-border"
         />
     ),
-    table: ({ node, ...props }) => (
+    table: ({ ...props }) => (
         <div className="my-2 overflow-x-auto">
             <table
                 {...props}
@@ -83,13 +77,13 @@ const components: Components = {
             />
         </div>
     ),
-    th: ({ node, ...props }) => (
+    th: ({ ...props }) => (
         <th
             {...props}
             className="border border-sidebar-border/70 bg-muted/50 px-2 py-1 text-left font-medium dark:border-sidebar-border"
         />
     ),
-    td: ({ node, ...props }) => (
+    td: ({ ...props }) => (
         <td
             {...props}
             className="border border-sidebar-border/70 px-2 py-1 tabular-nums dark:border-sidebar-border"
