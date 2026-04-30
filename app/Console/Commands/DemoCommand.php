@@ -63,8 +63,11 @@ class DemoCommand extends Command
 
     private function freshDatabase(): void
     {
-        $this->info('Running migrate:fresh --seed…');
-        $this->call('migrate:fresh', ['--seed' => true, '--force' => true]);
+        $this->info('Running migrate:fresh…');
+        $this->call('migrate:fresh', ['--force' => true]);
+
+        $this->info('Seeding database…');
+        $this->call('db:seed', ['--force' => true]);
     }
 
     private function copyCompaniesFile(): void
