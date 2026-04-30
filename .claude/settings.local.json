@@ -47,7 +47,8 @@
       "Bash(perl -i -pe \"s/User::factory\\\\\\(\\\\\\)->create\\\\\\(\\\\['workos_id' => '[^']*' \\\\. fake\\\\\\(\\\\\\)->uuid\\\\\\(\\\\\\)\\\\]\\\\\\)/User::factory\\(\\)->create\\(\\)/g\" tests/Feature/*.php)",
       "Bash(perl -i -pe 's/\\\\->create\\\\\\(\\\\[.workos_id.\\\\s*=>\\\\s*.[^.]*.\\\\.fake\\\\\\(\\\\\\)->uuid\\\\\\(\\\\\\)\\\\]\\\\\\)/->create\\(\\)/g' tests/Feature/*.php)",
       "Bash(composer dump-autoload *)",
-      "mcp__laravel-boost__database-connections"
+      "mcp__laravel-boost__database-connections",
+      "Bash(grep -n \"EINVOICE\\\\|^$\" /Users/ciungulete/Sites/payables/.env.example)"
     ]
   },
   "enableAllProjectMcpServers": true,

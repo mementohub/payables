@@ -120,6 +120,38 @@ it('manually links and unlinks an invoice via match endpoint', function () {
     expect($eInvoice->fresh()->invoice_id)->toBeNull();
 });
 
+it('flags total mismatch when difference exceeds configured tolerance', function () {
+    config()->set('einvoices.mismatch_tolerance.total', 1);
+    config()->set('einvoices.mismatch_tolerance.vat', 1);
+
+    $company = Company::factory()->create();
+    $invoice = Invoice::factory()->for($company)->create([
+        'val_mon' => 100.00,
+        'val_mon_tva' => 19.00,
+    ]);
+
+    $within = makeEInvoice([
+        'company' => $company,
+        'invoice_id' => $invoice->id,
+        'total_amount' => 100.50,
+        'total_vat' => 19.00,
+    ]);
+    $beyond = makeEInvoice([
+        'company' => $company,
+        'invoice_id' => $invoice->id,
+        'total_amount' => 102.00,
+        'total_vat' => 19.00,
+    ]);
+
+    $this->actingAs($this->user)
+        ->getJson("/e-invoices/{$within->id}/detail")
+        ->assertJsonPath('eInvoice.mismatch.total', false);
+
+    $this->actingAs($this->user)
+        ->getJson("/e-invoices/{$beyond->id}/detail")
+        ->assertJsonPath('eInvoice.mismatch.total', true);
+});
+
 it('rejects matching to an invoice from a different company', function () {
     $company = Company::factory()->create();
     $other = Company::factory()->create();

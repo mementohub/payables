@@ -243,11 +243,14 @@ class EInvoiceController extends Controller
         $eTotal = $row->total_amount !== null ? (float) $row->total_amount : null;
         $eVat = $row->total_vat !== null ? (float) $row->total_vat : null;
 
+        $totalTolerance = (float) config('einvoices.mismatch_tolerance.total');
+        $vatTolerance = (float) config('einvoices.mismatch_tolerance.vat');
+
         $totalMismatch = $row->invoice && $eTotal !== null && $invoiceTotal !== null
-            ? abs($eTotal - $invoiceTotal) > 0.01
+            ? abs($eTotal - $invoiceTotal) > $totalTolerance
             : false;
         $vatMismatch = $row->invoice && $eVat !== null && $invoiceVat !== null
-            ? abs($eVat - $invoiceVat) > 0.01
+            ? abs($eVat - $invoiceVat) > $vatTolerance
             : false;
 
         return [

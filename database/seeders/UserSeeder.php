@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 class UserSeeder extends Seeder
 {
@@ -26,13 +25,13 @@ class UserSeeder extends Seeder
             User::factory()->create([
                 'name' => $user['name'],
                 'email' => $user['email'],
-                'password' => $user['password'] ?? $this->password(),
+                'password' => $this->password($user['password']),
             ]);
         }
     }
 
-    private function password(): string
+    private function password(string $password): string
     {
-        return Hash::make(app()->isLocal() ? 'password' : Str::random(32));
+        return Hash::make(app()->isLocal() ? 'password' : $password);
     }
 }

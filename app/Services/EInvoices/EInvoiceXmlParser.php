@@ -51,6 +51,39 @@ class EInvoiceXmlParser
     }
 
     /**
+     * Extract the seller's tax/company identifier from the XML.
+     * Prefers the VAT number; falls back to the legal company id.
+     */
+    public function extractSellerTaxId(?string $xml): ?string
+    {
+        if ($xml === null || trim($xml) === '') {
+            return null;
+        }
+
+        try {
+            $seller = (new UblReader)->import($xml)->getSeller();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($seller === null) {
+            return null;
+        }
+
+        $vat = $seller->getVatNumber();
+        if ($vat !== null && trim($vat) !== '') {
+            return $vat;
+        }
+
+        $companyId = $seller->getCompanyId()?->getValue();
+        if ($companyId !== null && trim($companyId) !== '') {
+            return $companyId;
+        }
+
+        return null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function transformInvoice(EInvoicingInvoice $invoice): array

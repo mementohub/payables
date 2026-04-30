@@ -197,6 +197,15 @@ class SyncService
             $cci = $row->cod_cci_xml !== null ? $this->normalizeCui($row->cod_cci_xml) : null;
             $partnerId = $cci !== null ? ($partnerLookup[$cci] ?? null) : null;
 
+            if ($partnerId === null) {
+                $sellerTaxId = $this->xmlParser->extractSellerTaxId($row->msg_xml);
+
+                if ($sellerTaxId !== null) {
+                    $normalizedSeller = $this->normalizeCui($sellerTaxId);
+                    $partnerId = $partnerLookup[$normalizedSeller] ?? null;
+                }
+            }
+
             $totals = $this->xmlParser->extractTotals($row->msg_xml);
 
             $eInvoice = EInvoice::updateOrCreate(

@@ -72,7 +72,8 @@ class DemoCommand extends Command
 
     private function copyCompaniesFile(): void
     {
-        $source = base_path('omc.json');
+        $filename = app()->isLocal() ? 'omc.local.json' : 'omc.json';
+        $source = base_path($filename);
         $target = storage_path('app/private/companies.json');
 
         if (! is_file($source)) {
@@ -83,7 +84,7 @@ class DemoCommand extends Command
             throw new RuntimeException("Failed to copy {$source} to {$target}");
         }
 
-        $this->info('Copied omc.json → companies.json');
+        $this->info("Copied {$filename} → companies.json");
     }
 
     private function syncCompanies(): void
