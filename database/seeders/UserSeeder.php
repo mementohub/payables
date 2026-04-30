@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
@@ -22,16 +21,19 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $user) {
-            User::factory()->create([
-                'name' => $user['name'],
-                'email' => $user['email'],
-                'password' => $this->password($user['password']),
-            ]);
+            User::updateOrCreate(
+                ['email' => $user['email']],
+                [
+                    'name' => $user['name'],
+                    'password' => $this->password($user['password']),
+                    'email_verified_at' => now(),
+                ],
+            );
         }
     }
 
     private function password(string $password): string
     {
-        return Hash::make(app()->isLocal() ? 'password' : $password);
+        return app()->isLocal() ? 'password' : $password;
     }
 }

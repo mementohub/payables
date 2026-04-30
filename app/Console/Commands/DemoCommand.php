@@ -10,6 +10,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 #[Signature('app:demo {--from=2026-01-01 : Sync start date} {--to= : Sync end date (defaults to today)}')]
@@ -63,11 +64,17 @@ class DemoCommand extends Command
 
     private function freshDatabase(): void
     {
-        $this->info('Running migrate:fresh…');
-        $this->call('migrate:fresh', ['--force' => true]);
+        DB::prohibitDestructiveCommands(false);
 
-        $this->info('Seeding database…');
-        $this->call('db:seed', ['--force' => true]);
+        try {
+            $this->info('Running migrate:fresh…');
+            $this->call('migrate:fresh', ['--force' => true]);
+
+            $this->info('Seeding database…');
+            $this->call('db:seed', ['--force' => true]);
+        } finally {
+            DB::prohibitDestructiveCommands(app()->isProduction());
+        }
     }
 
     private function copyCompaniesFile(): void
