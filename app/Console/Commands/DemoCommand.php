@@ -6,7 +6,6 @@ use App\Jobs\SyncCompanyDayJob;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Partner;
-use Database\Seeders\CompanySeeder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -45,8 +44,14 @@ class DemoCommand extends Command
 
     public function handle(): int
     {
+        if (! $this->confirm('This will WIPE the local database and re-seed it. Continue?', false)) {
+            $this->warn('Aborted.');
+
+            return self::FAILURE;
+        }
+
         $this->copyCompaniesFile();
-        $this->seedCompanies();
+        $this->freshDatabase();
         $this->syncCompanies();
         $this->attachPartnersToDepartments();
 
@@ -54,6 +59,12 @@ class DemoCommand extends Command
         $this->info('Demo bootstrap complete.');
 
         return self::SUCCESS;
+    }
+
+    private function freshDatabase(): void
+    {
+        $this->info('Running migrate:fresh --seed…');
+        $this->call('migrate:fresh', ['--seed' => true, '--force' => true]);
     }
 
     private function copyCompaniesFile(): void
@@ -70,12 +81,6 @@ class DemoCommand extends Command
         }
 
         $this->info('Copied omc.json → companies.json');
-    }
-
-    private function seedCompanies(): void
-    {
-        $this->info('Seeding companies…');
-        $this->call('db:seed', ['--class' => CompanySeeder::class, '--force' => true]);
     }
 
     private function syncCompanies(): void
