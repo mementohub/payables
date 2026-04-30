@@ -738,7 +738,7 @@ function InfoDialog({
 
     return (
         <Dialog open={!!row} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="flex h-screen max-h-screen w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 ring-0 sm:max-w-none">
+            <DialogContent className="flex h-[calc(100vh-1.5rem)] max-h-[calc(100vh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-lg p-0 sm:max-w-[calc(100vw-1.5rem)]">
                 <DialogHeader className="border-b px-6 py-3">
                     <DialogTitle className="flex items-center gap-2">
                         Detalii eFactură
@@ -991,63 +991,125 @@ function InfoDialog({
                                                             <th className="px-3 py-2 text-right">
                                                                 TVA
                                                             </th>
+                                                            <th className="px-3 py-2 text-right">
+                                                                Total
+                                                            </th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                                                         {parsedInvoice.lines.map(
-                                                            (line, i) => (
-                                                                <tr key={i}>
-                                                                    <td className="px-3 py-2">
-                                                                        <div className="font-medium">
-                                                                            {line.name ??
-                                                                                '—'}
-                                                                        </div>
-                                                                        {line.description && (
-                                                                            <div className="text-muted-foreground">
-                                                                                {
-                                                                                    line.description
-                                                                                }
+                                                            (line, i) => {
+                                                                const lineTotal =
+                                                                    (line.net_amount ??
+                                                                        0) +
+                                                                    (line.vat_amount ??
+                                                                        0);
+                                                                return (
+                                                                    <tr key={i}>
+                                                                        <td className="px-3 py-2">
+                                                                            <div className="font-medium">
+                                                                                {line.name ??
+                                                                                    '—'}
                                                                             </div>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                                        {
-                                                                            line.quantity
-                                                                        }
-                                                                    </td>
-                                                                    <td className="px-3 py-2 whitespace-nowrap">
-                                                                        {
-                                                                            line.unit
-                                                                        }
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                                        {line.price?.toFixed(
-                                                                            2,
-                                                                        ) ??
-                                                                            '—'}
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                                        {line.net_amount?.toFixed(
-                                                                            2,
-                                                                        ) ??
-                                                                            '—'}
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right whitespace-nowrap text-muted-foreground">
-                                                                        {line.vat_rate !==
-                                                                        null
-                                                                            ? `${line.vat_rate}%`
-                                                                            : '—'}
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                                        {line.vat_amount?.toFixed(
-                                                                            2,
-                                                                        ) ??
-                                                                            '—'}
-                                                                    </td>
-                                                                </tr>
-                                                            ),
+                                                                            {line.description && (
+                                                                                <div className="text-muted-foreground">
+                                                                                    {
+                                                                                        line.description
+                                                                                    }
+                                                                                </div>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                            {
+                                                                                line.quantity
+                                                                            }
+                                                                        </td>
+                                                                        <td className="px-3 py-2 whitespace-nowrap">
+                                                                            {
+                                                                                line.unit
+                                                                            }
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                            {line.price?.toFixed(
+                                                                                2,
+                                                                            ) ??
+                                                                                '—'}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                            {line.net_amount?.toFixed(
+                                                                                2,
+                                                                            ) ??
+                                                                                '—'}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap text-muted-foreground">
+                                                                            {line.vat_rate !==
+                                                                            null
+                                                                                ? `${line.vat_rate}%`
+                                                                                : '—'}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                                                                            {line.vat_amount?.toFixed(
+                                                                                2,
+                                                                            ) ??
+                                                                                '—'}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-right whitespace-nowrap font-medium">
+                                                                            {lineTotal.toFixed(
+                                                                                2,
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            },
                                                         )}
                                                     </tbody>
+                                                    <tfoot className="border-t bg-muted/30">
+                                                        <tr>
+                                                            <td
+                                                                colSpan={4}
+                                                                className="px-3 py-2 text-right text-muted-foreground"
+                                                            >
+                                                                Total fără TVA
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                                                                {parsedInvoice.totals.tax_exclusive_amount.toFixed(
+                                                                    2,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right text-muted-foreground">
+                                                                Total TVA
+                                                            </td>
+                                                            <td
+                                                                colSpan={2}
+                                                                className="px-3 py-2 text-right font-medium whitespace-nowrap"
+                                                            >
+                                                                {parsedInvoice.totals.vat_amount.toFixed(
+                                                                    2,
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                        <tr className="border-t">
+                                                            <td
+                                                                colSpan={6}
+                                                                className="px-3 py-2 text-right font-semibold"
+                                                            >
+                                                                Total factură
+                                                            </td>
+                                                            <td
+                                                                colSpan={2}
+                                                                className="px-3 py-2 text-right font-semibold whitespace-nowrap"
+                                                            >
+                                                                {(
+                                                                    parsedInvoice
+                                                                        .totals
+                                                                        .tax_exclusive_amount +
+                                                                    parsedInvoice
+                                                                        .totals
+                                                                        .vat_amount
+                                                                ).toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
                                                 </table>
                                             </div>
                                         </div>
