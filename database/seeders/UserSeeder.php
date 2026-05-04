@@ -10,7 +10,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $users = [
-            ['name' => 'Andrei Ciungulete', 'email' => 'andrei.ciugulete@andali.ro', 'password' => '564Wk7nW7gGy'],
+            ['name' => 'Andrei Ciungulete', 'email' => 'andrei.ciungulete@andali.ro', 'password' => '564Wk7nW7gGy'],
             ['name' => 'Bogdan Cismariu', 'email' => 'bogdan.cismariu@mementogroup.com', 'password' => '564Wk7nW7gGy'],
             ['name' => 'Turism Intern', 'email' => 'turism-intern@example.test', 'password' => '##turism-intern##'],
             ['name' => 'Sediul Central', 'email' => 'sediul-central@example.test', 'password' => '##sediul-central##'],
