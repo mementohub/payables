@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
@@ -34,6 +35,6 @@ class UserSeeder extends Seeder
 
     private function password(string $password): string
     {
-        return app()->isLocal() ? 'password' : $password;
+        return Hash::make(app()->isLocal() ? 'password' : $password);
     }
 }
