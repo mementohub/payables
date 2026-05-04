@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import {
     Building2,
+    ChartColumn,
     Contact,
     FileCheck2,
     FileInput,
@@ -8,6 +9,7 @@ import {
     FileText,
     Landmark,
     LayoutGrid,
+    Receipt,
     ShieldCheck,
     Sparkles,
     Truck,
@@ -37,6 +39,7 @@ import {
     primite as facturiPrimite,
 } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
+import { index as opexIndex } from '@/routes/reports/opex';
 import { index as usersIndex } from '@/routes/users';
 import type { NavItemOrGroup } from '@/types/navigation';
 
@@ -87,6 +90,17 @@ const mainNavItems: NavItemOrGroup[] = [
         title: 'Extrase bancare',
         href: bankStatementsIndex(),
         icon: Landmark,
+    },
+    {
+        title: 'Rapoarte',
+        icon: ChartColumn,
+        children: [
+            {
+                title: 'OpEx',
+                href: opexIndex(),
+                icon: Receipt,
+            },
+        ],
     },
     {
         title: 'Asistent AI',

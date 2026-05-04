@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
@@ -46,6 +47,10 @@ Route::middleware('auth')->group(function () {
     Route::post('partners/{partner}/responsabil-departments', [PartnerController::class, 'attachResponsabilDepartment'])->name('partners.responsabil-departments.attach');
     Route::delete('partners/{partner}/responsabil-departments/{department}', [PartnerController::class, 'detachResponsabilDepartment'])->name('partners.responsabil-departments.detach');
     Route::get('clients', [PartnerController::class, 'clienti'])->name('partners.clienti');
+
+    Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
+    Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
+    Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');
 
     Route::get('ai-assistant', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');
