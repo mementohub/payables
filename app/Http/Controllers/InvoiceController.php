@@ -47,11 +47,14 @@ class InvoiceController extends Controller
     {
         $filters = $this->parseFilters($request);
 
-        $invoices = $this->buildListQuery($request, $scope)
+        $paginator = $this->buildListQuery($request, $scope)
             ->orderByDesc('data_doc')
             ->paginate(25)
-            ->withQueryString()
-            ->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
+            ->withQueryString();
+
+        $this->presenter->preloadBazaInvoices($paginator->items());
+
+        $invoices = $paginator->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
 
         return Inertia::render('invoices/index', [
             'invoices' => $invoices,
@@ -169,9 +172,12 @@ class InvoiceController extends Controller
             'approvals.user:id,name,email',
             'approvals.department:id,name,type',
             'sourceCompany:id,name',
-            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc',
+            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
             'sourceInvoice.partner:id,name,cui',
+            'sourceInvoice.company:id,name',
         ]);
+
+        $this->presenter->preloadBazaInvoices([$invoice]);
 
         return Inertia::render('invoices/show', [
             'invoice' => [

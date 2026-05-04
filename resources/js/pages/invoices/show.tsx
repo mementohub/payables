@@ -209,14 +209,43 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                 </div>
                             )}
                             {invoice.baza && (
-                                <div className="text-xs text-muted-foreground">
-                                    Bază doc:{' '}
-                                    <span className="font-medium text-foreground">
-                                        {invoice.baza.tip_doc ?? ''}{' '}
-                                        {invoice.baza.nr_doc ?? ''}
-                                    </span>
-                                    {invoice.baza.data_doc && (
-                                        <span> · {invoice.baza.data_doc}</span>
+                                <div className="space-y-1">
+                                    <div className="text-xs text-muted-foreground">
+                                        Bază doc:{' '}
+                                        <span className="font-medium text-foreground">
+                                            {invoice.baza.tip_doc ?? ''}{' '}
+                                            {invoice.baza.nr_doc ?? ''}
+                                        </span>
+                                        {invoice.baza.data_doc && (
+                                            <span>
+                                                {' '}
+                                                · {invoice.baza.data_doc}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {invoice.baza.invoice?.real_supplier && (
+                                        <Link
+                                            href={`/invoices/${invoice.baza.invoice.id}`}
+                                            className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
+                                        >
+                                            <ExternalLink className="size-3" />
+                                            Furnizor real:{' '}
+                                            {
+                                                invoice.baza.invoice
+                                                    .real_supplier.name
+                                            }
+                                            {invoice.baza.invoice.real_supplier
+                                                .cui && (
+                                                <span className="text-muted-foreground">
+                                                    {' '}
+                                                    · CUI{' '}
+                                                    {
+                                                        invoice.baza.invoice
+                                                            .real_supplier.cui
+                                                    }
+                                                </span>
+                                            )}
+                                        </Link>
                                     )}
                                 </div>
                             )}

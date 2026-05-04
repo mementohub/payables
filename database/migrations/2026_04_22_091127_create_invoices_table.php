@@ -26,8 +26,8 @@ return new class extends Migration
             $table->date('data_calatoriei')->nullable();
 
             $table->date('data_doc_baza')->nullable();
-            $table->string('tip_doc_baza', 20)->nullable();
-            $table->string('nr_doc_baza', 60)->nullable();
+            $table->string('tip_doc_baza')->nullable();
+            $table->string('nr_doc_baza')->nullable();
             $table->foreignId('source_company_id')->nullable()->constrained('companies')->nullOnDelete();
             $table->foreignId('source_invoice_id')->nullable()->constrained('invoices')->nullOnDelete();
 

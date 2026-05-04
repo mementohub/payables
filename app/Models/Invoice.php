@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Builders\InvoiceBuilder;
+use App\Services\Invoices\InvoicePresenter;
 use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -89,6 +90,17 @@ class Invoice extends Model
     public function sourceInvoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'source_invoice_id');
+    }
+
+    /**
+     * Same-company refacturare link: this invoice's `nr_doc_baza` matches another
+     * invoice's `nr_doc` within the same company. Hydrated manually by
+     * {@see InvoicePresenter::preloadBazaInvoices()}
+     * because Eloquent does not natively support composite-key relations.
+     */
+    public function bazaInvoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'nr_doc_baza', 'nr_doc');
     }
 
     public function scopeFurnizor(Builder $query): Builder

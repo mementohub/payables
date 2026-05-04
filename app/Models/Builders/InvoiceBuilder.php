@@ -22,8 +22,9 @@ class InvoiceBuilder extends Builder
             'approvals.user:id,name,email',
             'approvals.department:id,name,type',
             'sourceCompany:id,name',
-            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc',
+            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
             'sourceInvoice.partner:id,name,cui',
+            'sourceInvoice.company:id,name',
         ]);
     }
 

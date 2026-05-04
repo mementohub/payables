@@ -51,6 +51,70 @@ import type {
     Scope,
 } from './types';
 
+type RealSupplierHit = {
+    id: number;
+    name: string;
+    targetInvoiceId: number;
+    title?: string;
+};
+
+function pickRealSupplier(invoice: InvoiceRow): RealSupplierHit | null {
+    if (
+        invoice.baza?.invoice?.real_supplier &&
+        invoice.baza.invoice.real_supplier.id !== invoice.partner?.id
+    ) {
+        return {
+            id: invoice.baza.invoice.real_supplier.id,
+            name: invoice.baza.invoice.real_supplier.name,
+            targetInvoiceId: invoice.baza.invoice.id,
+            title: `Refacturare după ${invoice.baza.tip_doc ?? ''} ${invoice.baza.nr_doc ?? ''}`.trim(),
+        };
+    }
+
+    if (
+        invoice.source_invoice?.real_supplier &&
+        invoice.source_invoice.real_supplier.id !== invoice.partner?.id
+    ) {
+        return {
+            id: invoice.source_invoice.real_supplier.id,
+            name: invoice.source_invoice.real_supplier.name,
+            targetInvoiceId: invoice.source_invoice.id,
+            title: `Sursa originală în ${invoice.source_invoice.company?.name ?? ''}`,
+        };
+    }
+
+    return null;
+}
+
+function RealSupplierHint({ invoice }: { invoice: InvoiceRow }) {
+    const real = pickRealSupplier(invoice);
+
+    if (real) {
+        return (
+            <Link
+                href={invoicesShow(real.targetInvoiceId)}
+                title={real.title}
+                className="mt-0.5 block text-xs text-muted-foreground italic hover:text-foreground hover:underline"
+            >
+                ↳ {real.name}
+            </Link>
+        );
+    }
+
+    if (invoice.baza?.nr_doc) {
+        return (
+            <span
+                className="mt-0.5 block text-xs text-muted-foreground/70 italic"
+                title="Document de bază (refacturare) — nu am găsit furnizorul real"
+            >
+                ↳ ref. {invoice.baza.tip_doc ?? ''} {invoice.baza.nr_doc}
+            </span>
+        );
+    }
+
+    return null;
+}
+
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
 }
@@ -470,30 +534,9 @@ export default function InvoicesIndex({
                                                         {invoice.partner.cui}
                                                     </div>
                                                 )}
-                                                {invoice.source_invoice
-                                                    ?.real_supplier && (
-                                                    <Link
-                                                        href={invoicesShow(
-                                                            invoice
-                                                                .source_invoice
-                                                                .id,
-                                                        )}
-                                                        className="mt-1 inline-flex items-center gap-1 rounded border border-sky-600/40 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300"
-                                                        title={`Sursa originală în ${invoice.source_invoice.company?.name ?? ''}`}
-                                                    >
-                                                        <span className="font-medium">
-                                                            ↳ furnizor real:
-                                                        </span>
-                                                        <span>
-                                                            {
-                                                                invoice
-                                                                    .source_invoice
-                                                                    .real_supplier
-                                                                    .name
-                                                            }
-                                                        </span>
-                                                    </Link>
-                                                )}
+                                                <RealSupplierHint
+                                                    invoice={invoice}
+                                                />
                                             </div>
                                         ) : (
                                             <span className="text-muted-foreground">
@@ -675,22 +718,7 @@ function InvoiceMobileCard({
                                 CUI: {invoice.partner.cui}
                             </div>
                         )}
-                        {invoice.source_invoice?.real_supplier && (
-                            <Link
-                                href={invoicesShow(invoice.source_invoice.id)}
-                                className="mt-1 inline-flex items-center gap-1 rounded border border-sky-600/40 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
-                            >
-                                <span className="font-medium">
-                                    ↳ furnizor real:
-                                </span>
-                                <span>
-                                    {
-                                        invoice.source_invoice.real_supplier
-                                            .name
-                                    }
-                                </span>
-                            </Link>
-                        )}
+                        <RealSupplierHint invoice={invoice} />
                     </>
                 ) : (
                     <span className="text-muted-foreground">

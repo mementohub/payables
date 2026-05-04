@@ -40,6 +40,10 @@ export type BazaRef = {
     data_doc: string | null;
     tip_doc: string | null;
     nr_doc: string | null;
+    invoice: {
+        id: number;
+        real_supplier: { id: number; name: string; cui: string | null } | null;
+    } | null;
 };
 
 export type InvoiceRow = {
