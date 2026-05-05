@@ -57,19 +57,20 @@ test('refresh clears cache and redirects back', function () {
         ->assertRedirect('/reports/opex');
 });
 
-test('invoices endpoint validates input', function () {
+test('invoices page validates input', function () {
     $this->actingAs($this->user)
-        ->getJson("/reports/opex/{$this->company->id}/invoices")
-        ->assertStatus(422);
+        ->get("/reports/opex/{$this->company->id}/invoices")
+        ->assertSessionHasErrors(['year', 'leaves']);
 });
 
-test('invoices endpoint calls service and returns json', function () {
+test('invoices page renders with sediu filter', function () {
     $service = mock(OpExReportService::class);
     $service->shouldReceive('invoicesForLeaves')
         ->once()
-        ->withArgs(fn (Company $c, int $year, array $leaves) => $c->id === $this->company->id
+        ->withArgs(fn (Company $c, int $year, array $leaves, ?string $sediu) => $c->id === $this->company->id
             && $year === 2025
             && $leaves === ['CHELT_X', 'CHELT_Y']
+            && $sediu === 'TM Bega'
         )
         ->andReturn([
             [
@@ -78,7 +79,7 @@ test('invoices endpoint calls service and returns json', function () {
                 'tip_doc' => 'FactFI',
                 'nr_doc' => '12345',
                 'partner' => 'ACME',
-                'sediu' => 'Sediul Central',
+                'sediu' => 'TM Bega',
                 'moneda' => 'RON',
                 'val_mon' => 1000.0,
                 'line_total_lei' => 800.0,
@@ -88,9 +89,63 @@ test('invoices endpoint calls service and returns json', function () {
     $this->app->instance(OpExReportService::class, $service);
 
     $this->actingAs($this->user)
-        ->getJson("/reports/opex/{$this->company->id}/invoices?year=2025&leaves[]=CHELT_X&leaves[]=CHELT_Y")
+        ->get("/reports/opex/{$this->company->id}/invoices?year=2025&sediu=TM%20Bega&leaves[]=CHELT_X&leaves[]=CHELT_Y")
         ->assertOk()
-        ->assertJsonPath('invoices.0.tip_doc', 'FactFI')
-        ->assertJsonPath('invoices.0.nr_doc', '12345')
-        ->assertJsonPath('invoices.0.sediu', 'Sediul Central');
+        ->assertInertia(fn ($page) => $page
+            ->component('reports/opex-invoices')
+            ->where('filters.year', 2025)
+            ->where('filters.sediu', 'TM Bega')
+            ->has('invoices', 1)
+            ->where('invoices.0.tip_doc', 'FactFI')
+            ->where('invoices.0.nr_doc', '12345')
+            ->where('summary.count_filtered', 1)
+            ->where('summary.count_total', 1)
+            ->where('options.tip_doc.0', 'FactFI')
+        );
+});
+
+test('invoices page applies month and tip_doc filters', function () {
+    $service = mock(OpExReportService::class);
+    $service->shouldReceive('invoicesForLeaves')
+        ->once()
+        ->andReturn([
+            [
+                'data_doc' => '2025-04-15',
+                'month' => 4,
+                'tip_doc' => 'FactFI',
+                'nr_doc' => '111',
+                'partner' => 'ACME',
+                'sediu' => null,
+                'moneda' => 'RON',
+                'val_mon' => 1000.0,
+                'line_total_lei' => 800.0,
+                'invoice_id' => null,
+            ],
+            [
+                'data_doc' => '2025-05-10',
+                'month' => 5,
+                'tip_doc' => 'BC',
+                'nr_doc' => '222',
+                'partner' => 'BETA',
+                'sediu' => null,
+                'moneda' => 'RON',
+                'val_mon' => 500.0,
+                'line_total_lei' => 500.0,
+                'invoice_id' => null,
+            ],
+        ]);
+    $this->app->instance(OpExReportService::class, $service);
+
+    $this->actingAs($this->user)
+        ->get("/reports/opex/{$this->company->id}/invoices?year=2025&leaves[]=CHELT_X&month=4&tip_doc=FactFI")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('reports/opex-invoices')
+            ->where('filters.month', 4)
+            ->where('filters.tip_doc', 'FactFI')
+            ->has('invoices', 1)
+            ->where('invoices.0.nr_doc', '111')
+            ->where('summary.count_filtered', 1)
+            ->where('summary.count_total', 2)
+        );
 });

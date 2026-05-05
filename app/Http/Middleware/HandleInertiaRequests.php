@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Company;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -36,6 +37,18 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $companies = $user
+            ? Company::query()->orderBy('name')->get(['id', 'name'])->all()
+            : [];
+        $stickyId = $user ? ((int) session('active_company_id') ?: null) : null;
+        $sticky = $stickyId
+            ? collect($companies)->firstWhere('id', $stickyId)
+            : null;
+
+        if ($stickyId !== null && ! $sticky) {
+            session()->forget('active_company_id');
+            $stickyId = null;
+        }
 
         return [
             ...parent::share($request),
@@ -46,6 +59,16 @@ class HandleInertiaRequests extends Middleware
                 ]) : null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'companies' => array_map(
+                fn ($c) => ['id' => (int) $c->id, 'name' => $c->name],
+                $companies,
+            ),
+            'stickyCompany' => $sticky
+                ? ['id' => (int) $sticky->id, 'name' => $sticky->name]
+                : null,
+            'activeCompany' => $sticky
+                ? ['id' => (int) $sticky->id, 'name' => $sticky->name]
+                : null,
         ];
     }
 }

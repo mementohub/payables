@@ -127,6 +127,7 @@ class PartnerController extends Controller
                     ])
                 : [],
             'stats' => $stats,
+            'activeCompany' => ['id' => (int) $partner->company->id, 'name' => $partner->company->name],
         ]);
     }
 
@@ -232,7 +233,10 @@ class PartnerController extends Controller
     private function list(Request $request, string $scope): Response
     {
         $search = $request->string('search')->toString();
-        $companyId = $request->integer('company_id');
+        $companyId = $request->exists('company_id')
+            ? ($request->integer('company_id') ?: null)
+            : ((int) session('active_company_id') ?: null);
+
         $departmentIds = collect($request->input('department_ids', []))
             ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
@@ -245,7 +249,7 @@ class PartnerController extends Controller
             ->withCount('invoices')
             ->when($scope === 'furnizori', fn ($q) => $q->furnizori())
             ->when($scope === 'clienti', fn ($q) => $q->clienti())
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
             ->when(
                 $scope === 'furnizori' && ! empty($departmentIds),
                 fn ($q) => $q->whereHas(
@@ -283,6 +287,11 @@ class PartnerController extends Controller
                     : [],
             ]);
 
+        $companies = Company::orderBy('name')->get(['id', 'name']);
+        $activeCompany = $companyId
+            ? $companies->firstWhere('id', $companyId)
+            : null;
+
         return Inertia::render('partners/index', [
             'partners' => $partners,
             'scope' => $scope,
@@ -291,7 +300,10 @@ class PartnerController extends Controller
                 'company_id' => $companyId ?: null,
                 'department_ids' => $scope === 'furnizori' ? $departmentIds : [],
             ],
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'companies' => $companies,
+            'activeCompany' => $activeCompany
+                ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
+                : null,
             'availableDepartments' => $scope === 'furnizori'
                 ? Department::responsabili()->orderBy('name')->get(['id', 'name'])
                 : [],

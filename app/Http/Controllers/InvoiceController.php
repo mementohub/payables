@@ -56,11 +56,19 @@ class InvoiceController extends Controller
 
         $invoices = $paginator->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
 
+        $companies = Company::orderBy('name')->get(['id', 'name']);
+        $activeCompany = $filters['company_id']
+            ? $companies->firstWhere('id', $filters['company_id'])
+            : null;
+
         return Inertia::render('invoices/index', [
             'invoices' => $invoices,
             'scope' => $scope,
             'filters' => $filters,
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'companies' => $companies,
+            'activeCompany' => $activeCompany
+                ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
+                : null,
             'currentUser' => $this->currentUserContext($request),
             'availableResponsibles' => $scope === 'primite'
                 ? User::query()
@@ -146,9 +154,13 @@ class InvoiceController extends Controller
      */
     private function parseFilters(Request $request): array
     {
+        $companyId = $request->exists('company_id')
+            ? ($request->integer('company_id') ?: null)
+            : ((int) session('active_company_id') ?: null);
+
         return [
             'search' => $request->string('search')->toString() ?: null,
-            'company_id' => $request->integer('company_id') ?: null,
+            'company_id' => $companyId,
             'payment' => $request->string('payment')->toString() ?: null,
             'data_doc_from' => $request->string('data_doc_from')->toString() ?: null,
             'data_doc_to' => $request->string('data_doc_to')->toString() ?: null,
@@ -240,6 +252,7 @@ class InvoiceController extends Controller
                 'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
                 'baza' => $this->presenter->bazaPayload($invoice),
             ],
+            'activeCompany' => ['id' => (int) $invoice->company->id, 'name' => $invoice->company->name],
         ]);
     }
 

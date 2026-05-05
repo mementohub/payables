@@ -3,6 +3,7 @@ import { Check, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
+import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
 import {
@@ -42,6 +43,7 @@ import {
 } from '@/routes/invoices';
 import { exportMethod as exportEmise } from '@/routes/invoices/emise';
 import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
+import { show as partnersShow } from '@/routes/partners';
 import type {
     Approval,
     CurrentUser,
@@ -93,6 +95,8 @@ function RealSupplierHint({ invoice }: { invoice: InvoiceRow }) {
         return (
             <Link
                 href={invoicesShow(real.targetInvoiceId)}
+                target="_blank"
+                rel="noopener noreferrer"
                 title={real.title}
                 className="mt-0.5 block text-xs text-muted-foreground italic hover:text-foreground hover:underline"
             >
@@ -518,6 +522,8 @@ export default function InvoicesIndex({
                                         <Link
                                             className="hover:underline"
                                             href={invoicesShow(invoice.id)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                         >
                                             {invoice.nr_doc}
                                         </Link>
@@ -525,9 +531,16 @@ export default function InvoicesIndex({
                                     <td className="px-4 py-3">
                                         {invoice.partner ? (
                                             <div>
-                                                <div>
+                                                <Link
+                                                    href={partnersShow(
+                                                        invoice.partner.id,
+                                                    )}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="hover:underline"
+                                                >
                                                     {invoice.partner.name}
-                                                </div>
+                                                </Link>
                                                 {invoice.partner.cui && (
                                                     <div className="text-xs text-muted-foreground">
                                                         CUI:{' '}
@@ -544,8 +557,11 @@ export default function InvoicesIndex({
                                             </span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3 text-muted-foreground">
-                                        {invoice.company.name}
+                                    <td className="px-4 py-3">
+                                        <CompanyBadge
+                                            id={invoice.company.id}
+                                            name={invoice.company.name}
+                                        />
                                     </td>
                                     <td className="px-4 py-3 text-right tabular-nums">
                                         {formatAmount(
@@ -692,6 +708,8 @@ function InvoiceMobileCard({
                     <div className="min-w-0">
                         <Link
                             href={invoicesShow(invoice.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="text-base font-semibold hover:underline"
                         >
                             {invoice.nr_doc}
@@ -710,9 +728,14 @@ function InvoiceMobileCard({
             <div className="mt-3 text-sm">
                 {invoice.partner ? (
                     <>
-                        <div className="font-medium">
+                        <Link
+                            href={partnersShow(invoice.partner.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:underline"
+                        >
                             {invoice.partner.name}
-                        </div>
+                        </Link>
                         {invoice.partner.cui && (
                             <div className="text-xs text-muted-foreground">
                                 CUI: {invoice.partner.cui}
@@ -725,8 +748,11 @@ function InvoiceMobileCard({
                         Fără {scope === 'emise' ? 'client' : 'furnizor'}
                     </span>
                 )}
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                    {invoice.company.name}
+                <div className="mt-1.5">
+                    <CompanyBadge
+                        id={invoice.company.id}
+                        name={invoice.company.name}
+                    />
                 </div>
             </div>
 

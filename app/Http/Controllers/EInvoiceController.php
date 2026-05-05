@@ -28,25 +28,33 @@ class EInvoiceController extends Controller
             ->through(fn (EInvoice $row) => $this->transformForList($row));
 
         $search = $request->string('search')->toString();
-        $companyId = $request->integer('company_id');
+        $companyId = $this->resolveActiveCompanyId($request);
         $status = $this->resolveStatus($request);
         $matched = $request->string('matched')->toString();
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
         $departmentIds = $this->parseDepartmentIds($request);
 
+        $companies = Company::orderBy('name')->get(['id', 'name']);
+        $activeCompany = $companyId
+            ? $companies->firstWhere('id', $companyId)
+            : null;
+
         return Inertia::render('e-invoices/index', [
             'eInvoices' => $eInvoices,
             'filters' => [
                 'search' => $search ?: null,
-                'company_id' => $companyId ?: null,
+                'company_id' => $companyId,
                 'status' => $status === '' ? 'all' : $status,
                 'matched' => $matched ?: null,
                 'from' => $from ?: null,
                 'to' => $to ?: null,
                 'department_ids' => $departmentIds,
             ],
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'companies' => $companies,
+            'activeCompany' => $activeCompany
+                ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
+                : null,
             'availableDepartments' => Department::responsabili()
                 ->orderBy('name')
                 ->get(['id', 'name']),
@@ -100,7 +108,7 @@ class EInvoiceController extends Controller
     private function buildListQuery(Request $request): Builder
     {
         $search = $request->string('search')->toString();
-        $companyId = $request->integer('company_id');
+        $companyId = $this->resolveActiveCompanyId($request);
         $status = $this->resolveStatus($request);
         $matched = $request->string('matched')->toString();
         $from = $request->string('from')->toString();
@@ -114,7 +122,7 @@ class EInvoiceController extends Controller
                 'partner.responsabilDepartments:id,name,type',
                 'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda',
             ])
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
             ->when($status === 'pending', fn ($q) => $q->whereNull('data_ins_omc'))
             ->when($status === 'error', fn ($q) => $q->whereNotNull('err_ins_omc')->where('err_ins_omc', '!=', ''))
             ->when($status === 'processed', fn ($q) => $q->whereNotNull('data_ins_omc'))
@@ -159,6 +167,13 @@ class EInvoiceController extends Controller
         }
 
         return $status;
+    }
+
+    private function resolveActiveCompanyId(Request $request): ?int
+    {
+        return $request->exists('company_id')
+            ? ($request->integer('company_id') ?: null)
+            : ((int) session('active_company_id') ?: null);
     }
 
     private function statusLabel(EInvoice $row): string

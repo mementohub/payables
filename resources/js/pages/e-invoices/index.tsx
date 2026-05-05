@@ -1,14 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
-import {
-    AlertTriangle,
-    Check,
-    ChevronsUpDown,
-    Info,
-    X,
-} from 'lucide-react';
+import { AlertTriangle, Check, ChevronsUpDown, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
+import CompanyBadge from '@/components/company-badge';
 import EFactStatusBadge from '@/components/efact-status-badge';
 import {
     FilterField,
@@ -63,6 +58,7 @@ import {
     parsed as parsedRoute,
 } from '@/routes/e-invoices';
 import { show as invoicesShow } from '@/routes/invoices';
+import { show as partnersShow } from '@/routes/partners';
 import type {
     DepartmentRef,
     DetailPayload,
@@ -442,7 +438,6 @@ export default function EInvoicesIndex({
                                 <th className="px-4 py-3">Companie</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Factură asociată</th>
-                                <th className="px-4 py-3">Acțiuni</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
@@ -450,7 +445,7 @@ export default function EInvoicesIndex({
                                 <tr>
                                     <td
                                         className="px-4 py-6 text-center text-muted-foreground"
-                                        colSpan={12}
+                                        colSpan={11}
                                     >
                                         Nicio eFactură. Pornește o sincronizare
                                         din pagina Companii.
@@ -484,7 +479,11 @@ export default function EInvoicesIndex({
                                         {row.data_doc_xml ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 font-medium">
-                                        <div className="flex items-center gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenInfo(row)}
+                                            className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                                        >
                                             {row.nr_doc_xml ?? '—'}
                                             {row.mismatch.any && (
                                                 <AlertTriangle
@@ -492,17 +491,31 @@ export default function EInvoicesIndex({
                                                     aria-label="Diferențe între eFactură și factură"
                                                 />
                                             )}
-                                        </div>
+                                        </button>
                                     </td>
                                     <td className="max-w-65 px-4 py-3">
                                         {row.partener_xml ? (
                                             <div className="min-w-0">
-                                                <div
-                                                    className="truncate"
-                                                    title={row.partener_xml}
-                                                >
-                                                    {row.partener_xml}
-                                                </div>
+                                                {row.partner ? (
+                                                    <Link
+                                                        href={partnersShow(
+                                                            row.partner.id,
+                                                        )}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block truncate hover:underline"
+                                                        title={row.partener_xml}
+                                                    >
+                                                        {row.partener_xml}
+                                                    </Link>
+                                                ) : (
+                                                    <div
+                                                        className="truncate"
+                                                        title={row.partener_xml}
+                                                    >
+                                                        {row.partener_xml}
+                                                    </div>
+                                                )}
                                                 {row.msg_cif && (
                                                     <div className="truncate text-xs text-muted-foreground">
                                                         CUI: {row.msg_cif}
@@ -543,8 +556,11 @@ export default function EInvoicesIndex({
                                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                                         {formatAmount(row.total_vat)}
                                     </td>
-                                    <td className="px-4 py-3 text-muted-foreground">
-                                        {row.company.name}
+                                    <td className="px-4 py-3">
+                                        <CompanyBadge
+                                            id={row.company.id}
+                                            name={row.company.name}
+                                        />
                                     </td>
                                     <td className="px-4 py-3">
                                         <EFactStatusBadge status={row.status} />
@@ -556,6 +572,8 @@ export default function EInvoicesIndex({
                                                 href={invoicesShow(
                                                     row.invoice.id,
                                                 )}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                             >
                                                 {row.invoice.nr_doc}
                                             </Link>
@@ -564,17 +582,6 @@ export default function EInvoicesIndex({
                                                 Neasociată
                                             </span>
                                         )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setOpenInfo(row)}
-                                        >
-                                            <Info className="size-4" />
-                                            Info
-                                        </Button>
                                     </td>
                                 </tr>
                             ))}
@@ -609,15 +616,32 @@ export default function EInvoicesIndex({
                                         className="mt-1"
                                     />
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-1.5 font-medium">
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenInfo(row)}
+                                            className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+                                        >
                                             {row.nr_doc_xml ?? '—'}
                                             {row.mismatch.any && (
                                                 <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
                                             )}
-                                        </div>
-                                        <div className="truncate text-xs text-muted-foreground">
-                                            {row.partener_xml ?? '—'}
-                                        </div>
+                                        </button>
+                                        {row.partner ? (
+                                            <Link
+                                                href={partnersShow(
+                                                    row.partner.id,
+                                                )}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block truncate text-xs text-muted-foreground hover:underline"
+                                            >
+                                                {row.partener_xml ?? '—'}
+                                            </Link>
+                                        ) : (
+                                            <div className="truncate text-xs text-muted-foreground">
+                                                {row.partener_xml ?? '—'}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <EFactStatusBadge status={row.status} />
@@ -638,6 +662,8 @@ export default function EInvoicesIndex({
                                     <Link
                                         className="text-xs text-primary hover:underline"
                                         href={invoicesShow(row.invoice.id)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
                                     >
                                         Factură {row.invoice.nr_doc}
                                     </Link>
@@ -646,14 +672,6 @@ export default function EInvoicesIndex({
                                         Neasociată
                                     </span>
                                 )}
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setOpenInfo(row)}
-                                >
-                                    <Info className="size-4" /> Info
-                                </Button>
                             </div>
                         </div>
                     ))}
@@ -1173,6 +1191,8 @@ function ComparisonCard({ row }: { row: EInvoiceRow }) {
                 <Link
                     className="text-xs text-primary hover:underline"
                     href={invoicesShow(row.invoice.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                 >
                     {row.invoice.tip_doc} {row.invoice.nr_doc} ·{' '}
                     {row.invoice.data_doc}

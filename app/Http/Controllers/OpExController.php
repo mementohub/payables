@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Services\Reports\OpExReportService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -58,27 +57,82 @@ class OpExController extends Controller
         return back(303);
     }
 
-    public function invoices(Request $request, Company $company): JsonResponse
+    public function invoices(Request $request, Company $company): Response
     {
         $validated = $request->validate([
             'year' => ['required', 'integer', 'between:2000,2100'],
-            'compare_year' => ['nullable', 'integer', 'between:2000,2100'],
             'leaves' => ['required', 'array', 'min:1'],
             'leaves.*' => ['string', 'max:255'],
+            'sediu' => ['nullable', 'string', 'max:255'],
+            'month' => ['nullable', 'integer', 'between:1,12'],
+            'tip_doc' => ['nullable', 'string', 'max:50'],
+            'partner' => ['nullable', 'string', 'max:255'],
+            'q' => ['nullable', 'string', 'max:255'],
+            'category_label' => ['nullable', 'string', 'max:500'],
         ]);
 
         $year = (int) $validated['year'];
-        $leaves = $validated['leaves'];
+        $leaves = array_values($validated['leaves']);
+        $sediu = array_key_exists('sediu', $validated) ? (string) $validated['sediu'] : null;
 
-        $rows = $this->service->invoicesForLeaves($company, $year, $leaves);
-        $payload = ['year' => $year, 'invoices' => $rows];
+        $rows = $this->service->invoicesForLeaves($company, $year, $leaves, $sediu);
 
-        $compareYear = isset($validated['compare_year']) ? (int) $validated['compare_year'] : null;
-        if ($compareYear && $compareYear !== $year) {
-            $payload['compare_year'] = $compareYear;
-            $payload['invoices_prev'] = $this->service->invoicesForLeaves($company, $compareYear, $leaves);
-        }
+        $month = isset($validated['month']) ? (int) $validated['month'] : null;
+        $tipDoc = $validated['tip_doc'] ?? null;
+        $partner = $validated['partner'] ?? null;
+        $q = $validated['q'] ?? null;
 
-        return response()->json($payload);
+        $filtered = array_values(array_filter($rows, function (array $r) use ($month, $tipDoc, $partner, $q) {
+            if ($month !== null && (int) $r['month'] !== $month) {
+                return false;
+            }
+            if ($tipDoc !== null && $tipDoc !== '' && $r['tip_doc'] !== $tipDoc) {
+                return false;
+            }
+            if ($partner !== null && $partner !== '' && $r['partner'] !== $partner) {
+                return false;
+            }
+            if ($q !== null && $q !== '') {
+                $needle = mb_strtolower($q);
+                $haystack = mb_strtolower((string) $r['partner'].' '.$r['nr_doc']);
+                if (! str_contains($haystack, $needle)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+
+        $tipDocOptions = array_values(array_unique(array_map(fn ($r) => $r['tip_doc'], $rows)));
+        sort($tipDocOptions);
+
+        $partnerOptions = array_values(array_unique(array_filter(array_map(fn ($r) => $r['partner'], $rows), fn ($p) => $p !== '' && $p !== null)));
+        sort($partnerOptions);
+
+        $totalLei = array_sum(array_map(fn ($r) => (float) $r['line_total_lei'], $filtered));
+
+        return Inertia::render('reports/opex-invoices', [
+            'company' => ['id' => $company->id, 'name' => $company->name],
+            'filters' => [
+                'year' => $year,
+                'leaves' => $leaves,
+                'sediu' => $sediu,
+                'month' => $month,
+                'tip_doc' => $tipDoc,
+                'partner' => $partner,
+                'q' => $q,
+                'category_label' => $validated['category_label'] ?? null,
+            ],
+            'invoices' => $filtered,
+            'options' => [
+                'tip_doc' => $tipDocOptions,
+                'partners' => $partnerOptions,
+            ],
+            'summary' => [
+                'count_total' => count($rows),
+                'count_filtered' => count($filtered),
+                'total_lei' => round($totalLei, 2),
+            ],
+        ]);
     }
 }

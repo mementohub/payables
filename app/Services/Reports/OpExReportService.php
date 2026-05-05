@@ -55,7 +55,7 @@ class OpExReportService
      *   invoice_id: int|null
      * }>
      */
-    public function invoicesForLeaves(Company $company, int $year, array $leaves): array
+    public function invoicesForLeaves(Company $company, int $year, array $leaves, ?string $sediu = null): array
     {
         $leaves = array_values(array_filter(array_unique($leaves), fn ($l) => $l !== ''));
         if ($leaves === []) {
@@ -70,6 +70,17 @@ class OpExReportService
         $tipPlaceholders = implode(',', array_fill(0, count(self::TIP_DOC_OPEX), '?'));
         $leafPlaceholders = implode(',', array_fill(0, count($leaves), '?'));
 
+        $params = array_merge([$start, $end], self::TIP_DOC_OPEX, $leaves);
+        $sediuClause = '';
+        if ($sediu !== null) {
+            if ($sediu === '') {
+                $sediuClause = " AND (d.eu_punct_lucru IS NULL OR BTRIM(d.eu_punct_lucru) = '')";
+            } else {
+                $sediuClause = ' AND d.eu_punct_lucru = ?';
+                $params[] = $sediu;
+            }
+        }
+
         $rows = $remote->select(
             "SELECT d.tip_doc,
                     d.nr_doc,
@@ -79,16 +90,15 @@ class OpExReportService
                     d.partener AS partner_name,
                     d.eu_punct_lucru AS sediu,
                     EXTRACT(MONTH FROM d.data_doc)::int AS month,
-                    SUM(dp.cant * dp.pret * COALESCE(d.curs, 1))::numeric(20,2) AS line_total_lei
+                    SUM(dp.cant * dp.pret * (1 + COALESCE(dp.proc_tva, 0) / 100.0) * COALESCE(d.curs, 1))::numeric(20,2) AS line_total_lei
              FROM doc d
              JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
              WHERE d.data_doc >= ?::date AND d.data_doc < ?::date
                AND d.tip_doc IN ($tipPlaceholders)
-               AND dp.gr_chelt_ven_postc IN ($leafPlaceholders)
+               AND dp.gr_chelt_ven_postc IN ($leafPlaceholders)$sediuClause
              GROUP BY d.tip_doc, d.nr_doc, d.data_doc, d.moneda, d.val_mon, d.partener, d.eu_punct_lucru
-             ORDER BY d.data_doc DESC, line_total_lei DESC NULLS LAST
-             LIMIT 1000",
-            array_merge([$start, $end], self::TIP_DOC_OPEX, $leaves),
+             ORDER BY d.data_doc DESC, line_total_lei DESC NULLS LAST",
+            $params,
         );
 
         $localInvoices = Invoice::query()
@@ -199,6 +209,7 @@ class OpExReportService
                     $cur['drilldown_leaves'] ?? [],
                     $prev['drilldown_leaves'] ?? [],
                 ))),
+                'drilldown_sediu' => $cur['drilldown_sediu'] ?? $prev['drilldown_sediu'] ?? null,
             ];
         }
 
@@ -218,7 +229,7 @@ class OpExReportService
 
     private function cacheKey(Company $company, int $year): string
     {
-        return "opex_report:{$company->getKey()}:{$year}";
+        return "opex_report:v3:{$company->getKey()}:{$year}";
     }
 
     /**
@@ -272,15 +283,16 @@ class OpExReportService
 
         return $remote->select(
             "SELECT dp.gr_chelt_ven_postc AS leaf,
+                    COALESCE(BTRIM(d.eu_punct_lucru), '') AS sediu,
                     EXTRACT(MONTH FROM d.data_doc)::int AS month,
-                    SUM(dp.cant * dp.pret * COALESCE(d.curs, 1))::numeric(20,2) AS total_lei
+                    SUM(dp.cant * dp.pret * (1 + COALESCE(dp.proc_tva, 0) / 100.0) * COALESCE(d.curs, 1))::numeric(20,2) AS total_lei
              FROM doc d
              JOIN doc_poz dp ON (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
              WHERE d.data_doc >= ?::date AND d.data_doc < ?::date
                AND d.tip_doc IN ($tipPlaceholders)
                AND dp.gr_chelt_ven_postc IS NOT NULL
                AND BTRIM(dp.gr_chelt_ven_postc) <> ''
-             GROUP BY dp.gr_chelt_ven_postc, EXTRACT(MONTH FROM d.data_doc)",
+             GROUP BY dp.gr_chelt_ven_postc, COALESCE(BTRIM(d.eu_punct_lucru), ''), EXTRACT(MONTH FROM d.data_doc)",
             array_merge([$start, $end], self::TIP_DOC_OPEX),
         );
     }
@@ -403,13 +415,18 @@ class OpExReportService
      */
     private function buildTree(array $monthly, array $leafChain): array
     {
-        // Map: nodeCode -> array{label, totals_by_month, total, children: [code => true], depth_min}
+        // Map: nodeCode -> array{label, totals_by_month, total, children: [code => true]}
         $nodes = [];
+        // sediuByDeepest[$deepest_node_code][$sediu] => [totals_by_month, total, leaves => set]
+        $sediuByDeepest = [];
 
         foreach ($monthly as $row) {
             $leaf = (string) $row->leaf;
             $month = (int) $row->month;
             $value = (float) $row->total_lei;
+            $sediu = property_exists($row, 'sediu') && $row->sediu !== null
+                ? trim((string) $row->sediu)
+                : '';
 
             $chain = $leafChain[$leaf] ?? null;
             if ($chain === null || $chain === []) {
@@ -427,7 +444,6 @@ class OpExReportService
                         'totals_by_month' => array_fill(1, 12, 0.0),
                         'total' => 0.0,
                         'children' => [],
-                        'is_leaf_for_drilldown' => false,
                     ];
                 }
 
@@ -441,13 +457,19 @@ class OpExReportService
                 $childCode = $code;
             }
 
-            // Mark the deepest displayed node (first chain entry) as drilldown-leaf.
+            // Aggregate per (deepest visible category, sediu) so we can hang sediu nodes
+            // as leaves under the category.
             $deepest = $chain[0]['code'];
-            $nodes[$deepest]['is_leaf_for_drilldown'] = true;
-            // Multiple raw remote leaves may collapse onto the same drilldown node
-            // (e.g. several "2.2.6.48.X" rolling up to "SALUBRIZAREA").
-            $nodes[$deepest]['drilldown_leaves'] ??= [];
-            $nodes[$deepest]['drilldown_leaves'][] = $leaf;
+            if (! isset($sediuByDeepest[$deepest][$sediu])) {
+                $sediuByDeepest[$deepest][$sediu] = [
+                    'totals_by_month' => array_fill(1, 12, 0.0),
+                    'total' => 0.0,
+                    'leaves' => [],
+                ];
+            }
+            $sediuByDeepest[$deepest][$sediu]['totals_by_month'][$month] += $value;
+            $sediuByDeepest[$deepest][$sediu]['total'] += $value;
+            $sediuByDeepest[$deepest][$sediu]['leaves'][$leaf] = true;
         }
 
         // Identify roots: nodes that never appear as a child in any chain.
@@ -460,12 +482,39 @@ class OpExReportService
 
         $rootCodes = array_keys(array_diff_key($nodes, $allChildren));
 
-        $build = function (string $code) use (&$build, &$nodes): array {
+        $build = function (string $code) use (&$build, &$nodes, &$sediuByDeepest): array {
             $node = $nodes[$code];
             $children = [];
+            $allLeaves = [];
+
             foreach (array_keys($node['children']) as $childCode) {
-                $children[] = $build($childCode);
+                $child = $build($childCode);
+                $children[] = $child;
+                foreach ($child['drilldown_leaves'] as $leaf) {
+                    $allLeaves[$leaf] = true;
+                }
             }
+
+            // Hang sediu children under the deepest visible category (no other tree children).
+            if ($children === [] && isset($sediuByDeepest[$code])) {
+                foreach ($sediuByDeepest[$code] as $sediu => $data) {
+                    $sediuLeaves = array_keys($data['leaves']);
+                    $children[] = [
+                        'code' => $code.'|'.$sediu,
+                        'label' => $sediu !== '' ? $sediu : '(fără sediu)',
+                        'totals_by_month' => array_map(fn ($v) => round($v, 2), $data['totals_by_month']),
+                        'total' => round($data['total'], 2),
+                        'children' => [],
+                        'is_leaf_for_drilldown' => true,
+                        'drilldown_leaves' => $sediuLeaves,
+                        'drilldown_sediu' => $sediu,
+                    ];
+                    foreach ($sediuLeaves as $leaf) {
+                        $allLeaves[$leaf] = true;
+                    }
+                }
+            }
+
             usort($children, fn ($a, $b) => $b['total'] <=> $a['total']);
 
             return [
@@ -474,8 +523,9 @@ class OpExReportService
                 'totals_by_month' => array_map(fn ($v) => round($v, 2), $node['totals_by_month']),
                 'total' => round($node['total'], 2),
                 'children' => $children,
-                'is_leaf_for_drilldown' => $node['is_leaf_for_drilldown'] && $children === [],
-                'drilldown_leaves' => array_values(array_unique($node['drilldown_leaves'] ?? [])),
+                'is_leaf_for_drilldown' => false,
+                'drilldown_leaves' => array_keys($allLeaves),
+                'drilldown_sediu' => null,
             ];
         };
 

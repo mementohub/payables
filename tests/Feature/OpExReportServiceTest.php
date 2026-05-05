@@ -104,7 +104,7 @@ test('drops chains rooted in junk numeric code', function () {
 
 test('skips leaf when its label is just a code and uses the parent as visible deepest node', function () {
     $service = makeService(
-        monthly: [['leaf' => '2.2.6.48.Timisoara Bega', 'month' => 1, 'total_lei' => 200]],
+        monthly: [['leaf' => '2.2.6.48.Timisoara Bega', 'sediu' => 'TM Bega', 'month' => 1, 'total_lei' => 200]],
         chains: [
             ['leaf' => '2.2.6.48.Timisoara Bega', 'depth' => 0, 'code' => '2.2.6.48.Timisoara Bega', 'label' => '2.2.6.48.Timisoara Bega'],
             ['leaf' => '2.2.6.48.Timisoara Bega', 'depth' => 1, 'code' => 'SALUBRIZAREA', 'label' => 'SALUBRIZAREA'],
@@ -124,9 +124,36 @@ test('skips leaf when its label is just a code and uses the parent as visible de
     expect($util['label'])->toBe('CHELTUIELI UTILITATI');
     $salub = $util['children'][0];
     expect($salub['label'])->toBe('SALUBRIZAREA');
-    expect($salub['is_leaf_for_drilldown'])->toBeTrue();
-    expect($salub['drilldown_leaves'])->toBe(['2.2.6.48.Timisoara Bega']);
-    expect($salub['children'])->toBe([]);
+    expect($salub['is_leaf_for_drilldown'])->toBeFalse();
+    expect($salub['children'])->toHaveCount(1);
+
+    $sediu = $salub['children'][0];
+    expect($sediu['label'])->toBe('TM Bega');
+    expect($sediu['is_leaf_for_drilldown'])->toBeTrue();
+    expect($sediu['drilldown_leaves'])->toBe(['2.2.6.48.Timisoara Bega']);
+    expect($sediu['drilldown_sediu'])->toBe('TM Bega');
+    expect($sediu['children'])->toBe([]);
+});
+
+test('groups orphan rows with no sediu under "(fără sediu)" leaf', function () {
+    $service = makeService(
+        monthly: [['leaf' => 'leaf-x', 'month' => 4, 'total_lei' => 75]],
+        chains: [
+            ['leaf' => 'leaf-x', 'depth' => 0, 'code' => 'leaf-x', 'label' => 'Leaf X'],
+            ['leaf' => 'leaf-x', 'depth' => 1, 'code' => 'ROOT', 'label' => 'ROOT'],
+        ],
+    );
+
+    $company = Company::factory()->make();
+    $company->id = 1;
+
+    $report = $service->report($company, 2025, true);
+
+    $leafX = $report['roots'][0]['children'][0];
+    expect($leafX['label'])->toBe('Leaf X');
+    expect($leafX['children'])->toHaveCount(1);
+    expect($leafX['children'][0]['label'])->toBe('(fără sediu)');
+    expect($leafX['children'][0]['drilldown_sediu'])->toBe('');
 });
 
 test('compareReports merges current and previous reports with delta percentages', function () {
@@ -208,9 +235,9 @@ test('compareReports merges current and previous reports with delta percentages'
 test('merges sibling nodes that share the same normalized label', function () {
     $service = makeService(
         monthly: [
-            ['leaf' => 'leaf-1', 'month' => 1, 'total_lei' => 100],
-            ['leaf' => 'leaf-2', 'month' => 1, 'total_lei' => 50],
-            ['leaf' => 'leaf-3', 'month' => 2, 'total_lei' => 25],
+            ['leaf' => 'leaf-1', 'sediu' => 'CENTRAL', 'month' => 1, 'total_lei' => 100],
+            ['leaf' => 'leaf-2', 'sediu' => 'CENTRAL', 'month' => 1, 'total_lei' => 50],
+            ['leaf' => 'leaf-3', 'sediu' => 'CENTRAL', 'month' => 2, 'total_lei' => 25],
         ],
         chains: [
             ['leaf' => 'leaf-1', 'depth' => 0, 'code' => 'ENERGIE ELECTRICA', 'label' => 'ENERGIE ELECTRICA'],
@@ -234,6 +261,12 @@ test('merges sibling nodes that share the same normalized label', function () {
     expect($merged['total'])->toBe(175.0);
     expect($merged['totals_by_month'][1])->toBe(150.0);
     expect($merged['totals_by_month'][2])->toBe(25.0);
-    expect($merged['drilldown_leaves'])->toEqualCanonicalizing(['leaf-1', 'leaf-2', 'leaf-3']);
-    expect($merged['is_leaf_for_drilldown'])->toBeTrue();
+    expect($merged['is_leaf_for_drilldown'])->toBeFalse();
+    // Sediu children carry the drilldown.
+    expect($merged['children'])->toHaveCount(1);
+    $sediu = $merged['children'][0];
+    expect($sediu['label'])->toBe('CENTRAL');
+    expect($sediu['drilldown_leaves'])->toEqualCanonicalizing(['leaf-1', 'leaf-2', 'leaf-3']);
+    expect($sediu['drilldown_sediu'])->toBe('CENTRAL');
+    expect($sediu['is_leaf_for_drilldown'])->toBeTrue();
 });

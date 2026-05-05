@@ -2,6 +2,7 @@ import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, X } from 'lucide-react';
 import { useState } from 'react';
 import PartnerController from '@/actions/App/Http/Controllers/PartnerController';
+import CompanyBadge from '@/components/company-badge';
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
@@ -119,11 +120,18 @@ export default function PartnerShow({
                                 <Badge variant="outline">Client</Badge>
                             )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                            {partner.cui && <>CUI {partner.cui}</>}
-                            {partner.reg_com && <> · J{partner.reg_com}</>}
-                            {partner.company && <> · {partner.company.name}</>}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            {partner.cui && <span>CUI {partner.cui}</span>}
+                            {partner.reg_com && (
+                                <span>· J{partner.reg_com}</span>
+                            )}
+                            {partner.company && (
+                                <CompanyBadge
+                                    id={partner.company.id}
+                                    name={partner.company.name}
+                                />
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -479,6 +487,8 @@ export default function PartnerShow({
                                                     href={invoiceShow(
                                                         invoice.id,
                                                     )}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
                                                 >
                                                     {invoice.nr_doc}
                                                 </Link>
@@ -694,6 +704,8 @@ function StatsCards({
                     {oldest_unpaid && (
                         <Link
                             href={invoiceShow(oldest_unpaid.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="mt-1 block border-t pt-1 text-xs text-muted-foreground hover:underline"
                         >
                             Cea mai veche neplătită:{' '}

@@ -12,14 +12,17 @@ class BankStatementController extends Controller
 {
     public function index(Request $request): Response
     {
-        $companyId = $request->integer('company_id');
+        $companyId = $request->exists('company_id')
+            ? ($request->integer('company_id') ?: null)
+            : ((int) session('active_company_id') ?: null);
+
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
         $onlyUnallocated = $request->boolean('only_unallocated');
 
         $statements = BankStatement::query()
             ->with('company:id,name')
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
             ->when($from, fn ($q, $d) => $q->where('data_extras', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('data_extras', '<=', $d))
             ->when($onlyUnallocated, fn ($q) => $q->where('unallocated_count', '>', 0))
@@ -43,6 +46,11 @@ class BankStatementController extends Controller
                 'company' => ['id' => $s->company->id, 'name' => $s->company->name],
             ]);
 
+        $companies = Company::orderBy('name')->get(['id', 'name']);
+        $activeCompany = $companyId
+            ? $companies->firstWhere('id', $companyId)
+            : null;
+
         return Inertia::render('bank-statements/index', [
             'statements' => $statements,
             'filters' => [
@@ -51,7 +59,10 @@ class BankStatementController extends Controller
                 'to' => $to ?: null,
                 'only_unallocated' => $onlyUnallocated,
             ],
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'companies' => $companies,
+            'activeCompany' => $activeCompany
+                ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
+                : null,
         ]);
     }
 
@@ -139,6 +150,7 @@ class BankStatementController extends Controller
                 'only_unallocated' => $onlyUnallocated,
                 'direction' => $direction ?: null,
             ],
+            'activeCompany' => ['id' => (int) $bankStatement->company->id, 'name' => $bankStatement->company->name],
         ]);
     }
 }

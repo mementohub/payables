@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { ArrowLeft, ExternalLink, Landmark } from 'lucide-react';
+import CompanyBadge from '@/components/company-badge';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -150,9 +151,10 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                             Companie
                         </h2>
                         <div className="mt-2 space-y-1 text-sm">
-                            <div className="font-medium">
-                                {invoice.company.name}
-                            </div>
+                            <CompanyBadge
+                                id={invoice.company.id}
+                                name={invoice.company.name}
+                            />
                             {invoice.emitent && (
                                 <div className="text-muted-foreground">
                                     Emitent: {invoice.emitent}
@@ -276,6 +278,9 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <th className="px-4 py-2 text-right">
                                         TVA
                                     </th>
+                                    <th className="px-4 py-2 text-right">
+                                        Total
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
@@ -283,7 +288,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <tr>
                                         <td
                                             className="px-4 py-6 text-center text-muted-foreground"
-                                            colSpan={7}
+                                            colSpan={8}
                                         >
                                             Fără detalii.
                                         </td>
@@ -293,6 +298,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     const lineNet = row.cant * row.pret;
                                     const lineVat =
                                         (lineNet * (row.proc_tva ?? 0)) / 100;
+                                    const lineTotal = lineNet + lineVat;
 
                                     return (
                                         <tr key={row.id}>
@@ -300,12 +306,18 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                                 {row.scv}
                                             </td>
                                             <td className="px-4 py-2">
-                                                <div className="font-medium">
-                                                    {row.articol}
-                                                </div>
-                                                {row.detaliu_articol && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {row.detaliu_articol}
+                                                {row.detaliu_articol ? (
+                                                    <>
+                                                        <div className="font-medium">
+                                                            {row.detaliu_articol}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {row.articol}
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="font-medium">
+                                                        {row.articol}
                                                     </div>
                                                 )}
                                             </td>
@@ -330,6 +342,12 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                                     invoice.moneda,
                                                 )}
                                             </td>
+                                            <td className="px-4 py-2 text-right font-medium tabular-nums">
+                                                {formatAmount(
+                                                    lineTotal,
+                                                    invoice.moneda,
+                                                )}
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -339,9 +357,18 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                     <tr>
                                         <td
                                             className="px-4 py-2 text-right text-xs text-muted-foreground uppercase"
-                                            colSpan={6}
+                                            colSpan={5}
                                         >
                                             Total fără TVA
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-xs text-muted-foreground uppercase">
+                                            Total TVA
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-medium tabular-nums">
+                                            {formatAmount(
+                                                invoice.val_mon_tva,
+                                                invoice.moneda,
+                                            )}
                                         </td>
                                         <td className="px-4 py-2 text-right font-medium tabular-nums">
                                             {formatAmount(
@@ -351,26 +378,12 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                             )}
                                         </td>
                                     </tr>
-                                    <tr>
-                                        <td
-                                            className="px-4 py-2 text-right text-xs text-muted-foreground uppercase"
-                                            colSpan={6}
-                                        >
-                                            Total TVA
-                                        </td>
-                                        <td className="px-4 py-2 text-right font-medium tabular-nums">
-                                            {formatAmount(
-                                                invoice.val_mon_tva,
-                                                invoice.moneda,
-                                            )}
-                                        </td>
-                                    </tr>
-                                    <tr>
+                                    <tr className="border-t border-sidebar-border/70 dark:border-sidebar-border">
                                         <td
                                             className="px-4 py-2 text-right text-xs font-semibold uppercase"
-                                            colSpan={6}
+                                            colSpan={7}
                                         >
-                                            Total
+                                            Total factură
                                         </td>
                                         <td className="px-4 py-2 text-right text-base font-semibold tabular-nums">
                                             {formatAmount(
