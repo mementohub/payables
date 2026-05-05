@@ -7,6 +7,7 @@ use App\Models\BankStatement;
 use App\Models\BankStatementLine;
 use App\Models\BankStatementLineAllocation;
 use App\Models\Company;
+use App\Models\CompanyBankAccount;
 use App\Models\EInvoice;
 use App\Models\Invoice;
 use App\Models\InvoiceDetail;
@@ -30,7 +31,7 @@ class SyncService
     ) {}
 
     /**
-     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, payments: int, statements: int, e_invoices: int}
+     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, company_bank_accounts: int, payments: int, statements: int, e_invoices: int}
      */
     public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null): array
     {
@@ -75,6 +76,8 @@ class SyncService
         $furnizorNames = array_keys(array_filter($partnerRoles, fn ($r) => $r['furnizor']));
         $bankAccountsCount = $this->syncBankAccounts($company, $remote, $furnizorNames);
 
+        $companyBankAccountsCount = $this->syncCompanyBankAccounts($company, $remote);
+
         $paymentsCount = $this->syncInvoicePayments($company, $remote, $from, $to, $tipDocs);
 
         $statementsCount = $this->syncBankStatements($company, $remote, $from, $to);
@@ -90,6 +93,7 @@ class SyncService
             'invoices' => $invoicesCount,
             'details' => $detailsCount,
             'bank_accounts' => $bankAccountsCount,
+            'company_bank_accounts' => $companyBankAccountsCount,
             'payments' => $paymentsCount,
             'statements' => $statementsCount,
             'e_invoices' => $eInvoicesCount,
@@ -519,9 +523,14 @@ class SyncService
             return 0;
         }
 
-        $rows = $remote->table('partener_banca')
-            ->select(['partener', 'banca', 'cont_banca', 'moneda', 'da_nu_implicit', 'discontinued'])
-            ->whereIn('partener', $partners->keys()->all())
+        $rows = $remote->table('partener_banca as pb')
+            ->leftJoin('banca as b', 'b.banca', '=', 'pb.banca')
+            ->select([
+                'pb.partener', 'pb.banca', 'pb.cont_banca', 'pb.moneda',
+                'pb.da_nu_implicit', 'pb.discontinued',
+                'b.cod_bic', 'b.swift',
+            ])
+            ->whereIn('pb.partener', $partners->keys()->all())
             ->get();
 
         $count = 0;
@@ -531,10 +540,52 @@ class SyncService
                 continue;
             }
 
+            $bank = $row->banca !== null ? trim((string) $row->banca) : null;
+
             PartnerBankAccount::updateOrCreate(
                 ['partner_id' => $partnerId, 'iban' => $row->cont_banca],
                 [
-                    'bank' => $row->banca !== '-' ? $row->banca : null,
+                    'bank' => $bank !== null && $bank !== '' && $bank !== '-' ? $bank : null,
+                    'bic' => $row->cod_bic ? trim((string) $row->cod_bic) : null,
+                    'swift' => $row->swift ? trim((string) $row->swift) : null,
+                    'currency' => $row->moneda,
+                    'is_default' => (bool) $row->da_nu_implicit,
+                    'is_discontinued' => (bool) $row->discontinued,
+                ]
+            );
+            $count++;
+        }
+
+        return $count;
+    }
+
+    private function syncCompanyBankAccounts(Company $company, ConnectionInterface $remote): int
+    {
+        $rows = $remote->table('eu_banca as eb')
+            ->leftJoin('banca as b', 'b.banca', '=', 'eb.banca')
+            ->select([
+                'eb.banca', 'eb.cont_banca', 'eb.moneda',
+                'eb.da_nu_implicit', 'eb.discontinued',
+                'b.cod_bic', 'b.swift',
+            ])
+            ->get();
+
+        $count = 0;
+        foreach ($rows as $row) {
+            $iban = $row->cont_banca !== null ? trim((string) $row->cont_banca) : '';
+
+            if ($iban === '' || ! preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{4,}$/i', $iban)) {
+                continue;
+            }
+
+            $bank = $row->banca !== null ? trim((string) $row->banca) : null;
+
+            CompanyBankAccount::updateOrCreate(
+                ['company_id' => $company->id, 'iban' => $iban],
+                [
+                    'bank' => $bank !== null && $bank !== '' && $bank !== '-' ? $bank : null,
+                    'bic' => $row->cod_bic ? trim((string) $row->cod_bic) : null,
+                    'swift' => $row->swift ? trim((string) $row->swift) : null,
                     'currency' => $row->moneda,
                     'is_default' => (bool) $row->da_nu_implicit,
                     'is_discontinued' => (bool) $row->discontinued,

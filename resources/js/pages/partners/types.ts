@@ -124,11 +124,15 @@ export type PartnerStats = {
     first_invoice_date: string | null;
 };
 
+export type PartnerRole = 'furnizor' | 'client';
+
 export type ShowProps = {
     partner: PartnerDetail;
     invoices: Paginated<InvoiceRow>;
     invoiceFilters: InvoiceFilters;
     availableTipDocs: string[];
     availableDepartments: AvailableDepartment[];
-    stats: PartnerStats;
+    role: PartnerRole;
+    statsFurnizor: PartnerStats | null;
+    statsClient: PartnerStats | null;
 };

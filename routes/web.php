@@ -10,6 +10,7 @@ use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
+use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Auth;
@@ -34,6 +35,9 @@ Route::middleware('auth')->group(function () {
     Route::post('invoices/received/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::post('invoices/{invoice}/approve', [InvoiceController::class, 'approve'])->name('invoices.approve');
+
+    Route::post('payments/bt/prepare', [PaymentExportController::class, 'btPrepare'])->name('payments.bt.prepare');
+    Route::post('payments/bt/download', [PaymentExportController::class, 'btDownload'])->name('payments.bt.download');
 
     Route::get('e-invoices', [EInvoiceController::class, 'index'])->name('e-invoices.index');
     Route::post('e-invoices/export', [EInvoiceController::class, 'export'])->name('e-invoices.export');

@@ -48,7 +48,9 @@
       "Bash(perl -i -pe 's/\\\\->create\\\\\\(\\\\[.workos_id.\\\\s*=>\\\\s*.[^.]*.\\\\.fake\\\\\\(\\\\\\)->uuid\\\\\\(\\\\\\)\\\\]\\\\\\)/->create\\(\\)/g' tests/Feature/*.php)",
       "Bash(composer dump-autoload *)",
       "mcp__laravel-boost__database-connections",
-      "Bash(grep -n \"EINVOICE\\\\|^$\" /Users/ciungulete/Sites/payables/.env.example)"
+      "Bash(grep -n \"EINVOICE\\\\|^$\" /Users/ciungulete/Sites/payables/.env.example)",
+      "Read(//private/tmp/bt_xlsx/xl/worksheets/**)",
+      "Read(//private/tmp/bt_xlsx/xl/**)"
     ]
   },
   "enableAllProjectMcpServers": true,

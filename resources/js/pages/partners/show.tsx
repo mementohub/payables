@@ -25,6 +25,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Tooltip,
     TooltipContent,
@@ -49,7 +50,9 @@ export default function PartnerShow({
     invoiceFilters,
     availableTipDocs,
     availableDepartments,
-    stats,
+    role,
+    statsFurnizor,
+    statsClient,
 }: Props) {
     const [selectedDepartmentId, setSelectedDepartmentId] =
         useState<string>('');
@@ -57,10 +60,13 @@ export default function PartnerShow({
     const [from, setFrom] = useState(invoiceFilters.from ?? '');
     const [to, setTo] = useState(invoiceFilters.to ?? '');
 
+    const isDualRole = partner.is_furnizor && partner.is_client;
+
     const applyInvoiceFilter = (next: Partial<InvoiceFilters>) => {
         router.get(
             partnerShow(partner.id).url,
             {
+                role,
                 invoice_search:
                     next.search ?? invoiceFilters.search ?? undefined,
                 invoice_tip_doc:
@@ -71,6 +77,15 @@ export default function PartnerShow({
                     next.payment ?? invoiceFilters.payment ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
+        );
+    };
+
+    const switchRole = (next: 'furnizor' | 'client') => {
+        if (next === role) return;
+        router.get(
+            partnerShow(partner.id).url,
+            { role: next },
+            { preserveScroll: true, replace: true },
         );
     };
 
@@ -135,7 +150,52 @@ export default function PartnerShow({
                     </div>
                 </div>
 
-                <StatsCards stats={stats} />
+                {isDualRole ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        {statsFurnizor && (
+                            <section className="space-y-2">
+                                <header className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <h2 className="text-sm font-semibold">
+                                            Avem să-i dăm
+                                        </h2>
+                                        <p className="text-xs text-muted-foreground">
+                                            Facturi primite de la furnizor
+                                        </p>
+                                    </div>
+                                    <Badge variant="secondary">
+                                        Furnizor
+                                    </Badge>
+                                </header>
+                                <StatsCards stats={statsFurnizor} compact />
+                            </section>
+                        )}
+                        {statsClient && (
+                            <section className="space-y-2">
+                                <header className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <h2 className="text-sm font-semibold">
+                                            Are să ne dea
+                                        </h2>
+                                        <p className="text-xs text-muted-foreground">
+                                            Facturi emise către client
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline">Client</Badge>
+                                </header>
+                                <StatsCards stats={statsClient} compact />
+                            </section>
+                        )}
+                    </div>
+                ) : (
+                    <StatsCards
+                        stats={
+                            (partner.is_furnizor
+                                ? statsFurnizor
+                                : statsClient) ?? emptyStats
+                        }
+                    />
+                )}
 
                 {activeBankAccounts.length > 0 && (
                     <div className="flex flex-wrap gap-2">
@@ -321,8 +381,27 @@ export default function PartnerShow({
                 </div>
 
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-base">Facturi</CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <CardTitle className="text-base">Facturi</CardTitle>
+                            {isDualRole && (
+                                <Tabs
+                                    value={role}
+                                    onValueChange={(v) =>
+                                        switchRole(v as 'furnizor' | 'client')
+                                    }
+                                >
+                                    <TabsList>
+                                        <TabsTrigger value="furnizor">
+                                            Primite (furnizor)
+                                        </TabsTrigger>
+                                        <TabsTrigger value="client">
+                                            Emise (client)
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                            )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
                             {invoices.from ?? 0}–{invoices.to ?? 0} din{' '}
                             {invoices.total}
@@ -557,15 +636,31 @@ function PartnerShowLayout({ children }: { children: React.ReactNode }) {
     );
 }
 
+const emptyStats: import('./types').PartnerStats = {
+    totals: [],
+    counts: { paid: 0, partial: 0, unpaid: 0, total: 0 },
+    oldest_unpaid: null,
+    last_invoice_date: null,
+    first_invoice_date: null,
+};
+
 function StatsCards({
     stats,
+    compact = false,
 }: {
     stats: import('./types').PartnerStats;
+    compact?: boolean;
 }) {
     const { totals, counts, oldest_unpaid, last_invoice_date } = stats;
 
     return (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+            className={
+                compact
+                    ? 'grid gap-3 sm:grid-cols-2'
+                    : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'
+            }
+        >
             <Card className="gap-1 py-3">
                 <CardHeader className="px-4 pb-0">
                     <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Partner;
+use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -33,7 +34,15 @@ class PartnerController extends Controller
         ]);
 
         $assignedDeptIds = $partner->responsabilDepartments->pluck('id');
-        $stats = $this->computeStats($partner);
+
+        $defaultRole = $partner->is_furnizor ? 'furnizor' : 'client';
+        $role = $request->string('role')->toString() ?: $defaultRole;
+        if (! in_array($role, ['furnizor', 'client'], true)) {
+            $role = $defaultRole;
+        }
+
+        $statsFurnizor = $partner->is_furnizor ? $this->computeStats($partner, 'furnizor') : null;
+        $statsClient = $partner->is_client ? $this->computeStats($partner, 'client') : null;
 
         $invoiceSearch = $request->string('invoice_search')->toString();
         $invoiceTipDoc = $request->string('invoice_tip_doc')->toString();
@@ -41,7 +50,12 @@ class PartnerController extends Controller
         $invoiceTo = $request->string('invoice_to')->toString();
         $invoicePayment = $request->string('invoice_payment')->toString();
 
+        $tipDocsForRole = $role === 'furnizor'
+            ? SyncService::FURNIZOR_DOC_TYPES
+            : SyncService::CLIENT_DOC_TYPES;
+
         $invoices = $partner->invoices()
+            ->whereIn('tip_doc', $tipDocsForRole)
             ->when($invoiceSearch, fn ($q, $term) => $q->where('nr_doc', 'like', "%{$term}%"))
             ->when($invoiceTipDoc, fn ($q, $type) => $q->where('tip_doc', $type))
             ->when($invoiceFrom, fn ($q, $d) => $q->where('data_doc', '>=', $d))
@@ -70,6 +84,7 @@ class PartnerController extends Controller
             ]);
 
         $availableTipDocs = $partner->invoices()
+            ->whereIn('tip_doc', $tipDocsForRole)
             ->select('tip_doc')
             ->distinct()
             ->orderBy('tip_doc')
@@ -126,7 +141,9 @@ class PartnerController extends Controller
                         'type' => $dept->type,
                     ])
                 : [],
-            'stats' => $stats,
+            'role' => $role,
+            'statsFurnizor' => $statsFurnizor,
+            'statsClient' => $statsClient,
             'activeCompany' => ['id' => (int) $partner->company->id, 'name' => $partner->company->name],
         ]);
     }
@@ -140,9 +157,13 @@ class PartnerController extends Controller
      *   first_invoice_date: ?string
      * }
      */
-    private function computeStats(Partner $partner): array
+    private function computeStats(Partner $partner, string $role): array
     {
-        $base = $partner->invoices();
+        $tipDocs = $role === 'furnizor'
+            ? SyncService::FURNIZOR_DOC_TYPES
+            : SyncService::CLIENT_DOC_TYPES;
+
+        $base = $partner->invoices()->whereIn('tip_doc', $tipDocs);
 
         $totals = (clone $base)
             ->selectRaw('moneda, COUNT(*) as cnt, SUM(val_mon) as v, SUM(val_mon_paid) as p')
@@ -191,7 +212,7 @@ class PartnerController extends Controller
                 'data_doc' => $oldestUnpaid->data_doc?->toDateString(),
                 'data_scadenta' => $oldestUnpaid->data_scadenta?->toDateString(),
                 'days_overdue' => $oldestUnpaid->data_scadenta
-                    ? max(0, $oldestUnpaid->data_scadenta->diffInDays(now(), false))
+                    ? max(0, (int) $oldestUnpaid->data_scadenta->startOfDay()->diffInDays(now()->startOfDay(), false))
                     : null,
                 'val_mon' => round((float) $oldestUnpaid->val_mon - (float) $oldestUnpaid->val_mon_paid, 2),
                 'moneda' => $oldestUnpaid->moneda,

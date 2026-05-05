@@ -38,6 +38,11 @@ class Company extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(CompanyBankAccount::class);
+    }
+
     /**
      * @return array<string, mixed>
      */
