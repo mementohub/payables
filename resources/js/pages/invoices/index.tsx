@@ -1,8 +1,9 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { Check, ShieldCheck } from 'lucide-react';
+import { Check, ChevronDown, Download, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { BtLogo } from '@/components/icons/bt-logo';
 import { BtPaymentDialog } from './bt-payment-dialog';
+import type { BtPrepareRequest } from './bt-payment-dialog';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
 import CompanyBadge from '@/components/company-badge';
@@ -22,6 +23,13 @@ import {
 } from '@/components/table-selection';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -191,7 +199,7 @@ export default function InvoicesIndex({
     const [btDialogOpen, setBtDialogOpen] = useState(false);
     const selection = useTableSelection(invoices.data, invoices.total);
 
-    const eligibleBtIds = useMemo(() => {
+    const eligibleBtIdsOnPage = useMemo(() => {
         if (!isPrimite) return [];
         return invoices.data
             .filter(
@@ -203,20 +211,34 @@ export default function InvoicesIndex({
             .map((i) => i.id);
     }, [invoices.data, selection, isPrimite]);
 
+    const exportFilters = {
+        search: filters.search,
+        company_id: filters.company_id,
+        payment: filters.payment,
+        data_doc_from: filters.data_doc_from,
+        data_doc_to: filters.data_doc_to,
+        data_scadenta_from: filters.data_scadenta_from,
+        data_scadenta_to: filters.data_scadenta_to,
+        approval: filters.approval,
+        responsible_id: filters.responsible_id,
+    };
+
+    const btRequest = useMemo<BtPrepareRequest>(
+        () =>
+            selection.selectAllAcrossPages
+                ? { select_all: true, filters: exportFilters }
+                : { invoice_ids: eligibleBtIdsOnPage },
+        [selection.selectAllAcrossPages, eligibleBtIdsOnPage, exportFilters],
+    );
+
+    const canBtExport =
+        isPrimite &&
+        (selection.selectAllAcrossPages || eligibleBtIdsOnPage.length > 0);
+
     const handleExport = () => {
         setExporting(true);
         const url = (scope === 'emise' ? exportEmise() : exportPrimite()).url;
-        downloadXlsxFromForm(url, selection.payload(), {
-            search: filters.search,
-            company_id: filters.company_id,
-            payment: filters.payment,
-            data_doc_from: filters.data_doc_from,
-            data_doc_to: filters.data_doc_to,
-            data_scadenta_from: filters.data_scadenta_from,
-            data_scadenta_to: filters.data_scadenta_to,
-            approval: filters.approval,
-            responsible_id: filters.responsible_id,
-        });
+        downloadXlsxFromForm(url, selection.payload(), exportFilters);
         setTimeout(() => setExporting(false), 1500);
     };
 
@@ -465,33 +487,46 @@ export default function InvoicesIndex({
                     state={selection}
                     total={invoices.total}
                     pageCount={invoices.data.length}
-                    onExport={handleExport}
-                    exporting={exporting}
+                    actions={
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={exporting}
+                                >
+                                    {exporting ? 'Export…' : 'Acțiuni'}
+                                    <ChevronDown className="size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={handleExport}>
+                                    <Download className="size-4" />
+                                    Export XLSX
+                                </DropdownMenuItem>
+                                {isPrimite && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            disabled={!canBtExport}
+                                            onSelect={() =>
+                                                setBtDialogOpen(true)
+                                            }
+                                        >
+                                            <BtLogo className="h-4 w-auto text-foreground" />
+                                            Descarcă șablon plată BT
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    }
                 />
-
-                {isPrimite && eligibleBtIds.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-950/20">
-                        <BtLogo className="h-5 w-auto text-foreground" />
-                        <span>
-                            {eligibleBtIds.length} factur
-                            {eligibleBtIds.length === 1 ? 'ă' : 'i'} cu bun de
-                            plată din selecție.
-                        </span>
-                        <Button
-                            type="button"
-                            size="sm"
-                            className="ml-auto"
-                            onClick={() => setBtDialogOpen(true)}
-                        >
-                            Descarcă șablon plată BT
-                        </Button>
-                    </div>
-                )}
 
                 <BtPaymentDialog
                     open={btDialogOpen}
                     onOpenChange={setBtDialogOpen}
-                    invoiceIds={eligibleBtIds}
+                    request={btRequest}
                 />
 
                 <div className="hidden overflow-x-auto rounded-xl border border-sidebar-border/70 md:block dark:border-sidebar-border">

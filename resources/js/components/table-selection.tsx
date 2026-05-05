@@ -1,5 +1,11 @@
 import { Download, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    type ReactNode,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from 'react';
 import { Button } from '@/components/ui/button';
 
 type Identifiable = { id: number };
@@ -157,12 +163,14 @@ export function SelectionBar({
     pageCount,
     onExport,
     exporting,
+    actions,
 }: {
     state: SelectionState;
     total: number;
     pageCount: number;
-    onExport: () => void;
-    exporting: boolean;
+    onExport?: () => void;
+    exporting?: boolean;
+    actions?: ReactNode;
 }) {
     if (state.selectionCount === 0) {
         return null;
@@ -194,15 +202,19 @@ export function SelectionBar({
             )}
 
             <div className="ml-auto flex items-center gap-2">
-                <Button
-                    type="button"
-                    size="sm"
-                    onClick={onExport}
-                    disabled={exporting}
-                >
-                    <Download className="size-4" />{' '}
-                    {exporting ? 'Export…' : 'Export XLSX'}
-                </Button>
+                {actions ?? (
+                    onExport && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={onExport}
+                            disabled={exporting}
+                        >
+                            <Download className="size-4" />{' '}
+                            {exporting ? 'Export…' : 'Export XLSX'}
+                        </Button>
+                    )
+                )}
                 <Button
                     type="button"
                     size="sm"

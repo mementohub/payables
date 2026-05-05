@@ -63,16 +63,24 @@ export type BtPreparePayload = {
     rows: BtRow[];
     company_accounts: CompanyAccount[];
     invoices_skipped: number;
+    truncated?: boolean;
+    limit?: number;
+};
+
+export type BtPrepareRequest = {
+    invoice_ids?: number[];
+    select_all?: boolean;
+    filters?: Record<string, string | number | null | undefined>;
 };
 
 export function BtPaymentDialog({
     open,
     onOpenChange,
-    invoiceIds,
+    request,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    invoiceIds: number[];
+    request: BtPrepareRequest;
 }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -82,7 +90,11 @@ export function BtPaymentDialog({
     const [sourceAccountId, setSourceAccountId] = useState<string>('');
 
     useEffect(() => {
-        if (!open || invoiceIds.length === 0) {
+        if (
+            !open ||
+            (!request.select_all &&
+                (!request.invoice_ids || request.invoice_ids.length === 0))
+        ) {
             return;
         }
 
@@ -91,6 +103,13 @@ export function BtPaymentDialog({
         setData(null);
 
         const controller = new AbortController();
+
+        const cleanFilters: Record<string, string | number> = {};
+        Object.entries(request.filters ?? {}).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+                cleanFilters[key] = value;
+            }
+        });
 
         fetch(PaymentExportController.btPrepare().url, {
             method: 'POST',
@@ -104,7 +123,11 @@ export function BtPaymentDialog({
                         'meta[name="csrf-token"]',
                     )?.content ?? '',
             },
-            body: JSON.stringify({ invoice_ids: invoiceIds }),
+            body: JSON.stringify({
+                invoice_ids: request.invoice_ids ?? [],
+                select_all: request.select_all ? 1 : 0,
+                ...cleanFilters,
+            }),
         })
             .then(async (res) => {
                 if (!res.ok) {
@@ -161,7 +184,7 @@ export function BtPaymentDialog({
             .finally(() => setLoading(false));
 
         return () => controller.abort();
-    }, [open, invoiceIds]);
+    }, [open, request]);
 
     const sourceAccount = useMemo(
         () =>
@@ -293,6 +316,16 @@ export function BtPaymentDialog({
                                     {data.invoices_skipped === 1 ? 'ă' : 'i'}{' '}
                                     nu sunt complet aprobate (bun de plată) și
                                     au fost ignorate.
+                                </span>
+                            </div>
+                        )}
+
+                        {data.truncated && (
+                            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/30">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                                <span>
+                                    Limită {data.limit} rânduri pe export.
+                                    Restrânge filtrul ca să incluzi tot.
                                 </span>
                             </div>
                         )}

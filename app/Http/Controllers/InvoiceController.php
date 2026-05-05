@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Invoices\InvoiceApprovalService;
+use App\Services\Invoices\InvoiceListQuery;
 use App\Services\Invoices\InvoicePresenter;
 use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
@@ -133,20 +134,7 @@ class InvoiceController extends Controller
 
     private function buildListQuery(Request $request, string $scope): InvoiceBuilder
     {
-        $filters = $this->parseFilters($request);
-
-        return Invoice::query()
-            ->withListRelations()
-            ->forScope($scope)
-            ->when($scope === 'primite', fn ($q) => $q->visibleToFurnizorUser($request->user()))
-            ->forCompany($filters['company_id'])
-            ->dataDocBetween($filters['data_doc_from'], $filters['data_doc_to'])
-            ->scadentaBetween($filters['data_scadenta_from'], $filters['data_scadenta_to'])
-            ->paymentStatus($filters['payment'])
-            ->when($scope === 'primite', fn ($q) => $q
-                ->approvalStage($filters['approval'])
-                ->responsibleUser($filters['responsible_id']))
-            ->search($filters['search']);
+        return InvoiceListQuery::build($request, $scope);
     }
 
     /**
@@ -154,21 +142,7 @@ class InvoiceController extends Controller
      */
     private function parseFilters(Request $request): array
     {
-        $companyId = $request->exists('company_id')
-            ? ($request->integer('company_id') ?: null)
-            : ((int) session('active_company_id') ?: null);
-
-        return [
-            'search' => $request->string('search')->toString() ?: null,
-            'company_id' => $companyId,
-            'payment' => $request->string('payment')->toString() ?: null,
-            'data_doc_from' => $request->string('data_doc_from')->toString() ?: null,
-            'data_doc_to' => $request->string('data_doc_to')->toString() ?: null,
-            'data_scadenta_from' => $request->string('data_scadenta_from')->toString() ?: null,
-            'data_scadenta_to' => $request->string('data_scadenta_to')->toString() ?: null,
-            'approval' => $request->string('approval')->toString() ?: null,
-            'responsible_id' => $request->integer('responsible_id') ?: null,
-        ];
+        return InvoiceListQuery::parseFilters($request);
     }
 
     public function show(Request $request, Invoice $invoice): Response

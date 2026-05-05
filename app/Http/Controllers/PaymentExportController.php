@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CompanyBankAccount;
 use App\Models\Invoice;
+use App\Services\Invoices\InvoiceListQuery;
 use App\Services\PaymentExport\BtPaymentRow;
 use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\JsonResponse;
@@ -12,28 +13,56 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentExportController extends Controller
 {
+    private const BT_MAX_ROWS = 500;
+
     /**
      * Build the prefilled BT payment payload for a set of invoices.
      */
     public function btPrepare(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'invoice_ids' => ['required', 'array', 'min:1'],
+        $request->validate([
+            'invoice_ids' => ['nullable', 'array'],
             'invoice_ids.*' => ['integer', 'min:1'],
+            'select_all' => ['nullable', 'boolean'],
         ]);
 
-        $invoices = Invoice::query()
-            ->whereIn('id', $validated['invoice_ids'])
+        $selectAll = $request->boolean('select_all');
+        $explicitIds = array_values(array_filter(
+            array_map('intval', (array) $request->input('invoice_ids', [])),
+            fn ($id) => $id > 0,
+        ));
+
+        if (! $selectAll && empty($explicitIds)) {
+            abort(422, 'Selecție goală.');
+        }
+
+        $query = $selectAll
+            ? InvoiceListQuery::build($request, 'primite')
+            : Invoice::query();
+
+        $query
             ->where('is_fully_approved', true)
             ->with(['partner.bankAccounts', 'company:id,name,cui'])
-            ->orderBy('data_doc')
-            ->get();
+            ->orderBy('invoices.data_doc');
+
+        if (! $selectAll) {
+            $query->whereIn('invoices.id', $explicitIds);
+        }
+
+        $eligibleCount = (clone $query)->count();
+        $invoices = $query->limit(self::BT_MAX_ROWS)->get();
+
+        $totalRequested = $selectAll ? $eligibleCount : count($explicitIds);
+        $skipped = max(0, $totalRequested - $invoices->count());
+        $truncated = $eligibleCount > self::BT_MAX_ROWS;
 
         if ($invoices->isEmpty()) {
             return response()->json([
                 'rows' => [],
                 'company_accounts' => [],
-                'invoices_skipped' => count($validated['invoice_ids']),
+                'invoices_skipped' => $skipped,
+                'truncated' => false,
+                'limit' => self::BT_MAX_ROWS,
             ]);
         }
 
@@ -68,7 +97,9 @@ class PaymentExportController extends Controller
             ],
             'rows' => $rows,
             'company_accounts' => $companyAccounts,
-            'invoices_skipped' => count($validated['invoice_ids']) - $rows->count(),
+            'invoices_skipped' => $skipped,
+            'truncated' => $truncated,
+            'limit' => self::BT_MAX_ROWS,
         ]);
     }
 
