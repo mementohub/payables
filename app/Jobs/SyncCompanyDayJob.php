@@ -21,7 +21,7 @@ class SyncCompanyDayJob implements ShouldQueue
         public Company $company,
         public string $date,
     ) {
-        $this->onQueue('long');
+        $this->queue = 'long';
     }
 
     public function handle(SyncService $sync): void

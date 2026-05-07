@@ -116,6 +116,7 @@ class DemoCommand extends Command
             ->catch(function (Batch $batch, Throwable $e): void {
                 SeedDemoActivityJob::dispatch();
             })
+            ->onQueue('long')
             ->dispatch();
 
         return true;
