@@ -58,4 +58,17 @@ class EInvoice extends Model
     {
         return $query->whereNotNull('err_ins_omc')->where('err_ins_omc', '!=', '');
     }
+
+    /**
+     * Extract the issuer CIF from the ANAF msg_detalii string,
+     * e.g. "Factura cu id_incarcare=... emisa de cif_emitent=41602569 pentru cif_beneficiar=...".
+     */
+    public static function extractEmitentCui(?string $msgDetalii): ?string
+    {
+        if ($msgDetalii === null || trim($msgDetalii) === '') {
+            return null;
+        }
+
+        return preg_match('/cif_emitent=(\d+)/', $msgDetalii, $m) === 1 ? $m[1] : null;
+    }
 }

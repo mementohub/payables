@@ -14,18 +14,20 @@ class InvoiceBuilder extends Builder
 {
     public function withListRelations(): self
     {
-        return $this->with([
-            'partner:id,name,cui',
-            'partner.responsabilDepartments:id,name,type',
-            'company:id,name',
-            'approvals:id,invoice_id,department_id,user_id,role,approved_at',
-            'approvals.user:id,name,email',
-            'approvals.department:id,name,type',
-            'sourceCompany:id,name',
-            'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
-            'sourceInvoice.partner:id,name,cui',
-            'sourceInvoice.company:id,name',
-        ]);
+        return $this
+            ->with([
+                'partner:id,name,cui',
+                'partner.responsabilDepartments:id,name,type',
+                'company:id,name',
+                'approvals:id,invoice_id,department_id,user_id,role,approved_at,revoked_at',
+                'approvals.user:id,name,email',
+                'approvals.department:id,name,type',
+                'sourceCompany:id,name',
+                'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
+                'sourceInvoice.partner:id,name,cui',
+                'sourceInvoice.company:id,name',
+            ])
+            ->withCount('comments');
     }
 
     public function forScope(string $scope): self

@@ -32,6 +32,7 @@ class InvoicePresenter
             'val_mon_tva' => (float) $invoice->val_mon_tva,
             'val_mon_paid' => (float) $invoice->val_mon_paid,
             'payment_status' => $invoice->payment_status,
+            'comments_count' => (int) ($invoice->comments_count ?? 0),
             'source_invoice' => $this->sourceInvoicePayload($invoice),
             'baza' => $this->bazaPayload($invoice),
         ];

@@ -105,24 +105,24 @@ export default function OpExInvoices({
         }
 
         if (merged.month) {
-params.set('month', String(merged.month));
-}
+            params.set('month', String(merged.month));
+        }
 
         if (merged.tip_doc) {
-params.set('tip_doc', merged.tip_doc);
-}
+            params.set('tip_doc', merged.tip_doc);
+        }
 
         if (merged.partner) {
-params.set('partner', merged.partner);
-}
+            params.set('partner', merged.partner);
+        }
 
         if (merged.q) {
-params.set('q', merged.q);
-}
+            params.set('q', merged.q);
+        }
 
         if (merged.category_label) {
-params.set('category_label', merged.category_label);
-}
+            params.set('category_label', merged.category_label);
+        }
 
         router.visit(
             `${opexInvoicesRoute(company.id).url}?${params.toString()}`,

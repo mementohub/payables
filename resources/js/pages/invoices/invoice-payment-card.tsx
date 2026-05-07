@@ -1,7 +1,7 @@
 import { Form } from '@inertiajs/react';
 import { CircleAlert, CircleCheck, CircleDashed } from 'lucide-react';
 import PaymentStatusBadge from '@/components/payment-status-badge';
-import type {PaymentStatus} from '@/components/payment-status-badge';
+import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Button } from '@/components/ui/button';
 import { update as updatePaymentStatusRoute } from '@/routes/invoices/payment-status';
 import type { CurrentUser } from './types';

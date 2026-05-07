@@ -186,6 +186,28 @@ it('flags currency mismatch when e-invoice and matched invoice use different mon
         ->assertJsonPath('eInvoice.mismatch.any', true);
 });
 
+it('treats RON and Lei as equivalent currencies', function () {
+    $company = Company::factory()->create();
+    $invoice = Invoice::factory()->for($company)->create([
+        'val_mon' => 100.00,
+        'val_mon_tva' => 19.00,
+        'moneda' => 'Lei',
+    ]);
+
+    $eInvoice = makeEInvoice([
+        'company' => $company,
+        'invoice_id' => $invoice->id,
+        'total_amount' => 100.00,
+        'total_vat' => 19.00,
+        'currency' => 'RON',
+    ]);
+
+    $this->actingAs($this->user)
+        ->getJson("/e-invoices/{$eInvoice->id}/detail")
+        ->assertJsonPath('eInvoice.mismatch.currency', false)
+        ->assertJsonPath('eInvoice.mismatch.any', false);
+});
+
 it('rejects matching to an invoice from a different company', function () {
     $company = Company::factory()->create();
     $other = Company::factory()->create();

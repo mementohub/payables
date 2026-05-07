@@ -163,7 +163,7 @@ class EInvoiceXmlParser
             'trading_name' => $party->getTradingName(),
             'vat_number' => $party->getVatNumber(),
             'company_id' => $party->getCompanyId()?->getValue(),
-            'address' => $party->getAddress(),
+            'address' => array_values($party->getAddress()),
             'city' => $party->getCity(),
             'postal_code' => $party->getPostalCode(),
             'country' => $party->getCountry(),

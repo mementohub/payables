@@ -247,8 +247,8 @@ export function BtPaymentDialog({
         )?.content;
 
         if (csrf) {
-appendInput(form, '_token', csrf);
-}
+            appendInput(form, '_token', csrf);
+        }
 
         appendInput(form, 'source_account', sourceAccount.iban);
 
@@ -753,8 +753,8 @@ function formatBic(
     const b = (bicShort ?? '').trim();
 
     if (!s && !b) {
-return null;
-}
+        return null;
+    }
 
     const base = s || b;
 

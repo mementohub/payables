@@ -118,8 +118,8 @@ function formatLei(value: number): string {
 
 function formatLeiSigned(value: number): string {
     if (Math.abs(value) < 0.005) {
-return '0';
-}
+        return '0';
+    }
 
     const sign = value > 0 ? '+' : '';
 
@@ -141,8 +141,8 @@ function formatLeiPrecise(value: number): string {
 
 function deltaPct(current: number, previous: number): number | null {
     if (Math.abs(previous) < 0.005) {
-return null;
-}
+        return null;
+    }
 
     return Math.round(((current - previous) / previous) * 1000) / 10;
 }
@@ -164,8 +164,8 @@ function DeltaBadge({
     const hasPrev = Math.abs(previous) >= 0.005;
 
     if (!hasCurrent && !hasPrev) {
-return null;
-}
+        return null;
+    }
 
     let iconColor = 'text-muted-foreground/50';
     let Icon = Minus;
@@ -299,8 +299,8 @@ export default function OpExIndex({ companies, filters, report }: Props) {
 
     const refresh = () => {
         if (!filters.company_id) {
-return;
-}
+            return;
+        }
 
         router.post(
             opexRefreshRoute(filters.company_id).url,
@@ -702,8 +702,8 @@ function TreeRow({
 
     const cellHref = (month: number | null): string | null => {
         if (!canDrillDown || !companyId) {
-return null;
-}
+            return null;
+        }
 
         return buildInvoicesHref(
             companyId,

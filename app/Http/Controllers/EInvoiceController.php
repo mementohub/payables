@@ -87,7 +87,7 @@ class EInvoiceController extends Controller
                     $row->tip_doc_xml ?? '',
                     $row->nr_doc_xml ?? '',
                     $row->partener_xml ?? '',
-                    $row->msg_cif ?? '',
+                    $row->supplier_cui ?? '',
                     $row->cod_cci_xml ?? '',
                     $row->company->name,
                     $row->total_amount !== null ? (float) $row->total_amount : '',
@@ -141,6 +141,7 @@ class EInvoiceController extends Controller
                 $q->where(function ($q) use ($term) {
                     $q->where('nr_doc_xml', 'like', "%{$term}%")
                         ->orWhere('partener_xml', 'like', "%{$term}%")
+                        ->orWhere('supplier_cui', 'like', "%{$term}%")
                         ->orWhere('cod_cci_xml', 'like', "%{$term}%")
                         ->orWhere('msg_id', 'like', "%{$term}%");
                 });
@@ -272,13 +273,14 @@ class EInvoiceController extends Controller
             ? abs($eVat - $invoiceVat) > $vatTolerance
             : false;
         $currencyMismatch = $row->invoice && $eCurrency !== null && $invoiceCurrency !== null
-            ? $eCurrency !== $invoiceCurrency
+            ? $this->normalizeCurrency($eCurrency) !== $this->normalizeCurrency($invoiceCurrency)
             : false;
 
         return [
             'id' => $row->id,
             'msg_id' => $row->msg_id,
             'msg_cif' => $row->msg_cif,
+            'supplier_cui' => $row->supplier_cui,
             'msg_index_incarcare' => $row->msg_index_incarcare,
             'msg_data_creare_d' => $row->msg_data_creare_d?->format('Y-m-d H:i'),
             'data_doc_xml' => $row->data_doc_xml?->toDateString(),
@@ -329,5 +331,19 @@ class EInvoiceController extends Controller
             'msg_detalii' => $row->msg_detalii,
             'msg_xml' => $row->msg_xml,
         ];
+    }
+
+    /**
+     * Normalize currency aliases used across the system. The local ERP stores
+     * the Romanian leu as "Lei" while UBL e-invoices use the ISO code "RON";
+     * treat them (and a few other common aliases) as equivalent for mismatch
+     * checks.
+     */
+    private function normalizeCurrency(string $currency): string
+    {
+        return match ($currency) {
+            'LEI' => 'RON',
+            default => $currency,
+        };
     }
 }

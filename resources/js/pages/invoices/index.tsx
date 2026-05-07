@@ -1,5 +1,11 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, Download, ShieldCheck } from 'lucide-react';
+import {
+    Check,
+    ChevronDown,
+    Download,
+    MessageSquare,
+    ShieldCheck,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
@@ -149,6 +155,26 @@ function formatDateTime(iso: string | null) {
     });
 }
 
+function CommentsIndicator({ count }: { count: number }) {
+    if (count <= 0) {
+        return null;
+    }
+
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+                    <MessageSquare className="size-3" />
+                    {count}
+                </span>
+            </TooltipTrigger>
+            <TooltipContent>
+                {count === 1 ? '1 comentariu' : `${count} comentarii`}
+            </TooltipContent>
+        </Tooltip>
+    );
+}
+
 export default function InvoicesIndex({
     invoices,
     scope,
@@ -201,8 +227,8 @@ export default function InvoicesIndex({
 
     const eligibleBtIdsOnPage = useMemo(() => {
         if (!isPrimite) {
-return [];
-}
+            return [];
+        }
 
         return invoices.data
             .filter(
@@ -597,14 +623,19 @@ return [];
                                         {invoice.data_scadenta ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 font-medium">
-                                        <Link
-                                            className="hover:underline"
-                                            href={invoicesShow(invoice.id)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                        >
-                                            {invoice.nr_doc}
-                                        </Link>
+                                        <div className="flex items-center gap-1.5">
+                                            <Link
+                                                className="hover:underline"
+                                                href={invoicesShow(invoice.id)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                {invoice.nr_doc}
+                                            </Link>
+                                            <CommentsIndicator
+                                                count={invoice.comments_count}
+                                            />
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3">
                                         {invoice.partner ? (
@@ -784,14 +815,17 @@ function InvoiceMobileCard({
                         className="mt-1"
                     />
                     <div className="min-w-0">
-                        <Link
-                            href={invoicesShow(invoice.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-base font-semibold hover:underline"
-                        >
-                            {invoice.nr_doc}
-                        </Link>
+                        <div className="flex items-center gap-1.5">
+                            <Link
+                                href={invoicesShow(invoice.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-base font-semibold hover:underline"
+                            >
+                                {invoice.nr_doc}
+                            </Link>
+                            <CommentsIndicator count={invoice.comments_count} />
+                        </div>
                         <div className="mt-0.5 text-xs text-muted-foreground">
                             {invoice.data_doc}
                             {invoice.data_scadenta

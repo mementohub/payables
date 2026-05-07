@@ -15,6 +15,7 @@ use App\Models\InvoicePayment;
 use App\Models\Partner;
 use App\Models\PartnerBankAccount;
 use App\Services\EInvoices\EInvoiceXmlParser;
+use App\Services\EInvoices\PartnerCuiLookup;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 
@@ -188,27 +189,18 @@ class SyncService
             return 0;
         }
 
-        $partnerLookup = Partner::where('company_id', $company->id)
-            ->whereNotNull('cui')
-            ->get(['id', 'cui'])
-            ->mapWithKeys(fn ($p) => [$this->normalizeCui($p->cui) => $p->id]);
+        $partnerLookup = new PartnerCuiLookup($company->id);
 
         $count = 0;
 
         foreach ($rows as $row) {
             $nrDoc = $row->nr_doc_xml !== null ? trim((string) $row->nr_doc_xml) : null;
 
-            $cci = $row->cod_cci_xml !== null ? $this->normalizeCui($row->cod_cci_xml) : null;
-            $partnerId = $cci !== null ? ($partnerLookup[$cci] ?? null) : null;
+            $supplierCui = EInvoice::extractEmitentCui($row->msg_detalii);
 
-            if ($partnerId === null) {
-                $sellerTaxId = $this->xmlParser->extractSellerTaxId($row->msg_xml);
-
-                if ($sellerTaxId !== null) {
-                    $normalizedSeller = $this->normalizeCui($sellerTaxId);
-                    $partnerId = $partnerLookup[$normalizedSeller] ?? null;
-                }
-            }
+            $partnerId = $partnerLookup->find($supplierCui)
+                ?? $partnerLookup->find($row->cod_cci_xml)
+                ?? $partnerLookup->find($this->xmlParser->extractSellerTaxId($row->msg_xml));
 
             $totals = $this->xmlParser->extractTotals($row->msg_xml);
 
@@ -220,6 +212,7 @@ class SyncService
                 [
                     'partner_id' => $partnerId,
                     'msg_cif' => $row->msg_cif,
+                    'supplier_cui' => $supplierCui,
                     'msg_index_incarcare' => $row->msg_index_incarcare,
                     'msg_data_creare_d' => $row->msg_data_creare_d,
                     'data_doc_xml' => $row->data_doc_xml,
@@ -237,15 +230,10 @@ class SyncService
                 ]
             );
 
-            $matchedInvoice = $this->matcher->find($eInvoice);
+            $matchedInvoiceId = $this->matcher->find($eInvoice)?->id;
 
-            if ($matchedInvoice !== null && $eInvoice->invoice_id !== $matchedInvoice->id) {
-                $eInvoice->forceFill(['invoice_id' => $matchedInvoice->id])->save();
-            } elseif ($matchedInvoice === null && $eInvoice->invoice_id !== null) {
-                $existing = Invoice::find($eInvoice->invoice_id);
-                if ($existing === null || $existing->partner_id !== $partnerId) {
-                    $eInvoice->forceFill(['invoice_id' => null])->save();
-                }
+            if ($eInvoice->invoice_id !== $matchedInvoiceId) {
+                $eInvoice->forceFill(['invoice_id' => $matchedInvoiceId])->save();
             }
 
             $count++;
@@ -256,9 +244,7 @@ class SyncService
 
     private function normalizeCui(string $cui): string
     {
-        $upper = strtoupper(trim($cui));
-
-        return str_starts_with($upper, 'RO') ? substr($upper, 2) : $upper;
+        return PartnerCuiLookup::normalize($cui);
     }
 
     private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int

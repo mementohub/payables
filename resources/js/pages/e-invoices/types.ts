@@ -33,6 +33,7 @@ export type EInvoiceRow = {
     id: number;
     msg_id: string;
     msg_cif: string | null;
+    supplier_cui: string | null;
     msg_index_incarcare: string | null;
     msg_data_creare_d: string | null;
     data_doc_xml: string | null;

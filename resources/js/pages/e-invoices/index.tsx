@@ -517,9 +517,9 @@ export default function EInvoicesIndex({
                                                         {row.partener_xml}
                                                     </div>
                                                 )}
-                                                {row.msg_cif && (
+                                                {row.supplier_cui && (
                                                     <div className="truncate text-xs text-muted-foreground">
-                                                        CUI: {row.msg_cif}
+                                                        CUI: {row.supplier_cui}
                                                     </div>
                                                 )}
                                             </div>
@@ -799,7 +799,7 @@ function InfoDialog({
                                     {row.tip_doc_xml ?? '—'}
                                 </Field>
                                 <Field label="CIF furnizor">
-                                    {row.msg_cif ?? '—'}
+                                    {row.supplier_cui ?? '—'}
                                 </Field>
                                 <Field label="Reg. com.">
                                     {row.cod_cci_xml ?? '—'}
@@ -1294,7 +1294,7 @@ function PartyCard({
     }
 
     const addressLine = [
-        ...party.address,
+        ...(Array.isArray(party.address) ? party.address : []),
         party.postal_code,
         party.city,
         party.country,

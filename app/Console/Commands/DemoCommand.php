@@ -6,10 +6,12 @@ use App\Jobs\SyncCompanyDayJob;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Partner;
+use App\Services\Demo\SeedDemoActivity;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -55,6 +57,7 @@ class DemoCommand extends Command
         $this->freshDatabase();
         $this->syncCompanies();
         $this->attachPartnersToDepartments();
+        $this->seedDemoActivity();
 
         $this->newLine();
         $this->info('Demo bootstrap complete.');
@@ -108,24 +111,58 @@ class DemoCommand extends Command
         }
 
         $companies = Company::all();
-        $totalDays = $from->diffInDays($to) + 1;
 
-        $this->info("Syncing {$companies->count()} companies × {$totalDays} days ({$from->toDateString()} → {$to->toDateString()})…");
+        if ($companies->isEmpty()) {
+            $this->warn('No companies to sync.');
+
+            return;
+        }
+
+        $totalDays = $from->diffInDays($to) + 1;
+        $jobs = [];
 
         foreach ($companies as $company) {
-            $this->line("  • {$company->name}");
-
-            $bar = $this->output->createProgressBar($totalDays);
-            $bar->start();
-
             for ($day = $from->copy(); $day->lessThanOrEqualTo($to); $day->addDay()) {
-                dispatch_sync(new SyncCompanyDayJob($company, $day->toDateString()));
-                $bar->advance();
+                $jobs[] = new SyncCompanyDayJob($company, $day->toDateString());
             }
-
-            $bar->finish();
-            $this->newLine();
         }
+
+        $this->info("Dispatching {$companies->count()} companies × {$totalDays} days = ".count($jobs)." jobs ({$from->toDateString()} → {$to->toDateString()})…");
+        $this->warn('Horizon must be running on the `long` queue (php artisan horizon).');
+
+        $batch = Bus::batch($jobs)
+            ->name('demo:sync')
+            ->allowFailures()
+            ->dispatch();
+
+        $bar = $this->output->createProgressBar($batch->totalJobs);
+        $bar->start();
+
+        while (! $batch->finished()) {
+            $batch = $batch->fresh();
+            $bar->setProgress($batch->processedJobs());
+            usleep(500_000);
+        }
+
+        $bar->setProgress($batch->processedJobs());
+        $bar->finish();
+        $this->newLine();
+
+        if ($batch->failedJobs > 0) {
+            $this->warn("{$batch->failedJobs} of {$batch->totalJobs} sync jobs failed — check Horizon.");
+        }
+    }
+
+    private function seedDemoActivity(): void
+    {
+        $this->info('Seeding demo approvals, payments and comments…');
+
+        $stats = app(SeedDemoActivity::class)->run();
+
+        $this->line("  • Invoices touched: {$stats['invoices']}");
+        $this->line("  • Approvals created: {$stats['approvals']}");
+        $this->line("  • Payment events: {$stats['payments']}");
+        $this->line("  • Comments seeded: {$stats['comments']}");
     }
 
     private function attachPartnersToDepartments(): void

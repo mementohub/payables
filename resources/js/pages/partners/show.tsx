@@ -97,8 +97,8 @@ export default function PartnerShow({
 
     const switchRole = (next: 'furnizor' | 'client') => {
         if (next === role) {
-return;
-}
+            return;
+        }
 
         router.get(
             partnerShow(partner.id).url,

@@ -75,6 +75,7 @@ export type InvoiceRow = {
     val_mon_tva: number;
     val_mon_paid: number;
     payment_status: PaymentStatus;
+    comments_count: number;
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
     approval?: Approval;
