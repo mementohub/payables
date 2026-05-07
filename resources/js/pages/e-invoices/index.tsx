@@ -1,9 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { AlertTriangle, Check, ChevronsUpDown, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
-import CompanyBadge from '@/components/company-badge';
 import EFactStatusBadge from '@/components/efact-status-badge';
 import {
     FilterField,
@@ -77,6 +77,7 @@ function formatAmount(value: number | null, currency: string | null = null) {
     if (value === null || value === undefined) {
         return '—';
     }
+
     const formatted = new Intl.NumberFormat('ro-RO', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -108,7 +109,8 @@ function DepartmentMultiSelect({
         selected.length === 0
             ? 'Toate'
             : selected.length === 1
-              ? (options.find((o) => o.id === selected[0])?.name ?? '1 selectat')
+              ? (options.find((o) => o.id === selected[0])?.name ??
+                '1 selectat')
               : `${selected.length} selectate`;
 
     return (
@@ -135,6 +137,7 @@ function DepartmentMultiSelect({
                         <CommandGroup>
                             {options.map((dept) => {
                                 const isSelected = selected.includes(dept.id);
+
                                 return (
                                     <CommandItem
                                         key={dept.id}
@@ -364,9 +367,7 @@ export default function EInvoicesIndex({
                         <FilterField
                             label="Departamente"
                             active={filters.department_ids.length > 0}
-                            onClear={() =>
-                                applyFilter({ department_ids: [] })
-                            }
+                            onClear={() => applyFilter({ department_ids: [] })}
                         >
                             <DepartmentMultiSelect
                                 options={availableDepartments}
@@ -553,7 +554,7 @@ export default function EInvoicesIndex({
                                     <td className="px-4 py-3 text-right tabular-nums">
                                         {formatAmount(row.total_amount)}
                                     </td>
-                                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                                    <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">
                                         {formatAmount(row.total_vat)}
                                     </td>
                                     <td className="px-4 py-3">
@@ -730,6 +731,7 @@ function InfoDialog({
                 if (!res.ok) {
                     throw new Error('Eroare la încărcare');
                 }
+
                 const data = await res.json();
                 setDetail((data?.eInvoice as DetailPayload) ?? null);
             })
@@ -743,12 +745,11 @@ function InfoDialog({
                 if (!res.ok) {
                     throw new Error('Eroare la încărcare');
                 }
+
                 const data = (await res.json()) as ParsedPayload;
                 setParsed(data);
             })
-            .catch((e: Error) =>
-                setParsed({ parsed: null, error: e.message }),
-            )
+            .catch((e: Error) => setParsed({ parsed: null, error: e.message }))
             .finally(() => setLoadingParsed(false));
     }, [row]);
 
@@ -982,7 +983,8 @@ function InfoDialog({
                                     {parsedInvoice.lines.length > 0 && (
                                         <div className="rounded-md border border-sidebar-border/70 dark:border-sidebar-border">
                                             <div className="border-b px-3 py-2 text-xs font-semibold">
-                                                Linii ({parsedInvoice.lines.length})
+                                                Linii (
+                                                {parsedInvoice.lines.length})
                                             </div>
                                             <div className="overflow-x-auto">
                                                 <table className="w-full text-xs">
@@ -1022,6 +1024,7 @@ function InfoDialog({
                                                                         0) +
                                                                     (line.vat_amount ??
                                                                         0);
+
                                                                 return (
                                                                     <tr key={i}>
                                                                         <td className="px-3 py-2">
@@ -1071,7 +1074,7 @@ function InfoDialog({
                                                                             ) ??
                                                                                 '—'}
                                                                         </td>
-                                                                        <td className="px-3 py-2 text-right whitespace-nowrap font-medium">
+                                                                        <td className="px-3 py-2 text-right font-medium whitespace-nowrap">
                                                                             {lineTotal.toFixed(
                                                                                 2,
                                                                             )}
@@ -1245,9 +1248,7 @@ function ComparisonCard({ row }: { row: EInvoiceRow }) {
                 >
                     {row.currency ?? '—'}
                 </div>
-                <div className="text-center">
-                    {row.invoice.moneda ?? '—'}
-                </div>
+                <div className="text-center">{row.invoice.moneda ?? '—'}</div>
 
                 {row.mismatch.any && (
                     <div className="col-span-3 mt-1 rounded border border-amber-500/40 bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">

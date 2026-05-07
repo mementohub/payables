@@ -1,11 +1,12 @@
 import { Download, X } from 'lucide-react';
 import {
-    type ReactNode,
+    
     useCallback,
     useEffect,
     useMemo,
-    useState,
+    useState
 } from 'react';
+import type {ReactNode} from 'react';
 import { Button } from '@/components/ui/button';
 
 type Identifiable = { id: number };
@@ -202,8 +203,8 @@ export function SelectionBar({
             )}
 
             <div className="ml-auto flex items-center gap-2">
-                {actions ?? (
-                    onExport && (
+                {actions ??
+                    (onExport && (
                         <Button
                             type="button"
                             size="sm"
@@ -213,8 +214,7 @@ export function SelectionBar({
                             <Download className="size-4" />{' '}
                             {exporting ? 'Export…' : 'Export XLSX'}
                         </Button>
-                    )
-                )}
+                    ))}
                 <Button
                     type="button"
                     size="sm"

@@ -123,7 +123,9 @@ export default function DepartmentsIndex({
                             <SelectItem value="responsabil">
                                 Responsabili
                             </SelectItem>
-                            <SelectItem value="ordonator">Ordonatori</SelectItem>
+                            <SelectItem value="ordonator">
+                                Ordonatori
+                            </SelectItem>
                         </SelectContent>
                     </Select>
                     <Button type="submit" variant="secondary">

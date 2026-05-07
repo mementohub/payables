@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,6 +18,7 @@ class InvoiceApproval extends Model
     {
         return [
             'approved_at' => 'datetime',
+            'revoked_at' => 'datetime',
         ];
     }
 
@@ -33,5 +35,25 @@ class InvoiceApproval extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function revokedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revoked_by_id');
+    }
+
+    public function isRevoked(): bool
+    {
+        return $this->revoked_at !== null;
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('revoked_at');
+    }
+
+    public function scopeRevoked(Builder $query): Builder
+    {
+        return $query->whereNotNull('revoked_at');
     }
 }

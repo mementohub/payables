@@ -26,7 +26,7 @@ class DepartmentSeeder extends Seeder
             ['name' => 'Ticketing', 'type' => Department::TYPE_RESPONSABIL, 'email' => 'ticketing@example.test'],
             ['name' => 'Bookings', 'type' => Department::TYPE_RESPONSABIL, 'email' => 'bookings@example.test'],
             ['name' => 'Ordonator', 'type' => Department::TYPE_ORDONATOR, 'email' => 'ordonator@example.test'],
-            ['name' => 'Plati', 'type' => Department::TYPE_ORDONATOR, 'email' => 'plati@example.test'],
+            ['name' => 'Plati', 'type' => Department::TYPE_PLATI, 'email' => 'plati@example.test'],
         ];
 
         foreach ($departments as $data) {

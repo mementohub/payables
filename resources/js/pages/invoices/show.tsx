@@ -11,13 +11,18 @@ import {
     primite as facturiPrimite,
 } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
-import type { Invoice } from './types';
+import { InvoiceApprovalSection } from './invoice-approval-section';
+import { InvoicePaymentCard } from './invoice-payment-card';
+import { InvoiceTimeline } from './invoice-timeline';
+import type { Invoice, ShowProps } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
 }
 
-export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
+export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
+    const isFurnizor = invoice.partener_type === 'furnizor';
+
     return (
         <>
             <Head title={`Factura ${invoice.nr_doc}`} />
@@ -77,18 +82,14 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                 : 'Încasat'}
                         </div>
                         <div className="text-xl font-semibold tabular-nums">
-                            {formatAmount(
-                                invoice.val_mon_paid,
-                                invoice.moneda,
-                            )}
+                            {formatAmount(invoice.val_mon_paid, invoice.moneda)}
                         </div>
                         {invoice.payment_status === 'partial' && (
                             <div className="text-xs text-muted-foreground">
                                 rămas{' '}
                                 <span className="font-medium tabular-nums">
                                     {formatAmount(
-                                        invoice.val_mon -
-                                            invoice.val_mon_paid,
+                                        invoice.val_mon - invoice.val_mon_paid,
                                         invoice.moneda,
                                     )}
                                 </span>
@@ -169,6 +170,22 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                         </div>
                     </div>
                 </div>
+
+                {isFurnizor && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <InvoiceApprovalSection
+                            invoiceId={invoice.id}
+                            approval={invoice.approval}
+                            currentUser={currentUser}
+                        />
+                        <InvoicePaymentCard
+                            invoiceId={invoice.id}
+                            status={invoice.payment_status}
+                            updatedAt={invoice.payment_status_updated_at}
+                            currentUser={currentUser}
+                        />
+                    </div>
+                )}
 
                 {(invoice.source_invoice || invoice.baza) && (
                     <div className="rounded-xl border border-sky-600/30 bg-sky-50/40 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
@@ -309,7 +326,9 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                                 {row.detaliu_articol ? (
                                                     <>
                                                         <div className="font-medium">
-                                                            {row.detaliu_articol}
+                                                            {
+                                                                row.detaliu_articol
+                                                            }
                                                         </div>
                                                         <div className="text-xs text-muted-foreground">
                                                             {row.articol}
@@ -333,7 +352,7 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                                     invoice.moneda,
                                                 )}
                                             </td>
-                                            <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                                            <td className="px-4 py-2 text-right text-muted-foreground tabular-nums">
                                                 {row.proc_tva ?? 0}%
                                             </td>
                                             <td className="px-4 py-2 text-right tabular-nums">
@@ -507,6 +526,18 @@ export default function InvoiceShow({ invoice }: { invoice: Invoice }) {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                    <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
+                        Cronologie
+                    </div>
+                    <div className="p-4">
+                        <InvoiceTimeline
+                            invoiceId={invoice.id}
+                            events={invoice.timeline}
+                        />
                     </div>
                 </div>
             </div>

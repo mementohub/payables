@@ -102,6 +102,7 @@ export default function ActiveCompanyBadge() {
                             {companies.map((c) => {
                                 const cColor = companyColor(c.id);
                                 const isActive = activeCompany?.id === c.id;
+
                                 return (
                                     <CommandItem
                                         key={c.id}

@@ -6,9 +6,12 @@ use App\Models\Builders\InvoiceBuilder;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
+use App\Models\InvoiceApproval;
 use App\Models\User;
 use App\Services\Invoices\InvoiceApprovalService;
+use App\Services\Invoices\InvoiceCommentService;
 use App\Services\Invoices\InvoiceListQuery;
+use App\Services\Invoices\InvoicePaymentService;
 use App\Services\Invoices\InvoicePresenter;
 use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +25,8 @@ class InvoiceController extends Controller
     public function __construct(
         private readonly InvoicePresenter $presenter,
         private readonly InvoiceApprovalService $approvalService,
+        private readonly InvoiceCommentService $commentService,
+        private readonly InvoicePaymentService $paymentService,
     ) {}
 
     public function emise(Request $request): Response
@@ -157,6 +162,10 @@ class InvoiceController extends Controller
             'payments.bankStatementLine.statement:id,data_extras,banca,iban',
             'approvals.user:id,name,email',
             'approvals.department:id,name,type',
+            'approvals.revokedBy:id,name',
+            'events' => fn ($q) => $q->orderByDesc('created_at')->orderByDesc('id'),
+            'events.user:id,name,email',
+            'events.department:id,name,type',
             'sourceCompany:id,name',
             'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
             'sourceInvoice.partner:id,name,cui',
@@ -178,6 +187,7 @@ class InvoiceController extends Controller
                 'val_mon_tva' => (float) $invoice->val_mon_tva,
                 'val_mon_paid' => (float) $invoice->val_mon_paid,
                 'payment_status' => $invoice->payment_status,
+                'payment_status_updated_at' => $invoice->payment_status_updated_at?->toIso8601String(),
                 'data_scadenta' => $invoice->data_scadenta?->toDateString(),
                 'data_inchidere' => $invoice->data_inchidere?->toDateString(),
                 'emitent' => $invoice->emitent,
@@ -223,10 +233,12 @@ class InvoiceController extends Controller
                     ];
                 }),
                 'approval' => $this->presenter->approvalPayload($invoice),
+                'timeline' => $this->presenter->timelinePayload($invoice),
                 'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
                 'baza' => $this->presenter->bazaPayload($invoice),
             ],
             'activeCompany' => ['id' => (int) $invoice->company->id, 'name' => $invoice->company->name],
+            'currentUser' => $this->currentUserContext($request),
         ]);
     }
 
@@ -248,26 +260,83 @@ class InvoiceController extends Controller
         return back();
     }
 
+    public function revokeApproval(Request $request, Invoice $invoice, InvoiceApproval $approval): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user, 403);
+        abort_unless($approval->invoice_id === $invoice->id, 404);
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ]);
+
+        $this->approvalService->revoke($approval, $user, $validated['reason']);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Aprobarea a fost retrasă.']);
+
+        return back();
+    }
+
+    public function comment(Request $request, Invoice $invoice): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user, 403);
+
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'min:1', 'max:5000'],
+        ]);
+
+        $this->commentService->add($invoice, $user, $validated['body']);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Comentariu adăugat.']);
+
+        return back();
+    }
+
+    public function updatePaymentStatus(Request $request, Invoice $invoice): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user, 403);
+
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:'.implode(',', Invoice::PAYMENT_STATUSES)],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $this->paymentService->updateStatus($invoice, $user, $validated['status'], $validated['note'] ?? null);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Status plată actualizat.']);
+
+        return back();
+    }
+
     private function authorizeShow(Request $request, Invoice $invoice): void
     {
         // Authorization temporarily disabled — all data visible to every authenticated user.
     }
 
     /**
-     * @return array{id: ?int, responsabil_department_ids: list<int>, ordonator_department_ids: list<int>}
+     * @return array{id: ?int, name: ?string, responsabil_department_ids: list<int>, ordonator_department_ids: list<int>, plati_department_ids: list<int>}
      */
     private function currentUserContext(Request $request): array
     {
         $user = $request->user();
 
         if (! $user) {
-            return ['id' => null, 'responsabil_department_ids' => [], 'ordonator_department_ids' => []];
+            return [
+                'id' => null,
+                'name' => null,
+                'responsabil_department_ids' => [],
+                'ordonator_department_ids' => [],
+                'plati_department_ids' => [],
+            ];
         }
 
         $departments = $user->departments()->get(['departments.id', 'departments.type']);
 
         return [
             'id' => $user->id,
+            'name' => $user->name,
             'responsabil_department_ids' => $departments
                 ->where('type', Department::TYPE_RESPONSABIL)
                 ->pluck('id')
@@ -275,6 +344,11 @@ class InvoiceController extends Controller
                 ->all(),
             'ordonator_department_ids' => $departments
                 ->where('type', Department::TYPE_ORDONATOR)
+                ->pluck('id')
+                ->values()
+                ->all(),
+            'plati_department_ids' => $departments
+                ->where('type', Department::TYPE_PLATI)
                 ->pluck('id')
                 ->values()
                 ->all(),

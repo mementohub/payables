@@ -95,18 +95,34 @@ export default function OpExInvoices({
         const merged = { ...filters, ...next };
         const params = new URLSearchParams();
         params.set('year', String(merged.year));
+
         for (const leaf of merged.leaves) {
             params.append('leaves[]', leaf);
         }
+
         if (merged.sediu !== null && merged.sediu !== undefined) {
             params.set('sediu', merged.sediu);
         }
-        if (merged.month) params.set('month', String(merged.month));
-        if (merged.tip_doc) params.set('tip_doc', merged.tip_doc);
-        if (merged.partner) params.set('partner', merged.partner);
-        if (merged.q) params.set('q', merged.q);
-        if (merged.category_label)
-            params.set('category_label', merged.category_label);
+
+        if (merged.month) {
+params.set('month', String(merged.month));
+}
+
+        if (merged.tip_doc) {
+params.set('tip_doc', merged.tip_doc);
+}
+
+        if (merged.partner) {
+params.set('partner', merged.partner);
+}
+
+        if (merged.q) {
+params.set('q', merged.q);
+}
+
+        if (merged.category_label) {
+params.set('category_label', merged.category_label);
+}
 
         router.visit(
             `${opexInvoicesRoute(company.id).url}?${params.toString()}`,
@@ -148,7 +164,7 @@ export default function OpExInvoices({
                             asChild
                             variant="ghost"
                             size="sm"
-                            className="-ml-2 mb-2"
+                            className="mb-2 -ml-2"
                         >
                             <Link href={opexIndex().url}>
                                 <ArrowLeft />
@@ -353,9 +369,8 @@ export default function OpExInvoices({
                                         {inv.invoice_id ? (
                                             <Link
                                                 href={
-                                                    invoiceShow(
-                                                        inv.invoice_id,
-                                                    ).url
+                                                    invoiceShow(inv.invoice_id)
+                                                        .url
                                                 }
                                                 className="text-primary hover:underline"
                                             >

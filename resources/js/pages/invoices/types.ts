@@ -3,6 +3,7 @@ import type { PaymentStatus } from '@/components/payment-status-badge';
 import type { Paginated } from '@/types/pagination';
 
 export type ResponsabilStep = {
+    approval_id: number | null;
     department_id: number;
     department_name: string;
     approved: boolean;
@@ -11,11 +12,26 @@ export type ResponsabilStep = {
 };
 
 export type OrdonatorApproval = {
+    approval_id: number;
     department_id: number;
     department_name: string | null;
     approved_by: { id: number; name: string } | null;
     approved_at: string | null;
 } | null;
+
+export type TimelineEvent = {
+    id: number;
+    type:
+        | 'approved'
+        | 'approval_revoked'
+        | 'commented'
+        | 'payment_status_changed';
+    body: string | null;
+    payload: Record<string, unknown> | null;
+    created_at: string;
+    user: { id: number; name: string } | null;
+    department: { id: number; name: string; type: string } | null;
+};
 
 export type Approval = {
     needs_approval: boolean;
@@ -80,8 +96,10 @@ export type IndexFilters = {
 
 export type CurrentUser = {
     id: number | null;
+    name?: string | null;
     responsabil_department_ids: number[];
     ordonator_department_ids: number[];
+    plati_department_ids: number[];
 };
 
 export type IndexProps = {
@@ -134,6 +152,7 @@ export type Invoice = {
     val_mon_tva: number;
     val_mon_paid: number;
     payment_status: PaymentStatus;
+    payment_status_updated_at: string | null;
     data_scadenta: string | null;
     data_inchidere: string | null;
     emitent: string | null;
@@ -151,4 +170,12 @@ export type Invoice = {
     details: Detail[];
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
+    approval: Approval;
+    timeline: TimelineEvent[];
+};
+
+export type ShowProps = {
+    invoice: Invoice;
+    activeCompany: { id: number; name: string };
+    currentUser: CurrentUser;
 };

@@ -35,6 +35,9 @@ Route::middleware('auth')->group(function () {
     Route::post('invoices/received/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::post('invoices/{invoice}/approve', [InvoiceController::class, 'approve'])->name('invoices.approve');
+    Route::post('invoices/{invoice}/approvals/{approval}/revoke', [InvoiceController::class, 'revokeApproval'])->name('invoices.approvals.revoke');
+    Route::post('invoices/{invoice}/comments', [InvoiceController::class, 'comment'])->name('invoices.comments.store');
+    Route::post('invoices/{invoice}/payment-status', [InvoiceController::class, 'updatePaymentStatus'])->name('invoices.payment-status.update');
 
     Route::post('payments/bt/prepare', [PaymentExportController::class, 'btPrepare'])->name('payments.bt.prepare');
     Route::post('payments/bt/download', [PaymentExportController::class, 'btDownload'])->name('payments.bt.download');

@@ -109,6 +109,7 @@ function formatLei(value: number): string {
     if (Math.abs(value) < 0.005) {
         return '—';
     }
+
     return new Intl.NumberFormat('ro-RO', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
@@ -116,8 +117,12 @@ function formatLei(value: number): string {
 }
 
 function formatLeiSigned(value: number): string {
-    if (Math.abs(value) < 0.005) return '0';
+    if (Math.abs(value) < 0.005) {
+return '0';
+}
+
     const sign = value > 0 ? '+' : '';
+
     return (
         sign +
         new Intl.NumberFormat('ro-RO', {
@@ -135,7 +140,10 @@ function formatLeiPrecise(value: number): string {
 }
 
 function deltaPct(current: number, previous: number): number | null {
-    if (Math.abs(previous) < 0.005) return null;
+    if (Math.abs(previous) < 0.005) {
+return null;
+}
+
     return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
@@ -155,7 +163,9 @@ function DeltaBadge({
     const hasCurrent = Math.abs(current) >= 0.005;
     const hasPrev = Math.abs(previous) >= 0.005;
 
-    if (!hasCurrent && !hasPrev) return null;
+    if (!hasCurrent && !hasPrev) {
+return null;
+}
 
     let iconColor = 'text-muted-foreground/50';
     let Icon = Minus;
@@ -224,18 +234,23 @@ function buildInvoicesHref(
     const url = opexInvoicesRoute(companyId).url;
     const params = new URLSearchParams();
     params.set('year', String(year));
+
     if (sediu !== null && sediu !== undefined) {
         params.set('sediu', sediu);
     }
+
     if (categoryLabel) {
         params.set('category_label', categoryLabel);
     }
+
     if (month !== null) {
         params.set('month', String(month));
     }
+
     for (const leaf of leaves) {
         params.append('leaves[]', leaf);
     }
+
     return `${url}?${params.toString()}`;
 }
 
@@ -247,25 +262,30 @@ export default function OpExIndex({ companies, filters, report }: Props) {
 
     const yearOptions = useMemo(() => {
         const current = new Date().getFullYear();
+
         return [current + 1, current, current - 1, current - 2, current - 3];
     }, []);
 
     const toggle = (node: OpExNode) => {
         const code = node.code;
         const next = new Set(expanded);
+
         if (next.has(code)) {
             next.delete(code);
         } else {
             next.add(code);
         }
+
         setExpanded(next);
     };
 
     const apply = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
+
         if (merged.compare_year === merged.year) {
             merged.compare_year = null;
         }
+
         router.get(
             opexIndex().url,
             {
@@ -278,7 +298,10 @@ export default function OpExIndex({ companies, filters, report }: Props) {
     };
 
     const refresh = () => {
-        if (!filters.company_id) return;
+        if (!filters.company_id) {
+return;
+}
+
         router.post(
             opexRefreshRoute(filters.company_id).url,
             { year: filters.year },
@@ -344,10 +367,7 @@ export default function OpExIndex({ companies, filters, report }: Props) {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {yearOptions.map((y) => (
-                                        <SelectItem
-                                            key={y}
-                                            value={String(y)}
-                                        >
+                                        <SelectItem key={y} value={String(y)}>
                                             {y}
                                         </SelectItem>
                                     ))}
@@ -398,8 +418,7 @@ export default function OpExIndex({ companies, filters, report }: Props) {
                                     size="sm"
                                     value={compareMode}
                                     onValueChange={(v) =>
-                                        v &&
-                                        setCompareMode(v as CompareMode)
+                                        v && setCompareMode(v as CompareMode)
                                     }
                                     className="min-h-11"
                                 >
@@ -582,6 +601,7 @@ export default function OpExIndex({ companies, filters, report }: Props) {
                                                           month
                                                       ] ?? 0)
                                                     : 0;
+
                                                 return (
                                                     <TableCell
                                                         key={i}
@@ -672,8 +692,7 @@ function TreeRow({
 }) {
     const isOpen = expanded.has(node.code);
     const hasChildren = node.children.length > 0;
-    const canDrillDown =
-        !!companyId && node.drilldown_leaves.length > 0;
+    const canDrillDown = !!companyId && node.drilldown_leaves.length > 0;
 
     const categoryLabel = node.is_leaf_for_drilldown
         ? parentLabel
@@ -682,7 +701,10 @@ function TreeRow({
         : node.label;
 
     const cellHref = (month: number | null): string | null => {
-        if (!canDrillDown || !companyId) return null;
+        if (!canDrillDown || !companyId) {
+return null;
+}
+
         return buildInvoicesHref(
             companyId,
             year,
@@ -711,9 +733,7 @@ function TreeRow({
                                 type="button"
                                 onClick={() => toggle(node)}
                                 className="inline-flex size-5 items-center justify-center rounded hover:bg-muted"
-                                aria-label={
-                                    isOpen ? 'Restrânge' : 'Expandează'
-                                }
+                                aria-label={isOpen ? 'Restrânge' : 'Expandează'}
                             >
                                 {isOpen ? (
                                     <ChevronDown className="size-4" />
@@ -727,7 +747,7 @@ function TreeRow({
                         <span
                             className={cn(
                                 'truncate',
-                                depth === 0 && 'uppercase tracking-wide',
+                                depth === 0 && 'tracking-wide uppercase',
                             )}
                             title={node.label}
                         >
@@ -745,10 +765,7 @@ function TreeRow({
                     const href = hasValue ? cellHref(m) : null;
 
                     return (
-                        <TableCell
-                            key={m}
-                            className="text-right tabular-nums"
-                        >
+                        <TableCell key={m} className="text-right tabular-nums">
                             {href ? (
                                 <a
                                     href={href}
@@ -801,6 +818,7 @@ function TreeRow({
                                 )}
                             </>
                         );
+
                         return href ? (
                             <a
                                 href={href}

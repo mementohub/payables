@@ -50,7 +50,8 @@
       "mcp__laravel-boost__database-connections",
       "Bash(grep -n \"EINVOICE\\\\|^$\" /Users/ciungulete/Sites/payables/.env.example)",
       "Read(//private/tmp/bt_xlsx/xl/worksheets/**)",
-      "Read(//private/tmp/bt_xlsx/xl/**)"
+      "Read(//private/tmp/bt_xlsx/xl/**)",
+      "mcp__laravel-boost__search-docs"
     ]
   },
   "enableAllProjectMcpServers": true,

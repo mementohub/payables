@@ -33,8 +33,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import {
     clienti as clientiRoute,
     furnizori as furnizoriRoute,
@@ -88,7 +88,8 @@ function DepartmentMultiSelect({
         selected.length === 0
             ? 'Toate departamentele'
             : selected.length === 1
-              ? (options.find((o) => o.id === selected[0])?.name ?? '1 selectat')
+              ? (options.find((o) => o.id === selected[0])?.name ??
+                '1 selectat')
               : `${selected.length} selectate`;
 
     return (
@@ -115,6 +116,7 @@ function DepartmentMultiSelect({
                                     const isSelected = selected.includes(
                                         dept.id,
                                     );
+
                                     return (
                                         <CommandItem
                                             key={dept.id}

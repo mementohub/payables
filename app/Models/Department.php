@@ -12,7 +12,9 @@ class Department extends Model
 
     public const TYPE_ORDONATOR = 'ordonator';
 
-    public const TYPES = [self::TYPE_RESPONSABIL, self::TYPE_ORDONATOR];
+    public const TYPE_PLATI = 'plati';
+
+    public const TYPES = [self::TYPE_RESPONSABIL, self::TYPE_ORDONATOR, self::TYPE_PLATI];
 
     protected $guarded = [];
 
@@ -34,5 +36,10 @@ class Department extends Model
     public function scopeOrdonatori(Builder $query): Builder
     {
         return $query->where('type', self::TYPE_ORDONATOR);
+    }
+
+    public function scopePlati(Builder $query): Builder
+    {
+        return $query->where('type', self::TYPE_PLATI);
     }
 }

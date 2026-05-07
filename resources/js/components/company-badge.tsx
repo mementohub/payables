@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils';
 import { companyColor } from '@/lib/company-color';
+import { cn } from '@/lib/utils';
 
 type Props = {
     id: number | null | undefined;
@@ -8,7 +8,12 @@ type Props = {
     size?: 'sm' | 'md';
 };
 
-export default function CompanyBadge({ id, name, className, size = 'sm' }: Props) {
+export default function CompanyBadge({
+    id,
+    name,
+    className,
+    size = 'sm',
+}: Props) {
     const color = companyColor(id);
 
     return (

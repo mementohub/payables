@@ -1,9 +1,6 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { Check, ChevronDown, Download, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { BtLogo } from '@/components/icons/bt-logo';
-import { BtPaymentDialog } from './bt-payment-dialog';
-import type { BtPrepareRequest } from './bt-payment-dialog';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
 import CompanyBadge from '@/components/company-badge';
@@ -14,6 +11,7 @@ import {
     filterInputClass,
     filterTriggerClass,
 } from '@/components/filter-field';
+import { BtLogo } from '@/components/icons/bt-logo';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import {
@@ -54,6 +52,8 @@ import {
 import { exportMethod as exportEmise } from '@/routes/invoices/emise';
 import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
 import { show as partnersShow } from '@/routes/partners';
+import type { BtPrepareRequest } from './bt-payment-dialog';
+import { BtPaymentDialog } from './bt-payment-dialog';
 import type {
     Approval,
     CurrentUser,
@@ -200,7 +200,10 @@ export default function InvoicesIndex({
     const selection = useTableSelection(invoices.data, invoices.total);
 
     const eligibleBtIdsOnPage = useMemo(() => {
-        if (!isPrimite) return [];
+        if (!isPrimite) {
+return [];
+}
+
         return invoices.data
             .filter(
                 (i) =>
@@ -880,7 +883,9 @@ function ApproveActions({
         const pendingStep = approval.responsabil_steps.find(
             (s) =>
                 !s.approved &&
-                currentUser.responsabil_department_ids.includes(s.department_id),
+                currentUser.responsabil_department_ids.includes(
+                    s.department_id,
+                ),
         );
 
         if (pendingStep) {

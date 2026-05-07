@@ -23,6 +23,18 @@ class Invoice extends Model
 
     protected $guarded = [];
 
+    public const PAYMENT_UNPAID = 'unpaid';
+
+    public const PAYMENT_PARTIAL = 'partial';
+
+    public const PAYMENT_PAID = 'paid';
+
+    public const PAYMENT_STATUSES = [
+        self::PAYMENT_UNPAID,
+        self::PAYMENT_PARTIAL,
+        self::PAYMENT_PAID,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -38,23 +50,8 @@ class Invoice extends Model
             'responsabili_approved_at' => 'datetime',
             'is_fully_approved' => 'boolean',
             'fully_approved_at' => 'datetime',
+            'payment_status_updated_at' => 'datetime',
         ];
-    }
-
-    public function getPaymentStatusAttribute(): string
-    {
-        $total = (float) $this->val_mon;
-        $paid = (float) $this->val_mon_paid;
-
-        if ($paid <= 0.009) {
-            return 'unpaid';
-        }
-
-        if ($paid + 0.01 >= $total) {
-            return 'paid';
-        }
-
-        return 'partial';
     }
 
     public function company(): BelongsTo
@@ -80,6 +77,16 @@ class Invoice extends Model
     public function approvals(): HasMany
     {
         return $this->hasMany(InvoiceApproval::class);
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(InvoiceEvent::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(InvoiceEvent::class)->where('type', InvoiceEvent::TYPE_COMMENTED);
     }
 
     public function sourceCompany(): BelongsTo

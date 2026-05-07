@@ -5,6 +5,7 @@ namespace App\Services\Invoices;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceApproval;
+use App\Models\InvoiceEvent;
 use App\Services\SyncService;
 
 class InvoicePresenter
@@ -291,7 +292,9 @@ class InvoicePresenter
     {
         $responsabilDepts = $invoice->partner?->responsabilDepartments ?? collect();
 
-        $responsabilApprovalsByDept = $invoice->approvals
+        $activeApprovals = $invoice->approvals->whereNull('revoked_at');
+
+        $responsabilApprovalsByDept = $activeApprovals
             ->where('role', InvoiceApproval::ROLE_RESPONSABIL)
             ->keyBy('department_id');
 
@@ -299,6 +302,7 @@ class InvoicePresenter
             $approval = $responsabilApprovalsByDept->get($dept->id);
 
             return [
+                'approval_id' => $approval?->id,
                 'department_id' => $dept->id,
                 'department_name' => $dept->name,
                 'approved' => (bool) $approval,
@@ -310,7 +314,7 @@ class InvoicePresenter
             ];
         })->values();
 
-        $ordonatorApproval = $invoice->approvals->firstWhere('role', InvoiceApproval::ROLE_ORDONATOR);
+        $ordonatorApproval = $activeApprovals->firstWhere('role', InvoiceApproval::ROLE_ORDONATOR);
         $needsApproval = $responsabilDepts->isNotEmpty();
 
         return [
@@ -321,6 +325,7 @@ class InvoicePresenter
             'fully_approved_at' => $invoice->fully_approved_at?->toIso8601String(),
             'responsabil_steps' => $responsabilSteps,
             'ordonator' => $ordonatorApproval ? [
+                'approval_id' => $ordonatorApproval->id,
                 'department_id' => $ordonatorApproval->department_id,
                 'department_name' => $ordonatorApproval->department?->name,
                 'approved_by' => $ordonatorApproval->user ? [
@@ -330,6 +335,33 @@ class InvoicePresenter
                 'approved_at' => $ordonatorApproval->approved_at?->toIso8601String(),
             ] : null,
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function timelinePayload(Invoice $invoice): array
+    {
+        if (! $invoice->relationLoaded('events')) {
+            return [];
+        }
+
+        return $invoice->events->map(fn (InvoiceEvent $event) => [
+            'id' => $event->id,
+            'type' => $event->type,
+            'body' => $event->body,
+            'payload' => $event->payload,
+            'created_at' => $event->created_at?->toIso8601String(),
+            'user' => $event->user ? [
+                'id' => $event->user->id,
+                'name' => $event->user->name,
+            ] : null,
+            'department' => $event->department ? [
+                'id' => $event->department->id,
+                'name' => $event->department->name,
+                'type' => $event->department->type,
+            ] : null,
+        ])->values()->all();
     }
 
     public function exportApprovalLabel(Invoice $invoice): string

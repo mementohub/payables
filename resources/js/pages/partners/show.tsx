@@ -51,11 +51,7 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
-import type {
-    InvoiceFilters,
-    MonthlyTotal,
-    ShowProps as Props,
-} from './types';
+import type { InvoiceFilters, MonthlyTotal, ShowProps as Props } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
@@ -100,7 +96,10 @@ export default function PartnerShow({
     };
 
     const switchRole = (next: 'furnizor' | 'client') => {
-        if (next === role) return;
+        if (next === role) {
+return;
+}
+
         router.get(
             partnerShow(partner.id).url,
             { role: next },
@@ -182,9 +181,7 @@ export default function PartnerShow({
                                             Facturi primite de la furnizor
                                         </p>
                                     </div>
-                                    <Badge variant="secondary">
-                                        Furnizor
-                                    </Badge>
+                                    <Badge variant="secondary">Furnizor</Badge>
                                 </header>
                                 <StatsCards stats={statsFurnizor} compact />
                                 {monthlyFurnizor && (
@@ -796,6 +793,7 @@ function StatsCards({
                                           (t.val_mon_paid / t.val_mon) * 100,
                                       )
                                     : 0;
+
                             return (
                                 <div
                                     key={t.moneda ?? '—'}
@@ -888,12 +886,14 @@ function MonthlyChart({
 }) {
     const currencies = useMemo(() => {
         const tally = new Map<string, number>();
+
         for (const m of data) {
             for (const t of m.totals) {
                 const key = t.moneda ?? '—';
                 tally.set(key, (tally.get(key) ?? 0) + t.total);
             }
         }
+
         return Array.from(tally.entries())
             .sort((a, b) => b[1] - a[1])
             .map(([code]) => code);
@@ -907,6 +907,7 @@ function MonthlyChart({
                 const match = m.totals.find(
                     (t) => (t.moneda ?? '—') === currency,
                 );
+
                 return {
                     label: m.label,
                     month: m.month,
@@ -996,6 +997,7 @@ function MonthlyChart({
                                                 total: number;
                                                 count: number;
                                             };
+
                                             return (
                                                 <div className="flex min-w-[180px] flex-col">
                                                     <span className="text-muted-foreground">

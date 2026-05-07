@@ -133,6 +133,7 @@ export function BtPaymentDialog({
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}`);
                 }
+
                 return (await res.json()) as BtPreparePayload;
             })
             .then((payload) => {
@@ -210,11 +211,13 @@ export function BtPaymentDialog({
     const toggleRow = (invoiceId: number) => {
         setIncludedIds((prev) => {
             const next = new Set(prev);
+
             if (next.has(invoiceId)) {
                 next.delete(invoiceId);
             } else {
                 next.add(invoiceId);
             }
+
             return next;
         });
     };
@@ -242,13 +245,20 @@ export function BtPaymentDialog({
         const csrf = document.querySelector<HTMLMetaElement>(
             'meta[name="csrf-token"]',
         )?.content;
-        if (csrf) appendInput(form, '_token', csrf);
+
+        if (csrf) {
+appendInput(form, '_token', csrf);
+}
 
         appendInput(form, 'source_account', sourceAccount.iban);
 
         includedRows.forEach((row, idx) => {
             const prefix = `rows[${idx}]`;
-            appendInput(form, `${prefix}[beneficiary_name]`, row.beneficiary_name);
+            appendInput(
+                form,
+                `${prefix}[beneficiary_name]`,
+                row.beneficiary_name,
+            );
             appendInput(
                 form,
                 `${prefix}[target_account_number]`,
@@ -293,389 +303,420 @@ export function BtPaymentDialog({
                 </DialogHeader>
 
                 <div className="max-h-[calc(90vh-9rem)] overflow-y-auto px-6 py-4">
-
-                {loading && (
-                    <div className="flex items-center justify-center py-10">
-                        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                    </div>
-                )}
-
-                {error && (
-                    <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                        {error}
-                    </div>
-                )}
-
-                {data && !loading && (
-                    <div className="flex flex-col gap-4">
-                        {data.invoices_skipped > 0 && (
-                            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/30">
-                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                                <span>
-                                    {data.invoices_skipped} factur
-                                    {data.invoices_skipped === 1 ? 'ă' : 'i'}{' '}
-                                    nu sunt complet aprobate (bun de plată) și
-                                    au fost ignorate.
-                                </span>
-                            </div>
-                        )}
-
-                        {data.truncated && (
-                            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/30">
-                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                                <span>
-                                    Limită {data.limit} rânduri pe export.
-                                    Restrânge filtrul ca să incluzi tot.
-                                </span>
-                            </div>
-                        )}
-
-                        <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-                            <div>
-                                <Label className="text-xs uppercase text-muted-foreground">
-                                    Cont sursă plată
-                                </Label>
-                                <Select
-                                    value={sourceAccountId}
-                                    onValueChange={setSourceAccountId}
-                                >
-                                    <SelectTrigger className="mt-1 min-h-11">
-                                        <SelectValue placeholder="Alege contul…" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {data.company_accounts.length === 0 && (
-                                            <SelectItem value="none" disabled>
-                                                Nicio companie sincronizată cu
-                                                conturi
-                                            </SelectItem>
-                                        )}
-                                        {data.company_accounts.map((a) => (
-                                            <SelectItem
-                                                key={a.id}
-                                                value={String(a.id)}
-                                            >
-                                                {a.iban} · {a.currency}
-                                                {a.bank ? ` · ${a.bank}` : ''}
-                                                {a.is_default
-                                                    ? ' · implicit'
-                                                    : ''}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                                Companie:{' '}
-                                <span className="font-medium text-foreground">
-                                    {data.company.name}
-                                </span>
-                            </div>
+                    {loading && (
+                        <div className="flex items-center justify-center py-10">
+                            <Loader2 className="size-6 animate-spin text-muted-foreground" />
                         </div>
+                    )}
 
-                        <div className="overflow-x-auto rounded-md border">
-                            <table className="w-full text-xs">
-                                <thead className="bg-muted/50 text-left text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="w-8 px-2 py-2"></th>
-                                        <th className="px-2 py-2">Beneficiar</th>
-                                        <th className="px-2 py-2">CUI</th>
-                                        <th className="px-2 py-2">IBAN</th>
-                                        <th className="px-2 py-2">BIC</th>
-                                        <th className="px-2 py-2 text-right">
-                                            Sumă
-                                        </th>
-                                        <th className="px-2 py-2">Detalii 1</th>
-                                        <th className="px-2 py-2">Detalii 2</th>
-                                        <th className="px-2 py-2">Dată val.</th>
-                                        <th className="px-2 py-2">Urgent</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {rows.map((row) => {
-                                        const included = includedIds.has(
-                                            row.invoice_id,
-                                        );
-                                        const ibanOptions =
-                                            row.supplier_accounts;
+                    {error && (
+                        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                            {error}
+                        </div>
+                    )}
 
-                                        return (
-                                            <tr
-                                                key={row.invoice_id}
-                                                className={
-                                                    included
-                                                        ? ''
-                                                        : 'opacity-50'
-                                                }
-                                            >
-                                                <td className="px-2 py-1.5">
-                                                    <Checkbox
-                                                        checked={included}
-                                                        onCheckedChange={() =>
-                                                            toggleRow(
-                                                                row.invoice_id,
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        className="h-8 min-w-[180px]"
-                                                        value={
-                                                            row.beneficiary_name
-                                                        }
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    beneficiary_name:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        className="h-8 w-[110px]"
-                                                        value={
-                                                            row.beneficiary_fiscal_code
-                                                        }
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    beneficiary_fiscal_code:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    {ibanOptions.length > 1 ? (
-                                                        <Select
-                                                            value={
-                                                                row.target_account_number ??
-                                                                ''
-                                                            }
-                                                            onValueChange={(
-                                                                v,
-                                                            ) => {
-                                                                const sel =
-                                                                    ibanOptions.find(
-                                                                        (a) =>
-                                                                            a.iban ===
-                                                                            v,
-                                                                    );
-                                                                updateRow(
+                    {data && !loading && (
+                        <div className="flex flex-col gap-4">
+                            {data.invoices_skipped > 0 && (
+                                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/30">
+                                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                                    <span>
+                                        {data.invoices_skipped} factur
+                                        {data.invoices_skipped === 1
+                                            ? 'ă'
+                                            : 'i'}{' '}
+                                        nu sunt complet aprobate (bun de plată)
+                                        și au fost ignorate.
+                                    </span>
+                                </div>
+                            )}
+
+                            {data.truncated && (
+                                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/30">
+                                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                                    <span>
+                                        Limită {data.limit} rânduri pe export.
+                                        Restrânge filtrul ca să incluzi tot.
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+                                <div>
+                                    <Label className="text-xs text-muted-foreground uppercase">
+                                        Cont sursă plată
+                                    </Label>
+                                    <Select
+                                        value={sourceAccountId}
+                                        onValueChange={setSourceAccountId}
+                                    >
+                                        <SelectTrigger className="mt-1 min-h-11">
+                                            <SelectValue placeholder="Alege contul…" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {data.company_accounts.length ===
+                                                0 && (
+                                                <SelectItem
+                                                    value="none"
+                                                    disabled
+                                                >
+                                                    Nicio companie sincronizată
+                                                    cu conturi
+                                                </SelectItem>
+                                            )}
+                                            {data.company_accounts.map((a) => (
+                                                <SelectItem
+                                                    key={a.id}
+                                                    value={String(a.id)}
+                                                >
+                                                    {a.iban} · {a.currency}
+                                                    {a.bank
+                                                        ? ` · ${a.bank}`
+                                                        : ''}
+                                                    {a.is_default
+                                                        ? ' · implicit'
+                                                        : ''}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    Companie:{' '}
+                                    <span className="font-medium text-foreground">
+                                        {data.company.name}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-md border">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-muted/50 text-left text-muted-foreground uppercase">
+                                        <tr>
+                                            <th className="w-8 px-2 py-2"></th>
+                                            <th className="px-2 py-2">
+                                                Beneficiar
+                                            </th>
+                                            <th className="px-2 py-2">CUI</th>
+                                            <th className="px-2 py-2">IBAN</th>
+                                            <th className="px-2 py-2">BIC</th>
+                                            <th className="px-2 py-2 text-right">
+                                                Sumă
+                                            </th>
+                                            <th className="px-2 py-2">
+                                                Detalii 1
+                                            </th>
+                                            <th className="px-2 py-2">
+                                                Detalii 2
+                                            </th>
+                                            <th className="px-2 py-2">
+                                                Dată val.
+                                            </th>
+                                            <th className="px-2 py-2">
+                                                Urgent
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {rows.map((row) => {
+                                            const included = includedIds.has(
+                                                row.invoice_id,
+                                            );
+                                            const ibanOptions =
+                                                row.supplier_accounts;
+
+                                            return (
+                                                <tr
+                                                    key={row.invoice_id}
+                                                    className={
+                                                        included
+                                                            ? ''
+                                                            : 'opacity-50'
+                                                    }
+                                                >
+                                                    <td className="px-2 py-1.5">
+                                                        <Checkbox
+                                                            checked={included}
+                                                            onCheckedChange={() =>
+                                                                toggleRow(
                                                                     row.invoice_id,
-                                                                    {
-                                                                        target_account_number:
-                                                                            v,
-                                                                        beneficiary_bank_bic:
-                                                                            formatBic(
-                                                                                sel?.swift,
-                                                                                sel?.bic,
-                                                                            ),
-                                                                    },
-                                                                );
-                                                            }}
-                                                        >
-                                                            <SelectTrigger className="h-8 min-w-[260px]">
-                                                                <SelectValue placeholder="—" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {ibanOptions.map(
-                                                                    (a) => (
-                                                                        <SelectItem
-                                                                            key={
-                                                                                a.iban
-                                                                            }
-                                                                            value={
-                                                                                a.iban
-                                                                            }
-                                                                        >
-                                                                            {
-                                                                                a.iban
-                                                                            }{' '}
-                                                                            ·{' '}
-                                                                            {
-                                                                                a.currency
-                                                                            }
-                                                                            {a.is_default
-                                                                                ? ' · implicit'
-                                                                                : ''}
-                                                                        </SelectItem>
-                                                                    ),
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    ) : (
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
                                                         <Input
-                                                            className="h-8 min-w-[260px]"
+                                                            className="h-8 min-w-[180px]"
                                                             value={
-                                                                row.target_account_number ??
-                                                                ''
+                                                                row.beneficiary_name
                                                             }
                                                             onChange={(e) =>
                                                                 updateRow(
                                                                     row.invoice_id,
                                                                     {
-                                                                        target_account_number:
+                                                                        beneficiary_name:
                                                                             e
                                                                                 .target
                                                                                 .value,
                                                                     },
                                                                 )
                                                             }
-                                                            placeholder={
-                                                                row.warnings
-                                                                    .length > 0
-                                                                    ? row
-                                                                          .warnings[0]
-                                                                    : ''
-                                                            }
                                                         />
-                                                    )}
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        className="h-8 w-[110px]"
-                                                        value={
-                                                            row.beneficiary_bank_bic ??
-                                                            ''
-                                                        }
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    beneficiary_bank_bic:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5 text-right tabular-nums">
-                                                    <Input
-                                                        type="number"
-                                                        step="0.01"
-                                                        className="h-8 w-[110px] text-right"
-                                                        value={row.amount}
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    amount:
-                                                                        Number(
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            className="h-8 w-[110px]"
+                                                            value={
+                                                                row.beneficiary_fiscal_code
+                                                            }
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        beneficiary_fiscal_code:
                                                                             e
                                                                                 .target
                                                                                 .value,
-                                                                        ) || 0,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        className="h-8 min-w-[140px]"
-                                                        value={row.payment_ref_1}
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    payment_ref_1:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        className="h-8 min-w-[140px]"
-                                                        value={row.payment_ref_2}
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    payment_ref_2:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Input
-                                                        type="date"
-                                                        className="h-8 w-[140px]"
-                                                        value={row.value_date}
-                                                        onChange={(e) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    value_date:
-                                                                        e.target
-                                                                            .value,
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                                <td className="px-2 py-1.5">
-                                                    <Select
-                                                        value={row.urgent}
-                                                        onValueChange={(v) =>
-                                                            updateRow(
-                                                                row.invoice_id,
-                                                                {
-                                                                    urgent:
-                                                                        v as
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        {ibanOptions.length >
+                                                        1 ? (
+                                                            <Select
+                                                                value={
+                                                                    row.target_account_number ??
+                                                                    ''
+                                                                }
+                                                                onValueChange={(
+                                                                    v,
+                                                                ) => {
+                                                                    const sel =
+                                                                        ibanOptions.find(
+                                                                            (
+                                                                                a,
+                                                                            ) =>
+                                                                                a.iban ===
+                                                                                v,
+                                                                        );
+                                                                    updateRow(
+                                                                        row.invoice_id,
+                                                                        {
+                                                                            target_account_number:
+                                                                                v,
+                                                                            beneficiary_bank_bic:
+                                                                                formatBic(
+                                                                                    sel?.swift,
+                                                                                    sel?.bic,
+                                                                                ),
+                                                                        },
+                                                                    );
+                                                                }}
+                                                            >
+                                                                <SelectTrigger className="h-8 min-w-[260px]">
+                                                                    <SelectValue placeholder="—" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {ibanOptions.map(
+                                                                        (a) => (
+                                                                            <SelectItem
+                                                                                key={
+                                                                                    a.iban
+                                                                                }
+                                                                                value={
+                                                                                    a.iban
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    a.iban
+                                                                                }{' '}
+                                                                                ·{' '}
+                                                                                {
+                                                                                    a.currency
+                                                                                }
+                                                                                {a.is_default
+                                                                                    ? ' · implicit'
+                                                                                    : ''}
+                                                                            </SelectItem>
+                                                                        ),
+                                                                    )}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        ) : (
+                                                            <Input
+                                                                className="h-8 min-w-[260px]"
+                                                                value={
+                                                                    row.target_account_number ??
+                                                                    ''
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateRow(
+                                                                        row.invoice_id,
+                                                                        {
+                                                                            target_account_number:
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                        },
+                                                                    )
+                                                                }
+                                                                placeholder={
+                                                                    row.warnings
+                                                                        .length >
+                                                                    0
+                                                                        ? row
+                                                                              .warnings[0]
+                                                                        : ''
+                                                                }
+                                                            />
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            className="h-8 w-[110px]"
+                                                            value={
+                                                                row.beneficiary_bank_bic ??
+                                                                ''
+                                                            }
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        beneficiary_bank_bic:
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-right tabular-nums">
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            className="h-8 w-[110px] text-right"
+                                                            value={row.amount}
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        amount:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ) ||
+                                                                            0,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            className="h-8 min-w-[140px]"
+                                                            value={
+                                                                row.payment_ref_1
+                                                            }
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        payment_ref_1:
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            className="h-8 min-w-[140px]"
+                                                            value={
+                                                                row.payment_ref_2
+                                                            }
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        payment_ref_2:
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            type="date"
+                                                            className="h-8 w-[140px]"
+                                                            value={
+                                                                row.value_date
+                                                            }
+                                                            onChange={(e) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        value_date:
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                    },
+                                                                )
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Select
+                                                            value={row.urgent}
+                                                            onValueChange={(
+                                                                v,
+                                                            ) =>
+                                                                updateRow(
+                                                                    row.invoice_id,
+                                                                    {
+                                                                        urgent: v as
                                                                             | 'F'
                                                                             | 'T',
-                                                                },
-                                                            )
-                                                        }
-                                                    >
-                                                        <SelectTrigger className="h-8 w-[70px]">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="F">
-                                                                F
-                                                            </SelectItem>
-                                                            <SelectItem value="T">
-                                                                T
-                                                            </SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                                    },
+                                                                )
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="h-8 w-[70px]">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="F">
+                                                                    F
+                                                                </SelectItem>
+                                                                <SelectItem value="T">
+                                                                    T
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                )}
-
+                    )}
                 </div>
 
                 <DialogFooter className="border-t px-6 py-4">
                     <Button variant="ghost" onClick={() => onOpenChange(false)}>
                         Anulează
                     </Button>
-                    <Button
-                        onClick={handleDownload}
-                        disabled={!canDownload}
-                    >
+                    <Button onClick={handleDownload} disabled={!canDownload}>
                         <Download className="size-4" />
                         Descarcă xlsx ({includedRows.length})
                     </Button>
@@ -700,14 +741,23 @@ function pickDominantCurrency(rows: BtRow[]): string | null {
             pick = currency;
         }
     });
+
     return pick;
 }
 
-function formatBic(swift?: string | null, bicShort?: string | null): string | null {
+function formatBic(
+    swift?: string | null,
+    bicShort?: string | null,
+): string | null {
     const s = (swift ?? '').trim();
     const b = (bicShort ?? '').trim();
-    if (!s && !b) return null;
+
+    if (!s && !b) {
+return null;
+}
+
     const base = s || b;
+
     return base.length === 8 ? `${base}XXX` : base;
 }
 
