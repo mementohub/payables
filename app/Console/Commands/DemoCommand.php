@@ -2,11 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\SeedDemoActivityJob;
 use App\Jobs\SyncCompanyDayJob;
 use App\Models\Company;
-use App\Models\Department;
-use App\Models\Partner;
-use App\Services\Demo\SeedDemoActivity;
+use Illuminate\Bus\Batch;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -14,37 +13,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 #[Signature('app:demo {--from=2026-01-01 : Sync start date} {--to= : Sync end date (defaults to today)}')]
-#[Description('Bootstrap a demo environment: seed companies from omc.json, sync history, and attach demo furnizori to departments.')]
+#[Description('Bootstrap a demo environment: seed companies from omc.json, dispatch the sync batch, and queue the demo activity seeding to run after the batch completes.')]
 class DemoCommand extends Command
 {
-    /**
-     * @var array<string, array<int, string>>
-     */
-    private const DEPARTMENT_PARTNERS = [
-        'Turism Intern' => [
-            '7082954',
-            'RO15490210',
-            'RO27526695',
-        ],
-        'Ticketing' => [
-            'WIZZ AIR',
-            'RYANAIR',
-            'AMADEUS MARKETING ROMANIA SRL',
-            'RO8287958',
-            'RO41404510',
-        ],
-        'Bookings' => [
-            'EXPEDIA',
-            'HOTELBEDS',
-        ],
-        'Sediul Central' => [
-            'RO28909028',
-            'RO6562512',
-        ],
-    ];
-
     public function handle(): int
     {
         if (! $this->confirm('This will WIPE the local database and re-seed it. Continue?', false)) {
@@ -55,12 +29,15 @@ class DemoCommand extends Command
 
         $this->copyCompaniesFile();
         $this->freshDatabase();
-        $this->syncCompanies();
-        $this->attachPartnersToDepartments();
-        $this->seedDemoActivity();
+        $dispatched = $this->syncCompanies();
+
+        if (! $dispatched) {
+            $this->info('Sync skipped — dispatching demo activity seeding directly.');
+            SeedDemoActivityJob::dispatch();
+        }
 
         $this->newLine();
-        $this->info('Demo bootstrap complete.');
+        $this->info('Demo bootstrap dispatched. Watch progress in Horizon — partners and demo activity will seed automatically once the sync batch finishes.');
 
         return self::SUCCESS;
     }
@@ -97,7 +74,7 @@ class DemoCommand extends Command
         $this->info("Copied {$filename} → companies.json");
     }
 
-    private function syncCompanies(): void
+    private function syncCompanies(): bool
     {
         $from = Carbon::parse((string) $this->option('from'))->startOfDay();
         $to = $this->option('to')
@@ -107,7 +84,7 @@ class DemoCommand extends Command
         if ($from->greaterThan($to)) {
             $this->warn('Sync skipped: from date is after to date.');
 
-            return;
+            return false;
         }
 
         $companies = Company::all();
@@ -115,7 +92,7 @@ class DemoCommand extends Command
         if ($companies->isEmpty()) {
             $this->warn('No companies to sync.');
 
-            return;
+            return false;
         }
 
         $totalDays = $from->diffInDays($to) + 1;
@@ -130,97 +107,17 @@ class DemoCommand extends Command
         $this->info("Dispatching {$companies->count()} companies × {$totalDays} days = ".count($jobs)." jobs ({$from->toDateString()} → {$to->toDateString()})…");
         $this->warn('Horizon must be running on the `long` queue (php artisan horizon).');
 
-        $batch = Bus::batch($jobs)
+        Bus::batch($jobs)
             ->name('demo:sync')
             ->allowFailures()
+            ->then(function (Batch $batch): void {
+                SeedDemoActivityJob::dispatch();
+            })
+            ->catch(function (Batch $batch, Throwable $e): void {
+                SeedDemoActivityJob::dispatch();
+            })
             ->dispatch();
 
-        $bar = $this->output->createProgressBar($batch->totalJobs);
-        $bar->start();
-
-        while (! $batch->finished()) {
-            $batch = $batch->fresh();
-            $bar->setProgress($batch->processedJobs());
-            usleep(500_000);
-        }
-
-        $bar->setProgress($batch->processedJobs());
-        $bar->finish();
-        $this->newLine();
-
-        if ($batch->failedJobs > 0) {
-            $this->warn("{$batch->failedJobs} of {$batch->totalJobs} sync jobs failed — check Horizon.");
-        }
-    }
-
-    private function seedDemoActivity(): void
-    {
-        $this->info('Seeding demo approvals, payments and comments…');
-
-        $stats = app(SeedDemoActivity::class)->run();
-
-        $this->line("  • Invoices touched: {$stats['invoices']}");
-        $this->line("  • Approvals created: {$stats['approvals']}");
-        $this->line("  • Payment events: {$stats['payments']}");
-        $this->line("  • Comments seeded: {$stats['comments']}");
-    }
-
-    private function attachPartnersToDepartments(): void
-    {
-        $this->info('Attaching demo furnizori to departments…');
-
-        foreach (self::DEPARTMENT_PARTNERS as $departmentName => $identifiers) {
-            $department = Department::where('name', $departmentName)->first();
-
-            if ($department === null) {
-                $this->warn("  Department not found: {$departmentName}");
-
-                continue;
-            }
-
-            $partnerIds = $this->resolvePartnerIds($identifiers);
-
-            if (empty($partnerIds)) {
-                $this->warn("  No partners matched for {$departmentName}");
-
-                continue;
-            }
-
-            $department->partners()->syncWithoutDetaching($partnerIds);
-            $this->line("  • {$departmentName}: ".count($partnerIds).' partners attached');
-        }
-    }
-
-    /**
-     * @param  array<int, string>  $identifiers
-     * @return array<int, int>
-     */
-    private function resolvePartnerIds(array $identifiers): array
-    {
-        $ids = [];
-
-        foreach ($identifiers as $identifier) {
-            $digits = preg_replace('/\D+/', '', $identifier) ?? '';
-
-            $query = Partner::query()->where('is_furnizor', true);
-
-            if ($digits !== '' && mb_strlen($digits) >= 6) {
-                $query->where('cui', 'like', "%{$digits}%");
-            } else {
-                $query->where('name', 'like', "%{$identifier}%");
-            }
-
-            $matched = $query->pluck('id')->all();
-
-            if (empty($matched)) {
-                $this->warn("    No match for: {$identifier}");
-
-                continue;
-            }
-
-            $ids = array_merge($ids, $matched);
-        }
-
-        return array_values(array_unique($ids));
+        return true;
     }
 }
