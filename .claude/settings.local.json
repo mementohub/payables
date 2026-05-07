@@ -4,7 +4,8 @@
       "Bash(php artisan *)",
       "mcp__laravel-boost__database-query",
       "Bash(vendor/bin/pint --dirty --format agent)",
-      "Bash(grep -rn 'MatchInvoiceToEInvoice\\\\|matcher->find\\\\|->find\\($e' /Users/ciungulete/Sites/payables/tests)"
+      "Bash(grep -rn 'MatchInvoiceToEInvoice\\\\|matcher->find\\\\|->find\\($e' /Users/ciungulete/Sites/payables/tests)",
+      "Bash(npx tsc *)"
     ],
     "defaultMode": "bypassPermissions"
   },

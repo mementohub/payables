@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, Check, ChevronsUpDown, X } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, ChevronsUpDown, Inbox, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
@@ -429,13 +429,14 @@ export default function EInvoicesIndex({
                                         }
                                     />
                                 </th>
-                                <th className="px-4 py-3">Data primire</th>
-                                <th className="px-4 py-3">Data factură</th>
+                                <th className="px-4 py-3">Date</th>
                                 <th className="px-4 py-3">Număr</th>
                                 <th className="px-4 py-3">Furnizor</th>
                                 <th className="px-4 py-3">Departamente</th>
-                                <th className="px-4 py-3 text-right">Total</th>
+                                <th className="px-4 py-3 text-right">Fără TVA</th>
                                 <th className="px-4 py-3 text-right">TVA</th>
+                                <th className="px-4 py-3 text-right">Total</th>
+                                <th className="px-4 py-3">Mon.</th>
                                 <th className="px-4 py-3">Companie</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Factură asociată</th>
@@ -446,7 +447,7 @@ export default function EInvoicesIndex({
                                 <tr>
                                     <td
                                         className="px-4 py-6 text-center text-muted-foreground"
-                                        colSpan={11}
+                                        colSpan={12}
                                     >
                                         Nicio eFactură. Pornește o sincronizare
                                         din pagina Companii.
@@ -474,10 +475,22 @@ export default function EInvoicesIndex({
                                         />
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap">
-                                        {formatDateTime(row.msg_data_creare_d)}
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                                        {row.data_doc_xml ?? '—'}
+                                        <div className="flex flex-col gap-0.5 text-xs">
+                                            <span
+                                                className="inline-flex items-center gap-1.5"
+                                                title="Data factură"
+                                            >
+                                                <Calendar className="size-3.5 text-muted-foreground" />
+                                                {row.data_doc_xml ?? '—'}
+                                            </span>
+                                            <span
+                                                className="inline-flex items-center gap-1.5 text-muted-foreground"
+                                                title="Data primire"
+                                            >
+                                                <Inbox className="size-3.5" />
+                                                {formatDateTime(row.msg_data_creare_d)}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3 font-medium">
                                         <button
@@ -552,10 +565,20 @@ export default function EInvoicesIndex({
                                         )}
                                     </td>
                                     <td className="px-4 py-3 text-right tabular-nums">
-                                        {formatAmount(row.total_amount)}
+                                        {formatAmount(
+                                            row.total_amount !== null && row.total_vat !== null
+                                                ? row.total_amount - row.total_vat
+                                                : null,
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">
                                         {formatAmount(row.total_vat)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                                        {formatAmount(row.total_amount)}
+                                    </td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                                        {row.currency ?? '—'}
                                     </td>
                                     <td className="px-4 py-3">
                                         <CompanyBadge
@@ -654,9 +677,9 @@ export default function EInvoicesIndex({
                                 </div>
                                 <div>Data: {row.data_doc_xml ?? '—'}</div>
                                 <div>
-                                    Total: {formatAmount(row.total_amount)}
+                                    Total: {formatAmount(row.total_amount, row.currency)}
                                 </div>
-                                <div>TVA: {formatAmount(row.total_vat)}</div>
+                                <div>TVA: {formatAmount(row.total_vat, row.currency)}</div>
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2">
                                 {row.invoice ? (

@@ -82,7 +82,7 @@ class EInvoiceController extends Controller
         $rows = function () use ($query) {
             foreach ($query->lazy(500) as $row) {
                 yield [
-                    $row->msg_data_creare_d?->format('Y-m-d H:i') ?? '',
+                    $row->msg_data_creare_d?->toDateString() ?? '',
                     $row->data_doc_xml?->toDateString() ?? '',
                     $row->tip_doc_xml ?? '',
                     $row->nr_doc_xml ?? '',
@@ -282,7 +282,7 @@ class EInvoiceController extends Controller
             'msg_cif' => $row->msg_cif,
             'supplier_cui' => $row->supplier_cui,
             'msg_index_incarcare' => $row->msg_index_incarcare,
-            'msg_data_creare_d' => $row->msg_data_creare_d?->format('Y-m-d H:i'),
+            'msg_data_creare_d' => $row->msg_data_creare_d?->toDateString(),
             'data_doc_xml' => $row->data_doc_xml?->toDateString(),
             'tip_doc_xml' => $row->tip_doc_xml,
             'nr_doc_xml' => $row->nr_doc_xml,
