@@ -25,6 +25,7 @@ export type DepartmentRef = {
 export type MismatchInfo = {
     total: boolean;
     vat: boolean;
+    currency: boolean;
     any: boolean;
 };
 
@@ -41,6 +42,7 @@ export type EInvoiceRow = {
     cod_cci_xml: string | null;
     total_amount: number | null;
     total_vat: number | null;
+    currency: string | null;
     data_ins_omc: string | null;
     err_ins_omc: string | null;
     status: EFactStatus;

@@ -43,3 +43,37 @@ it('returns null for empty xml', function () {
     expect((new EInvoiceXmlParser)->extractSellerTaxId(null))->toBeNull();
     expect((new EInvoiceXmlParser)->extractSellerTaxId(''))->toBeNull();
 });
+
+it('extracts currency along with totals from UBL XML', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:ID>F123</cbc:ID>
+  <cbc:IssueDate>2026-02-09</cbc:IssueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyLegalEntity><cbc:RegistrationName>S</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyLegalEntity><cbc:RegistrationName>B</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>
+  <cac:LegalMonetaryTotal>
+    <cbc:TaxExclusiveAmount currencyID="EUR">100.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">119.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">119.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>
+XML;
+
+    $totals = (new EInvoiceXmlParser)->extractTotals($xml);
+
+    expect($totals['currency'])->toBe('EUR');
+    expect($totals)->toHaveKeys(['total_amount', 'total_vat', 'currency']);
+});
+
+it('returns null currency for empty xml', function () {
+    expect((new EInvoiceXmlParser)->extractTotals(null))->toMatchArray([
+        'total_amount' => null,
+        'total_vat' => null,
+        'currency' => null,
+    ]);
+});

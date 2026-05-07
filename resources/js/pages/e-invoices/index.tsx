@@ -1215,7 +1215,7 @@ function ComparisonCard({ row }: { row: EInvoiceRow }) {
                             'font-semibold text-amber-700 dark:text-amber-300',
                     )}
                 >
-                    {formatAmount(row.total_amount)}
+                    {formatAmount(row.total_amount, row.currency)}
                 </div>
                 <div className="text-center tabular-nums">
                     {formatAmount(row.invoice.val_mon, row.invoice.moneda)}
@@ -1229,30 +1229,48 @@ function ComparisonCard({ row }: { row: EInvoiceRow }) {
                             'font-semibold text-amber-700 dark:text-amber-300',
                     )}
                 >
-                    {formatAmount(row.total_vat)}
+                    {formatAmount(row.total_vat, row.currency)}
                 </div>
                 <div className="text-center tabular-nums">
-                    {formatAmount(row.invoice.val_mon_tva)}
+                    {formatAmount(row.invoice.val_mon_tva, row.invoice.moneda)}
                 </div>
 
-                {(totalDiff !== null || vatDiff !== null) &&
-                    row.mismatch.any && (
-                        <div className="col-span-3 mt-1 rounded border border-amber-500/40 bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                            {totalDiff !== null && row.mismatch.total && (
-                                <div>
-                                    Diferență total:{' '}
-                                    {totalDiff > 0 ? '+' : ''}
-                                    {totalDiff.toFixed(2)}
-                                </div>
-                            )}
-                            {vatDiff !== null && row.mismatch.vat && (
-                                <div>
-                                    Diferență TVA: {vatDiff > 0 ? '+' : ''}
-                                    {vatDiff.toFixed(2)}
-                                </div>
-                            )}
-                        </div>
+                <div className="text-muted-foreground">Monedă</div>
+                <div
+                    className={cn(
+                        'text-center',
+                        row.mismatch.currency &&
+                            'font-semibold text-amber-700 dark:text-amber-300',
                     )}
+                >
+                    {row.currency ?? '—'}
+                </div>
+                <div className="text-center">
+                    {row.invoice.moneda ?? '—'}
+                </div>
+
+                {row.mismatch.any && (
+                    <div className="col-span-3 mt-1 rounded border border-amber-500/40 bg-amber-50 p-2 text-[11px] text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                        {row.mismatch.currency && (
+                            <div>
+                                Monedă diferită: {row.currency ?? '—'} vs{' '}
+                                {row.invoice.moneda ?? '—'}
+                            </div>
+                        )}
+                        {totalDiff !== null && row.mismatch.total && (
+                            <div>
+                                Diferență total: {totalDiff > 0 ? '+' : ''}
+                                {totalDiff.toFixed(2)}
+                            </div>
+                        )}
+                        {vatDiff !== null && row.mismatch.vat && (
+                            <div>
+                                Diferență TVA: {vatDiff > 0 ? '+' : ''}
+                                {vatDiff.toFixed(2)}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

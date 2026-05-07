@@ -44,6 +44,9 @@ class PartnerController extends Controller
         $statsFurnizor = $partner->is_furnizor ? $this->computeStats($partner, 'furnizor') : null;
         $statsClient = $partner->is_client ? $this->computeStats($partner, 'client') : null;
 
+        $monthlyFurnizor = $partner->is_furnizor ? $this->computeMonthlyTotals($partner, 'furnizor') : null;
+        $monthlyClient = $partner->is_client ? $this->computeMonthlyTotals($partner, 'client') : null;
+
         $invoiceSearch = $request->string('invoice_search')->toString();
         $invoiceTipDoc = $request->string('invoice_tip_doc')->toString();
         $invoiceFrom = $request->string('invoice_from')->toString();
@@ -144,6 +147,8 @@ class PartnerController extends Controller
             'role' => $role,
             'statsFurnizor' => $statsFurnizor,
             'statsClient' => $statsClient,
+            'monthlyFurnizor' => $monthlyFurnizor,
+            'monthlyClient' => $monthlyClient,
             'activeCompany' => ['id' => (int) $partner->company->id, 'name' => $partner->company->name],
         ]);
     }
@@ -220,6 +225,55 @@ class PartnerController extends Controller
             'last_invoice_date' => $lastInvoiceDate ? Carbon::parse($lastInvoiceDate)->toDateString() : null,
             'first_invoice_date' => $firstInvoiceDate ? Carbon::parse($firstInvoiceDate)->toDateString() : null,
         ];
+    }
+
+    /**
+     * @return list<array{month: string, label: string, totals: list<array{moneda: ?string, count: int, val_mon: float, val_mon_tva: float, total: float}>}>
+     */
+    private function computeMonthlyTotals(Partner $partner, string $role, int $monthsCount = 12): array
+    {
+        $tipDocs = $role === 'furnizor'
+            ? SyncService::FURNIZOR_DOC_TYPES
+            : SyncService::CLIENT_DOC_TYPES;
+
+        $start = now()->startOfMonth()->subMonths($monthsCount - 1);
+
+        $rows = $partner->invoices()
+            ->whereIn('tip_doc', $tipDocs)
+            ->where('data_doc', '>=', $start->toDateString())
+            ->get(['data_doc', 'moneda', 'val_mon', 'val_mon_tva'])
+            ->groupBy(fn ($invoice) => $invoice->data_doc->format('Y-m'));
+
+        $monthLabels = [
+            'ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.',
+            'iul.', 'aug.', 'sep.', 'oct.', 'noi.', 'dec.',
+        ];
+
+        $months = [];
+        for ($i = 0; $i < $monthsCount; $i++) {
+            $date = $start->copy()->addMonths($i);
+            $key = $date->format('Y-m');
+
+            $totals = ($rows[$key] ?? collect())
+                ->groupBy('moneda')
+                ->map(fn ($group, $moneda) => [
+                    'moneda' => $moneda === '' ? null : $moneda,
+                    'count' => $group->count(),
+                    'val_mon' => round((float) $group->sum('val_mon'), 2),
+                    'val_mon_tva' => round((float) $group->sum('val_mon_tva'), 2),
+                    'total' => round((float) $group->sum('val_mon') + (float) $group->sum('val_mon_tva'), 2),
+                ])
+                ->values()
+                ->all();
+
+            $months[] = [
+                'month' => $key,
+                'label' => $monthLabels[$date->month - 1].' '.substr((string) $date->year, -2),
+                'totals' => $totals,
+            ];
+        }
+
+        return $months;
     }
 
     public function attachResponsabilDepartment(Request $request, Partner $partner): RedirectResponse

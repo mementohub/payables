@@ -1,6 +1,7 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, X } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import PartnerController from '@/actions/App/Http/Controllers/PartnerController';
 import CompanyBadge from '@/components/company-badge';
 import DatePicker from '@/components/date-picker';
@@ -8,7 +9,19 @@ import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+} from '@/components/ui/chart';
+import type { ChartConfig } from '@/components/ui/chart';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -38,7 +51,11 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
-import type { InvoiceFilters, ShowProps as Props } from './types';
+import type {
+    InvoiceFilters,
+    MonthlyTotal,
+    ShowProps as Props,
+} from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
@@ -53,6 +70,8 @@ export default function PartnerShow({
     role,
     statsFurnizor,
     statsClient,
+    monthlyFurnizor,
+    monthlyClient,
 }: Props) {
     const [selectedDepartmentId, setSelectedDepartmentId] =
         useState<string>('');
@@ -168,6 +187,12 @@ export default function PartnerShow({
                                     </Badge>
                                 </header>
                                 <StatsCards stats={statsFurnizor} compact />
+                                {monthlyFurnizor && (
+                                    <MonthlyChart
+                                        data={monthlyFurnizor}
+                                        title="Evoluție lunară (primite)"
+                                    />
+                                )}
                             </section>
                         )}
                         {statsClient && (
@@ -184,17 +209,41 @@ export default function PartnerShow({
                                     <Badge variant="outline">Client</Badge>
                                 </header>
                                 <StatsCards stats={statsClient} compact />
+                                {monthlyClient && (
+                                    <MonthlyChart
+                                        data={monthlyClient}
+                                        title="Evoluție lunară (emise)"
+                                    />
+                                )}
                             </section>
                         )}
                     </div>
                 ) : (
-                    <StatsCards
-                        stats={
-                            (partner.is_furnizor
-                                ? statsFurnizor
-                                : statsClient) ?? emptyStats
-                        }
-                    />
+                    <>
+                        <StatsCards
+                            stats={
+                                (partner.is_furnizor
+                                    ? statsFurnizor
+                                    : statsClient) ?? emptyStats
+                            }
+                        />
+                        {(partner.is_furnizor
+                            ? monthlyFurnizor
+                            : monthlyClient) && (
+                            <MonthlyChart
+                                data={
+                                    (partner.is_furnizor
+                                        ? monthlyFurnizor
+                                        : monthlyClient) ?? []
+                                }
+                                title={
+                                    partner.is_furnizor
+                                        ? 'Evoluție lunară facturi primite'
+                                        : 'Evoluție lunară facturi emise'
+                                }
+                            />
+                        )}
+                    </>
                 )}
 
                 {activeBankAccounts.length > 0 && (
@@ -827,6 +876,163 @@ function StatsCards({
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+function MonthlyChart({
+    data,
+    title,
+}: {
+    data: MonthlyTotal[];
+    title: string;
+}) {
+    const currencies = useMemo(() => {
+        const tally = new Map<string, number>();
+        for (const m of data) {
+            for (const t of m.totals) {
+                const key = t.moneda ?? '—';
+                tally.set(key, (tally.get(key) ?? 0) + t.total);
+            }
+        }
+        return Array.from(tally.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([code]) => code);
+    }, [data]);
+
+    const [currency, setCurrency] = useState<string>(currencies[0] ?? 'RON');
+
+    const chartData = useMemo(
+        () =>
+            data.map((m) => {
+                const match = m.totals.find(
+                    (t) => (t.moneda ?? '—') === currency,
+                );
+                return {
+                    label: m.label,
+                    month: m.month,
+                    total: match ? match.total : 0,
+                    count: match ? match.count : 0,
+                };
+            }),
+        [data, currency],
+    );
+
+    const grandTotal = chartData.reduce((s, r) => s + r.total, 0);
+    const grandCount = chartData.reduce((s, r) => s + r.count, 0);
+    const hasData = grandCount > 0;
+
+    const config = useMemo<ChartConfig>(
+        () => ({
+            total: { label: 'Total', color: 'oklch(0.62 0.17 250)' },
+        }),
+        [],
+    );
+
+    return (
+        <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                <div>
+                    <CardTitle className="text-base">{title}</CardTitle>
+                    <CardDescription>
+                        Ultimele 12 luni · {grandCount} facturi ·{' '}
+                        {formatAmount(grandTotal, currency)}
+                    </CardDescription>
+                </div>
+                {currencies.length > 1 && (
+                    <div className="flex flex-wrap gap-1">
+                        {currencies.map((code) => (
+                            <Button
+                                key={code}
+                                type="button"
+                                size="sm"
+                                variant={
+                                    code === currency ? 'secondary' : 'ghost'
+                                }
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setCurrency(code)}
+                            >
+                                {code}
+                            </Button>
+                        ))}
+                    </div>
+                )}
+            </CardHeader>
+            <CardContent>
+                {hasData ? (
+                    <ChartContainer
+                        config={config}
+                        className="h-[220px] w-full"
+                    >
+                        <BarChart
+                            data={chartData}
+                            margin={{ left: 0, right: 8, top: 8, bottom: 0 }}
+                        >
+                            <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                            />
+                            <XAxis
+                                dataKey="label"
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={6}
+                            />
+                            <YAxis
+                                tickLine={false}
+                                axisLine={false}
+                                width={64}
+                                tickFormatter={(v) =>
+                                    new Intl.NumberFormat('ro-RO', {
+                                        notation: 'compact',
+                                    }).format(Number(v))
+                                }
+                            />
+                            <ChartTooltip
+                                content={
+                                    <ChartTooltipContent
+                                        formatter={(_value, _name, item) => {
+                                            const row = item.payload as {
+                                                label: string;
+                                                total: number;
+                                                count: number;
+                                            };
+                                            return (
+                                                <div className="flex min-w-[180px] flex-col">
+                                                    <span className="text-muted-foreground">
+                                                        {row.label}
+                                                    </span>
+                                                    <span className="font-medium tabular-nums">
+                                                        {formatAmount(
+                                                            row.total,
+                                                            currency,
+                                                        )}
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {row.count}{' '}
+                                                        {row.count === 1
+                                                            ? 'factură'
+                                                            : 'facturi'}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                }
+                            />
+                            <Bar
+                                dataKey="total"
+                                radius={[6, 6, 0, 0]}
+                                fill="var(--color-total)"
+                            />
+                        </BarChart>
+                    </ChartContainer>
+                ) : (
+                    <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
+                        Nicio factură în ultimele 12 luni.
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 

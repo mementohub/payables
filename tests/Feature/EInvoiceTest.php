@@ -152,6 +152,40 @@ it('flags total mismatch when difference exceeds configured tolerance', function
         ->assertJsonPath('eInvoice.mismatch.total', true);
 });
 
+it('flags currency mismatch when e-invoice and matched invoice use different monedas', function () {
+    $company = Company::factory()->create();
+    $invoice = Invoice::factory()->for($company)->create([
+        'val_mon' => 100.00,
+        'val_mon_tva' => 19.00,
+        'moneda' => 'RON',
+    ]);
+
+    $sameCurrency = makeEInvoice([
+        'company' => $company,
+        'invoice_id' => $invoice->id,
+        'total_amount' => 100.00,
+        'total_vat' => 19.00,
+        'currency' => 'RON',
+    ]);
+    $differentCurrency = makeEInvoice([
+        'company' => $company,
+        'invoice_id' => $invoice->id,
+        'total_amount' => 100.00,
+        'total_vat' => 19.00,
+        'currency' => 'EUR',
+    ]);
+
+    $this->actingAs($this->user)
+        ->getJson("/e-invoices/{$sameCurrency->id}/detail")
+        ->assertJsonPath('eInvoice.mismatch.currency', false)
+        ->assertJsonPath('eInvoice.mismatch.any', false);
+
+    $this->actingAs($this->user)
+        ->getJson("/e-invoices/{$differentCurrency->id}/detail")
+        ->assertJsonPath('eInvoice.mismatch.currency', true)
+        ->assertJsonPath('eInvoice.mismatch.any', true);
+});
+
 it('rejects matching to an invoice from a different company', function () {
     $company = Company::factory()->create();
     $other = Company::factory()->create();

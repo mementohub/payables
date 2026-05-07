@@ -28,25 +28,29 @@ class EInvoiceXmlParser
     }
 
     /**
-     * Lightweight extraction for sync — only totals.
+     * Lightweight extraction for sync — totals plus document currency.
      *
-     * @return array{total_amount: ?float, total_vat: ?float}
+     * @return array{total_amount: ?float, total_vat: ?float, currency: ?string}
      */
     public function extractTotals(?string $xml): array
     {
         if ($xml === null || trim($xml) === '') {
-            return ['total_amount' => null, 'total_vat' => null];
+            return ['total_amount' => null, 'total_vat' => null, 'currency' => null];
         }
 
         try {
-            $totals = (new UblReader)->import($xml)->getTotals();
+            $invoice = (new UblReader)->import($xml);
         } catch (\Throwable) {
-            return ['total_amount' => null, 'total_vat' => null];
+            return ['total_amount' => null, 'total_vat' => null, 'currency' => null];
         }
+
+        $totals = $invoice->getTotals();
+        $currency = $invoice->getCurrency() ?? $totals->currency;
 
         return [
             'total_amount' => $totals->payableAmount,
             'total_vat' => $totals->vatAmount,
+            'currency' => $currency !== null && trim($currency) !== '' ? strtoupper(trim($currency)) : null,
         ];
     }
 

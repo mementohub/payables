@@ -126,6 +126,20 @@ export type PartnerStats = {
 
 export type PartnerRole = 'furnizor' | 'client';
 
+export type MonthlyCurrencyTotal = {
+    moneda: string | null;
+    count: number;
+    val_mon: number;
+    val_mon_tva: number;
+    total: number;
+};
+
+export type MonthlyTotal = {
+    month: string;
+    label: string;
+    totals: MonthlyCurrencyTotal[];
+};
+
 export type ShowProps = {
     partner: PartnerDetail;
     invoices: Paginated<InvoiceRow>;
@@ -135,4 +149,6 @@ export type ShowProps = {
     role: PartnerRole;
     statsFurnizor: PartnerStats | null;
     statsClient: PartnerStats | null;
+    monthlyFurnizor: MonthlyTotal[] | null;
+    monthlyClient: MonthlyTotal[] | null;
 };

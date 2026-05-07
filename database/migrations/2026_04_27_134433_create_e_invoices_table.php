@@ -27,6 +27,7 @@ return new class extends Migration
 
             $table->decimal('total_amount', 15, 2)->nullable();
             $table->decimal('total_vat', 15, 2)->nullable();
+            $table->string('currency', 5)->nullable();
 
             $table->text('msg_detalii')->nullable();
             $table->longText('msg_xml')->nullable();

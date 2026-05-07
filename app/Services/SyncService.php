@@ -229,6 +229,7 @@ class SyncService
                     'cod_cci_xml' => $row->cod_cci_xml,
                     'total_amount' => $totals['total_amount'],
                     'total_vat' => $totals['total_vat'],
+                    'currency' => $totals['currency'],
                     'msg_detalii' => $row->msg_detalii,
                     'msg_xml' => $row->msg_xml,
                     'data_ins_omc' => $row->data_ins_omc,

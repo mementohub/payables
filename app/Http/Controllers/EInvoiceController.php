@@ -257,6 +257,10 @@ class EInvoiceController extends Controller
         $invoiceVat = $row->invoice ? (float) $row->invoice->val_mon_tva : null;
         $eTotal = $row->total_amount !== null ? (float) $row->total_amount : null;
         $eVat = $row->total_vat !== null ? (float) $row->total_vat : null;
+        $eCurrency = $row->currency !== null ? strtoupper(trim($row->currency)) : null;
+        $invoiceCurrency = $row->invoice && $row->invoice->moneda !== null
+            ? strtoupper(trim($row->invoice->moneda))
+            : null;
 
         $totalTolerance = (float) config('einvoices.mismatch_tolerance.total');
         $vatTolerance = (float) config('einvoices.mismatch_tolerance.vat');
@@ -266,6 +270,9 @@ class EInvoiceController extends Controller
             : false;
         $vatMismatch = $row->invoice && $eVat !== null && $invoiceVat !== null
             ? abs($eVat - $invoiceVat) > $vatTolerance
+            : false;
+        $currencyMismatch = $row->invoice && $eCurrency !== null && $invoiceCurrency !== null
+            ? $eCurrency !== $invoiceCurrency
             : false;
 
         return [
@@ -281,6 +288,7 @@ class EInvoiceController extends Controller
             'cod_cci_xml' => $row->cod_cci_xml,
             'total_amount' => $eTotal,
             'total_vat' => $eVat,
+            'currency' => $eCurrency,
             'data_ins_omc' => $row->data_ins_omc?->format('Y-m-d H:i'),
             'err_ins_omc' => $row->err_ins_omc,
             'status' => $row->status,
@@ -308,7 +316,8 @@ class EInvoiceController extends Controller
             'mismatch' => [
                 'total' => $totalMismatch,
                 'vat' => $vatMismatch,
-                'any' => $totalMismatch || $vatMismatch,
+                'currency' => $currencyMismatch,
+                'any' => $totalMismatch || $vatMismatch || $currencyMismatch,
             ],
         ];
     }
