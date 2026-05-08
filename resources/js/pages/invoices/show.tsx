@@ -174,111 +174,6 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                             </div>
                         </div>
 
-                        {isFurnizor && (
-                            <InvoicePaymentCard
-                                invoiceId={invoice.id}
-                                status={invoice.payment_status}
-                                updatedAt={invoice.payment_status_updated_at}
-                                currentUser={currentUser}
-                            />
-                        )}
-
-                        {(invoice.source_invoice || invoice.baza) && (
-                            <div className="rounded-xl border border-sky-600/30 bg-sky-50/40 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
-                                <h2 className="text-sm font-semibold text-muted-foreground uppercase">
-                                    Document sursă
-                                </h2>
-                                <div className="mt-2 space-y-2 text-sm">
-                                    {invoice.source_invoice && (
-                                        <div className="space-y-1">
-                                            <div className="text-xs text-muted-foreground">
-                                                Furnizor real (din{' '}
-                                                {invoice.source_invoice.company
-                                                    ?.name ?? 'altă companie'}
-                                                )
-                                            </div>
-                                            <div className="font-medium">
-                                                {invoice.source_invoice
-                                                    .real_supplier?.name ?? '—'}
-                                                {invoice.source_invoice
-                                                    .real_supplier?.cui && (
-                                                    <span className="ml-2 text-xs text-muted-foreground">
-                                                        CUI:{' '}
-                                                        {
-                                                            invoice
-                                                                .source_invoice
-                                                                .real_supplier
-                                                                .cui
-                                                        }
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <Link
-                                                href={`/invoices/${invoice.source_invoice.id}`}
-                                                className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
-                                            >
-                                                <ExternalLink className="size-3" />
-                                                Deschide factura sursă (
-                                                {invoice.source_invoice.tip_doc}{' '}
-                                                {invoice.source_invoice.nr_doc}{' '}
-                                                ·{' '}
-                                                {
-                                                    invoice.source_invoice
-                                                        .data_doc
-                                                }
-                                                )
-                                            </Link>
-                                        </div>
-                                    )}
-                                    {invoice.baza && (
-                                        <div className="space-y-1">
-                                            <div className="text-xs text-muted-foreground">
-                                                Bază doc:{' '}
-                                                <span className="font-medium text-foreground">
-                                                    {invoice.baza.tip_doc ?? ''}{' '}
-                                                    {invoice.baza.nr_doc ?? ''}
-                                                </span>
-                                                {invoice.baza.data_doc && (
-                                                    <span>
-                                                        {' '}
-                                                        ·{' '}
-                                                        {invoice.baza.data_doc}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {invoice.baza.invoice
-                                                ?.real_supplier && (
-                                                <Link
-                                                    href={`/invoices/${invoice.baza.invoice.id}`}
-                                                    className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
-                                                >
-                                                    <ExternalLink className="size-3" />
-                                                    Furnizor real:{' '}
-                                                    {
-                                                        invoice.baza.invoice
-                                                            .real_supplier.name
-                                                    }
-                                                    {invoice.baza.invoice
-                                                        .real_supplier.cui && (
-                                                        <span className="text-muted-foreground">
-                                                            {' '}
-                                                            · CUI{' '}
-                                                            {
-                                                                invoice.baza
-                                                                    .invoice
-                                                                    .real_supplier
-                                                                    .cui
-                                                            }
-                                                        </span>
-                                                    )}
-                                                </Link>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
                         <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                             <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
                                 Detalii
@@ -549,6 +444,253 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                                 </table>
                             </div>
                         </div>
+
+                        {isFurnizor && (
+                            <InvoicePaymentCard
+                                invoiceId={invoice.id}
+                                status={invoice.payment_status}
+                                updatedAt={invoice.payment_status_updated_at}
+                                currentUser={currentUser}
+                            />
+                        )}
+
+                        {(invoice.source_invoice || invoice.baza) && (
+                            <div className="rounded-xl border border-sky-600/30 bg-sky-50/40 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
+                                <h2 className="text-sm font-semibold text-muted-foreground uppercase">
+                                    Document sursă
+                                </h2>
+                                <div className="mt-2 space-y-2 text-sm">
+                                    {invoice.source_invoice && (
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-muted-foreground">
+                                                Furnizor real (din{' '}
+                                                {invoice.source_invoice.company
+                                                    ?.name ?? 'altă companie'}
+                                                )
+                                            </div>
+                                            <div className="font-medium">
+                                                {invoice.source_invoice
+                                                    .real_supplier?.name ?? '—'}
+                                                {invoice.source_invoice
+                                                    .real_supplier?.cui && (
+                                                    <span className="ml-2 text-xs text-muted-foreground">
+                                                        CUI:{' '}
+                                                        {
+                                                            invoice
+                                                                .source_invoice
+                                                                .real_supplier
+                                                                .cui
+                                                        }
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <Link
+                                                href={`/invoices/${invoice.source_invoice.id}`}
+                                                className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
+                                            >
+                                                <ExternalLink className="size-3" />
+                                                Deschide factura sursă (
+                                                {invoice.source_invoice.tip_doc}{' '}
+                                                {invoice.source_invoice.nr_doc}{' '}
+                                                ·{' '}
+                                                {
+                                                    invoice.source_invoice
+                                                        .data_doc
+                                                }
+                                                )
+                                            </Link>
+                                        </div>
+                                    )}
+                                    {invoice.baza && (
+                                        <div className="space-y-1">
+                                            <div className="text-xs text-muted-foreground">
+                                                Bază doc:{' '}
+                                                <span className="font-medium text-foreground">
+                                                    {invoice.baza.tip_doc ?? ''}{' '}
+                                                    {invoice.baza.nr_doc ?? ''}
+                                                </span>
+                                                {invoice.baza.data_doc && (
+                                                    <span>
+                                                        {' '}
+                                                        ·{' '}
+                                                        {invoice.baza.data_doc}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {invoice.baza.invoice
+                                                ?.real_supplier && (
+                                                <Link
+                                                    href={`/invoices/${invoice.baza.invoice.id}`}
+                                                    className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-300"
+                                                >
+                                                    <ExternalLink className="size-3" />
+                                                    Furnizor real:{' '}
+                                                    {
+                                                        invoice.baza.invoice
+                                                            .real_supplier.name
+                                                    }
+                                                    {invoice.baza.invoice
+                                                        .real_supplier.cui && (
+                                                        <span className="text-muted-foreground">
+                                                            {' '}
+                                                            · CUI{' '}
+                                                            {
+                                                                invoice.baza
+                                                                    .invoice
+                                                                    .real_supplier
+                                                                    .cui
+                                                            }
+                                                        </span>
+                                                    )}
+                                                </Link>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {isFurnizor && invoice.com_int_matches.length > 0 && (
+                            <div className="overflow-hidden rounded-xl border border-emerald-600/30 dark:border-emerald-500/30">
+                                <div className="flex items-center justify-between bg-emerald-50/60 px-4 py-2 text-sm font-semibold dark:bg-emerald-500/10">
+                                    <span>
+                                        Factură emisă corespondentă
+                                        {invoice.com_int && (
+                                            <span className="ml-2 font-normal text-muted-foreground">
+                                                · com. internă {invoice.com_int}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="text-xs font-normal text-muted-foreground">
+                                        {invoice.com_int_matches.length}{' '}
+                                        {invoice.com_int_matches.length === 1
+                                            ? 'factură'
+                                            : 'facturi'}
+                                    </span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[760px] text-sm">
+                                        <thead className="bg-muted/30 text-left text-xs text-muted-foreground uppercase">
+                                            <tr>
+                                                <th className="w-28 px-4 py-2">
+                                                    Data
+                                                </th>
+                                                <th className="px-4 py-2">
+                                                    Tip / Număr
+                                                </th>
+                                                <th className="px-4 py-2">
+                                                    Client
+                                                </th>
+                                                <th className="px-4 py-2 text-right">
+                                                    Total
+                                                </th>
+                                                <th className="px-4 py-2 text-right">
+                                                    Încasat
+                                                </th>
+                                                <th className="w-32 px-4 py-2">
+                                                    Status
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                            {invoice.com_int_matches.map(
+                                                (match) => {
+                                                    const rest = Math.max(
+                                                        match.val_mon -
+                                                            match.val_mon_paid,
+                                                        0,
+                                                    );
+                                                    return (
+                                                        <tr key={match.id}>
+                                                            <td className="px-4 py-2 text-muted-foreground">
+                                                                {match.data_doc ??
+                                                                    '—'}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <Link
+                                                                    href={`/invoices/${match.id}`}
+                                                                    className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+                                                                >
+                                                                    <Badge variant="outline">
+                                                                        {
+                                                                            match.tip_doc
+                                                                        }
+                                                                    </Badge>
+                                                                    {
+                                                                        match.nr_doc
+                                                                    }
+                                                                    <ExternalLink className="size-3" />
+                                                                </Link>
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                {match.partner ? (
+                                                                    <>
+                                                                        <div>
+                                                                            {
+                                                                                match
+                                                                                    .partner
+                                                                                    .name
+                                                                            }
+                                                                        </div>
+                                                                        {match
+                                                                            .partner
+                                                                            .cui && (
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                CUI:{' '}
+                                                                                {
+                                                                                    match
+                                                                                        .partner
+                                                                                        .cui
+                                                                                }
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-muted-foreground">
+                                                                        —
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right tabular-nums">
+                                                                {formatAmount(
+                                                                    match.val_mon,
+                                                                    match.moneda,
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right tabular-nums">
+                                                                <div>
+                                                                    {formatAmount(
+                                                                        match.val_mon_paid,
+                                                                        match.moneda,
+                                                                    )}
+                                                                </div>
+                                                                {match.payment_status ===
+                                                                    'partial' && (
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        rămas{' '}
+                                                                        {formatAmount(
+                                                                            rest,
+                                                                            match.moneda,
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <PaymentStatusBadge
+                                                                    status={
+                                                                        match.payment_status
+                                                                    }
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                },
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <aside className="lg:sticky lg:top-4 lg:self-start">

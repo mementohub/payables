@@ -1,5 +1,6 @@
 import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import {
+    ArrowLeftRight,
     Check,
     ChevronDown,
     Download,
@@ -153,6 +154,26 @@ function formatDateTime(iso: string | null) {
         hour: '2-digit',
         minute: '2-digit',
     });
+}
+
+function ComIntIndicator({ scope }: { scope: Scope }) {
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span
+                    aria-label="Are factură corespondentă"
+                    className="inline-flex items-center rounded-full bg-emerald-100 p-0.5 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                >
+                    <ArrowLeftRight className="size-3" />
+                </span>
+            </TooltipTrigger>
+            <TooltipContent>
+                {scope === 'primite'
+                    ? 'Are factură emisă corespondentă (com. internă)'
+                    : 'Are factură primită corespondentă (com. internă)'}
+            </TooltipContent>
+        </Tooltip>
+    );
 }
 
 function CommentsIndicator({ count }: { count: number }) {
@@ -632,6 +653,9 @@ export default function InvoicesIndex({
                                             >
                                                 {invoice.nr_doc}
                                             </Link>
+                                            {invoice.has_com_int_counterpart && (
+                                                <ComIntIndicator scope={scope} />
+                                            )}
                                             <CommentsIndicator
                                                 count={invoice.comments_count}
                                             />
@@ -824,6 +848,9 @@ function InvoiceMobileCard({
                             >
                                 {invoice.nr_doc}
                             </Link>
+                            {invoice.has_com_int_counterpart && (
+                                <ComIntIndicator scope={scope} />
+                            )}
                             <CommentsIndicator count={invoice.comments_count} />
                         </div>
                         <div className="mt-0.5 text-xs text-muted-foreground">

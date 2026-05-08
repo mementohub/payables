@@ -52,6 +52,20 @@ export type SourceInvoiceRef = {
     real_supplier: { id: number; name: string; cui: string | null } | null;
 };
 
+export type ComIntMatch = {
+    id: number;
+    data_doc: string | null;
+    tip_doc: string;
+    nr_doc: string;
+    moneda: string | null;
+    val_mon: number;
+    val_mon_tva: number;
+    val_mon_paid: number;
+    payment_status: PaymentStatus;
+    data_inchidere: string | null;
+    partner: { id: number; name: string; cui: string | null } | null;
+};
+
 export type BazaRef = {
     data_doc: string | null;
     tip_doc: string | null;
@@ -76,6 +90,7 @@ export type InvoiceRow = {
     val_mon_paid: number;
     payment_status: PaymentStatus;
     comments_count: number;
+    has_com_int_counterpart: boolean;
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
     approval?: Approval;
@@ -157,6 +172,8 @@ export type Invoice = {
     data_scadenta: string | null;
     data_inchidere: string | null;
     emitent: string | null;
+    com_int: string | null;
+    com_int_matches: ComIntMatch[];
     payments: Payment[];
     partner: {
         id: number;

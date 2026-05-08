@@ -33,6 +33,7 @@ class InvoicePresenter
             'val_mon_paid' => (float) $invoice->val_mon_paid,
             'payment_status' => $invoice->payment_status,
             'comments_count' => (int) ($invoice->comments_count ?? 0),
+            'has_com_int_counterpart' => (bool) ($invoice->has_com_int_counterpart ?? false),
             'source_invoice' => $this->sourceInvoicePayload($invoice),
             'baza' => $this->bazaPayload($invoice),
         ];
@@ -79,6 +80,134 @@ class InvoicePresenter
                 'cui' => $chainedPartner->cui,
             ] : null,
         ];
+    }
+
+    /**
+     * Mark each invoice with `has_com_int_counterpart` indicating whether
+     * another invoice of the *opposite* `partener_type` exists in the same
+     * company sharing the same `com_int` (SeniorERP internal trip/order code).
+     *
+     * Run once per page to avoid N+1 — a single batched query covers all rows.
+     *
+     * @param  iterable<Invoice>  $invoices
+     */
+    public function preloadComIntCounterparts(iterable $invoices): void
+    {
+        $invoices = is_array($invoices) ? $invoices : iterator_to_array($invoices);
+
+        $byCompany = [];
+
+        foreach ($invoices as $invoice) {
+            $code = $this->normalizeComInt($invoice->com_int);
+
+            if ($code === null || $invoice->company_id === null || $invoice->partener_type === null) {
+                continue;
+            }
+
+            $byCompany[$invoice->company_id][$code] = true;
+        }
+
+        $sides = [];
+
+        if (! empty($byCompany)) {
+            $rows = Invoice::query()
+                ->where(function ($query) use ($byCompany) {
+                    foreach ($byCompany as $companyId => $codes) {
+                        $query->orWhere(function ($scoped) use ($companyId, $codes) {
+                            $scoped
+                                ->where('company_id', $companyId)
+                                ->whereIn('com_int', array_keys($codes));
+                        });
+                    }
+                })
+                ->whereIn('partener_type', ['furnizor', 'client'])
+                ->get(['company_id', 'com_int', 'partener_type']);
+
+            foreach ($rows as $row) {
+                $code = $this->normalizeComInt($row->com_int);
+
+                if ($code === null) {
+                    continue;
+                }
+
+                $sides[$row->company_id.'|'.$code][$row->partener_type] = true;
+            }
+        }
+
+        foreach ($invoices as $invoice) {
+            $code = $this->normalizeComInt($invoice->com_int);
+
+            if ($code === null || $invoice->partener_type === null) {
+                $invoice->has_com_int_counterpart = false;
+
+                continue;
+            }
+
+            $opposite = $invoice->partener_type === 'furnizor' ? 'client' : 'furnizor';
+            $invoice->has_com_int_counterpart = ! empty($sides[$invoice->company_id.'|'.$code][$opposite]);
+        }
+    }
+
+    private function normalizeComInt(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return ($trimmed === '' || $trimmed === '-') ? null : $trimmed;
+    }
+
+    /**
+     * Issued (client) invoices in the same company that share the received
+     * invoice's `com_int` (internal trip/order code from SeniorERP).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function comIntMatchesPayload(Invoice $invoice): array
+    {
+        if ($invoice->partener_type !== 'furnizor') {
+            return [];
+        }
+
+        $code = $this->normalizeComInt($invoice->com_int);
+
+        if ($code === null) {
+            return [];
+        }
+
+        return Invoice::query()
+            ->where('company_id', $invoice->company_id)
+            ->where('com_int', $code)
+            ->where('partener_type', 'client')
+            ->where('id', '!=', $invoice->id)
+            ->with('partner:id,name,cui')
+            ->orderBy('data_doc')
+            ->get([
+                'id', 'data_doc', 'tip_doc', 'nr_doc', 'partner_id',
+                'moneda', 'val_mon', 'val_mon_tva', 'val_mon_paid',
+                'payment_status', 'data_inchidere',
+            ])
+            ->map(fn (Invoice $match) => [
+                'id' => $match->id,
+                'data_doc' => $match->data_doc?->toDateString(),
+                'tip_doc' => $match->tip_doc,
+                'nr_doc' => $match->nr_doc,
+                'moneda' => $match->moneda,
+                'val_mon' => (float) $match->val_mon,
+                'val_mon_tva' => (float) $match->val_mon_tva,
+                'val_mon_paid' => (float) $match->val_mon_paid,
+                'payment_status' => $match->payment_status,
+                'data_inchidere' => $match->data_inchidere?->toDateString(),
+                'partner' => $match->partner ? [
+                    'id' => $match->partner->id,
+                    'name' => $match->partner->name,
+                    'cui' => $match->partner->cui,
+                ] : null,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

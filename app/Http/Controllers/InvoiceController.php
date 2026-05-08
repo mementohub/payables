@@ -59,6 +59,7 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         $this->presenter->preloadBazaInvoices($paginator->items());
+        $this->presenter->preloadComIntCounterparts($paginator->items());
 
         $invoices = $paginator->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
 
@@ -191,6 +192,7 @@ class InvoiceController extends Controller
                 'data_scadenta' => $invoice->data_scadenta?->toDateString(),
                 'data_inchidere' => $invoice->data_inchidere?->toDateString(),
                 'emitent' => $invoice->emitent,
+                'com_int' => $invoice->com_int,
                 'partner' => $invoice->partner ? [
                     'id' => $invoice->partner->id,
                     'name' => $invoice->partner->name,
@@ -236,6 +238,7 @@ class InvoiceController extends Controller
                 'timeline' => $this->presenter->timelinePayload($invoice),
                 'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
                 'baza' => $this->presenter->bazaPayload($invoice),
+                'com_int_matches' => $this->presenter->comIntMatchesPayload($invoice),
             ],
             'activeCompany' => ['id' => (int) $invoice->company->id, 'name' => $invoice->company->name],
             'currentUser' => $this->currentUserContext($request),
