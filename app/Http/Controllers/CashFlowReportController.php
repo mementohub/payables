@@ -1,0 +1,191 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\CashFlowSnapshot;
+use App\Models\CharterContract;
+use App\Models\CharterFlight;
+use App\Services\CashFlow\CashFlowParameters;
+use App\Services\Maintenance\ArtisanRunner;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+use Throwable;
+
+/**
+ * Rapoarte → WCFR 52 Weeks: the last cash-flow snapshot, its parameters and
+ * the charter contracts it is built from. The snapshot itself is built in
+ * the background (cashflow:build), never inside a request.
+ */
+class CashFlowReportController extends Controller
+{
+    public function index(ArtisanRunner $runner, CashFlowParameters $parameters): Response
+    {
+        $snapshot = CashFlowSnapshot::latest();
+        $params = $parameters->load();
+        $computed = collect($snapshot?->payload['opex'] ?? [])->pluck('computed', 'key')->filter(fn ($v) => $v !== null)->all();
+
+        return Inertia::render('reports/cash-flow', [
+            'snapshot' => $snapshot ? [
+                'id' => $snapshot->id,
+                'built_at' => $snapshot->built_at->toIso8601String(),
+                'built_by' => $snapshot->built_by,
+                'status' => $snapshot->status,
+                'duration_ms' => $snapshot->duration_ms,
+                'error' => $snapshot->error,
+                'sources' => $snapshot->sources ?? [],
+                'payload' => $snapshot->payload,
+            ] : null,
+            'run' => $runner->status(ArtisanRunner::CASHFLOW),
+            'lastRun' => Cache::get('cashflow:last_run'),
+            'parameters' => $params,
+            'opex' => CashFlowParameters::opexCatalogue($params, $computed),
+            'connections' => collect((array) config('etrip.connections'))->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
+            'contracts' => CharterContract::query()
+                ->withCount('flights')
+                ->withSum('flights', 'net_value')
+                ->withSum('flights', 'taxes')
+                ->withMin('flights', 'flight_date')
+                ->withMax('flights', 'flight_date')
+                ->orderBy('season')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (CharterContract $contract) => [
+                    'id' => $contract->id,
+                    'name' => $contract->name,
+                    'season' => $contract->season,
+                    'status' => $contract->status,
+                    'operator' => $contract->operator,
+                    'currency' => $contract->currency,
+                    'days_before_flight' => $contract->days_before_flight,
+                    'deposit_percent' => $contract->deposit_percent !== null ? (float) $contract->deposit_percent : null,
+                    'deposit_amount' => $contract->deposit_amount !== null ? (float) $contract->deposit_amount : null,
+                    'deposit_due_date' => $contract->deposit_due_date?->toDateString(),
+                    'deposit_paid' => $contract->deposit_paid,
+                    'contract_value' => $contract->contract_value !== null ? (float) $contract->contract_value : null,
+                    'notes' => $contract->notes,
+                    'flights_count' => (int) $contract->flights_count,
+                    'flights_net' => (float) ($contract->flights_sum_net_value ?? 0),
+                    'flights_taxes' => (float) ($contract->flights_sum_taxes ?? 0),
+                    'first_flight' => $contract->flights_min_flight_date ? substr((string) $contract->flights_min_flight_date, 0, 10) : null,
+                    'last_flight' => $contract->flights_max_flight_date ? substr((string) $contract->flights_max_flight_date, 0, 10) : null,
+                ]),
+            'flights' => CharterFlight::query()
+                ->with('contract:id,name,season,status,days_before_flight')
+                ->orderBy('flight_date')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (CharterFlight $flight) => [
+                    'id' => $flight->id,
+                    'charter_contract_id' => $flight->charter_contract_id,
+                    'season' => $flight->contract->season,
+                    'route' => $flight->route,
+                    'flight_no' => $flight->flight_no,
+                    'flight_date' => $flight->flight_date->toDateString(),
+                    'seats' => $flight->seats,
+                    'price_per_seat' => $flight->price_per_seat !== null ? (float) $flight->price_per_seat : null,
+                    'net_value' => (float) $flight->net_value,
+                    'taxes' => (float) $flight->taxes,
+                    'pay_date' => $flight->pay_date?->toDateString(),
+                    'taxes_pay_date' => $flight->taxes_pay_date?->toDateString(),
+                    'payment_date' => $flight->paymentDate()->toDateString(),
+                    'taxes_payment_date' => $flight->taxesPaymentDate()->toDateString(),
+                ]),
+            'schedule' => [
+                'nightly' => sprintf('%02d:%02d', (int) config('cashflow.nightly_hour', 4), (int) config('cashflow.nightly_minute', 30)),
+                'timezone' => (string) config('cashflow.timezone', 'Europe/Bucharest'),
+                'weeks' => (int) config('cashflow.weeks', 52),
+            ],
+        ]);
+    }
+
+    public function build(Request $request, ArtisanRunner $runner): RedirectResponse
+    {
+        if ($runner->isRunning(ArtisanRunner::CASHFLOW)) {
+            Inertia::flash('toast', ['type' => 'info', 'message' => 'Raportul se recalculează deja; pagina se actualizează singură când termină.']);
+
+            return back();
+        }
+
+        try {
+            $runner->start(ArtisanRunner::CASHFLOW, ['--by='.($request->user()?->name ?? 'manual')], $request->user()?->name);
+        } catch (Throwable $e) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Recalcularea nu a putut fi pornită în fundal: '.trim($e->getMessage())]);
+
+            return back();
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Recalcularea a pornit în fundal; durează câteva minute, pagina se actualizează singură.']);
+
+        return back();
+    }
+
+    public function parameters(Request $request, CashFlowParameters $parameters, ArtisanRunner $runner): RedirectResponse
+    {
+        $connections = array_keys((array) config('etrip.connections'));
+        $opexKeys = array_column((array) config('cashflow.opex'), 'key');
+
+        $validated = $request->validate([
+            'etrip_connections' => ['required', 'array', 'min:1'],
+            'etrip_connections.*' => ['string', Rule::in($connections)],
+            'fx.mode' => ['required', Rule::in(['auto', 'manual'])],
+            'fx.EUR' => ['required', 'numeric', 'gt:0'],
+            'fx.USD' => ['required', 'numeric', 'gt:0'],
+            'thresholds.minimum' => ['required', 'numeric', 'min:0'],
+            'thresholds.comfort' => ['required', 'numeric', 'min:0'],
+            'overdue.recent_days' => ['required', 'integer', 'between:1,365'],
+            'overdue.recent_pct' => ['required', 'numeric', 'between:0,100'],
+            'overdue.recent_weeks' => ['required', 'integer', 'between:1,52'],
+            'overdue.old_pct' => ['required', 'numeric', 'between:0,100'],
+            'payables.days_before_checkin' => ['required', 'integer', 'between:0,60'],
+            'payables.prepaid_pct' => ['required', 'numeric', 'between:0,100'],
+            'payables.ticket_days' => ['required', 'integer', 'between:0,60'],
+            'payables.supplier_balance' => ['nullable', 'numeric', 'min:0'],
+            'payables.supplier_balance_weeks' => ['required', 'integer', 'between:1,52'],
+            'scenario.enabled' => ['required', 'boolean'],
+            'scenario.factor' => ['required', 'numeric', 'between:0,5'],
+            'scenario.charter_factor' => ['required', 'numeric', 'between:0,5'],
+            'scenario.charter_base_season' => ['nullable', 'string', 'max:20'],
+            'scenario.charter_target_season' => ['nullable', 'string', 'max:20'],
+            'opening.date' => ['nullable', 'date', 'before_or_equal:today'],
+            'opening.bank' => ['required', 'array'],
+            'opening.cash' => ['required', 'array'],
+            'opening.deposits' => ['required', 'array'],
+            'opening.bank.*' => ['nullable', 'numeric'],
+            'opening.cash.*' => ['nullable', 'numeric'],
+            'opening.deposits.*' => ['nullable', 'numeric'],
+            'opex' => ['required', 'array'],
+            'opex.*' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        foreach (['bank', 'cash', 'deposits'] as $component) {
+            $validated['opening'][$component] = array_map(fn ($v) => $v === null || $v === '' ? 0 : (float) $v, array_intersect_key($validated['opening'][$component], array_flip(['RON', 'EUR', 'USD'])) + ['RON' => 0, 'EUR' => 0, 'USD' => 0]);
+        }
+
+        $validated['opex'] = array_map(fn ($v) => $v === null || $v === '' ? null : (float) $v, array_intersect_key($validated['opex'], array_flip($opexKeys)));
+        $validated['payables']['supplier_balance'] = $validated['payables']['supplier_balance'] === null || $validated['payables']['supplier_balance'] === '' ? null : (float) $validated['payables']['supplier_balance'];
+        $validated['scenario']['charter_base_season'] = $validated['scenario']['charter_base_season'] ?: null;
+        $validated['scenario']['charter_target_season'] = $validated['scenario']['charter_target_season'] ?: null;
+        $validated['opening']['date'] = $validated['opening']['date'] ?: null;
+
+        $parameters->save($validated, $request->user());
+
+        $message = 'Parametrii au fost salvați.';
+
+        if (! $runner->isRunning(ArtisanRunner::CASHFLOW)) {
+            try {
+                $runner->start(ArtisanRunner::CASHFLOW, ['--by='.($request->user()?->name ?? 'manual')], $request->user()?->name);
+                $message .= ' Raportul se recalculează în fundal.';
+            } catch (Throwable $e) {
+                $message .= ' Recalcularea nu a putut porni ('.trim($e->getMessage()).'); apăsați „Recalculează”.';
+            }
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return back();
+    }
+}

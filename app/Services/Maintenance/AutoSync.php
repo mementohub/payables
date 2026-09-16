@@ -45,6 +45,8 @@ class AutoSync
         $nightly = $this->nightlyDue();
 
         if (! $nightly && ! $this->recentDue()) {
+            $this->kickCashFlow();
+
             return;
         }
 
@@ -58,6 +60,32 @@ class AutoSync
             if ($nightly) {
                 Cache::forever('erp:sync:nightly', Carbon::now((string) config('sync.timezone', 'Europe/Bucharest'))->toDateString());
             }
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * The nightly cash-flow snapshot, once the day's nightly sync is done:
+     * the same web kick, so the report is fresh without a cron.
+     */
+    private function kickCashFlow(): void
+    {
+        $timezone = (string) config('cashflow.timezone', 'Europe/Bucharest');
+        $local = Carbon::now($timezone);
+        $due = $local->hour > (int) config('cashflow.nightly_hour', 4)
+            || ($local->hour === (int) config('cashflow.nightly_hour', 4) && $local->minute >= (int) config('cashflow.nightly_minute', 30));
+
+        if (! $due
+            || Cache::get('cashflow:nightly') === $local->toDateString()
+            || Cache::get('erp:sync:nightly') !== Carbon::now((string) config('sync.timezone', 'Europe/Bucharest'))->toDateString()
+            || $this->runner->isRunning(ArtisanRunner::CASHFLOW)) {
+            return;
+        }
+
+        try {
+            $this->runner->start(ArtisanRunner::CASHFLOW, ['--by=automat'], 'automat');
+            Cache::forever('cashflow:nightly', $local->toDateString());
         } catch (Throwable $e) {
             report($e);
         }

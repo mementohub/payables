@@ -24,9 +24,12 @@ class ArtisanRunner
 
     public const SYNC = 'sync';
 
+    public const CASHFLOW = 'cashflow';
+
     private const COMMANDS = [
         self::UPGRADE => 'app:upgrade',
         self::SYNC => 'erp:sync',
+        self::CASHFLOW => 'cashflow:build',
     ];
 
     /** Written as the last log line by the background run, with the exit code. */

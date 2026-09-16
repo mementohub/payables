@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankStatementController;
+use App\Http\Controllers\CashFlowReportController;
+use App\Http\Controllers\CharterContractController;
+use App\Http\Controllers\CharterFlightController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseStatusController;
@@ -87,6 +90,17 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
     Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
     Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');
+
+    Route::get('reports/cash-flow', [CashFlowReportController::class, 'index'])->name('reports.cash-flow.index');
+    Route::post('reports/cash-flow/build', [CashFlowReportController::class, 'build'])->name('reports.cash-flow.build');
+    Route::put('reports/cash-flow/parameters', [CashFlowReportController::class, 'parameters'])->name('reports.cash-flow.parameters');
+    Route::post('reports/cash-flow/contracts', [CharterContractController::class, 'store'])->name('reports.cash-flow.contracts.store');
+    Route::put('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'update'])->name('reports.cash-flow.contracts.update');
+    Route::delete('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'destroy'])->name('reports.cash-flow.contracts.destroy');
+    Route::post('reports/cash-flow/flights', [CharterFlightController::class, 'store'])->name('reports.cash-flow.flights.store');
+    Route::post('reports/cash-flow/flights/import', [CharterFlightController::class, 'import'])->name('reports.cash-flow.flights.import');
+    Route::put('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'update'])->name('reports.cash-flow.flights.update');
+    Route::delete('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'destroy'])->name('reports.cash-flow.flights.destroy');
 
     Route::get('ai-assistant', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');

@@ -84,7 +84,7 @@ class MaintenanceController extends Controller
 
     public function stop(Request $request, string $run, ArtisanRunner $runner): RedirectResponse
     {
-        abort_unless(in_array($run, [ArtisanRunner::UPGRADE, ArtisanRunner::SYNC], true), 404);
+        abort_unless(in_array($run, [ArtisanRunner::UPGRADE, ArtisanRunner::SYNC, ArtisanRunner::CASHFLOW], true), 404);
 
         try {
             $runner->stop($run, $request->user()?->name);

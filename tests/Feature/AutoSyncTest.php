@@ -16,6 +16,7 @@ beforeEach(function () {
     $this->dir = sys_get_temp_dir().'/payables-auto-'.uniqid();
     $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
     Cache::forever('erp:sync:nightly', '2026-09-16');
+    Cache::forever('cashflow:nightly', '2026-09-16');
 });
 
 afterEach(function () {
@@ -108,4 +109,30 @@ test('the daily pass waits for the configured hour in Bucharest time', function 
     $this->actingAs($this->user)->get('/companies')->assertOk();
     Process::assertRan(fn ($process) => str_contains($process->command, '--days=45'));
     expect(Cache::get('erp:sync:nightly'))->toBe('2026-09-16');
+});
+
+test('the cash-flow snapshot is rebuilt once a day after the nightly sync, from the same page views', function () {
+    Cache::forget('cashflow:nightly');
+    Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T09:55:00+00:00', 'ok' => true, 'summary' => '']);
+
+    $this->actingAs($this->user)->get('/companies')->assertOk();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'artisan cashflow:build') && str_contains($process->command, '--by=automat'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'erp:sync'));
+    expect(Cache::get('cashflow:nightly'))->toBe('2026-09-16');
+
+    Cache::forget('erp:sync:auto:checked');
+    $this->actingAs($this->user)->get('/companies')->assertOk();
+    Process::assertRanTimes(fn ($process) => str_contains($process->command, 'cashflow:build'), 1);
+});
+
+test('the cash-flow rebuild waits for the nightly sync of the day', function () {
+    Cache::forget('cashflow:nightly');
+    Cache::forever('erp:sync:nightly', '2026-09-15');
+    Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T09:55:00+00:00', 'ok' => true, 'summary' => '']);
+    Carbon::setTestNow('2026-09-16 00:30:00'); // 03:30 Bucharest: nightly sync not due yet
+
+    $this->actingAs($this->user)->get('/companies')->assertOk();
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'cashflow:build'));
 });

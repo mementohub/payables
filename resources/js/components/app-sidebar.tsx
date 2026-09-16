@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     Building2,
     CalendarCheck,
+    CalendarRange,
     ChartColumn,
     ClipboardCheck,
     Contact,
@@ -50,6 +51,7 @@ import { clienti, furnizori } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
 import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
 import { index as paymentRequestsIndex } from '@/routes/payment-requests';
+import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as usersIndex } from '@/routes/users';
 import type { NavItemOrGroup } from '@/types/navigation';
@@ -131,6 +133,11 @@ const mainNavItems: NavItemOrGroup[] = [
                 title: 'OpEx',
                 href: opexIndex(),
                 icon: Receipt,
+            },
+            {
+                title: 'WCFR 52 Weeks',
+                href: cashFlowIndex(),
+                icon: CalendarRange,
             },
         ],
     },

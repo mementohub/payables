@@ -107,14 +107,14 @@ class DashboardController extends Controller
             ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
             ->selectRaw("
                 case
-                    when datediff(?, data_scadenta) <= 30 then '0-30'
-                    when datediff(?, data_scadenta) <= 60 then '31-60'
-                    when datediff(?, data_scadenta) <= 90 then '61-90'
+                    when data_scadenta >= ? then '0-30'
+                    when data_scadenta >= ? then '31-60'
+                    when data_scadenta >= ? then '61-90'
                     else '90+'
                 end as bucket,
                 count(*) as count,
                 coalesce(sum(val_mon - val_mon_paid), 0) as outstanding
-            ", [$today, $today, $today])
+            ", [$today->subDays(30)->toDateString(), $today->subDays(60)->toDateString(), $today->subDays(90)->toDateString()])
             ->groupBy('bucket')
             ->get()
             ->keyBy('bucket');
