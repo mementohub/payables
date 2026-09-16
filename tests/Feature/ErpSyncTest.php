@@ -1,15 +1,18 @@
 <?php
 
-use App\Jobs\SyncCompanyJob;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
+use App\Services\Maintenance\ArtisanRunner;
 use App\Services\RemoteConnection;
 use App\Services\SyncService;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
+use Inertia\Support\SessionKey;
 use Mockery\MockInterface;
 
 /**
@@ -26,13 +29,68 @@ function syncResult(array $overrides = []): array
 
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
+    Cache::flush();
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->create(['name' => 'Bogdan']);
     $this->company = Company::factory()->create(['name' => 'Christian Tour']);
+    $this->dir = sys_get_temp_dir().'/payables-sync-'.uniqid();
+    $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
 });
 
-test('a sync without a range runs inline for the recent days', function () {
-    Queue::fake();
+afterEach(function () {
+    File::deleteDirectory($this->dir);
+});
+
+/**
+ * @return array<string, mixed>
+ */
+function lastSyncToast(): array
+{
+    return session(SessionKey::FLASH_DATA)['toast'];
+}
+
+test('a sync started from the browser runs erp:sync in the background', function () {
+    Process::fake();
+
+    $this->actingAs($this->user)
+        ->from('/invoices/received')
+        ->post("/companies/{$this->company->id}/sync")
+        ->assertRedirect('/invoices/received');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'nohup')
+        && str_contains($process->command, 'artisan erp:sync')
+        && str_contains($process->command, "--company={$this->company->id}")
+        && str_contains($process->command, '--no-interaction --no-ansi'));
+
+    expect(lastSyncToast()['type'])->toBe('success')
+        ->and(app(ArtisanRunner::class)->isRunning(ArtisanRunner::SYNC))->toBeTrue()
+        ->and(app(ArtisanRunner::class)->status(ArtisanRunner::SYNC)['started_by'])->toBe('Bogdan');
+});
+
+test('a date range is handed to the background run', function () {
+    Process::fake();
+
+    $this->actingAs($this->user)
+        ->post("/companies/{$this->company->id}/sync", ['from' => '2026-01-01', 'to' => '2026-03-31'])
+        ->assertRedirect();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, '--from=2026-01-01') && str_contains($process->command, '--to=2026-03-31'));
+});
+
+test('a second sync is refused while one is running', function () {
+    Process::fake();
+    Cache::forever('maintenance:erp:sync', ['started_at' => now()->toIso8601String(), 'mode' => 'background', 'by' => null, 'arguments' => []]);
+
+    $this->actingAs($this->user)
+        ->post("/companies/{$this->company->id}/sync")
+        ->assertRedirect();
+
+    Process::assertNothingRan();
+    expect(lastSyncToast()['type'])->toBe('info');
+});
+
+test('when the process cannot start, the recent days still run inline', function () {
+    Process::fake(['*' => Process::result(exitCode: 127, errorOutput: 'proc_open disabled')]);
 
     $this->mock(SyncService::class, function (MockInterface $mock) {
         $mock->shouldReceive('syncRecent')
@@ -42,57 +100,37 @@ test('a sync without a range runs inline for the recent days', function () {
     });
 
     $this->actingAs($this->user)
-        ->from('/invoices/received')
         ->post("/companies/{$this->company->id}/sync")
-        ->assertRedirect('/invoices/received');
-
-    Queue::assertNothingPushed();
-});
-
-test('a short range runs inline, a long one goes to the queue', function () {
-    Queue::fake();
-
-    $this->mock(SyncService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('sync')
-            ->withArgs(fn (Company $company, Carbon $from, Carbon $to) => $from->toDateString() === '2026-09-10' && $to->toDateString() === '2026-09-14')
-            ->once()
-            ->andReturn(syncResult());
-    });
-
-    $this->actingAs($this->user)
-        ->post("/companies/{$this->company->id}/sync", ['from' => '2026-09-10', 'to' => '2026-09-14'])
         ->assertRedirect();
 
-    Queue::assertNothingPushed();
+    expect(lastSyncToast()['type'])->toBe('success')
+        ->and(lastSyncToast()['message'])->toContain('a rulat pe loc')
+        ->and(lastSyncToast()['message'])->toContain('proc_open disabled');
+});
+
+test('when the process cannot start, a long range is refused rather than run in the request', function () {
+    Process::fake(['*' => Process::result(exitCode: 127, errorOutput: 'proc_open disabled')]);
+
+    $this->mock(SyncService::class, function (MockInterface $mock) {
+        $mock->shouldNotReceive('syncWindow');
+    });
 
     $this->actingAs($this->user)
         ->post("/companies/{$this->company->id}/sync", ['from' => '2026-01-01', 'to' => '2026-03-31'])
         ->assertRedirect();
 
-    Queue::assertPushed(SyncCompanyJob::class, 1);
+    expect(lastSyncToast()['type'])->toBe('error');
 });
 
-test('a failed inline sync reports the cause instead of a 500', function () {
-    $this->mock(SyncService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('syncRecent')->once()->andThrow(new RuntimeException('connection to server at "chr-etrip-pgbouncer" failed'));
-    });
+test('sync-all starts the background run for every company, optionally days back', function () {
+    Process::fake();
 
-    $this->actingAs($this->user)
-        ->post("/companies/{$this->company->id}/sync")
-        ->assertRedirect()
-        ->assertSessionHasNoErrors();
-});
+    $this->actingAs($this->user)->post('/companies/sync')->assertRedirect();
+    Process::assertRan(fn ($process) => str_contains($process->command, 'artisan erp:sync --no-interaction'));
 
-test('sync-all pulls the recent days of every company', function () {
-    Company::factory()->create(['name' => 'Vacanza']);
-
-    $this->mock(SyncService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('syncRecent')->twice()->andReturn(syncResult(['refreshed' => 0]));
-    });
-
-    $this->actingAs($this->user)
-        ->post('/companies/sync')
-        ->assertRedirect();
+    Cache::flush();
+    $this->actingAs($this->user)->post('/companies/sync', ['days' => 45])->assertRedirect();
+    Process::assertRan(fn ($process) => str_contains($process->command, '--days=45') && str_contains($process->command, 'artisan erp:sync'));
 });
 
 test('the erp:sync command syncs every company and keeps going after a failure', function () {
@@ -117,10 +155,10 @@ test('the erp:sync command syncs every company and keeps going after a failure',
 
 test('the erp:sync command accepts an explicit range', function () {
     $this->mock(SyncService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('sync')
+        $mock->shouldReceive('syncWindow')
             ->withArgs(fn (Company $company, Carbon $from, Carbon $to) => $from->toDateString() === '2026-08-01' && $to->toDateString() === '2026-08-31')
             ->once()
-            ->andReturn(syncResult());
+            ->andReturn(syncResult(['refreshed' => 0]));
     });
 
     $this->artisan('erp:sync', ['--company' => $this->company->id, '--from' => '2026-08-01', '--to' => '2026-08-31'])->assertSuccessful();

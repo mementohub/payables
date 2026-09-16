@@ -164,8 +164,10 @@ function formatDateTime(iso: string | null) {
  */
 function SyncChip({
     companies,
+    running,
 }: {
     companies: { id: number; name: string; last_synced_at?: string | null }[];
+    running: boolean;
 }) {
     const syncedAt = companies
         .map((company) => company.last_synced_at ?? null)
@@ -197,13 +199,18 @@ function SyncChip({
                         type="submit"
                         variant="outline"
                         size="sm"
-                        disabled={processing}
+                        disabled={processing || running}
+                        title={
+                            running
+                                ? 'Rulează în fundal; progresul apare în Setări → Întreținere'
+                                : undefined
+                        }
                     >
                         <RefreshCw
-                            className={processing ? 'animate-spin' : undefined}
+                            className={running ? 'animate-spin' : undefined}
                         />
-                        {processing
-                            ? 'Se sincronizează…'
+                        {running
+                            ? 'Se sincronizează în fundal…'
                             : 'Sincronizează acum'}
                     </Button>
                 </>
@@ -257,6 +264,7 @@ export default function InvoicesIndex({
     scope,
     filters,
     companies,
+    syncRunning,
     currentUser,
     availableResponsibles,
 }: Props) {
@@ -360,7 +368,7 @@ export default function InvoicesIndex({
                             {description}
                         </p>
                     </div>
-                    <SyncChip companies={companies} />
+                    <SyncChip companies={companies} running={syncRunning} />
                 </div>
 
                 <form

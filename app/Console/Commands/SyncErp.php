@@ -42,10 +42,12 @@ class SyncErp extends Command
                 ? config('omc.connections.'.$company->erpConnection())
                 : "{$company->db_host}/{$company->db_database}";
 
+            $progress = fn (string $line) => $this->line("  {$company->name}: {$line}");
+
             try {
                 $result = $from || $to
-                    ? $sync->sync($company, $from, $to)
-                    : $sync->syncRecent($company, $days);
+                    ? $sync->syncWindow($company, $from ?? ($to ?? Carbon::now())->copy()->subDays(max(1, (int) config('sync.window_days', 45)) - 1), $to ?? Carbon::now(), $progress)
+                    : $sync->syncRecent($company, $days, $progress);
 
                 $rows[] = [
                     $company->name,

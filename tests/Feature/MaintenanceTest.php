@@ -2,7 +2,7 @@
 
 use App\Models\Company;
 use App\Models\User;
-use App\Services\Maintenance\UpgradeRunner;
+use App\Services\Maintenance\ArtisanRunner;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -14,12 +14,13 @@ beforeEach(function () {
     Cache::flush();
 
     $this->user = User::factory()->create(['name' => 'Bogdan']);
-    $this->log = sys_get_temp_dir().'/payables-upgrade-'.uniqid().'.log';
-    $this->app->instance(UpgradeRunner::class, new UpgradeRunner($this->log));
+    $this->dir = sys_get_temp_dir().'/payables-runs-'.uniqid();
+    $this->log = $this->dir.'/app:upgrade.log';
+    $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
 });
 
 afterEach(function () {
-    File::delete($this->log);
+    File::deleteDirectory($this->dir);
 });
 
 function lastToast(): array
@@ -44,6 +45,7 @@ test('the page shows the pending migrations, the last runs and the scheduler sta
             ->where('pendingMigrations', [])
             ->where('upgrade.running', false)
             ->where('upgrade.exit_code', null)
+            ->where('syncRun.running', false)
             ->where('scheduler.alive', true)
             ->where('sync.summary', 'Christian Tour: 3 facturi, 1 plăți')
             ->where('companies.0.source', 'OMC Christian Tour (live)')
@@ -72,14 +74,14 @@ test('app:upgrade starts detached in the background and the page follows its log
 
     expect(lastToast()['type'])->toBe('success');
 
-    $status = app(UpgradeRunner::class)->status();
+    $status = app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE);
     expect($status['running'])->toBeTrue()
         ->and($status['started_by'])->toBe('Bogdan')
         ->and($status['mode'])->toBe('background');
 
     File::append($this->log, "Migrări\n  DONE\nGata.\n__EXIT:0\n");
 
-    $status = app(UpgradeRunner::class)->status();
+    $status = app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE);
     expect($status['running'])->toBeFalse()
         ->and($status['exit_code'])->toBe(0)
         ->and($status['log'])->toBe("Migrări\n  DONE\nGata.");
@@ -99,7 +101,7 @@ test('a background start that fails is reported instead of thrown', function () 
 
     expect(lastToast()['type'])->toBe('error')
         ->and(lastToast()['message'])->toContain('nohup: not found')
-        ->and(app(UpgradeRunner::class)->status()['running'])->toBeFalse();
+        ->and(app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE)['running'])->toBeFalse();
 });
 
 test('the migrations can be run inline and their output is kept in the log', function () {
@@ -109,18 +111,19 @@ test('the migrations can be run inline and their output is kept in the log', fun
 
     expect(lastToast()['type'])->toBe('success');
 
-    $status = app(UpgradeRunner::class)->status();
+    $status = app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE);
     expect($status['running'])->toBeFalse()
         ->and($status['exit_code'])->toBe(0)
         ->and($status['mode'])->toBe('inline')
         ->and($status['log'])->toContain('Nothing to migrate');
 });
 
-test('a run without an end is reported as lost after ninety minutes', function () {
-    Cache::forever(UpgradeRunner::STATE, ['started_at' => '2026-09-16T08:00:00+00:00', 'mode' => 'background', 'by' => null]);
+test('a run without an end is reported as lost after three hours', function () {
+    Cache::forever('maintenance:app:upgrade', ['started_at' => '2026-09-16T06:00:00+00:00', 'mode' => 'background', 'by' => null]);
+    File::ensureDirectoryExists($this->dir);
     File::put($this->log, "Migrări\n");
 
-    $status = app(UpgradeRunner::class)->status();
+    $status = app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE);
 
     expect($status['running'])->toBeFalse()
         ->and($status['stale'])->toBeTrue()

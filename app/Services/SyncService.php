@@ -102,15 +102,53 @@ class SyncService
      *
      * @return array<string, int>
      */
-    public function syncRecent(Company $company, ?int $days = null): array
+    public function syncRecent(Company $company, ?int $days = null, ?callable $progress = null): array
     {
         $days = max(1, $days ?? (int) config('sync.recent_days', 3));
         $to = Carbon::now()->endOfDay();
-        $from = $to->copy()->subDays($days - 1)->startOfDay();
 
-        $result = $this->sync($company, $from, $to);
+        return $this->syncWindow($company, $to->copy()->subDays($days - 1)->startOfDay(), $to, $progress);
+    }
 
-        return [...$result, 'refreshed' => $this->refreshOpenInvoices($company)];
+    /**
+     * Pull a window in slices of a few days (each slice is one pass with
+     * small lookups; `$progress` gets a line per slice), then refresh the
+     * invoices still open.
+     *
+     * @param  callable(string): void|null  $progress
+     * @return array<string, int>
+     */
+    public function syncWindow(Company $company, Carbon $from, Carbon $to, ?callable $progress = null): array
+    {
+        $sliceDays = max(1, (int) config('sync.slice_days', 3));
+        $to = $to->copy()->endOfDay();
+        $totals = [];
+
+        for ($start = $from->copy()->startOfDay(); $start->lte($to); $start = $start->copy()->addDays($sliceDays)) {
+            $end = $start->copy()->addDays($sliceDays - 1)->endOfDay();
+            $end = $end->gt($to) ? $to->copy() : $end;
+
+            $result = $this->sync($company, $start, $end);
+
+            foreach ($result as $key => $count) {
+                $totals[$key] = ($totals[$key] ?? 0) + $count;
+            }
+
+            if ($progress !== null) {
+                $progress(sprintf(
+                    '%s → %s: %d facturi, %d plăți, %d parteneri, %d extrase, %d eFacturi',
+                    $start->toDateString(),
+                    $end->toDateString(),
+                    $result['invoices'],
+                    $result['payments'],
+                    $result['partners'],
+                    $result['statements'],
+                    $result['e_invoices'],
+                ));
+            }
+        }
+
+        return [...$totals, 'refreshed' => $this->refreshOpenInvoices($company)];
     }
 
     /**
@@ -345,9 +383,6 @@ class SyncService
         ];
 
         $partnerLookup = Partner::where('company_id', $company->id)->pluck('id', 'name');
-        $invoiceLookup = Invoice::where('company_id', $company->id)
-            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
-            ->keyBy(fn ($i) => $i->data_doc->toDateString().'|'.$i->tip_doc.'|'.$i->nr_doc);
 
         $count = 0;
 
@@ -396,6 +431,13 @@ class SyncService
                 })
                 ->get();
 
+            $invoiceLookup = $allocationRows->isEmpty()
+                ? collect()
+                : Invoice::where('company_id', $company->id)
+                    ->whereIn('nr_doc', $allocationRows->pluck('nr_doc_com')->unique()->all())
+                    ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+                    ->keyBy(fn ($i) => $i->data_doc->toDateString().'|'.$i->tip_doc.'|'.$i->nr_doc);
+
             $allocationByLine = [];
             $allocationRowsByLine = [];
             foreach ($allocationRows as $row) {
@@ -436,8 +478,8 @@ class SyncService
                 ]);
 
                 foreach ($allocationRowsByLine[$lineKey] ?? [] as $alloc) {
-                    $invoiceKey = $alloc->data_doc_com.'|'.$alloc->tip_doc_com.'|'.$alloc->nr_doc_com;
-                    $invoiceId = isset($invoiceLookup[$invoiceKey]) ? $invoiceLookup[$invoiceKey]->id : null;
+                    $invoiceKey = Carbon::parse((string) $alloc->data_doc_com)->toDateString().'|'.$alloc->tip_doc_com.'|'.$alloc->nr_doc_com;
+                    $invoiceId = $invoiceLookup->get($invoiceKey)?->id;
 
                     BankStatementLineAllocation::create([
                         'bank_statement_line_id' => $lineModel->id,
@@ -562,7 +604,7 @@ class SyncService
 
         InvoicePayment::whereIn('invoice_id', array_values($lookup))->delete();
 
-        $bankLineLookup = $this->buildBankStatementLineLookup($company);
+        $bankLineLookup = $this->buildBankStatementLineLookup($company, $rows);
 
         $count = 0;
         $seen = [];
@@ -602,12 +644,17 @@ class SyncService
      *
      * @return array<string, int>
      */
-    private function buildBankStatementLineLookup(Company $company): array
+    private function buildBankStatementLineLookup(Company $company, Collection $rows): array
     {
         $lookup = [];
 
+        if ($rows->isEmpty()) {
+            return $lookup;
+        }
+
         BankStatementLine::query()
             ->whereHas('statement', fn ($q) => $q->where('company_id', $company->id))
+            ->whereIn('nr_doc', $rows->pluck('nr_doc_fin')->unique()->all())
             ->select(['id', 'data_doc', 'tip_doc', 'nr_doc'])
             ->lazy(1000)
             ->each(function (BankStatementLine $line) use (&$lookup) {

@@ -7,7 +7,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('app:upgrade {--skip-etrip : Do not refresh the eTrip supplier mirror} {--skip-sync : Do not pull the recent ERP documents}')]
-#[Description('Bring a deployed installation up to date: run pending migrations, pull the recent ERP documents and refresh the eTrip supplier mirror. Safe to run on every deploy.')]
+#[Description('Bring a deployed installation up to date: run pending migrations, pull the last few days of ERP documents and refresh the eTrip supplier mirror. Safe to run on every deploy.')]
 class UpgradeApp extends Command
 {
     public function handle(): int
@@ -18,8 +18,8 @@ class UpgradeApp extends Command
         $failed = false;
 
         if (! $this->option('skip-sync')) {
-            $this->components->info('Documente ERP (ultimele '.(int) config('sync.window_days', 45).' zile)');
-            $failed = $this->call('erp:sync', ['--days' => (int) config('sync.window_days', 45)]) !== self::SUCCESS || $failed;
+            $this->components->info('Documente ERP (ultimele '.(int) config('sync.recent_days', 3).' zile; restul le aduce sincronizarea de noapte sau butonul din Întreținere)');
+            $failed = $this->call('erp:sync') !== self::SUCCESS || $failed;
         }
 
         if (! $this->option('skip-etrip')) {

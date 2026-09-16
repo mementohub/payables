@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
-use App\Services\Maintenance\UpgradeRunner;
+use App\Services\Maintenance\ArtisanRunner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -21,13 +21,14 @@ class MaintenanceController extends Controller
     /** The scheduler is considered down after this long without a heartbeat. */
     public const HEARTBEAT_MINUTES = 3;
 
-    public function index(UpgradeRunner $runner): Response
+    public function index(ArtisanRunner $runner): Response
     {
         $beat = Cache::get('scheduler:heartbeat');
 
         return Inertia::render('maintenance/index', [
             'pendingMigrations' => $runner->pendingMigrations(),
-            'upgrade' => $runner->status(),
+            'upgrade' => $runner->status(ArtisanRunner::UPGRADE),
+            'syncRun' => $runner->status(ArtisanRunner::SYNC),
             'scheduler' => [
                 'last_beat' => $beat,
                 'alive' => $beat !== null && Carbon::parse($beat)->gt(now()->subMinutes(self::HEARTBEAT_MINUTES)),
@@ -44,16 +45,16 @@ class MaintenanceController extends Controller
         ]);
     }
 
-    public function upgrade(Request $request, UpgradeRunner $runner): RedirectResponse
+    public function upgrade(Request $request, ArtisanRunner $runner): RedirectResponse
     {
-        if ($runner->status()['running']) {
+        if ($runner->isRunning(ArtisanRunner::UPGRADE)) {
             Inertia::flash('toast', ['type' => 'info', 'message' => 'app:upgrade rulează deja; jurnalul de mai jos se actualizează singur.']);
 
             return back();
         }
 
         try {
-            $runner->start($request->user()?->name);
+            $runner->start(ArtisanRunner::UPGRADE, [], $request->user()?->name);
         } catch (Throwable $e) {
             Inertia::flash('toast', [
                 'type' => 'error',
@@ -68,7 +69,7 @@ class MaintenanceController extends Controller
         return back();
     }
 
-    public function migrate(Request $request, UpgradeRunner $runner): RedirectResponse
+    public function migrate(Request $request, ArtisanRunner $runner): RedirectResponse
     {
         try {
             $result = $runner->migrateInline($request->user()?->name);

@@ -124,6 +124,7 @@ export type IndexProps = {
     scope: Scope;
     filters: IndexFilters;
     companies: { id: number; name: string; last_synced_at?: string | null }[];
+    syncRunning: boolean;
     currentUser: CurrentUser;
     availableResponsibles: { id: number; name: string }[];
 };

@@ -51,10 +51,10 @@ function SyncDialog({ company }: { company: Company }) {
                 <DialogHeader>
                     <DialogTitle>Sincronizează {company.name}</DialogTitle>
                     <DialogDescription>
-                        Alege intervalul de date (după data documentelor). Până
-                        la 7 zile rulează pe loc; intervalele mai lungi merg în
-                        fundal prin Horizon. Ultimele zile se sincronizează
-                        oricum automat, la 10 minute.
+                        Alege intervalul de date (după data documentelor).
+                        Rulează în fundal; progresul apare în Setări →
+                        Întreținere. Ultimele zile se sincronizează oricum
+                        automat, la 10 minute.
                     </DialogDescription>
                 </DialogHeader>
                 <Form

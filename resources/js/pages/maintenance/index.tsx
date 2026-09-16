@@ -15,19 +15,21 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { index as maintenanceIndex } from '@/routes/maintenance';
 
-type Upgrade = {
+type RunStatus = {
     running: boolean;
     stale: boolean;
     mode: 'background' | 'inline' | null;
     started_at: string | null;
     started_by: string | null;
+    arguments: string[];
     exit_code: number | null;
     log: string;
 };
 
 type Props = {
     pendingMigrations: string[];
-    upgrade: Upgrade;
+    upgrade: RunStatus;
+    syncRun: RunStatus;
     scheduler: { last_beat: string | null; alive: boolean };
     sync: { at: string; ok: boolean; summary: string } | null;
     companies: {
@@ -44,7 +46,7 @@ function dateTime(value: string | null): string {
     return value ? new Date(value).toLocaleString('ro-RO') : 'niciodată';
 }
 
-function UpgradeStatus({ upgrade }: { upgrade: Upgrade }) {
+function RunBadge({ upgrade }: { upgrade: RunStatus }) {
     if (upgrade.running) {
         return (
             <Badge variant="secondary">
@@ -88,32 +90,52 @@ function UpgradeStatus({ upgrade }: { upgrade: Upgrade }) {
     return <Badge variant="outline">nu a rulat încă din aplicație</Badge>;
 }
 
+function RunLog({ log, empty }: { log: string; empty: string }) {
+    const ref = useRef<HTMLPreElement>(null);
+
+    useEffect(() => {
+        ref.current?.scrollTo({ top: ref.current.scrollHeight });
+    }, [log]);
+
+    return (
+        <pre
+            ref={ref}
+            className="max-h-96 min-h-24 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap"
+        >
+            {log || empty}
+        </pre>
+    );
+}
+
 export default function MaintenanceIndex({
     pendingMigrations,
     upgrade,
+    syncRun,
     scheduler,
     sync,
     companies,
 }: Props) {
-    const logRef = useRef<HTMLPreElement>(null);
+    const polling = upgrade.running || syncRun.running;
 
     useEffect(() => {
-        if (!upgrade.running) {
+        if (!polling) {
             return;
         }
 
         const timer = window.setInterval(() => {
             router.reload({
-                only: ['upgrade', 'pendingMigrations', 'companies', 'sync'],
+                only: [
+                    'upgrade',
+                    'syncRun',
+                    'pendingMigrations',
+                    'companies',
+                    'sync',
+                ],
             });
         }, 3000);
 
         return () => window.clearInterval(timer);
-    }, [upgrade.running]);
-
-    useEffect(() => {
-        logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-    }, [upgrade.log]);
+    }, [polling]);
 
     return (
         <>
@@ -135,15 +157,15 @@ export default function MaintenanceIndex({
                             Actualizare aplicație (app:upgrade)
                         </CardTitle>
                         <CardDescription>
-                            Rulează migrările în așteptare, aduce ultimele 45 de
-                            zile de documente din OMC și reîmprospătează
-                            furnizorii eTrip. Pornește în fundal; jurnalul de
-                            mai jos se actualizează singur cât timp rulează.
+                            Rulează migrările în așteptare, aduce ultimele zile
+                            de documente din OMC și reîmprospătează furnizorii
+                            eTrip. Pornește în fundal; jurnalul de mai jos se
+                            actualizează singur cât timp rulează.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex flex-wrap items-center gap-3">
-                            <UpgradeStatus upgrade={upgrade} />
+                            <RunBadge upgrade={upgrade} />
                             <Badge
                                 variant={
                                     pendingMigrations.length > 0
@@ -208,13 +230,10 @@ export default function MaintenanceIndex({
                             </span>
                         </div>
 
-                        <pre
-                            ref={logRef}
-                            className="max-h-96 min-h-24 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap"
-                        >
-                            {upgrade.log ||
-                                'Jurnalul apare aici după prima rulare.'}
-                        </pre>
+                        <RunLog
+                            log={upgrade.log}
+                            empty="Jurnalul apare aici după prima rulare."
+                        />
                     </CardContent>
                 </Card>
 
@@ -226,34 +245,73 @@ export default function MaintenanceIndex({
                                 Documentele ERP se aduc automat la 10 minute
                                 (ultimele 3 zile) și noaptea (ultimele 45 de
                                 zile) prin scheduler-ul Laravel; fiecare rulare
-                                actualizează și facturile încă deschise.
+                                actualizează și facturile încă deschise. Pornite
+                                de aici, rulează în fundal, iar paginile se
+                                actualizează pe măsură ce intră datele.
                             </CardDescription>
                         </div>
-                        <Form
-                            {...SyncController.storeAll.form()}
-                            options={{ preserveScroll: true }}
-                        >
-                            {({ processing }) => (
-                                <Button
-                                    type="submit"
-                                    variant="outline"
-                                    disabled={processing}
-                                >
-                                    <RefreshCw
-                                        className={
-                                            processing
-                                                ? 'animate-spin'
-                                                : undefined
-                                        }
-                                    />
-                                    {processing
-                                        ? 'Se sincronizează…'
-                                        : 'Sincronizează acum'}
-                                </Button>
-                            )}
-                        </Form>
+                        <div className="flex flex-wrap gap-2">
+                            <Form
+                                {...SyncController.storeAll.form()}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        disabled={processing || syncRun.running}
+                                    >
+                                        <RefreshCw
+                                            className={
+                                                syncRun.running
+                                                    ? 'animate-spin'
+                                                    : undefined
+                                            }
+                                        />
+                                        Sincronizează acum (ultimele zile)
+                                    </Button>
+                                )}
+                            </Form>
+                            <Form
+                                {...SyncController.storeAll.form()}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="days"
+                                            value="45"
+                                        />
+                                        <Button
+                                            type="submit"
+                                            variant="outline"
+                                            disabled={
+                                                processing || syncRun.running
+                                            }
+                                        >
+                                            Adu ultimele 45 de zile
+                                        </Button>
+                                    </>
+                                )}
+                            </Form>
+                        </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <RunBadge upgrade={syncRun} />
+                            {syncRun.arguments.length > 0 && (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                    erp:sync {syncRun.arguments.join(' ')}
+                                </span>
+                            )}
+                        </div>
+
+                        <RunLog
+                            log={syncRun.log}
+                            empty="Jurnalul sincronizării pornite din aplicație apare aici."
+                        />
+
                         <div className="flex flex-wrap items-center gap-3 text-sm">
                             {scheduler.alive ? (
                                 <Badge variant="outline" className={OK}>

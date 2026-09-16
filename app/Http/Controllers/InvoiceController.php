@@ -14,6 +14,7 @@ use App\Services\Invoices\InvoiceCommentService;
 use App\Services\Invoices\InvoiceListQuery;
 use App\Services\Invoices\InvoicePaymentService;
 use App\Services\Invoices\InvoicePresenter;
+use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -74,6 +75,7 @@ class InvoiceController extends Controller
             'scope' => $scope,
             'filters' => $filters,
             'companies' => $companies,
+            'syncRunning' => app(ArtisanRunner::class)->isRunning(ArtisanRunner::SYNC),
             'activeCompany' => $activeCompany
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,

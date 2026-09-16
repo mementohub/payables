@@ -184,3 +184,23 @@ test('the recent sync also refreshes older invoices that are still open', functi
         ->and($old->payments()->count())->toBe(1)
         ->and(Invoice::where('nr_doc', 'NEW')->exists())->toBeTrue();
 });
+
+test('a window is pulled in slices, with a progress line per slice', function () {
+    config()->set('sync.slice_days', 3);
+
+    foreach (['2026-09-10', '2026-09-12', '2026-09-14', '2026-09-16'] as $i => $date) {
+        erpDoc(['data_doc' => $date, 'nr_doc' => "S{$i}"]);
+    }
+
+    $lines = [];
+    $result = app(SyncService::class)->syncWindow($this->company, Carbon::parse('2026-09-10'), Carbon::parse('2026-09-16'), function (string $line) use (&$lines) {
+        $lines[] = $line;
+    });
+
+    expect($result['invoices'])->toBe(4)
+        ->and($result['refreshed'])->toBe(0)
+        ->and($lines)->toHaveCount(3)
+        ->and($lines[0])->toStartWith('2026-09-10 → 2026-09-12: 2 facturi')
+        ->and($lines[2])->toStartWith('2026-09-16 → 2026-09-16: 1 facturi')
+        ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(4);
+});
