@@ -3,6 +3,7 @@ import {
     Building2,
     ChartColumn,
     Contact,
+    DatabaseZap,
     FileCheck2,
     FileInput,
     FileOutput,
@@ -32,6 +33,7 @@ import { dashboard } from '@/routes';
 import { index as aiChatIndex } from '@/routes/ai-chat';
 import { index as bankStatementsIndex } from '@/routes/bank-statements';
 import { index as companiesIndex } from '@/routes/companies';
+import { index as databaseStatusIndex } from '@/routes/database-status';
 import { index as departmentsIndex } from '@/routes/departments';
 import { index as eInvoicesIndex } from '@/routes/e-invoices';
 import {
@@ -124,6 +126,11 @@ const settingsNavItems: NavItemOrGroup[] = [
         title: 'Departamente',
         href: departmentsIndex(),
         icon: ShieldCheck,
+    },
+    {
+        title: 'Stare baze de date',
+        href: databaseStatusIndex(),
+        icon: DatabaseZap,
     },
 ];
 

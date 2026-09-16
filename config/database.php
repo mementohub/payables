@@ -99,6 +99,51 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        'omc' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_OMC_URL'),
+            'host' => env('DB_OMC_HOST', '127.0.0.1'),
+            'port' => env('DB_OMC_PORT', '5432'),
+            'database' => env('DB_OMC_DATABASE', 'omc'),
+            'username' => env('DB_OMC_USERNAME', ''),
+            'password' => env('DB_OMC_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_OMC_SCHEMA', 'public'),
+            'sslmode' => env('DB_OMC_SSLMODE', 'prefer'),
+        ],
+
+        'etrip_vcz' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_ETRIP_VCZ_URL'),
+            'host' => env('DB_ETRIP_VCZ_HOST', '127.0.0.1'),
+            'port' => env('DB_ETRIP_VCZ_PORT', '5432'),
+            'database' => env('DB_ETRIP_VCZ_DATABASE', 'etrip_vcz'),
+            'username' => env('DB_ETRIP_VCZ_USERNAME', ''),
+            'password' => env('DB_ETRIP_VCZ_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_ETRIP_VCZ_SCHEMA', 'public'),
+            'sslmode' => env('DB_ETRIP_VCZ_SSLMODE', 'prefer'),
+        ],
+
+        'etrip_chr' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_ETRIP_CHR_URL'),
+            'host' => env('DB_ETRIP_CHR_HOST', '127.0.0.1'),
+            'port' => env('DB_ETRIP_CHR_PORT', '5432'),
+            'database' => env('DB_ETRIP_CHR_DATABASE', 'etrip_chr'),
+            'username' => env('DB_ETRIP_CHR_USERNAME', ''),
+            'password' => env('DB_ETRIP_CHR_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_ETRIP_CHR_SCHEMA', 'public'),
+            'sslmode' => env('DB_ETRIP_CHR_SSLMODE', 'prefer'),
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
@@ -113,6 +158,29 @@ return [
             // 'encrypt' => env('DB_ENCRYPT', 'yes'),
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Connection Status Monitoring
+    |--------------------------------------------------------------------------
+    |
+    | The named connections listed below are probed by the database status
+    | page, which reports whether each one can be reached and surfaces the
+    | driver error when it cannot. The timeout caps each connection attempt.
+    |
+    */
+
+    'status' => [
+
+        'connections' => [
+            'omc' => 'OMC',
+            'etrip_vcz' => 'eTrip Vacanza',
+            'etrip_chr' => 'eTrip Christian Tour',
+        ],
+
+        'timeout' => (int) env('DB_STATUS_TIMEOUT', 5),
 
     ],
 

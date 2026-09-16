@@ -5,6 +5,7 @@ use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankStatementController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\InvoiceController;
@@ -66,6 +67,8 @@ Route::middleware('auth')->group(function () {
     Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');
     Route::post('ai-assistant/stream', [AiChatController::class, 'stream'])->name('ai-chat.stream');
     Route::delete('ai-assistant/{conversation}', [AiChatController::class, 'destroy'])->name('ai-chat.destroy');
+
+    Route::get('database-status', [DatabaseStatusController::class, 'index'])->name('database-status.index');
 
     Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
     Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');
