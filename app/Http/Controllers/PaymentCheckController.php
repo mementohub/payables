@@ -85,8 +85,8 @@ class PaymentCheckController extends Controller
     }
 
     /**
-     * Suppliers with the largest check-in cost in the coming days, cached per
-     * eTrip database so the page does not hit the replica on every visit.
+     * Suppliers with the largest check-in cost in the coming days, read live
+     * from eTrip unless etrip.expected_cache_minutes asks for a cache.
      *
      * @return array{days: int, from: string, to: string, cached_at: string, suppliers: list<array<string, mixed>>}
      */
@@ -106,11 +106,13 @@ class PaymentCheckController extends Controller
         $to = $from->copy()->addDays($days - 1);
         $key = sprintf('etrip:%s:expected:%d:%s', $company->etripConnection(), $days, $from->toDateString());
 
-        if ($request->boolean('refresh')) {
+        $minutes = (int) config('etrip.expected_cache_minutes', 0);
+
+        if ($request->boolean('refresh') || $minutes <= 0) {
             Cache::forget($key);
         }
 
-        $payload = $this->readingEtrip(fn () => Cache::remember($key, now()->addMinutes((int) config('etrip.expected_cache_minutes', 360)), function () use ($reader, $company, $from, $to) {
+        $payload = $this->readingEtrip(fn () => Cache::remember($key, now()->addMinutes(max(1, $minutes)), function () use ($reader, $company, $from, $to) {
             $known = EtripSupplier::query()
                 ->where('company_id', $company->id)
                 ->get(['code', 'partner_id'])

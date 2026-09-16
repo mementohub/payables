@@ -3,6 +3,7 @@ import {
     BadgeCheck,
     Check,
     CircleDollarSign,
+    ClipboardCheck,
     Hourglass,
     MessageSquare,
     ShieldCheck,
@@ -32,6 +33,7 @@ const labels: Record<TimelineEvent['type'], string> = {
     approval_revoked: 'Aprobare retrasă',
     commented: 'Comentariu',
     payment_status_changed: 'Status plată',
+    payment_request_linked: 'Cerere de plată',
 };
 
 const accent: Record<TimelineEvent['type'], string> = {
@@ -42,6 +44,8 @@ const accent: Record<TimelineEvent['type'], string> = {
     commented: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
     payment_status_changed:
         'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+    payment_request_linked:
+        'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
 };
 
 function eventIcon(type: TimelineEvent['type']) {
@@ -54,6 +58,8 @@ function eventIcon(type: TimelineEvent['type']) {
             return <MessageSquare className="size-3.5" />;
         case 'payment_status_changed':
             return <CircleDollarSign className="size-3.5" />;
+        case 'payment_request_linked':
+            return <ClipboardCheck className="size-3.5" />;
     }
 }
 
@@ -92,6 +98,19 @@ function describe(event: TimelineEvent): string {
             const label = paymentStatusLabel[to] ?? to;
 
             return `a marcat factura ca ${label}`;
+        }
+        case 'payment_request_linked': {
+            const id = event.payload?.payment_request_id as number | undefined;
+            const pct = event.payload?.difference_pct as
+                | number
+                | null
+                | undefined;
+            const difference =
+                pct === null || pct === undefined
+                    ? ''
+                    : ` (${pct > 0 ? '+' : ''}${pct}% față de așteptat)`;
+
+            return `a legat cererea de plată${id ? ` #${id}` : ''}${difference}`;
         }
     }
 }

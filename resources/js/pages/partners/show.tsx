@@ -250,7 +250,11 @@ export default function PartnerShow({
                 )}
 
                 {partner.is_furnizor && (
-                    <PaymentCheckPanel partnerId={partner.id} />
+                    <PaymentCheckPanel
+                        partnerId={partner.id}
+                        companyId={partner.company.id}
+                        partnerName={partner.name}
+                    />
                 )}
 
                 {activeBankAccounts.length > 0 && (

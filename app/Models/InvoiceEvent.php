@@ -16,6 +16,8 @@ class InvoiceEvent extends Model
 
     public const TYPE_PAYMENT_STATUS_CHANGED = 'payment_status_changed';
 
+    public const TYPE_PAYMENT_REQUEST_LINKED = 'payment_request_linked';
+
     protected $guarded = [];
 
     protected function casts(): array

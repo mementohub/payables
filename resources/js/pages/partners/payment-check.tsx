@@ -11,6 +11,7 @@ import {
     YAxis,
 } from 'recharts';
 import PartnerController from '@/actions/App/Http/Controllers/PartnerController';
+import SavePaymentRequest from '@/components/save-payment-request';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -307,6 +308,74 @@ function PatternChart({ check }: { check: PaymentCheck }) {
     );
 }
 
+/**
+ * What the request is compared against: the matched invoice when there is one,
+ * otherwise everything the supplier still has open in that currency.
+ */
+function invoiceRequestPayload(
+    check: PaymentCheck,
+    ids: { companyId: number; partnerId: number; partnerName: string },
+): Record<string, unknown> {
+    const requested = check.requested;
+
+    if (!requested) {
+        return {};
+    }
+
+    const expected =
+        requested.verdict === 'exact'
+            ? (requested.invoice?.rest ?? requested.open_sum)
+            : requested.verdict === 'paid'
+              ? (requested.invoice?.val_mon ?? requested.open_sum)
+              : requested.open_sum;
+    const difference = Math.round((requested.amount - expected) * 100) / 100;
+
+    return {
+        company_id: ids.companyId,
+        kind: 'invoice',
+        supplier_name: ids.partnerName,
+        partner_id: ids.partnerId,
+        reference: requested.invoice?.nr_doc ?? null,
+        requested_amount: requested.amount,
+        requested_currency: requested.currency,
+        expected_amount: expected,
+        expected_currency: requested.currency,
+        difference,
+        difference_pct:
+            expected > 0
+                ? Math.round((difference / expected) * 10000) / 100
+                : null,
+        level: requested.level,
+        verdict: requested.verdict,
+        snapshot: {
+            message: requested.message,
+            open_count: requested.open_count,
+            open_sum: requested.open_sum,
+            first_due: check.first_due,
+        },
+    };
+}
+
+function coveringInvoiceIds(check: PaymentCheck): number[] {
+    const requested = check.requested;
+
+    if (!requested) {
+        return [];
+    }
+
+    if (requested.verdict === 'exact' && requested.invoice) {
+        return [requested.invoice.id];
+    }
+
+    if (requested.verdict === 'sum') {
+        return check.open
+            .filter((invoice) => invoice.moneda === requested.currency)
+            .map((invoice) => invoice.id);
+    }
+
+    return [];
+}
+
 function fetchCheck(
     partnerId: number,
     query: Record<string, string>,
@@ -324,8 +393,12 @@ function fetchCheck(
 
 export default function PaymentCheckPanel({
     partnerId,
+    companyId,
+    partnerName,
 }: {
     partnerId: number;
+    companyId: number;
+    partnerName: string;
 }) {
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('');
@@ -593,6 +666,19 @@ export default function PaymentCheckPanel({
                                 <PatternChart check={check} />
                             </div>
                         </div>
+
+                        {check.requested && (
+                            <SavePaymentRequest
+                                title="Salvează verificarea în registru"
+                                description="Cererea rămâne în registru cu facturile găsite acum; factura potrivită se leagă automat."
+                                payload={invoiceRequestPayload(check, {
+                                    companyId,
+                                    partnerId,
+                                    partnerName,
+                                })}
+                                invoiceIds={coveringInvoiceIds(check)}
+                            />
+                        )}
                     </>
                 )}
             </CardContent>

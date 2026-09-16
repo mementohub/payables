@@ -12,6 +12,7 @@ import {
 } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 import { InvoicePaymentCard } from './invoice-payment-card';
+import { show as paymentRequestShow } from '@/routes/payment-requests';
 import { InvoiceTimeline } from './invoice-timeline';
 import type { Invoice, ShowProps } from './types';
 
@@ -694,6 +695,65 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                     </div>
 
                     <aside className="lg:sticky lg:top-4 lg:self-start">
+                        {invoice.payment_requests.length > 0 && (
+                            <div className="mb-4 rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                                <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
+                                    Cereri de plată
+                                </div>
+                                <ul className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                    {invoice.payment_requests.map((request) => (
+                                        <li
+                                            key={request.id}
+                                            className="px-4 py-3 text-sm"
+                                        >
+                                            <Link
+                                                href={paymentRequestShow(
+                                                    request.id,
+                                                )}
+                                                className="font-medium hover:underline"
+                                            >
+                                                #{request.id} ·{' '}
+                                                {formatAmount(
+                                                    request.requested_amount,
+                                                    request.requested_currency,
+                                                )}
+                                            </Link>
+                                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                <Badge variant="secondary">
+                                                    {request.status_label}
+                                                </Badge>
+                                                {request.difference_pct !==
+                                                    null && (
+                                                    <span
+                                                        className={
+                                                            request.level ===
+                                                            'ok'
+                                                                ? 'text-emerald-700 dark:text-emerald-500'
+                                                                : request.level ===
+                                                                    'warn'
+                                                                  ? 'text-amber-600 dark:text-amber-400'
+                                                                  : 'text-destructive'
+                                                        }
+                                                    >
+                                                        {request.difference_pct >
+                                                        0
+                                                            ? '+'
+                                                            : ''}
+                                                        {request.difference_pct}
+                                                        % față de așteptat
+                                                    </span>
+                                                )}
+                                                {request.created_by && (
+                                                    <span>
+                                                        de {request.created_by}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <div className="rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                             <div className="bg-muted/50 px-4 py-2 text-sm font-semibold">
                                 Cronologie

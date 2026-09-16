@@ -14,6 +14,7 @@ import PaymentCheckController from '@/actions/App/Http/Controllers/PaymentCheckC
 import DatePicker from '@/components/date-picker';
 import EtripSupplierPicker from '@/components/etrip-supplier-picker';
 import type { EtripSupplierOption } from '@/components/etrip-supplier-picker';
+import SavePaymentRequest from '@/components/save-payment-request';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -983,6 +984,46 @@ export default function PaymentChecksIndex({
                                 />
                             </CardContent>
                         </Card>
+
+                        {check.requested && companyId !== null && (
+                            <SavePaymentRequest
+                                title="Salvează verificarea în registru"
+                                description="Cererea rămâne în registru cu cifrele eTrip din acest moment, ca dovadă pentru aprobare."
+                                payload={{
+                                    company_id: companyId,
+                                    kind: 'checkin',
+                                    supplier_name:
+                                        supplier?.name ?? check.supplier.name,
+                                    etrip_supplier_id: supplier?.id ?? null,
+                                    partner_id: supplier?.partner_id ?? null,
+                                    requested_amount: check.requested.amount,
+                                    requested_currency:
+                                        check.requested.currency,
+                                    checkin_from: check.from,
+                                    checkin_to: check.to,
+                                    category: check.category,
+                                    expected_amount: check.requested.etrip,
+                                    expected_currency:
+                                        check.requested.compared_currency,
+                                    difference: check.requested.diff,
+                                    difference_pct: check.requested.diff_pct,
+                                    level: check.requested.level,
+                                    verdict:
+                                        check.requested.diff === null
+                                            ? 'unconverted'
+                                            : check.requested.level,
+                                    snapshot: {
+                                        totals: check.totals,
+                                        items: check.items,
+                                        bookings: check.bookings,
+                                        compared_amount:
+                                            check.requested.compared_amount,
+                                        rate: check.requested.rate,
+                                        message: check.requested.message,
+                                    },
+                                }}
+                            />
+                        )}
 
                         <LinesTable check={check} />
                     </>

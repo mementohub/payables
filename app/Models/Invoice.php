@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Invoice extends Model
@@ -83,6 +84,11 @@ class Invoice extends Model
     public function events(): HasMany
     {
         return $this->hasMany(InvoiceEvent::class);
+    }
+
+    public function paymentRequests(): BelongsToMany
+    {
+        return $this->belongsToMany(PaymentRequest::class, 'payment_request_invoice')->withTimestamps();
     }
 
     public function comments(): HasMany

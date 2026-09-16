@@ -25,7 +25,8 @@ export type TimelineEvent = {
         | 'approved'
         | 'approval_revoked'
         | 'commented'
-        | 'payment_status_changed';
+        | 'payment_status_changed'
+        | 'payment_request_linked';
     body: string | null;
     payload: Record<string, unknown> | null;
     created_at: string;
@@ -156,6 +157,21 @@ export type Payment = {
     } | null;
 };
 
+export type InvoicePaymentRequestRef = {
+    id: number;
+    kind: 'checkin' | 'invoice';
+    status: string;
+    status_label: string;
+    level: 'ok' | 'warn' | 'crit' | null;
+    requested_amount: number;
+    requested_currency: string;
+    difference_pct: number | null;
+    checkin_from: string | null;
+    checkin_to: string | null;
+    created_by: string | null;
+    created_at: string | null;
+};
+
 export type Invoice = {
     id: number;
     data_doc: string;
@@ -188,6 +204,7 @@ export type Invoice = {
     details: Detail[];
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
+    payment_requests: InvoicePaymentRequestRef[];
     approval: Approval;
     timeline: TimelineEvent[];
 };

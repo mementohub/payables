@@ -14,6 +14,7 @@ use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\PaymentCheckController;
 use App\Http\Controllers\PaymentExportController;
+use App\Http\Controllers\PaymentRequestController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Auth;
@@ -66,6 +67,14 @@ Route::middleware('auth')->group(function () {
     Route::get('payment-checks', [PaymentCheckController::class, 'index'])->name('payment-checks.index');
     Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
     Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
+
+    Route::get('payment-requests', [PaymentRequestController::class, 'index'])->name('payment-requests.index');
+    Route::post('payment-requests', [PaymentRequestController::class, 'store'])->name('payment-requests.store');
+    Route::get('payment-requests/{paymentRequest}', [PaymentRequestController::class, 'show'])->name('payment-requests.show');
+    Route::post('payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus'])->name('payment-requests.status.update');
+    Route::post('payment-requests/{paymentRequest}/comments', [PaymentRequestController::class, 'comment'])->name('payment-requests.comments.store');
+    Route::post('payment-requests/{paymentRequest}/invoices', [PaymentRequestController::class, 'linkInvoice'])->name('payment-requests.invoices.link');
+    Route::delete('payment-requests/{paymentRequest}/invoices/{invoice}', [PaymentRequestController::class, 'unlinkInvoice'])->name('payment-requests.invoices.unlink');
     Route::post('partners/{partner}/responsabil-departments', [PartnerController::class, 'attachResponsabilDepartment'])->name('partners.responsabil-departments.attach');
     Route::delete('partners/{partner}/responsabil-departments/{department}', [PartnerController::class, 'detachResponsabilDepartment'])->name('partners.responsabil-departments.detach');
     Route::get('clients', [PartnerController::class, 'clienti'])->name('partners.clienti');

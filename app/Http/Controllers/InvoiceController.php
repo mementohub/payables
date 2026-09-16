@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceApproval;
+use App\Models\PaymentRequest;
 use App\Models\User;
 use App\Services\Invoices\InvoiceApprovalService;
 use App\Services\Invoices\InvoiceCommentService;
@@ -237,6 +238,25 @@ class InvoiceController extends Controller
                 'approval' => $this->presenter->approvalPayload($invoice),
                 'timeline' => $this->presenter->timelinePayload($invoice),
                 'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
+                'payment_requests' => $invoice->paymentRequests()
+                    ->with('createdBy:id,name')
+                    ->orderByDesc('id')
+                    ->get()
+                    ->map(fn (PaymentRequest $paymentRequest) => [
+                        'id' => $paymentRequest->id,
+                        'kind' => $paymentRequest->kind,
+                        'status' => $paymentRequest->status,
+                        'status_label' => $paymentRequest->statusLabel(),
+                        'level' => $paymentRequest->level,
+                        'requested_amount' => (float) $paymentRequest->requested_amount,
+                        'requested_currency' => $paymentRequest->requested_currency,
+                        'difference_pct' => $paymentRequest->difference_pct !== null ? (float) $paymentRequest->difference_pct : null,
+                        'checkin_from' => $paymentRequest->checkin_from?->toDateString(),
+                        'checkin_to' => $paymentRequest->checkin_to?->toDateString(),
+                        'created_by' => $paymentRequest->createdBy?->name,
+                        'created_at' => $paymentRequest->created_at?->toIso8601String(),
+                    ])
+                    ->all(),
                 'baza' => $this->presenter->bazaPayload($invoice),
                 'com_int_matches' => $this->presenter->comIntMatchesPayload($invoice),
             ],

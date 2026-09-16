@@ -51,6 +51,10 @@ return [
 
     'statement_timeout_ms' => (int) env('ETRIP_STATEMENT_TIMEOUT_MS', 30000),
 
-    'expected_cache_minutes' => (int) env('ETRIP_EXPECTED_CACHE_MINUTES', 360),
+    /*
+    | Minutes to cache the "expected requests" list. 0 (the default) reads
+    | eTrip live on every visit; set a value only if the replica struggles.
+    */
+    'expected_cache_minutes' => (int) env('ETRIP_EXPECTED_CACHE_MINUTES', 0),
 
 ];

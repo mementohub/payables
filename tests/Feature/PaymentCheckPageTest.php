@@ -101,7 +101,9 @@ test('the check endpoint does not know suppliers that were never synced', functi
         ->assertNotFound();
 });
 
-test('expected requests are read from etrip once and cached', function () {
+test('expected requests are cached when a cache window is configured', function () {
+    config()->set('etrip.expected_cache_minutes', 360);
+
     $partner = Partner::factory()->for($this->company)->create();
     EtripSupplier::factory()->for($this->company)->create(['code' => '10', 'partner_id' => $partner->id]);
 
@@ -128,6 +130,17 @@ test('expected requests are read from etrip once and cached', function () {
         ->assertJsonPath('suppliers.1.partner_id', null);
 
     $this->actingAs($this->user)->getJson($url)->assertOk()->assertJsonCount(2, 'suppliers');
+});
+
+test('expected requests are read live from etrip by default', function () {
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('expectedCosts')->twice()->andReturn([]);
+    });
+
+    $url = '/payment-checks/expected?company_id='.$this->company->id.'&days=2';
+
+    $this->actingAs($this->user)->getJson($url)->assertOk()->assertJsonPath('days', 2);
+    $this->actingAs($this->user)->getJson($url)->assertOk();
 });
 
 test('the supplier search returns the active suppliers of a company', function () {
