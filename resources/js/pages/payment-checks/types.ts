@@ -6,7 +6,6 @@ export type EtripCompany = {
 };
 
 export type EtripSupplierOption = {
-    id: number;
     code: string;
     name: string;
     currency: string | null;
@@ -67,7 +66,12 @@ export type CheckinRequested = {
 };
 
 export type CheckinCheck = {
-    supplier: { code: string; name: string; currency: string | null };
+    supplier: {
+        id: number;
+        code: string;
+        name: string;
+        currency: string | null;
+    };
     from: string;
     to: string;
     category: CheckinCategory;

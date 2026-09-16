@@ -994,7 +994,7 @@ export default function PaymentChecksIndex({
                                     kind: 'checkin',
                                     supplier_name:
                                         supplier?.name ?? check.supplier.name,
-                                    etrip_supplier_id: supplier?.id ?? null,
+                                    etrip_supplier_id: check.supplier.id,
                                     partner_id: supplier?.partner_id ?? null,
                                     requested_amount: check.requested.amount,
                                     requested_currency:

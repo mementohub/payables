@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ReadsEtrip;
 use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\Etrip\EtripReader;
-use Illuminate\Database\QueryException;
+use App\Services\Etrip\EtripSupplierSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -14,11 +15,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
-use PDOException;
-use RuntimeException;
 
 class PaymentCheckController extends Controller
 {
+    use ReadsEtrip;
+
     public const EXPECTED_WINDOWS = [2, 7, 14];
 
     public function index(Request $request): Response
@@ -53,7 +54,7 @@ class PaymentCheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    public function check(Request $request, CheckinCostCheckService $check): array
+    public function check(Request $request, CheckinCostCheckService $check, EtripSupplierSyncService $sync): array
     {
         $validated = $request->validate([
             'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->whereNotNull('etrip_connection')],
@@ -71,7 +72,10 @@ class PaymentCheckController extends Controller
         $supplier = EtripSupplier::query()
             ->where('company_id', $company->id)
             ->where('code', $validated['supplier'])
-            ->firstOrFail();
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($company, $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
 
         return $this->readingEtrip(fn () => $check->check(
             $company,
@@ -128,26 +132,6 @@ class PaymentCheckController extends Controller
         }));
 
         return ['days' => $days, 'from' => $from->toDateString(), 'to' => $to->toDateString(), ...$payload];
-    }
-
-    /**
-     * Run a read against eTrip, turning a database failure into a 503 whose
-     * message names the cause, so the page can show it whatever APP_DEBUG is.
-     *
-     * @template T
-     *
-     * @param  callable(): T  $read
-     * @return T
-     */
-    private function readingEtrip(callable $read): mixed
-    {
-        try {
-            return $read();
-        } catch (QueryException|PDOException|RuntimeException $e) {
-            $cause = $e->getPrevious() ?? $e;
-
-            abort(503, 'Baza eTrip nu poate fi accesată: '.trim($cause->getMessage()));
-        }
     }
 
     /**

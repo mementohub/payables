@@ -9,6 +9,7 @@ use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
+use App\Http\Controllers\InvoiceCheckController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
@@ -67,6 +68,8 @@ Route::middleware('auth')->group(function () {
     Route::get('payment-checks', [PaymentCheckController::class, 'index'])->name('payment-checks.index');
     Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
     Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
+    Route::get('payment-checks/invoices', [InvoiceCheckController::class, 'index'])->name('payment-checks.invoices.index');
+    Route::get('companies/{company}/suppliers', [InvoiceCheckController::class, 'suppliers'])->name('companies.suppliers.search');
 
     Route::get('payment-requests', [PaymentRequestController::class, 'index'])->name('payment-requests.index');
     Route::post('payment-requests', [PaymentRequestController::class, 'store'])->name('payment-requests.store');

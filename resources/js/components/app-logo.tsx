@@ -6,7 +6,7 @@ export default function AppLogo() {
             <AppLogoIcon className="size-10 shrink-0 rounded-md" />
             <div className="ml-1 grid flex-1 text-left text-sm">
                 <span className="mb-0.5 truncate leading-tight font-semibold">
-                    Incasari
+                    Cash Flow
                 </span>
             </div>
         </div>

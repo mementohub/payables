@@ -93,8 +93,30 @@ test('an unreachable etrip database is reported with its cause', function () {
         ->assertJsonPath('message', 'Baza eTrip nu poate fi accesată: connection to server at "10.0.0.9" failed');
 });
 
-test('the check endpoint does not know suppliers that were never synced', function () {
-    $this->mock(EtripReader::class);
+test('the check endpoint reads a supplier that is not mirrored yet from etrip', function () {
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '10')->once()->andReturn([
+            'code' => '10', 'name' => 'Rida International', 'vat_no' => null, 'company_no' => null,
+            'currency' => 'USD', 'country' => null, 'active' => true,
+        ]);
+        $mock->shouldReceive('productTypes')->andReturn([]);
+        $mock->shouldReceive('costLines')->once()->andReturn([]);
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=10&from=2026-09-16&to=2026-09-17')
+        ->assertOk()
+        ->assertJsonPath('supplier.name', 'Rida International')
+        ->assertJsonPath('supplier.currency', 'USD');
+
+    expect(EtripSupplier::query()->where('company_id', $this->company->id)->where('code', '10')->first())
+        ->toMatchArray(['name' => 'Rida International', 'currency' => 'USD', 'partner_id' => null]);
+});
+
+test('the check endpoint rejects a supplier etrip does not know', function () {
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->once()->andReturnNull();
+    });
 
     $this->actingAs($this->user)
         ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=404&from=2026-09-16&to=2026-09-17')
@@ -143,39 +165,89 @@ test('expected requests are read live from etrip by default', function () {
     $this->actingAs($this->user)->getJson($url)->assertOk();
 });
 
-test('the supplier search returns the active suppliers of a company', function () {
-    EtripSupplier::factory()->for($this->company)->create(['code' => '10', 'name' => 'Rida International']);
-    EtripSupplier::factory()->for($this->company)->create(['code' => '11', 'name' => 'Closed Hotel', 'is_active' => false]);
-    EtripSupplier::factory()->create(['code' => '12', 'name' => 'Other company supplier']);
+test('the supplier search reads the active suppliers live from etrip', function () {
+    $partner = Partner::factory()->for($this->company)->create();
+    EtripSupplier::factory()->for($this->company)->create(['code' => '10', 'name' => 'Old mirrored name', 'partner_id' => $partner->id]);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('suppliers')->andReturn([
+            ['code' => '10', 'name' => 'Rida International', 'vat_no' => null, 'company_no' => null, 'currency' => 'USD', 'country' => null, 'active' => true],
+            ['code' => '11', 'name' => 'Closed Hotel', 'vat_no' => null, 'company_no' => null, 'currency' => 'EUR', 'country' => null, 'active' => false],
+            ['code' => '12', 'name' => 'Memento Turkiye', 'vat_no' => null, 'company_no' => null, 'currency' => 'EUR', 'country' => null, 'active' => true],
+        ]);
+    });
 
     $this->actingAs($this->user)
         ->getJson('/companies/'.$this->company->id.'/etrip-suppliers')
         ->assertOk()
-        ->assertJsonCount(1, 'suppliers')
-        ->assertJsonPath('suppliers.0.code', '10');
+        ->assertJsonCount(2, 'suppliers')
+        ->assertJsonPath('suppliers.0.code', '10')
+        ->assertJsonPath('suppliers.0.name', 'Rida International')
+        ->assertJsonPath('suppliers.0.partner_id', $partner->id)
+        ->assertJsonPath('suppliers.1.code', '12')
+        ->assertJsonPath('suppliers.1.partner_id', null);
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers?q=nothing')
+        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers?q=memento')
         ->assertOk()
-        ->assertJsonCount(0, 'suppliers');
+        ->assertJsonCount(1, 'suppliers')
+        ->assertJsonPath('suppliers.0.code', '12');
+});
+
+test('the supplier search reports an unreachable etrip database', function () {
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('suppliers')->andThrow(new RuntimeException('connection refused'));
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers')
+        ->assertStatus(503)
+        ->assertJsonPath('message', 'Baza eTrip nu poate fi accesată: connection refused');
+});
+
+test('the sync button mirrors the suppliers inline and reports the matches', function () {
+    Partner::factory()->for($this->company)->create(['name' => 'Rida International', 'cui' => 'RO1']);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('suppliers')->once()->andReturn([
+            ['code' => '10', 'name' => 'Rida International', 'vat_no' => 'RO1', 'company_no' => null, 'currency' => 'USD', 'country' => null, 'active' => true],
+            ['code' => '20', 'name' => 'Nobody', 'vat_no' => null, 'company_no' => null, 'currency' => 'EUR', 'country' => null, 'active' => true],
+        ]);
+    });
+
+    $this->actingAs($this->user)
+        ->from('/payment-checks')
+        ->post('/companies/'.$this->company->id.'/etrip-suppliers/sync')
+        ->assertRedirect('/payment-checks');
+
+    expect(EtripSupplier::query()->where('company_id', $this->company->id)->count())->toBe(2)
+        ->and(EtripSupplier::query()->where('code', '10')->first()->match_source)->toBe('cui');
 });
 
 test('a partner can be linked to and unlinked from an etrip supplier', function () {
     $partner = Partner::factory()->for($this->company)->create();
     $previous = Partner::factory()->for($this->company)->create();
-    $supplier = EtripSupplier::factory()->for($this->company)->create(['partner_id' => $previous->id, 'match_source' => 'cui']);
-    $foreign = EtripSupplier::factory()->create();
+    $supplier = EtripSupplier::factory()->for($this->company)->create(['code' => '10', 'name' => 'Old name', 'partner_id' => $previous->id, 'match_source' => 'cui']);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '404')->andReturnNull();
+        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '10')->andReturn([
+            'code' => '10', 'name' => 'Rida International', 'vat_no' => 'RO1', 'company_no' => null,
+            'currency' => 'USD', 'country' => null, 'active' => true,
+        ]);
+    });
 
     $this->actingAs($this->user)
-        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_id' => $foreign->id])
-        ->assertSessionHasErrors('etrip_supplier_id');
+        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_code' => '404'])
+        ->assertSessionHasErrors('etrip_supplier_code');
 
     $this->actingAs($this->user)
         ->from("/suppliers/{$partner->id}")
-        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_id' => $supplier->id])
+        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_code' => '10'])
         ->assertRedirect("/suppliers/{$partner->id}");
 
-    expect($supplier->fresh())->toMatchArray(['partner_id' => $partner->id, 'match_source' => 'manual']);
+    expect($supplier->fresh())->toMatchArray(['partner_id' => $partner->id, 'match_source' => 'manual', 'name' => 'Rida International'])
+        ->and(EtripSupplier::count())->toBe(1);
 
     $this->actingAs($this->user)
         ->delete("/partners/{$partner->id}/etrip-supplier")

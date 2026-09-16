@@ -116,11 +116,11 @@ export default function EtripSupplierSection({
                                         />
                                         <input
                                             type="hidden"
-                                            name="etrip_supplier_id"
-                                            value={picked?.id ?? ''}
+                                            name="etrip_supplier_code"
+                                            value={picked?.code ?? ''}
                                         />
                                         <InputError
-                                            message={errors.etrip_supplier_id}
+                                            message={errors.etrip_supplier_code}
                                         />
                                     </div>
                                     <DialogFooter>

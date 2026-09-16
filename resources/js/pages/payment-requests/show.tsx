@@ -44,6 +44,7 @@ import AppLayout from '@/layouts/app-layout';
 import { show as invoiceShow } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
+import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
 import {
     index as paymentRequestsIndex,
     show as paymentRequestShow,
@@ -477,6 +478,28 @@ export default function PaymentRequestShow({
                                     >
                                         <ClipboardCheck />
                                         Reverifică live
+                                    </Link>
+                                </Button>
+                            )}
+                        {request.kind === 'invoice' &&
+                            request.company &&
+                            request.partner && (
+                                <Button asChild variant="outline" size="sm">
+                                    <Link
+                                        href={invoiceChecksIndex({
+                                            query: {
+                                                company_id: request.company.id,
+                                                partner_id: request.partner.id,
+                                                amount: String(
+                                                    request.requested_amount,
+                                                ),
+                                                currency:
+                                                    request.requested_currency,
+                                            },
+                                        })}
+                                    >
+                                        <ClipboardCheck />
+                                        Reverifică în OMC
                                     </Link>
                                 </Button>
                             )}

@@ -50,6 +50,32 @@ class EtripSupplierSyncService
     }
 
     /**
+     * Mirror a single supplier read live from eTrip, keeping any partner link it
+     * already has. Null when eTrip does not know the code.
+     */
+    public function remember(Company $company, string $code): ?EtripSupplier
+    {
+        $row = $this->reader->supplier($company, $code);
+
+        if ($row === null) {
+            return null;
+        }
+
+        return EtripSupplier::query()->updateOrCreate(
+            ['company_id' => $company->id, 'code' => mb_substr($row['code'], 0, 50)],
+            [
+                'name' => mb_substr($row['name'], 0, 120),
+                'vat_no' => $row['vat_no'] !== null ? mb_substr($row['vat_no'], 0, 40) : null,
+                'company_no' => $row['company_no'] !== null ? mb_substr($row['company_no'], 0, 40) : null,
+                'currency' => $row['currency'] !== null ? mb_substr($row['currency'], 0, 5) : null,
+                'country' => $row['country'] !== null ? mb_substr($row['country'], 0, 80) : null,
+                'is_active' => $row['active'],
+                'synced_at' => now(),
+            ],
+        );
+    }
+
+    /**
      * Link unmatched eTrip suppliers to partners by VAT number, then by name.
      *
      * @return array{matched_cui: int, matched_name: int}

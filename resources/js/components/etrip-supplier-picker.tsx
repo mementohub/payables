@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/combobox';
 
 export type EtripSupplierOption = {
-    id: number;
     code: string;
     name: string;
     currency: string | null;
@@ -135,7 +134,7 @@ export default function EtripSupplierPicker({
                     </ComboboxEmpty>
                     <ComboboxList>
                         {(option: EtripSupplierOption) => (
-                            <ComboboxItem key={option.id} value={option}>
+                            <ComboboxItem key={option.code} value={option}>
                                 <span className="flex-1 truncate">
                                     {option.name}
                                 </span>

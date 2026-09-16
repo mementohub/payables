@@ -2,6 +2,7 @@
 
 namespace App\Services\Invoices;
 
+use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Services\SyncService;
@@ -96,6 +97,54 @@ class SupplierPaymentCheckService
                 ? null
                 : $this->verdict($recent, $open, $requested, $requestedCurrency, $today),
         ];
+    }
+
+    /**
+     * The company's suppliers with invoices still open in the ERP, earliest
+     * due date first: the queue of what is likely to be requested next.
+     *
+     * @return list<array{
+     *   partner_id: int, name: string, cui: ?string, invoices: int,
+     *   first_due: ?string, overdue: bool,
+     *   rest: list<array{moneda: string, rest: float}>, rest_lei: float
+     * }>
+     */
+    public function openSuppliers(Company $company): array
+    {
+        $today = Carbon::today();
+
+        $open = Invoice::query()
+            ->where('company_id', $company->id)
+            ->whereIn('tip_doc', SyncService::FURNIZOR_DOC_TYPES)
+            ->whereNotNull('partner_id')
+            ->whereRaw(sprintf('val_mon - val_mon_paid - val_mon_storno > %.2F', self::AMOUNT_TOLERANCE))
+            ->get(['id', 'partner_id', 'moneda', 'curs', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'data_doc', 'data_scadenta']);
+
+        $partners = Partner::query()
+            ->whereIn('id', $open->pluck('partner_id')->unique())
+            ->get(['id', 'name', 'cui'])
+            ->keyBy('id');
+
+        return $open
+            ->groupBy('partner_id')
+            ->map(function (Collection $invoices, int|string $partnerId) use ($partners, $today) {
+                $invoices = $invoices->sortBy(fn (Invoice $invoice) => ($invoice->data_scadenta ?? $invoice->data_doc)->toDateString())->values();
+                $firstDue = $this->firstDue($invoices, $today);
+
+                return [
+                    'partner_id' => (int) $partnerId,
+                    'name' => $partners->get($partnerId)?->name ?? '',
+                    'cui' => $partners->get($partnerId)?->cui,
+                    'invoices' => $invoices->count(),
+                    'first_due' => $firstDue['date'] ?? null,
+                    'overdue' => $firstDue['overdue'] ?? false,
+                    'rest' => array_map(fn (array $total) => ['moneda' => $total['moneda'], 'rest' => $total['rest']], $this->openTotals($invoices)),
+                    'rest_lei' => round((float) $invoices->sum(fn (Invoice $invoice) => $invoice->outstandingAmount() * ((float) ($invoice->curs ?? 0) ?: 1.0)), 2),
+                ];
+            })
+            ->sortBy(fn (array $supplier) => [$supplier['first_due'] ?? '9999-12-31', mb_strtolower($supplier['name'])])
+            ->values()
+            ->all();
     }
 
     /**

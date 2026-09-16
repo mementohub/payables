@@ -9,6 +9,7 @@ import {
     FileCheck2,
     FileInput,
     FileOutput,
+    FileSearch,
     FileText,
     Landmark,
     LayoutGrid,
@@ -45,6 +46,7 @@ import {
 } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
+import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
 import { index as paymentRequestsIndex } from '@/routes/payment-requests';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as usersIndex } from '@/routes/users';
@@ -98,9 +100,14 @@ const mainNavItems: NavItemOrGroup[] = [
         icon: ClipboardCheck,
         children: [
             {
-                title: 'Pe check-in',
+                title: 'Check-in (eTrip)',
                 href: paymentChecksIndex(),
                 icon: CalendarCheck,
+            },
+            {
+                title: 'Facturi (OMC)',
+                href: invoiceChecksIndex(),
+                icon: FileSearch,
             },
             {
                 title: 'Registru cereri',

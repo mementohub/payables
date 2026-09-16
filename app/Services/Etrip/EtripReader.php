@@ -25,6 +25,12 @@ class EtripReader
 
     private const PRODUCT_TYPES_SQL = 'select id, label from public.product_types order by id';
 
+    private const SUPPLIER_SQL = <<<'SQL'
+        select s.code, s.name, s.vat_no, s.company_no, s.currency, s.country, s.active
+        from suppliers.suppliers s
+        where s.code = ?
+        SQL;
+
     /**
      * One row per sold service of the supplier with check-in in the range:
      * cost in the supplier currency (gross + tax - commission), plus the
@@ -117,7 +123,15 @@ class EtripReader
      */
     public function suppliers(Company $company): array
     {
-        return array_map(fn ($row) => [
+        return array_map(fn ($row) => $this->supplierRow($row), $this->connection($company)->select(self::SUPPLIERS_SQL));
+    }
+
+    /**
+     * @return array{code: string, name: string, vat_no: ?string, company_no: ?string, currency: ?string, country: ?string, active: bool}
+     */
+    private function supplierRow(object $row): array
+    {
+        return [
             'code' => (string) $row->code,
             'name' => (string) $row->name,
             'vat_no' => $row->vat_no !== null ? (string) $row->vat_no : null,
@@ -125,7 +139,17 @@ class EtripReader
             'currency' => $row->currency !== null ? (string) $row->currency : null,
             'country' => $row->country !== null ? (string) $row->country : null,
             'active' => (bool) $row->active,
-        ], $this->connection($company)->select(self::SUPPLIERS_SQL));
+        ];
+    }
+
+    /**
+     * @return array{code: string, name: string, vat_no: ?string, company_no: ?string, currency: ?string, country: ?string, active: bool}|null
+     */
+    public function supplier(Company $company, string $code): ?array
+    {
+        $row = $this->connection($company)->selectOne(self::SUPPLIER_SQL, [$code]);
+
+        return $row ? $this->supplierRow($row) : null;
     }
 
     /**

@@ -30,7 +30,7 @@ class CheckinCostCheckService
 
     /**
      * @return array{
-     *   supplier: array{code: string, name: string, currency: ?string},
+     *   supplier: array{id: int, code: string, name: string, currency: ?string},
      *   from: string, to: string, category: string,
      *   totals: list<array{currency: string, cost: float, items: int, bookings: int}>,
      *   items: int, bookings: int,
@@ -60,7 +60,7 @@ class CheckinCostCheckService
         $totals = $this->totals($lines);
 
         return [
-            'supplier' => ['code' => $supplier->code, 'name' => $supplier->name, 'currency' => $supplier->currency],
+            'supplier' => ['id' => $supplier->id, 'code' => $supplier->code, 'name' => $supplier->name, 'currency' => $supplier->currency],
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
             'category' => $category,
