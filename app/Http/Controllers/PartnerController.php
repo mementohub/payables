@@ -354,7 +354,7 @@ class PartnerController extends Controller
         $search = $request->string('search')->toString();
         $companyId = $request->exists('company_id')
             ? ($request->integer('company_id') ?: null)
-            : ((int) session('active_company_id') ?: null);
+            : null;
 
         $departmentIds = collect($request->input('department_ids', []))
             ->map(fn ($id) => (int) $id)

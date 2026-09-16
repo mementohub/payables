@@ -90,3 +90,22 @@ test('the maintenance page names how the data is kept fresh', function () {
         ->get('/maintenance')
         ->assertInertia(fn ($page) => $page->where('autoSync.mode', 'scheduler'));
 });
+
+test('the daily pass waits for the configured hour in Bucharest time', function () {
+    Cache::forget('erp:sync:nightly');
+    Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T09:55:00+00:00', 'ok' => true, 'summary' => '']);
+
+    // 00:30 UTC is 03:30 in Bucharest: before 04:00, only the recent-days rule applies (and it is not due)
+    Carbon::setTestNow('2026-09-16 00:30:00');
+    Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T00:25:00+00:00', 'ok' => true, 'summary' => '']);
+    $this->actingAs($this->user)->get('/companies')->assertOk();
+    Process::assertNothingRan();
+
+    // 01:30 UTC is 04:30 in Bucharest: the 45-day pass runs once
+    Cache::forget('erp:sync:auto:checked');
+    Carbon::setTestNow('2026-09-16 01:30:00');
+    Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T01:25:00+00:00', 'ok' => true, 'summary' => '']);
+    $this->actingAs($this->user)->get('/companies')->assertOk();
+    Process::assertRan(fn ($process) => str_contains($process->command, '--days=45'));
+    expect(Cache::get('erp:sync:nightly'))->toBe('2026-09-16');
+});

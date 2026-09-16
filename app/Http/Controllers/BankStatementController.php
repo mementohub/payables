@@ -14,7 +14,7 @@ class BankStatementController extends Controller
     {
         $companyId = $request->exists('company_id')
             ? ($request->integer('company_id') ?: null)
-            : ((int) session('active_company_id') ?: null);
+            : null;
 
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();

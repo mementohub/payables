@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
-#[Signature('erp:sync {--company= : Restrict to a single company id} {--days= : Days back from today (default: sync.recent_days)} {--from= : First document date} {--to= : Last document date}')]
+#[Signature('erp:sync {--company= : Restrict to a single company id} {--days= : Days back from today (default: sync.recent_days)} {--from= : First document date} {--to= : Last document date} {--history : Everything from sync.history_from (or --from) to today, resuming where a previous run stopped}')]
 #[Description('Pull the recent documents of every company from its ERP database, inline, and refresh the invoices still open. Scheduled every ten minutes; run it by hand after a deploy or when the scheduler is off.')]
 class SyncErp extends Command
 {
@@ -45,9 +45,11 @@ class SyncErp extends Command
             $progress = fn (string $line) => $this->line("  {$company->name}: {$line}");
 
             try {
-                $result = $from || $to
+                $result = $this->option('history')
+                    ? $sync->syncHistory($company, $progress, $from)
+                    : ($from || $to
                     ? $sync->syncWindow($company, $from ?? ($to ?? Carbon::now())->copy()->subDays(max(1, (int) config('sync.window_days', 45)) - 1), $to ?? Carbon::now(), $progress)
-                    : $sync->syncRecent($company, $days, $progress);
+                    : $sync->syncRecent($company, $days, $progress));
 
                 $rows[] = [
                     $company->name,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Maintenance\AutoSync;
+use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -38,7 +39,11 @@ class MaintenanceController extends Controller
                 'mode' => $autoSync->mode(),
                 'minutes' => (int) config('sync.auto_minutes', 10),
                 'window_days' => (int) config('sync.window_days', 45),
-                'nightly_hour' => (int) config('sync.nightly_hour', 2),
+                'nightly_hour' => (int) config('sync.nightly_hour', 4),
+                'timezone' => (string) config('sync.timezone', 'Europe/Bucharest'),
+            ],
+            'history' => [
+                'from' => (string) config('sync.history_from', '2016-01-01'),
             ],
             'sync' => Cache::get('erp:sync:last_run'),
             'companies' => Company::query()->orderBy('name')->get()->map(fn (Company $company) => [
@@ -48,6 +53,7 @@ class MaintenanceController extends Controller
                     ? config('omc.connections.'.$company->erpConnection()).' (live)'
                     : "{$company->db_host}:{$company->db_port}/{$company->db_database}",
                 'last_synced_at' => $company->last_synced_at?->toIso8601String(),
+                'history_until' => SyncService::historyCursor($company),
             ])->values(),
         ]);
     }

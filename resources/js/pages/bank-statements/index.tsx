@@ -7,13 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import {
     Table,
     TableBody,
     TableCaption,
@@ -33,11 +26,7 @@ function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
 }
 
-export default function BankStatementsIndex({
-    statements,
-    filters,
-    companies,
-}: Props) {
+export default function BankStatementsIndex({ statements, filters }: Props) {
     const [from, setFrom] = useState(filters.from ?? '');
     const [to, setTo] = useState(filters.to ?? '');
 
@@ -78,38 +67,6 @@ export default function BankStatementsIndex({
                         applyFilter({ from, to });
                     }}
                 >
-                    <div className="grid gap-1">
-                        <Label className="text-xs">Companie</Label>
-                        <Select
-                            value={
-                                filters.company_id
-                                    ? String(filters.company_id)
-                                    : 'all'
-                            }
-                            onValueChange={(v) =>
-                                applyFilter({
-                                    company_id: v === 'all' ? null : Number(v),
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                className="min-h-11 w-[200px]"
-                                size="default"
-                            >
-                                <SelectValue placeholder="Companie" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Toate companiile
-                                </SelectItem>
-                                {companies.map((c) => (
-                                    <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
                     <div className="grid gap-1">
                         <Label className="text-xs">De la</Label>
                         <DatePicker

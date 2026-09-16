@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\ActiveCompanyController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankStatementController;
 use App\Http\Controllers\CompanyController;
@@ -26,8 +25,6 @@ Route::get('/', fn () => Auth::check() ? redirect()->route('dashboard') : redire
 
 Route::middleware('auth')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
-    Route::post('active-company', [ActiveCompanyController::class, 'update'])->name('active-company.update');
 
     Route::resource('companies', CompanyController::class)->except('show');
     Route::get('users/import', [UserController::class, 'importForm'])->name('users.import');

@@ -42,17 +42,26 @@ type Props = {
         minutes: number;
         window_days: number;
         nightly_hour: number;
+        timezone: string;
     };
+    history: { from: string };
     sync: { at: string; ok: boolean; summary: string } | null;
     companies: {
         id: number;
         name: string;
         source: string;
         last_synced_at: string | null;
+        history_until: string | null;
     }[];
 };
 
 const OK = 'text-emerald-700 dark:text-emerald-500';
+
+function formatDay(value: string): string {
+    const [year, month, day] = value.split('-');
+
+    return `${day}.${month}.${year}`;
+}
 
 function dateTime(value: string | null): string {
     return value ? new Date(value).toLocaleString('ro-RO') : 'niciodată';
@@ -161,6 +170,7 @@ export default function MaintenanceIndex({
     syncRun,
     scheduler,
     autoSync,
+    history,
     sync,
     companies,
 }: Props) {
@@ -345,6 +355,35 @@ export default function MaintenanceIndex({
                                     </>
                                 )}
                             </Form>
+                            <Form
+                                {...SyncController.storeAll.form()}
+                                options={{ preserveScroll: true }}
+                                onBefore={() =>
+                                    confirm(
+                                        `Aduci toate documentele din ${history.from} până azi? Rulează în fundal, poate dura câteva ore și continuă de unde a rămas dacă este oprită.`,
+                                    )
+                                }
+                            >
+                                {({ processing }) => (
+                                    <>
+                                        <input
+                                            type="hidden"
+                                            name="history"
+                                            value="1"
+                                        />
+                                        <Button
+                                            type="submit"
+                                            variant="outline"
+                                            disabled={
+                                                processing || syncRun.running
+                                            }
+                                        >
+                                            Adu tot istoricul (din{' '}
+                                            {history.from})
+                                        </Button>
+                                    </>
+                                )}
+                            </Form>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -389,9 +428,9 @@ export default function MaintenanceIndex({
 
                         <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
                             {autoSync.mode === 'scheduler' &&
-                                `Reîmprospătare automată prin cron-ul Laravel: ultimele zile la fiecare ${autoSync.minutes} minute, ultimele ${autoSync.window_days} de zile în fiecare noapte.`}
+                                `Reîmprospătare automată prin cron-ul Laravel: ultimele zile la fiecare ${autoSync.minutes} minute, iar în fiecare noapte la ${autoSync.nightly_hour}:00 (${autoSync.timezone}) ultimele ${autoSync.window_days} de zile, cu plățile tuturor facturilor deschise.`}
                             {autoSync.mode === 'web' &&
-                                `Cron-ul Laravel nu rulează pe server, așa că reîmprospătarea o pornesc paginile vizitate: cât timp cineva folosește aplicația, ultimele zile se aduc la cel mult ${autoSync.minutes} minute, iar ultimele ${autoSync.window_days} de zile o dată pe zi, după ora ${autoSync.nightly_hour}. Nu trebuie apăsat nimic.`}
+                                `Cron-ul Laravel nu rulează pe server, așa că reîmprospătarea o pornesc paginile vizitate: cât timp cineva folosește aplicația, ultimele zile se aduc la cel mult ${autoSync.minutes} minute, iar o dată pe zi, după ${autoSync.nightly_hour}:00 (${autoSync.timezone}), ultimele ${autoSync.window_days} de zile cu plățile tuturor facturilor deschise. Nu trebuie apăsat nimic.`}
                             {autoSync.mode === 'off' &&
                                 'Reîmprospătarea automată este oprită (SYNC_AUTO_ENABLED); apasă „Sincronizează acum”.'}
                         </p>
@@ -404,6 +443,9 @@ export default function MaintenanceIndex({
                                         <th className="px-3 py-2">Sursă</th>
                                         <th className="px-3 py-2">
                                             Date OMC la
+                                        </th>
+                                        <th className="px-3 py-2">
+                                            Istoric adus până la
                                         </th>
                                     </tr>
                                 </thead>
@@ -420,6 +462,13 @@ export default function MaintenanceIndex({
                                                 {dateTime(
                                                     company.last_synced_at,
                                                 )}
+                                            </td>
+                                            <td className="px-3 py-2 text-muted-foreground">
+                                                {company.history_until
+                                                    ? formatDay(
+                                                          company.history_until,
+                                                      )
+                                                    : 'neadus (doar ferestrele sincronizate)'}
                                             </td>
                                         </tr>
                                     ))}

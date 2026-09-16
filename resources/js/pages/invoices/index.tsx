@@ -401,43 +401,6 @@ export default function InvoicesIndex({
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </FilterField>
-                    <FilterField
-                        label="Companie"
-                        active={!!filters.company_id}
-                        onClear={() => applyFilter({ company_id: null })}
-                    >
-                        <Select
-                            value={
-                                filters.company_id
-                                    ? String(filters.company_id)
-                                    : 'all'
-                            }
-                            onValueChange={(v) =>
-                                applyFilter({
-                                    company_id: v === 'all' ? null : Number(v),
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                className={cn(
-                                    'min-h-11 w-full sm:w-[200px]',
-                                    filterTriggerClass(!!filters.company_id),
-                                )}
-                            >
-                                <SelectValue placeholder="Companie" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Toate companiile
-                                </SelectItem>
-                                {companies.map((c) => (
-                                    <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </FilterField>
                     <div className="grid w-full gap-1 sm:w-auto">
                         <Label className="text-xs">Data factură</Label>
                         <DateRangePicker

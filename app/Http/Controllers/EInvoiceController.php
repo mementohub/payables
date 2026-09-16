@@ -174,7 +174,7 @@ class EInvoiceController extends Controller
     {
         return $request->exists('company_id')
             ? ($request->integer('company_id') ?: null)
-            : ((int) session('active_company_id') ?: null);
+            : null;
     }
 
     private function statusLabel(EInvoice $row): string

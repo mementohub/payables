@@ -26,7 +26,22 @@ return [
 
     'auto_minutes' => (int) env('SYNC_AUTO_MINUTES', 10),
 
-    'nightly_hour' => (int) env('SYNC_NIGHTLY_HOUR', 2),
+    /*
+    | The nightly pass (cron and page-view fallback alike) runs at this hour
+    | in this timezone.
+    */
+    'timezone' => env('SYNC_TIMEZONE', 'Europe/Bucharest'),
+
+    'nightly_hour' => (int) env('SYNC_NIGHTLY_HOUR', 4),
+
+    /*
+    | "Adu tot istoricul" pulls every document from this date on, in slices of
+    | `history_slice_days`, remembering the last finished slice so a stopped
+    | run continues where it left off.
+    */
+    'history_from' => env('SYNC_HISTORY_FROM', '2016-01-01'),
+
+    'history_slice_days' => (int) env('SYNC_HISTORY_SLICE_DAYS', 7),
 
     /*
     | A window is pulled in slices of this many days, so each slice's lookups

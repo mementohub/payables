@@ -204,3 +204,20 @@ test('open invoices are refreshed from the erp by their document key', function 
         ->and($paidMeanwhile->payments()->first()->nr_doc)->toBe('BTRL1')
         ->and((float) $stillOpen->fresh()->val_mon_paid)->toBe(0.0);
 });
+
+test('the full history can be started from the page and by the command', function () {
+    Process::fake();
+
+    $this->actingAs($this->user)->post('/companies/sync', ['history' => 1])->assertRedirect();
+    Process::assertRan(fn ($process) => str_contains($process->command, 'artisan erp:sync') && str_contains($process->command, '--history'));
+    expect(lastSyncToast()['message'])->toContain('istoric');
+
+    $this->mock(SyncService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('syncHistory')
+            ->withArgs(fn (Company $company, ?callable $progress, ?Carbon $from) => $company->is($this->company) && $from?->toDateString() === '2024-01-01')
+            ->once()
+            ->andReturn([...syncResult(['refreshed' => 2]), 'from' => '2024-01-01', 'to' => '2026-09-16']);
+    });
+
+    $this->artisan('erp:sync', ['--company' => $this->company->id, '--history' => true, '--from' => '2024-01-01'])->assertSuccessful();
+});

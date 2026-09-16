@@ -67,10 +67,14 @@ class SyncController extends Controller
     {
         $validated = $request->validate([
             'days' => ['nullable', 'integer', 'min:1', 'max:400'],
+            'history' => ['nullable', 'boolean'],
         ]);
 
-        $arguments = isset($validated['days']) ? ['--days='.$validated['days']] : [];
-        $what = isset($validated['days']) ? "Sincronizarea ultimelor {$validated['days']} zile a pornit în fundal" : 'Sincronizarea a pornit în fundal';
+        [$arguments, $what] = match (true) {
+            (bool) ($validated['history'] ?? false) => [['--history'], 'Aducerea întregului istoric din '.config('sync.history_from', '2016-01-01').' a pornit în fundal'],
+            isset($validated['days']) => [['--days='.$validated['days']], "Sincronizarea ultimelor {$validated['days']} zile a pornit în fundal"],
+            default => [[], 'Sincronizarea a pornit în fundal'],
+        };
 
         return $this->launch($request, $runner, $arguments, $what, fn () => null);
     }

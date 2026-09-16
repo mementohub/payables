@@ -204,3 +204,32 @@ test('a window is pulled in slices, with a progress line per slice', function ()
         ->and($lines[2])->toStartWith('2026-09-16 → 2026-09-16: 1 facturi')
         ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(4);
 });
+
+test('the history pull starts at the configured date, resumes where it stopped and can be restarted', function () {
+    config()->set('sync.history_from', '2026-09-01');
+    config()->set('sync.history_slice_days', 7);
+    erpDoc(['data_doc' => '2026-09-02', 'nr_doc' => 'H1']);
+    erpDoc(['data_doc' => '2026-09-10', 'nr_doc' => 'H2']);
+
+    $lines = [];
+    $result = app(SyncService::class)->syncHistory($this->company, function (string $line) use (&$lines) {
+        $lines[] = $line;
+    });
+
+    expect($result['from'])->toBe('2026-09-01')
+        ->and($result['to'])->toBe('2026-09-16')
+        ->and($result['invoices'])->toBe(2)
+        ->and($lines)->toHaveCount(3)
+        ->and(SyncService::historyCursor($this->company))->toBe('2026-09-16');
+
+    // a second call has nothing left to do (the cursor is at today)
+    $again = app(SyncService::class)->syncHistory($this->company);
+    expect($again['invoices'] ?? 0)->toBe(0);
+
+    // a restart date wipes the cursor and pulls again from there
+    erpDoc(['data_doc' => '2026-09-12', 'nr_doc' => 'H3']);
+    $restarted = app(SyncService::class)->syncHistory($this->company, null, Carbon::parse('2026-09-08'));
+    expect($restarted['from'])->toBe('2026-09-08')
+        ->and($restarted['invoices'])->toBe(2)
+        ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(3);
+});

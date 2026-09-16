@@ -9,7 +9,6 @@ declare module '@inertiajs/core' {
             auth: Auth;
             sidebarOpen: boolean;
             companies: CompanyRef[];
-            activeCompany: CompanyRef | null;
             [key: string]: unknown;
         };
     }

@@ -181,8 +181,7 @@ test('the register lists requests with status counts and filters', function () {
     PaymentRequest::factory()->create(['status' => 'paid']);
 
     $this->actingAs($this->user)
-        ->withSession(['active_company_id' => $this->company->id])
-        ->get('/payment-requests?status=disputed')
+        ->get('/payment-requests?status=disputed&company_id='.$this->company->id)
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('payment-requests/index')
@@ -196,8 +195,7 @@ test('the register lists requests with status counts and filters', function () {
         );
 
     $this->actingAs($this->user)
-        ->withSession(['active_company_id' => $this->company->id])
-        ->get('/payment-requests?search=rida')
+        ->get('/payment-requests?search=rida&company_id='.$this->company->id)
         ->assertInertia(fn ($page) => $page->has('requests.data', 2));
 });
 

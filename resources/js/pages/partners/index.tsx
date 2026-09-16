@@ -19,13 +19,6 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import {
     Table,
     TableBody,
     TableCell,
@@ -159,7 +152,6 @@ export default function PartnersIndex({
     partners,
     scope,
     filters,
-    companies,
     availableDepartments,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
@@ -193,8 +185,7 @@ export default function PartnersIndex({
                 <div>
                     <h1 className="text-2xl font-semibold">{label}</h1>
                     <p className="text-sm text-muted-foreground">
-                        Parteneri sincronizați din facturile din BD-urile
-                        companiilor (
+                        Parteneri din facturile OMC, toate companiile (
                         {scope === 'furnizori'
                             ? 'FactFI / FactFE'
                             : 'FactCI / FactCE / FactINT'}
@@ -215,32 +206,6 @@ export default function PartnersIndex({
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
-                    <Select
-                        value={
-                            filters.company_id
-                                ? String(filters.company_id)
-                                : 'all'
-                        }
-                        onValueChange={(v) =>
-                            applyFilter({
-                                company_id: v === 'all' ? null : Number(v),
-                            })
-                        }
-                    >
-                        <SelectTrigger className="w-[200px]">
-                            <SelectValue placeholder="Companie" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">
-                                Toate companiile
-                            </SelectItem>
-                            {companies.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                    {c.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
                     {scope === 'furnizori' &&
                         availableDepartments.length > 0 && (
                             <DepartmentMultiSelect

@@ -19,6 +19,7 @@ use App\Services\EInvoices\PartnerCuiLookup;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class SyncService
 {
@@ -79,7 +80,7 @@ class SyncService
 
         $eInvoicesCount = $this->syncEInvoices($company, $remote, $from, $to);
 
-        $this->resolveCrossCompanyLinks($company);
+        $this->resolveCrossCompanyLinks($company, $from, $to);
 
         $company->forceFill(['last_synced_at' => now()])->save();
 
@@ -152,6 +153,64 @@ class SyncService
     }
 
     /**
+     * Pull every document from `sync.history_from` (or where a previous run
+     * stopped) up to today, remembering the last finished slice so a stopped
+     * run continues instead of starting over.
+     *
+     * @param  callable(string): void|null  $progress
+     * @return array<string, int|string>
+     */
+    public function syncHistory(Company $company, ?callable $progress = null, ?Carbon $restartFrom = null): array
+    {
+        $key = self::historyKey($company);
+
+        if ($restartFrom !== null) {
+            Cache::forget($key);
+        }
+
+        $cursor = Cache::get($key);
+        $from = $restartFrom?->copy()->startOfDay()
+            ?? ($cursor ? Carbon::parse((string) $cursor)->addDay()->startOfDay() : Carbon::parse((string) config('sync.history_from', '2016-01-01'))->startOfDay());
+        $to = Carbon::now()->endOfDay();
+        $sliceDays = max(1, (int) config('sync.history_slice_days', 7));
+        $totals = [];
+
+        for ($start = $from->copy(); $start->lte($to); $start = $start->copy()->addDays($sliceDays)) {
+            $end = $start->copy()->addDays($sliceDays - 1)->endOfDay();
+            $end = $end->gt($to) ? $to->copy() : $end;
+
+            $result = $this->sync($company, $start, $end);
+
+            foreach ($result as $name => $count) {
+                $totals[$name] = ($totals[$name] ?? 0) + $count;
+            }
+
+            Cache::forever($key, $end->toDateString());
+
+            if ($progress !== null) {
+                $progress(sprintf('%s → %s: %d facturi, %d plăți, %d parteneri', $start->toDateString(), $end->toDateString(), $result['invoices'], $result['payments'], $result['partners']));
+            }
+        }
+
+        return [...$totals, 'refreshed' => $this->refreshOpenInvoices($company), 'from' => $from->toDateString(), 'to' => $to->toDateString()];
+    }
+
+    /**
+     * The last day the history pull has completed for the company, if any.
+     */
+    public static function historyCursor(Company $company): ?string
+    {
+        $cursor = Cache::get(self::historyKey($company));
+
+        return $cursor ? (string) $cursor : null;
+    }
+
+    private static function historyKey(Company $company): string
+    {
+        return "erp:sync:history:{$company->id}";
+    }
+
+    /**
      * Refresh value, payments, credit notes and due date of the invoices still
      * open locally from their current state in the ERP, and re-pull the
      * payment allocations of those that changed. Documents are looked up by
@@ -218,7 +277,7 @@ class SyncService
      * synced company, when the supplier on the FactFI is itself a synced company
      * (matched by CUI). Sets `source_company_id` and `source_invoice_id`.
      */
-    private function resolveCrossCompanyLinks(Company $company): void
+    private function resolveCrossCompanyLinks(Company $company, Carbon $from, Carbon $to): void
     {
         $companyByCui = Company::query()
             ->where('id', '!=', $company->id)
@@ -234,6 +293,7 @@ class SyncService
         Invoice::query()
             ->where('company_id', $company->id)
             ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
             ->whereHas('partner', fn ($q) => $q->whereNotNull('cui')->where('cui', '!=', ''))
             ->with('partner:id,cui')
             ->lazy(500)
@@ -269,6 +329,7 @@ class SyncService
         Invoice::query()
             ->where('source_company_id', $company->id)
             ->whereNull('source_invoice_id')
+            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
             ->lazy(500)
             ->each(function (Invoice $invoice) {
                 $sourceInvoiceId = Invoice::query()

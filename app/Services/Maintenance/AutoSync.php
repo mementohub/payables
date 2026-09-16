@@ -56,7 +56,7 @@ class AutoSync
             );
 
             if ($nightly) {
-                Cache::forever('erp:sync:nightly', Carbon::today()->toDateString());
+                Cache::forever('erp:sync:nightly', Carbon::now((string) config('sync.timezone', 'Europe/Bucharest'))->toDateString());
             }
         } catch (Throwable $e) {
             report($e);
@@ -89,7 +89,9 @@ class AutoSync
 
     private function nightlyDue(): bool
     {
-        return now()->hour >= (int) config('sync.nightly_hour', 2)
-            && Cache::get('erp:sync:nightly') !== Carbon::today()->toDateString();
+        $local = Carbon::now((string) config('sync.timezone', 'Europe/Bucharest'));
+
+        return $local->hour >= (int) config('sync.nightly_hour', 4)
+            && Cache::get('erp:sync:nightly') !== $local->toDateString();
     }
 }

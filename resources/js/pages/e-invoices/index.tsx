@@ -1,5 +1,12 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, Calendar, Check, ChevronsUpDown, Inbox, X } from 'lucide-react';
+import {
+    AlertTriangle,
+    Calendar,
+    Check,
+    ChevronsUpDown,
+    Inbox,
+    X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
@@ -167,7 +174,6 @@ function DepartmentMultiSelect({
 export default function EInvoicesIndex({
     eInvoices,
     filters,
-    companies,
     availableDepartments,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
@@ -267,43 +273,6 @@ export default function EInvoicesIndex({
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                    </FilterField>
-                    <FilterField
-                        label="Companie"
-                        active={!!filters.company_id}
-                        onClear={() => applyFilter({ company_id: null })}
-                    >
-                        <Select
-                            value={
-                                filters.company_id
-                                    ? String(filters.company_id)
-                                    : 'all'
-                            }
-                            onValueChange={(v) =>
-                                applyFilter({
-                                    company_id: v === 'all' ? null : Number(v),
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                className={cn(
-                                    'min-h-11 w-full sm:w-50',
-                                    filterTriggerClass(!!filters.company_id),
-                                )}
-                            >
-                                <SelectValue placeholder="Companie" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Toate companiile
-                                </SelectItem>
-                                {companies.map((c) => (
-                                    <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
                     </FilterField>
                     <FilterField
                         label="Status"
@@ -433,7 +402,9 @@ export default function EInvoicesIndex({
                                 <th className="px-4 py-3">Număr</th>
                                 <th className="px-4 py-3">Furnizor</th>
                                 <th className="px-4 py-3">Departamente</th>
-                                <th className="px-4 py-3 text-right">Fără TVA</th>
+                                <th className="px-4 py-3 text-right">
+                                    Fără TVA
+                                </th>
                                 <th className="px-4 py-3 text-right">TVA</th>
                                 <th className="px-4 py-3 text-right">Total</th>
                                 <th className="px-4 py-3">Mon.</th>
@@ -488,7 +459,9 @@ export default function EInvoicesIndex({
                                                 title="Data primire"
                                             >
                                                 <Inbox className="size-3.5" />
-                                                {formatDateTime(row.msg_data_creare_d)}
+                                                {formatDateTime(
+                                                    row.msg_data_creare_d,
+                                                )}
                                             </span>
                                         </div>
                                     </td>
@@ -566,8 +539,10 @@ export default function EInvoicesIndex({
                                     </td>
                                     <td className="px-4 py-3 text-right tabular-nums">
                                         {formatAmount(
-                                            row.total_amount !== null && row.total_vat !== null
-                                                ? row.total_amount - row.total_vat
+                                            row.total_amount !== null &&
+                                                row.total_vat !== null
+                                                ? row.total_amount -
+                                                      row.total_vat
                                                 : null,
                                         )}
                                     </td>
@@ -677,9 +652,16 @@ export default function EInvoicesIndex({
                                 </div>
                                 <div>Data: {row.data_doc_xml ?? '—'}</div>
                                 <div>
-                                    Total: {formatAmount(row.total_amount, row.currency)}
+                                    Total:{' '}
+                                    {formatAmount(
+                                        row.total_amount,
+                                        row.currency,
+                                    )}
                                 </div>
-                                <div>TVA: {formatAmount(row.total_vat, row.currency)}</div>
+                                <div>
+                                    TVA:{' '}
+                                    {formatAmount(row.total_vat, row.currency)}
+                                </div>
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2">
                                 {row.invoice ? (

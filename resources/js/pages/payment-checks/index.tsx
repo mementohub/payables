@@ -666,45 +666,53 @@ export default function PaymentChecksIndex({
                                 onSubmit={submit}
                                 className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end"
                             >
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-2">
-                                    <Label htmlFor="check-company">
-                                        Companie
-                                    </Label>
-                                    <Select
-                                        value={
-                                            companyId !== null
-                                                ? String(companyId)
-                                                : ''
-                                        }
-                                        onValueChange={(value) => {
-                                            setCompanyId(Number(value));
-                                            setSupplierCode(null);
-                                            setSupplier(null);
-                                            setCheck(null);
-                                        }}
-                                    >
-                                        <SelectTrigger
-                                            id="check-company"
-                                            className="w-full"
+                                {companies.length > 1 && (
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-2">
+                                        <Label htmlFor="check-company">
+                                            Companie
+                                        </Label>
+                                        <Select
+                                            value={
+                                                companyId !== null
+                                                    ? String(companyId)
+                                                    : ''
+                                            }
+                                            onValueChange={(value) => {
+                                                setCompanyId(Number(value));
+                                                setSupplierCode(null);
+                                                setSupplier(null);
+                                                setCheck(null);
+                                            }}
                                         >
-                                            <SelectValue placeholder="Alege compania" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {companies.map((item) => (
-                                                <SelectItem
-                                                    key={item.id}
-                                                    value={String(item.id)}
-                                                >
-                                                    {item.name}
-                                                    {item.etrip
-                                                        ? ` · ${item.etrip}`
-                                                        : ''}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-4">
+                                            <SelectTrigger
+                                                id="check-company"
+                                                className="w-full"
+                                            >
+                                                <SelectValue placeholder="Alege compania" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {companies.map((item) => (
+                                                    <SelectItem
+                                                        key={item.id}
+                                                        value={String(item.id)}
+                                                    >
+                                                        {item.name}
+                                                        {item.etrip
+                                                            ? ` · ${item.etrip}`
+                                                            : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                                <div
+                                    className={
+                                        companies.length > 1
+                                            ? 'grid min-w-0 gap-1.5 xl:col-span-4'
+                                            : 'grid min-w-0 gap-1.5 xl:col-span-6'
+                                    }
+                                >
                                     <Label htmlFor="check-supplier">
                                         Furnizor
                                     </Label>

@@ -24,7 +24,7 @@ class PaymentRequestController extends Controller
         $search = $request->string('search')->toString();
         $companyId = $request->exists('company_id')
             ? ($request->integer('company_id') ?: null)
-            : ((int) session('active_company_id') ?: null);
+            : null;
 
         $base = PaymentRequest::query()
             ->when($companyId !== null, fn ($query) => $query->where('company_id', $companyId));
