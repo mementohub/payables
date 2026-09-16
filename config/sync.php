@@ -18,6 +18,17 @@ return [
     'recent_days' => (int) env('SYNC_RECENT_DAYS', 3),
 
     /*
+    | Without a running scheduler, page views start the background sync when
+    | the last run is older than `auto_minutes`, and a `window_days` pass once
+    | a day from `nightly_hour` on. With the scheduler alive, its cron does it.
+    */
+    'auto_enabled' => (bool) env('SYNC_AUTO_ENABLED', true),
+
+    'auto_minutes' => (int) env('SYNC_AUTO_MINUTES', 10),
+
+    'nightly_hour' => (int) env('SYNC_NIGHTLY_HOUR', 2),
+
+    /*
     | A window is pulled in slices of this many days, so each slice's lookups
     | stay small and the log shows progress.
     */

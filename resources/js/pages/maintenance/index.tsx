@@ -37,6 +37,12 @@ type Props = {
     upgrade: RunStatus;
     syncRun: RunStatus;
     scheduler: { last_beat: string | null; alive: boolean };
+    autoSync: {
+        mode: 'scheduler' | 'web' | 'off';
+        minutes: number;
+        window_days: number;
+        nightly_hour: number;
+    };
     sync: { at: string; ok: boolean; summary: string } | null;
     companies: {
         id: number;
@@ -154,6 +160,7 @@ export default function MaintenanceIndex({
     upgrade,
     syncRun,
     scheduler,
+    autoSync,
     sync,
     companies,
 }: Props) {
@@ -380,15 +387,14 @@ export default function MaintenanceIndex({
                             </span>
                         </div>
 
-                        {!scheduler.alive && (
-                            <p className="rounded-md bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-                                Fără scheduler, datele nu se aduc singure.
-                                Cron-ul Laravel trebuie activat pe server (
-                                <code>php artisan schedule:run</code> la fiecare
-                                minut, opțiunea „Laravel scheduler” în Ploi);
-                                până atunci apasă „Sincronizează acum”.
-                            </p>
-                        )}
+                        <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                            {autoSync.mode === 'scheduler' &&
+                                `Reîmprospătare automată prin cron-ul Laravel: ultimele zile la fiecare ${autoSync.minutes} minute, ultimele ${autoSync.window_days} de zile în fiecare noapte.`}
+                            {autoSync.mode === 'web' &&
+                                `Cron-ul Laravel nu rulează pe server, așa că reîmprospătarea o pornesc paginile vizitate: cât timp cineva folosește aplicația, ultimele zile se aduc la cel mult ${autoSync.minutes} minute, iar ultimele ${autoSync.window_days} de zile o dată pe zi, după ora ${autoSync.nightly_hour}. Nu trebuie apăsat nimic.`}
+                            {autoSync.mode === 'off' &&
+                                'Reîmprospătarea automată este oprită (SYNC_AUTO_ENABLED); apasă „Sincronizează acum”.'}
+                        </p>
 
                         <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                             <table className="w-full text-sm">

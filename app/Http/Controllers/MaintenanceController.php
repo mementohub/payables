@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Services\Maintenance\ArtisanRunner;
+use App\Services\Maintenance\AutoSync;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -21,7 +22,7 @@ class MaintenanceController extends Controller
     /** The scheduler is considered down after this long without a heartbeat. */
     public const HEARTBEAT_MINUTES = 3;
 
-    public function index(ArtisanRunner $runner): Response
+    public function index(ArtisanRunner $runner, AutoSync $autoSync): Response
     {
         $beat = Cache::get('scheduler:heartbeat');
 
@@ -32,6 +33,12 @@ class MaintenanceController extends Controller
             'scheduler' => [
                 'last_beat' => $beat,
                 'alive' => $beat !== null && Carbon::parse($beat)->gt(now()->subMinutes(self::HEARTBEAT_MINUTES)),
+            ],
+            'autoSync' => [
+                'mode' => $autoSync->mode(),
+                'minutes' => (int) config('sync.auto_minutes', 10),
+                'window_days' => (int) config('sync.window_days', 45),
+                'nightly_hour' => (int) config('sync.nightly_hour', 2),
             ],
             'sync' => Cache::get('erp:sync:last_run'),
             'companies' => Company::query()->orderBy('name')->get()->map(fn (Company $company) => [
