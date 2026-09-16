@@ -655,7 +655,7 @@ class SyncService
         $remote->table('doc')
             ->select([
                 'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'curs',
-                'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl',
+                'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl', 'val_mon_dimin_negru',
                 'data_scadenta', 'data_inchidere', 'emitent', 'com_int',
                 'data_doc_baza', 'tip_doc_baza', 'nr_doc_baza',
             ])
@@ -703,6 +703,7 @@ class SyncService
                             'val_mon' => $row->val_mon ?? 0,
                             'val_mon_tva' => $row->val_mon_tva ?? 0,
                             'val_mon_paid' => $paid ?? 0,
+                            'val_mon_storno' => $row->val_mon_dimin_negru ?? 0,
                             'data_scadenta' => $row->data_scadenta,
                             'data_inchidere' => $row->data_inchidere,
                             'emitent' => $row->emitent,

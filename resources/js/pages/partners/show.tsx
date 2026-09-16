@@ -51,6 +51,7 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
+import PaymentCheckPanel from './payment-check';
 import type { InvoiceFilters, MonthlyTotal, ShowProps as Props } from './types';
 
 function formatAmount(value: number, currency: string | null) {
@@ -241,6 +242,10 @@ export default function PartnerShow({
                             />
                         )}
                     </>
+                )}
+
+                {partner.is_furnizor && (
+                    <PaymentCheckPanel partnerId={partner.id} />
                 )}
 
                 {activeBankAccounts.length > 0 && (

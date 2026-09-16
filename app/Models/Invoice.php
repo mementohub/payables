@@ -47,6 +47,7 @@ class Invoice extends Model
             'val_mon' => 'decimal:4',
             'val_mon_tva' => 'decimal:4',
             'val_mon_paid' => 'decimal:4',
+            'val_mon_storno' => 'decimal:4',
             'responsabili_approved_at' => 'datetime',
             'is_fully_approved' => 'boolean',
             'fully_approved_at' => 'datetime',
@@ -108,6 +109,15 @@ class Invoice extends Model
     public function bazaInvoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'nr_doc_baza', 'nr_doc');
+    }
+
+    /**
+     * Amount still open on the document: value less the payments allocated
+     * to it and the credit notes offset against it in the ERP.
+     */
+    public function outstandingAmount(): float
+    {
+        return round((float) $this->val_mon - (float) $this->val_mon_paid - (float) $this->val_mon_storno, 2);
     }
 
     public function scopeFurnizor(Builder $query): Builder

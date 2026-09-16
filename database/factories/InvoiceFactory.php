@@ -28,6 +28,7 @@ class InvoiceFactory extends Factory
             'val_mon' => 1000,
             'val_mon_tva' => 190,
             'val_mon_paid' => 0,
+            'val_mon_storno' => 0,
         ];
     }
 }

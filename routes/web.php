@@ -55,6 +55,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('suppliers', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
     Route::get('suppliers/{partner}', [PartnerController::class, 'show'])->name('partners.show');
+    Route::get('suppliers/{partner}/payment-check', [PartnerController::class, 'paymentCheck'])->name('partners.payment-check');
     Route::post('partners/{partner}/responsabil-departments', [PartnerController::class, 'attachResponsabilDepartment'])->name('partners.responsabil-departments.attach');
     Route::delete('partners/{partner}/responsabil-departments/{department}', [PartnerController::class, 'detachResponsabilDepartment'])->name('partners.responsabil-departments.detach');
     Route::get('clients', [PartnerController::class, 'clienti'])->name('partners.clienti');

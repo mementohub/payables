@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Partner;
+use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -154,6 +155,27 @@ class PartnerController extends Controller
     }
 
     /**
+     * Check a supplier's payment request against the invoices synced from the ERP.
+     *
+     * @return array<string, mixed>
+     */
+    public function paymentCheck(Request $request, Partner $partner, SupplierPaymentCheckService $check): array
+    {
+        abort_unless($partner->is_furnizor, 404);
+
+        $validated = $request->validate([
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', 'max:5'],
+        ]);
+
+        return $check->check(
+            $partner,
+            isset($validated['amount']) && $validated['amount'] !== '' ? (float) $validated['amount'] : null,
+            $validated['currency'] ?? null,
+        );
+    }
+
+    /**
      * @return array{
      *   totals: list<array{moneda: ?string, count: int, val_mon: float, val_mon_paid: float, sold: float}>,
      *   counts: array{paid: int, partial: int, unpaid: int, total: int},
@@ -170,8 +192,9 @@ class PartnerController extends Controller
 
         $base = $partner->invoices()->whereIn('tip_doc', $tipDocs);
 
+        // Credit notes offset in the ERP (val_mon_storno) settle an invoice just like payments do.
         $totals = (clone $base)
-            ->selectRaw('moneda, COUNT(*) as cnt, SUM(val_mon) as v, SUM(val_mon_paid) as p')
+            ->selectRaw('moneda, COUNT(*) as cnt, SUM(val_mon) as v, SUM(val_mon_paid) as p, SUM(val_mon_storno) as s')
             ->groupBy('moneda')
             ->orderBy('moneda')
             ->get()
@@ -179,25 +202,25 @@ class PartnerController extends Controller
                 'moneda' => $row->moneda,
                 'count' => (int) $row->cnt,
                 'val_mon' => round((float) $row->v, 2),
-                'val_mon_paid' => round((float) $row->p, 2),
-                'sold' => round((float) $row->v - (float) $row->p, 2),
+                'val_mon_paid' => round((float) $row->p + (float) $row->s, 2),
+                'sold' => round((float) $row->v - (float) $row->p - (float) $row->s, 2),
             ])
             ->values()
             ->all();
 
-        $paid = (clone $base)->whereColumn('val_mon_paid', '>=', DB::raw('val_mon - 0.01'))->count();
-        $unpaid = (clone $base)->where('val_mon_paid', '<=', 0.009)->count();
+        $paid = (clone $base)->whereRaw('val_mon_paid + val_mon_storno >= val_mon - 0.01')->count();
+        $unpaid = (clone $base)->whereRaw('val_mon_paid + val_mon_storno <= 0.009')->count();
         $partial = (clone $base)
-            ->where('val_mon_paid', '>', 0.009)
-            ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
+            ->whereRaw('val_mon_paid + val_mon_storno > 0.009')
+            ->whereRaw('val_mon_paid + val_mon_storno < val_mon - 0.01')
             ->count();
         $total = (clone $base)->count();
 
         $oldestUnpaid = (clone $base)
-            ->where('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
+            ->whereRaw('val_mon_paid + val_mon_storno < val_mon - 0.01')
             ->whereNotNull('data_scadenta')
             ->orderBy('data_scadenta')
-            ->first(['id', 'tip_doc', 'nr_doc', 'data_doc', 'data_scadenta', 'val_mon', 'val_mon_paid', 'moneda']);
+            ->first(['id', 'tip_doc', 'nr_doc', 'data_doc', 'data_scadenta', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'moneda']);
 
         $lastInvoiceDate = (clone $base)->max('data_doc');
         $firstInvoiceDate = (clone $base)->min('data_doc');
@@ -219,7 +242,7 @@ class PartnerController extends Controller
                 'days_overdue' => $oldestUnpaid->data_scadenta
                     ? max(0, (int) $oldestUnpaid->data_scadenta->startOfDay()->diffInDays(now()->startOfDay(), false))
                     : null,
-                'val_mon' => round((float) $oldestUnpaid->val_mon - (float) $oldestUnpaid->val_mon_paid, 2),
+                'val_mon' => $oldestUnpaid->outstandingAmount(),
                 'moneda' => $oldestUnpaid->moneda,
             ] : null,
             'last_invoice_date' => $lastInvoiceDate ? Carbon::parse($lastInvoiceDate)->toDateString() : null,
