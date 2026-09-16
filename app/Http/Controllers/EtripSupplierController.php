@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ReadsEtrip;
+use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Models\Partner;
@@ -18,7 +18,7 @@ use Throwable;
 
 class EtripSupplierController extends Controller
 {
-    use ReadsEtrip;
+    use ReadsRemote;
 
     /**
      * The company's active eTrip suppliers, read live from eTrip and joined with

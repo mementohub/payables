@@ -69,7 +69,9 @@ Route::middleware('auth')->group(function () {
     Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
     Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
     Route::get('payment-checks/invoices', [InvoiceCheckController::class, 'index'])->name('payment-checks.invoices.index');
-    Route::get('companies/{company}/suppliers', [InvoiceCheckController::class, 'suppliers'])->name('companies.suppliers.search');
+    Route::get('payment-checks/invoices/suppliers', [InvoiceCheckController::class, 'suppliers'])->name('payment-checks.invoices.suppliers');
+    Route::get('payment-checks/invoices/check', [InvoiceCheckController::class, 'check'])->name('payment-checks.invoices.check');
+    Route::get('payment-checks/invoices/open', [InvoiceCheckController::class, 'open'])->name('payment-checks.invoices.open');
 
     Route::get('payment-requests', [PaymentRequestController::class, 'index'])->name('payment-requests.index');
     Route::post('payment-requests', [PaymentRequestController::class, 'store'])->name('payment-requests.store');

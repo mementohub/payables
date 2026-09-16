@@ -481,28 +481,25 @@ export default function PaymentRequestShow({
                                     </Link>
                                 </Button>
                             )}
-                        {request.kind === 'invoice' &&
-                            request.company &&
-                            request.partner && (
-                                <Button asChild variant="outline" size="sm">
-                                    <Link
-                                        href={invoiceChecksIndex({
-                                            query: {
-                                                company_id: request.company.id,
-                                                partner_id: request.partner.id,
-                                                amount: String(
-                                                    request.requested_amount,
-                                                ),
-                                                currency:
-                                                    request.requested_currency,
-                                            },
-                                        })}
-                                    >
-                                        <ClipboardCheck />
-                                        Reverifică în OMC
-                                    </Link>
-                                </Button>
-                            )}
+                        {request.kind === 'invoice' && (
+                            <Button asChild variant="outline" size="sm">
+                                <Link
+                                    href={invoiceChecksIndex({
+                                        query: {
+                                            supplier: request.supplier_name,
+                                            amount: String(
+                                                request.requested_amount,
+                                            ),
+                                            currency:
+                                                request.requested_currency,
+                                        },
+                                    })}
+                                >
+                                    <ClipboardCheck />
+                                    Reverifică în OMC
+                                </Link>
+                            </Button>
+                        )}
                         <StatusDialog
                             requestId={request.id}
                             current={request.status}

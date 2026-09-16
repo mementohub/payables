@@ -4,97 +4,164 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
+use App\Services\Omc\OmcReader;
 use Illuminate\Support\Carbon;
+use Mockery\MockInterface;
+
+/**
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function omcInvoice(array $overrides = []): array
+{
+    return [
+        'data_doc' => '2026-09-05',
+        'tip_doc' => 'FactFI',
+        'nr_doc' => 'VDF815374737',
+        'moneda' => 'Lei',
+        'curs' => 1,
+        'val_mon' => 15694.48,
+        'val_mon_tva' => 2505.7,
+        'val_mon_pl' => 0,
+        'val_mon_dimin_negru' => 0,
+        'data_scadenta' => '2026-09-20',
+        'paid_at' => null,
+        'description' => 'VPN - Vodafone',
+        'accounts' => '626',
+        ...$overrides,
+    ];
+}
 
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
+    config()->set('database.connections.omc.database', 'christian_76_tour');
 
     $this->user = User::factory()->create();
-    $this->company = Company::factory()->create(['name' => 'Christian Tour', 'last_synced_at' => '2026-09-16 06:00:00']);
+    $this->company = Company::factory()->create(['name' => 'Christian Tour', 'db_database' => 'christian_76_tour']);
 });
 
 test('guests are redirected to the login page', function () {
     $this->get('/payment-checks/invoices')->assertRedirect('/login');
 });
 
-test('the page lists the suppliers with open invoices, earliest due date first', function () {
-    $late = Partner::factory()->for($this->company)->create(['name' => 'VODAFONE ROMANIA SA', 'cui' => 'RO8971726']);
-    $soon = Partner::factory()->for($this->company)->create(['name' => 'Clever Media']);
-    $settled = Partner::factory()->for($this->company)->create(['name' => 'Settled']);
-    $elsewhere = Partner::factory()->create(['name' => 'Other company']);
-
-    Invoice::factory()->for($this->company)->for($late)->create(['moneda' => 'EUR', 'curs' => 5, 'val_mon' => 1000, 'val_mon_paid' => 200, 'data_scadenta' => '2026-09-01']);
-    Invoice::factory()->for($this->company)->for($late)->create(['moneda' => 'Lei', 'curs' => 1, 'val_mon' => 300, 'data_scadenta' => '2026-10-01']);
-    Invoice::factory()->for($this->company)->for($soon)->create(['val_mon' => 500, 'data_scadenta' => '2026-09-20']);
-    Invoice::factory()->for($this->company)->for($settled)->create(['val_mon' => 500, 'val_mon_paid' => 200, 'val_mon_storno' => 300]);
-    Invoice::factory()->for($this->company)->for($soon)->create(['tip_doc' => 'FactCI', 'partener_type' => 'client', 'val_mon' => 700, 'data_scadenta' => '2026-08-01']);
-    Invoice::factory()->for($elsewhere->company)->for($elsewhere)->create(['val_mon' => 900, 'data_scadenta' => '2026-08-01']);
-
+test('the page names the omc database and company and keeps the url filters', function () {
     $this->actingAs($this->user)
-        ->get('/payment-checks/invoices?company_id='.$this->company->id)
+        ->get('/payment-checks/invoices?supplier=VODAFONE%20ROMANIA%20SA&amount=15694.48&currency=RON')
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('payment-checks/invoices')
-            ->where('filters.company_id', $this->company->id)
-            ->where('filters.partner', null)
-            ->where('companies.0.name', 'Christian Tour')
-            ->where('companies.0.synced_at', fn ($value) => str_starts_with((string) $value, '2026-09-16T06:00:00'))
-            ->has('openSuppliers', 2)
-            ->where('openSuppliers.0.partner_id', $late->id)
-            ->where('openSuppliers.0.name', 'VODAFONE ROMANIA SA')
-            ->where('openSuppliers.0.cui', 'RO8971726')
-            ->where('openSuppliers.0.invoices', 2)
-            ->where('openSuppliers.0.first_due', '2026-09-01')
-            ->where('openSuppliers.0.overdue', true)
-            ->where('openSuppliers.0.rest', [['moneda' => 'EUR', 'rest' => 800], ['moneda' => 'RON', 'rest' => 300]])
-            ->where('openSuppliers.0.rest_lei', 4300)
-            ->where('openSuppliers.1.name', 'Clever Media')
-            ->where('openSuppliers.1.first_due', '2026-09-20')
-            ->where('openSuppliers.1.overdue', false)
-            ->where('openSuppliers.1.rest_lei', 500)
-        );
-});
-
-test('a supplier and amount from the url are preselected', function () {
-    $partner = Partner::factory()->for($this->company)->create(['name' => 'VODAFONE ROMANIA SA']);
-    $client = Partner::factory()->for($this->company)->create(['is_furnizor' => false, 'is_client' => true]);
-
-    $this->actingAs($this->user)
-        ->get('/payment-checks/invoices?company_id='.$this->company->id."&partner_id={$partner->id}&amount=15694.48&currency=RON")
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page
-            ->where('filters.partner.id', $partner->id)
-            ->where('filters.partner.name', 'VODAFONE ROMANIA SA')
+            ->where('company.id', $this->company->id)
+            ->where('database', fn ($value) => str_starts_with((string) $value, 'christian_76_tour @ '))
+            ->where('filters.supplier', 'VODAFONE ROMANIA SA')
             ->where('filters.amount', '15694.48')
             ->where('filters.currency', 'RON')
         );
-
-    $this->actingAs($this->user)
-        ->get('/payment-checks/invoices?company_id='.$this->company->id."&partner_id={$client->id}")
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page->where('filters.partner', null));
 });
 
-test('the supplier search matches the name or vat number within the company', function () {
-    Partner::factory()->for($this->company)->create(['name' => 'VODAFONE ROMANIA S.A.', 'cui' => 'RO8971726']);
-    Partner::factory()->for($this->company)->create(['name' => 'Orange Romania', 'cui' => 'RO9010105']);
-    Partner::factory()->for($this->company)->create(['name' => 'Vodafone client', 'is_furnizor' => false, 'is_client' => true]);
-    Partner::factory()->create(['name' => 'Vodafone elsewhere']);
+test('suppliers are searched live in omc', function () {
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('searchSuppliers')->with('voda', 30)->once()->andReturn([
+            ['name' => 'VODAFONE ROMANIA SA', 'cui' => 'RO8971726', 'country' => 'RO', 'city' => 'București', 'invoices' => 23, 'last_invoice' => '2026-09-05'],
+        ]);
+    });
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/suppliers?q=voda')
+        ->getJson('/payment-checks/invoices/suppliers?q=voda')
         ->assertOk()
         ->assertJsonCount(1, 'suppliers')
-        ->assertJsonPath('suppliers.0.name', 'VODAFONE ROMANIA S.A.');
+        ->assertJsonPath('suppliers.0.name', 'VODAFONE ROMANIA SA')
+        ->assertJsonPath('suppliers.0.invoices', 23);
+});
+
+test('the check reads the supplier invoices live from omc and maps the ones synced locally', function () {
+    $partner = Partner::factory()->for($this->company)->create(['name' => 'VODAFONE ROMANIA SA', 'cui' => 'RO8971726']);
+    $synced = Invoice::factory()->for($this->company)->for($partner)->create(['data_doc' => '2026-09-05', 'tip_doc' => 'FactFI', 'nr_doc' => 'VDF815374737']);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->with('VODAFONE ROMANIA SA')->once()->andReturn([
+            'name' => 'VODAFONE ROMANIA SA', 'cui' => 'RO8971726', 'country' => 'RO', 'city' => 'București', 'is_company' => true,
+        ]);
+        $mock->shouldReceive('supplierInvoices')
+            ->withArgs(fn (string $name, Carbon $since) => $name === 'VODAFONE ROMANIA SA' && $since->toDateString() === '2024-10-01')
+            ->once()
+            ->andReturn([
+                omcInvoice(),
+                omcInvoice(['data_doc' => '2026-08-05', 'nr_doc' => 'VDF808642943', 'val_mon' => 15715.64, 'val_mon_pl' => 15715.64, 'data_scadenta' => '2026-08-20', 'paid_at' => '2026-08-17', 'accounts' => '626, 461']),
+                omcInvoice(['data_doc' => '2024-01-05', 'nr_doc' => 'OLD', 'val_mon' => 100, 'val_mon_pl' => 40, 'data_scadenta' => '2024-01-20', 'description' => null]),
+            ]);
+    });
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/suppliers?q=8971726')
+        ->getJson('/payment-checks/invoices/check?supplier=VODAFONE%20ROMANIA%20SA&amount=15694.48&currency=RON')
         ->assertOk()
-        ->assertJsonPath('suppliers.0.cui', 'RO8971726');
+        ->assertJsonPath('source', 'omc')
+        ->assertJsonPath('supplier.cui', 'RO8971726')
+        ->assertJsonPath('supplier.partner_id', $partner->id)
+        ->assertJsonPath('supplier.accounts', '461, 626')
+        ->assertJsonCount(2, 'open')
+        ->assertJsonPath('open.0.nr_doc', 'OLD')
+        ->assertJsonPath('open.0.rest', 60)
+        ->assertJsonPath('open.0.id', null)
+        ->assertJsonPath('open.1.id', $synced->id)
+        ->assertJsonPath('open.1.description', 'VPN - Vodafone')
+        ->assertJsonPath('open.1.moneda', 'RON')
+        ->assertJsonCount(2, 'recent')
+        ->assertJsonPath('recent.1.payment_status', 'paid')
+        ->assertJsonPath('recent.1.paid_at', '2026-08-17')
+        ->assertJsonPath('requested.verdict', 'exact')
+        ->assertJsonPath('requested.invoice.id', $synced->id)
+        ->assertJsonPath('last_invoice.nr_doc', 'VDF815374737')
+        ->assertJsonPath('invoices_12m', 2);
+});
+
+test('a supplier unknown to omc is a 404', function () {
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->once()->andReturnNull();
+    });
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/suppliers')
+        ->getJson('/payment-checks/invoices/check?supplier=NOBODY')
+        ->assertNotFound();
+});
+
+test('an unreachable omc database is reported with its cause', function () {
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('searchSuppliers')->andThrow(new RuntimeException('connection to server at "chr-etrip-pgbouncer" failed'));
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/payment-checks/invoices/suppliers?q=x')
+        ->assertStatus(503)
+        ->assertJsonPath('message', 'Baza OMC nu poate fi accesată: connection to server at "chr-etrip-pgbouncer" failed');
+});
+
+test('suppliers with open invoices are grouped and ordered by first due date', function () {
+    config()->set('omc.open_window_years', 2);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('openSupplierInvoices')
+            ->withArgs(fn (Carbon $since) => $since->toDateString() === '2024-09-16')
+            ->once()
+            ->andReturn([
+                ['partener' => 'Clever Media', 'cod_cci' => 'RO1', ...omcInvoice(['nr_doc' => 'C1', 'val_mon' => 500, 'data_scadenta' => '2026-09-20'])],
+                ['partener' => 'VODAFONE ROMANIA SA', 'cod_cci' => 'RO8971726', ...omcInvoice(['nr_doc' => 'V1', 'moneda' => 'EUR', 'curs' => 5, 'val_mon' => 1000, 'val_mon_pl' => 200, 'data_scadenta' => '2026-09-01'])],
+                ['partener' => 'VODAFONE ROMANIA SA', 'cod_cci' => 'RO8971726', ...omcInvoice(['nr_doc' => 'V2', 'val_mon' => 300, 'data_scadenta' => '2026-10-01'])],
+            ]);
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/payment-checks/invoices/open')
         ->assertOk()
+        ->assertJsonPath('since', '2024-09-16')
         ->assertJsonCount(2, 'suppliers')
-        ->assertJsonPath('suppliers.0.name', 'Orange Romania');
+        ->assertJsonPath('suppliers.0.name', 'VODAFONE ROMANIA SA')
+        ->assertJsonPath('suppliers.0.cui', 'RO8971726')
+        ->assertJsonPath('suppliers.0.invoices', 2)
+        ->assertJsonPath('suppliers.0.first_due', '2026-09-01')
+        ->assertJsonPath('suppliers.0.overdue', true)
+        ->assertJsonPath('suppliers.0.rest', [['moneda' => 'EUR', 'rest' => 800], ['moneda' => 'RON', 'rest' => 300]])
+        ->assertJsonPath('suppliers.0.rest_lei', 4300)
+        ->assertJsonPath('suppliers.1.name', 'Clever Media')
+        ->assertJsonPath('suppliers.1.overdue', false)
+        ->assertJsonPath('suppliers.1.rest_lei', 500);
 });

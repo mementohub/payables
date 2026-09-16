@@ -10,29 +10,41 @@ import {
 } from '@/components/ui/combobox';
 
 export type OmcSupplierOption = {
-    id: number;
+    /** The `partener` name, which is the ERP key of the supplier. */
     name: string;
     cui: string | null;
+    country: string | null;
     city: string | null;
+    invoices: number | null;
+    last_invoice: string | null;
 };
 
 export function omcSupplierLabel(supplier: OmcSupplierOption): string {
     return supplier.name;
 }
 
+function shortDate(value: string | null): string {
+    if (!value) {
+        return '';
+    }
+
+    const [year, month, day] = value.split('-');
+
+    return `${day}.${month}.${year}`;
+}
+
 /**
- * Searchable list of a company's ERP suppliers. The ERP has thousands of
- * partners, so the list is searched on the server as the user types.
+ * Searchable list of the suppliers invoiced in OMC. The ERP has hundreds of
+ * thousands of partners, so the list is searched live on the server as the
+ * user types; without a term the most recently invoiced suppliers are shown.
  */
 export default function OmcSupplierPicker({
     id,
-    companyId,
     value,
     onChange,
     disabled = false,
 }: {
     id?: string;
-    companyId: number | null;
     value: OmcSupplierOption | null;
     onChange: (supplier: OmcSupplierOption | null) => void;
     disabled?: boolean;
@@ -43,10 +55,6 @@ export default function OmcSupplierPicker({
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (companyId === null) {
-            return;
-        }
-
         let cancelled = false;
         const term = query.trim();
         const timer = window.setTimeout(
@@ -54,15 +62,20 @@ export default function OmcSupplierPicker({
                 setLoading(true);
 
                 fetch(
-                    InvoiceCheckController.suppliers(companyId, {
+                    InvoiceCheckController.suppliers({
                         query: term ? { q: term } : {},
                     }).url,
                     { headers: { Accept: 'application/json' } },
                 )
                     .then(async (res) => {
                         if (!res.ok) {
+                            const body = (await res
+                                .json()
+                                .catch(() => ({}))) as { message?: string };
+
                             throw new Error(
-                                'Lista furnizorilor nu a putut fi încărcată.',
+                                body.message ??
+                                    'Lista furnizorilor nu a putut fi încărcată.',
                             );
                         }
 
@@ -87,14 +100,14 @@ export default function OmcSupplierPicker({
                         }
                     });
             },
-            term ? 200 : 0,
+            term ? 250 : 0,
         );
 
         return () => {
             cancelled = true;
             window.clearTimeout(timer);
         };
-    }, [companyId, query]);
+    }, [query]);
 
     return (
         <div className="grid gap-1">
@@ -109,8 +122,8 @@ export default function OmcSupplierPicker({
                     }
                 }}
                 itemToStringLabel={omcSupplierLabel}
-                isItemEqualToValue={(a, b) => a?.id === b?.id}
-                disabled={disabled || companyId === null}
+                isItemEqualToValue={(a, b) => a?.name === b?.name}
+                disabled={disabled}
             >
                 <ComboboxInput
                     id={id}
@@ -121,20 +134,27 @@ export default function OmcSupplierPicker({
                 <ComboboxContent>
                     <ComboboxEmpty>
                         {loading
-                            ? 'Se caută…'
-                            : query.trim()
-                              ? 'Niciun furnizor nu se potrivește.'
-                              : 'Niciun furnizor sincronizat pentru această companie.'}
+                            ? 'Se caută în OMC…'
+                            : error
+                              ? error
+                              : query.trim()
+                                ? 'Niciun furnizor cu facturi nu se potrivește.'
+                                : 'Niciun furnizor cu facturi în OMC.'}
                     </ComboboxEmpty>
                     <ComboboxList>
                         {(option: OmcSupplierOption) => (
-                            <ComboboxItem key={option.id} value={option}>
+                            <ComboboxItem key={option.name} value={option}>
                                 <span className="flex-1 truncate">
                                     {option.name}
                                 </span>
                                 <span className="font-mono text-xs text-muted-foreground">
                                     {option.cui ?? ''}
-                                    {option.city ? ` · ${option.city}` : ''}
+                                    {option.invoices !== null
+                                        ? ` · ${option.invoices} fact.`
+                                        : ''}
+                                    {option.last_invoice
+                                        ? ` · ${shortDate(option.last_invoice)}`
+                                        : ''}
                                 </span>
                             </ComboboxItem>
                         )}

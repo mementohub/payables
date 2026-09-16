@@ -1,12 +1,13 @@
-import { Head, Link, router } from '@inertiajs/react';
-import { Search } from 'lucide-react';
+import { Head, Link } from '@inertiajs/react';
+import { RefreshCw, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import InvoiceCheckController from '@/actions/App/Http/Controllers/InvoiceCheckController';
 import PaymentCheckResult, {
     DuePill,
     FALLBACK_CURRENCIES,
     PaymentCheckSkeleton,
-    fetchCheck,
+    fetchJson,
     formatAmount,
     formatDate,
 } from '@/components/invoice-payment-check';
@@ -29,21 +30,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
-import { index as companiesIndex } from '@/routes/companies';
-import { show as partnerShow } from '@/routes/partners';
+import { index as databaseStatusIndex } from '@/routes/database-status';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
 import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
 import type { PaymentCheck } from '@/types/payment-check';
 
-type CompanyOption = {
-    id: number;
-    name: string;
-    synced_at: string | null;
-};
-
 type OpenSupplier = {
-    partner_id: number;
     name: string;
     cui: string | null;
     invoices: number;
@@ -53,15 +47,19 @@ type OpenSupplier = {
     rest_lei: number;
 };
 
+type OpenPayload = {
+    since: string;
+    suppliers: OpenSupplier[];
+};
+
 type Props = {
-    companies: CompanyOption[];
+    company: { id: number; name: string } | null;
+    database: string;
     filters: {
-        company_id: number | null;
-        partner: OmcSupplierOption | null;
+        supplier: string | null;
         amount: string | null;
         currency: string | null;
     };
-    openSuppliers: OpenSupplier[];
 };
 
 function daysUntil(date: string): number {
@@ -71,6 +69,23 @@ function daysUntil(date: string): number {
     return Math.round(
         (new Date(`${date}T00:00:00`).getTime() - today.getTime()) / 86_400_000,
     );
+}
+
+function optionFor(name: string): OmcSupplierOption {
+    return {
+        name,
+        cui: null,
+        country: null,
+        city: null,
+        invoices: null,
+        last_invoice: null,
+    };
+}
+
+function fetchCheckByName(
+    query: Record<string, string>,
+): Promise<PaymentCheck> {
+    return fetchJson<PaymentCheck>(InvoiceCheckController.check({ query }).url);
 }
 
 function OpenSuppliersTable({
@@ -83,8 +98,7 @@ function OpenSuppliersTable({
     if (suppliers.length === 0) {
         return (
             <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
-                Nicio factură de furnizor neachitată în ERP pentru această
-                companie.
+                Nicio factură de furnizor neachitată în OMC.
             </p>
         );
     }
@@ -105,7 +119,7 @@ function OpenSuppliersTable({
                 <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                     {suppliers.map((supplier) => (
                         <tr
-                            key={supplier.partner_id}
+                            key={supplier.name}
                             className={
                                 supplier.overdue
                                     ? 'bg-destructive/5'
@@ -113,12 +127,7 @@ function OpenSuppliersTable({
                             }
                         >
                             <td className="px-3 py-2 font-medium">
-                                <Link
-                                    href={partnerShow(supplier.partner_id)}
-                                    className="hover:underline"
-                                >
-                                    {supplier.name}
-                                </Link>
+                                {supplier.name}
                                 {supplier.cui && (
                                     <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
                                         {supplier.cui}
@@ -167,23 +176,22 @@ function OpenSuppliersTable({
 }
 
 export default function InvoiceChecksIndex({
-    companies,
+    company,
+    database,
     filters,
-    openSuppliers,
 }: Props) {
-    const [companyId, setCompanyId] = useState<number | null>(
-        filters.company_id,
-    );
-    const [partner, setPartner] = useState<OmcSupplierOption | null>(
-        filters.partner,
+    const [supplier, setSupplier] = useState<OmcSupplierOption | null>(
+        filters.supplier ? optionFor(filters.supplier) : null,
     );
     const [amount, setAmount] = useState(filters.amount ?? '');
     const [currency, setCurrency] = useState(filters.currency ?? '');
     const [check, setCheck] = useState<PaymentCheck | null>(null);
-    const [loading, setLoading] = useState(filters.partner !== null);
+    const [loading, setLoading] = useState(filters.supplier !== null);
     const [error, setError] = useState<string | null>(null);
 
-    const company = companies.find((item) => item.id === companyId) ?? null;
+    const [open, setOpen] = useState<OpenPayload | null>(null);
+    const [openKey, setOpenKey] = useState(0);
+    const [openError, setOpenError] = useState<string | null>(null);
 
     const currencies = useMemo(() => {
         const known = check?.currencies ?? [];
@@ -194,12 +202,12 @@ export default function InvoiceChecksIndex({
     const selectedCurrency = currency || currencies[0];
 
     useEffect(() => {
-        if (!filters.partner) {
+        if (!filters.supplier) {
             return;
         }
 
         let cancelled = false;
-        const query: Record<string, string> = {};
+        const query: Record<string, string> = { supplier: filters.supplier };
 
         if (filters.amount) {
             query.amount = filters.amount;
@@ -209,7 +217,7 @@ export default function InvoiceChecksIndex({
             }
         }
 
-        fetchCheck(filters.partner.id, query)
+        fetchCheckByName(query)
             .then((data) => {
                 if (!cancelled) {
                     setCheck(data);
@@ -229,14 +237,35 @@ export default function InvoiceChecksIndex({
         return () => {
             cancelled = true;
         };
-    }, [filters.partner, filters.amount, filters.currency]);
+    }, [filters.supplier, filters.amount, filters.currency]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetchJson<OpenPayload>(InvoiceCheckController.open().url)
+            .then((data) => {
+                if (!cancelled) {
+                    setOpen(data);
+                    setOpenError(null);
+                }
+            })
+            .catch((err: Error) => {
+                if (!cancelled) {
+                    setOpenError(err.message);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [openKey]);
 
     function run(
         target: OmcSupplierOption,
         requested: string,
         requestedCurrency: string,
     ) {
-        const query: Record<string, string> = {};
+        const query: Record<string, string> = { supplier: target.name };
 
         if (requested.trim()) {
             query.amount = requested.trim();
@@ -246,14 +275,14 @@ export default function InvoiceChecksIndex({
         setLoading(true);
         setError(null);
 
-        fetchCheck(target.id, query)
+        fetchCheckByName(query)
             .then(setCheck)
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
     }
 
     function choose(option: OmcSupplierOption | null) {
-        setPartner(option);
+        setSupplier(option);
         setCheck(null);
         setError(null);
 
@@ -265,24 +294,9 @@ export default function InvoiceChecksIndex({
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (partner) {
-            run(partner, amount, selectedCurrency);
+        if (supplier) {
+            run(supplier, amount, selectedCurrency);
         }
-    }
-
-    function changeCompany(value: string) {
-        const id = Number(value);
-
-        setCompanyId(id);
-        setPartner(null);
-        setCheck(null);
-        setError(null);
-
-        router.get(
-            invoiceChecksIndex().url,
-            { company_id: id },
-            { preserveScroll: true },
-        );
     }
 
     return (
@@ -304,30 +318,23 @@ export default function InvoiceChecksIndex({
                             înregistrată și dacă se încadrează în tipar.
                         </p>
                     </div>
-                    {company && (
-                        <p className="text-xs text-muted-foreground">
-                            Date OMC sincronizate:{' '}
-                            {company.synced_at
-                                ? new Date(company.synced_at).toLocaleString(
-                                      'ro-RO',
-                                  )
-                                : 'niciodată'}
-                            {' · '}
-                            <Link
-                                href={companiesIndex()}
-                                className="underline underline-offset-2"
-                            >
-                                Sincronizează
-                            </Link>
-                        </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                        Date live din OMC ·{' '}
+                        <Link
+                            href={databaseStatusIndex()}
+                            className="underline underline-offset-2"
+                            title="Stare baze de date"
+                        >
+                            {database}
+                        </Link>
+                    </p>
                 </div>
 
                 <Card>
                     <CardHeader>
                         <CardTitle>Factura de plată</CardTitle>
                         <CardDescription>
-                            Alege furnizorul din cerere; facturile lui
+                            Scrie furnizorul din cerere; facturile lui
                             neachitate apar imediat, iar cu suma cerută vezi
                             dacă ea corespunde unei facturi înregistrate.
                         </CardDescription>
@@ -337,48 +344,17 @@ export default function InvoiceChecksIndex({
                             onSubmit={submit}
                             className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end"
                         >
-                            <div className="grid min-w-0 gap-1.5 xl:col-span-2">
-                                <Label htmlFor="invoice-check-company">
-                                    Companie
-                                </Label>
-                                <Select
-                                    value={
-                                        companyId !== null
-                                            ? String(companyId)
-                                            : ''
-                                    }
-                                    onValueChange={changeCompany}
-                                >
-                                    <SelectTrigger
-                                        id="invoice-check-company"
-                                        className="w-full"
-                                    >
-                                        <SelectValue placeholder="Alege compania" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {companies.map((item) => (
-                                            <SelectItem
-                                                key={item.id}
-                                                value={String(item.id)}
-                                            >
-                                                {item.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid min-w-0 gap-1.5 xl:col-span-4">
+                            <div className="grid min-w-0 gap-1.5 md:col-span-2 xl:col-span-3">
                                 <Label htmlFor="invoice-check-supplier">
                                     Furnizor (OMC)
                                 </Label>
                                 <OmcSupplierPicker
                                     id="invoice-check-supplier"
-                                    companyId={companyId}
-                                    value={partner}
+                                    value={supplier}
                                     onChange={choose}
                                 />
                             </div>
-                            <div className="grid min-w-0 gap-1.5 xl:col-span-2">
+                            <div className="grid min-w-0 gap-1.5 xl:col-span-1">
                                 <Label htmlFor="invoice-check-amount">
                                     Suma cerută (opțional)
                                 </Label>
@@ -423,7 +399,7 @@ export default function InvoiceChecksIndex({
                                 <Button
                                     type="submit"
                                     className="w-full"
-                                    disabled={loading || partner === null}
+                                    disabled={loading || supplier === null}
                                 >
                                     <Search />
                                     Verifică
@@ -437,7 +413,7 @@ export default function InvoiceChecksIndex({
                             </p>
                         )}
 
-                        {partner === null && !loading && (
+                        {supplier === null && !loading && (
                             <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
                                 Alege un furnizor ca să vezi facturile lui
                                 neachitate din OMC, sau apasă „Verifică” pe un
@@ -447,43 +423,80 @@ export default function InvoiceChecksIndex({
 
                         {loading && !check ? <PaymentCheckSkeleton /> : null}
 
-                        {check && partner && company && (
+                        {check && supplier && (
                             <PaymentCheckResult
-                                key={partner.id}
+                                key={supplier.name}
                                 check={check}
-                                companyId={company.id}
-                                partnerId={partner.id}
-                                partnerName={partner.name}
+                                companyId={company?.id ?? null}
+                                partnerId={check.supplier.partner_id}
+                                partnerName={check.supplier.name}
                             />
                         )}
                     </CardContent>
                 </Card>
 
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Furnizori cu facturi neachitate</CardTitle>
-                        <CardDescription>
-                            Toate facturile FactFI cu rest de plată în OMC,
-                            grupate pe furnizor, în ordinea scadenței celei mai
-                            apropiate. Echivalentul în lei folosește cursul
-                            facturii.
-                            {openSuppliers.length > 0 &&
-                                ` ${openSuppliers.length} furnizori.`}
-                        </CardDescription>
+                    <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1.5">
+                            <CardTitle>
+                                Furnizori cu facturi neachitate
+                            </CardTitle>
+                            <CardDescription>
+                                Facturile FactFI cu rest de plată în OMC
+                                {open
+                                    ? ` (emise de la ${formatDate(open.since)})`
+                                    : ''}
+                                , grupate pe furnizor, în ordinea scadenței
+                                celei mai apropiate. Echivalentul în lei
+                                folosește cursul facturii.
+                                {open && open.suppliers.length > 0
+                                    ? ` ${open.suppliers.length} furnizori.`
+                                    : ''}
+                            </CardDescription>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setOpen(null);
+                                setOpenKey((key) => key + 1);
+                            }}
+                        >
+                            <RefreshCw />
+                            Reîncarcă
+                        </Button>
                     </CardHeader>
                     <CardContent>
-                        <OpenSuppliersTable
-                            suppliers={openSuppliers}
-                            onPick={(supplier) => {
-                                choose({
-                                    id: supplier.partner_id,
-                                    name: supplier.name,
-                                    cui: supplier.cui,
-                                    city: null,
-                                });
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                        />
+                        {openError ? (
+                            <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                                {openError}
+                            </p>
+                        ) : open === null ? (
+                            <div className="space-y-2">
+                                {[0, 1, 2, 3, 4].map((index) => (
+                                    <Skeleton
+                                        key={index}
+                                        className="h-9 animate-pulse rounded-md"
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <OpenSuppliersTable
+                                suppliers={open.suppliers}
+                                onPick={(row) => {
+                                    choose({
+                                        ...optionFor(row.name),
+                                        cui: row.cui,
+                                        invoices: row.invoices,
+                                    });
+                                    window.scrollTo({
+                                        top: 0,
+                                        behavior: 'smooth',
+                                    });
+                                }}
+                            />
+                        )}
                     </CardContent>
                 </Card>
             </div>

@@ -138,6 +138,100 @@ function Tile({
     );
 }
 
+function InvoiceNumber({ invoice }: { invoice: PaymentCheckInvoice }) {
+    return (
+        <>
+            {invoice.id !== null ? (
+                <Link
+                    href={invoiceShow(invoice.id)}
+                    className="hover:underline"
+                >
+                    {invoice.nr_doc}
+                </Link>
+            ) : (
+                invoice.nr_doc
+            )}
+            {invoice.description && (
+                <span
+                    className="block max-w-60 truncate text-xs font-normal text-muted-foreground"
+                    title={invoice.description}
+                >
+                    {invoice.description}
+                </span>
+            )}
+        </>
+    );
+}
+
+function PaidBadge({ invoice }: { invoice: PaymentCheckInvoice }) {
+    if (invoice.payment_status === 'paid') {
+        return (
+            <Badge variant="outline" className={LEVEL_TEXT.ok}>
+                plătită
+                {invoice.paid_at ? ` ${formatDate(invoice.paid_at)}` : ''}
+            </Badge>
+        );
+    }
+
+    if (invoice.payment_status === 'partial') {
+        return (
+            <Badge variant="secondary" className={LEVEL_TEXT.warn}>
+                parțial
+                {invoice.paid_at ? ` · ${formatDate(invoice.paid_at)}` : ''}
+            </Badge>
+        );
+    }
+
+    return <Badge variant="secondary">neplătită</Badge>;
+}
+
+function RecentInvoicesTable({
+    invoices,
+}: {
+    invoices: PaymentCheckInvoice[];
+}) {
+    if (invoices.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+            <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
+                    <tr>
+                        <th className="px-3 py-2">Data</th>
+                        <th className="px-3 py-2">Număr</th>
+                        <th className="px-3 py-2 text-right">Valoare</th>
+                        <th className="px-3 py-2">Scadență</th>
+                        <th className="px-3 py-2">Plată</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                    {invoices.map((invoice) => (
+                        <tr key={invoice.key}>
+                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                                {formatDate(invoice.data_doc)}
+                            </td>
+                            <td className="px-3 py-2 font-medium">
+                                <InvoiceNumber invoice={invoice} />
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                                {formatAmount(invoice.val_mon, invoice.moneda)}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                                {formatDate(invoice.data_scadenta)}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                                <PaidBadge invoice={invoice} />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 function OpenInvoicesTable({
     invoices,
     totals,
@@ -171,7 +265,7 @@ function OpenInvoicesTable({
                 <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                     {invoices.map((invoice) => (
                         <tr
-                            key={invoice.id}
+                            key={invoice.key}
                             className={
                                 invoice.days_to_due !== null &&
                                 invoice.days_to_due < 0
@@ -183,12 +277,7 @@ function OpenInvoicesTable({
                                 {formatDate(invoice.data_doc)}
                             </td>
                             <td className="px-3 py-2 font-medium">
-                                <Link
-                                    href={invoiceShow(invoice.id)}
-                                    className="hover:underline"
-                                >
-                                    {invoice.nr_doc}
-                                </Link>
+                                <InvoiceNumber invoice={invoice} />
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
                                 <span className="mr-2 text-muted-foreground">
@@ -295,7 +384,11 @@ function PatternChart({ check }: { check: PaymentCheck }) {
  */
 function invoiceRequestPayload(
     check: PaymentCheck,
-    ids: { companyId: number; partnerId: number; partnerName: string },
+    ids: {
+        companyId: number | null;
+        partnerId: number | null;
+        partnerName: string;
+    },
 ): Record<string, unknown> {
     const requested = check.requested;
 
@@ -345,31 +438,43 @@ function coveringInvoiceIds(check: PaymentCheck): number[] {
     }
 
     if (requested.verdict === 'exact' && requested.invoice) {
-        return [requested.invoice.id];
+        return requested.invoice.id !== null ? [requested.invoice.id] : [];
     }
 
     if (requested.verdict === 'sum') {
         return check.open
             .filter((invoice) => invoice.moneda === requested.currency)
-            .map((invoice) => invoice.id);
+            .map((invoice) => invoice.id)
+            .filter((id): id is number => id !== null);
     }
 
     return [];
+}
+
+export async function fetchJson<T>(url: string): Promise<T> {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+
+    if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+            message?: string;
+        };
+
+        throw new Error(
+            body.message ??
+                `Verificarea nu a putut fi încărcată (${res.status}).`,
+        );
+    }
+
+    return (await res.json()) as T;
 }
 
 export function fetchCheck(
     partnerId: number,
     query: Record<string, string>,
 ): Promise<PaymentCheck> {
-    return fetch(PartnerController.paymentCheck(partnerId, { query }).url, {
-        headers: { Accept: 'application/json' },
-    }).then(async (res) => {
-        if (!res.ok) {
-            throw new Error('Verificarea nu a putut fi încărcată.');
-        }
-
-        return (await res.json()) as PaymentCheck;
-    });
+    return fetchJson<PaymentCheck>(
+        PartnerController.paymentCheck(partnerId, { query }).url,
+    );
 }
 
 export function PaymentCheckSkeleton() {
@@ -397,8 +502,8 @@ export default function PaymentCheckResult({
     partnerName,
 }: {
     check: PaymentCheck;
-    companyId: number;
-    partnerId: number;
+    companyId: number | null;
+    partnerId: number | null;
     partnerName: string;
 }) {
     const openLevel: PaymentCheckLevel =
@@ -410,6 +515,29 @@ export default function PaymentCheckResult({
 
     return (
         <>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                    {check.supplier.name}
+                </span>
+                {check.supplier.cui && (
+                    <span className="font-mono text-xs">
+                        {check.supplier.cui}
+                    </span>
+                )}
+                {check.supplier.country && (
+                    <span>{check.supplier.country}</span>
+                )}
+                {check.supplier.city && <span>{check.supplier.city}</span>}
+                {check.supplier.accounts && (
+                    <span>conturi {check.supplier.accounts}</span>
+                )}
+                <Badge variant="outline">
+                    {check.source === 'omc'
+                        ? 'OMC live'
+                        : 'facturi sincronizate'}
+                </Badge>
+            </p>
+
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <Tile
                     label="Rest de plată în ERP"
@@ -446,19 +574,21 @@ export default function PaymentCheckResult({
                                 <VerdictIcon level={check.requested.level} />
                                 <span>
                                     {check.requested.message}
-                                    {check.requested.invoice && (
-                                        <>
-                                            {' '}
-                                            <Link
-                                                href={invoiceShow(
-                                                    check.requested.invoice.id,
-                                                )}
-                                                className="underline underline-offset-2"
-                                            >
-                                                Deschide factura
-                                            </Link>
-                                        </>
-                                    )}
+                                    {check.requested.invoice &&
+                                        check.requested.invoice.id !== null && (
+                                            <>
+                                                {' '}
+                                                <Link
+                                                    href={invoiceShow(
+                                                        check.requested.invoice
+                                                            .id,
+                                                    )}
+                                                    className="underline underline-offset-2"
+                                                >
+                                                    Deschide factura
+                                                </Link>
+                                            </>
+                                        )}
                                 </span>
                             </span>
                         }
@@ -499,14 +629,24 @@ export default function PaymentCheckResult({
             </div>
 
             <div className="grid gap-4 2xl:grid-cols-5">
-                <div className="space-y-2 2xl:col-span-3">
-                    <h3 className="text-sm font-semibold">
-                        Facturi neachitate
-                    </h3>
-                    <OpenInvoicesTable
-                        invoices={check.open}
-                        totals={check.open_totals}
-                    />
+                <div className="space-y-4 2xl:col-span-3">
+                    <div className="space-y-2">
+                        <h3 className="text-sm font-semibold">
+                            Facturi neachitate
+                        </h3>
+                        <OpenInvoicesTable
+                            invoices={check.open}
+                            totals={check.open_totals}
+                        />
+                    </div>
+                    {check.recent.length > 0 && (
+                        <div className="space-y-2">
+                            <h3 className="text-sm font-semibold">
+                                Ultimele {check.recent.length} facturi
+                            </h3>
+                            <RecentInvoicesTable invoices={check.recent} />
+                        </div>
+                    )}
                 </div>
                 <div className="space-y-2 2xl:col-span-2">
                     <h3 className="text-sm font-semibold">Tipar lunar</h3>
@@ -518,10 +658,10 @@ export default function PaymentCheckResult({
                 </div>
             </div>
 
-            {check.requested && (
+            {check.requested && companyId !== null && (
                 <SavePaymentRequest
                     title="Salvează verificarea în registru"
-                    description="Cererea rămâne în registru cu facturile găsite acum; factura potrivită se leagă automat."
+                    description="Cererea rămâne în registru cu facturile găsite acum; factura potrivită se leagă automat dacă este și sincronizată local."
                     payload={invoiceRequestPayload(check, {
                         companyId,
                         partnerId,
@@ -529,6 +669,12 @@ export default function PaymentCheckResult({
                     })}
                     invoiceIds={coveringInvoiceIds(check)}
                 />
+            )}
+            {check.requested && companyId === null && (
+                <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                    Verificarea nu poate fi salvată în registru: nicio companie
+                    locală nu corespunde bazei OMC (setează OMC_COMPANY_ID).
+                </p>
             )}
         </>
     );

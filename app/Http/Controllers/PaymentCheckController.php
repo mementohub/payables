@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Concerns\ReadsEtrip;
+use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Services\Etrip\CheckinCostCheckService;
@@ -18,7 +18,7 @@ use Inertia\Response;
 
 class PaymentCheckController extends Controller
 {
-    use ReadsEtrip;
+    use ReadsRemote;
 
     public const EXPECTED_WINDOWS = [2, 7, 14];
 

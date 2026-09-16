@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Partner;
 use App\Services\Invoices\SupplierPaymentCheckService;
+use App\Services\Omc\OmcReader;
 use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +18,8 @@ use Inertia\Response;
 
 class PartnerController extends Controller
 {
+    use ReadsRemote;
+
     public function furnizori(Request $request): Response
     {
         return $this->list($request, 'furnizori');
@@ -164,11 +168,12 @@ class PartnerController extends Controller
     }
 
     /**
-     * Check a supplier's payment request against the invoices synced from the ERP.
+     * Check a supplier's payment request against its invoices: live from OMC
+     * for the company mirrored from it, otherwise from the synced copy.
      *
      * @return array<string, mixed>
      */
-    public function paymentCheck(Request $request, Partner $partner, SupplierPaymentCheckService $check): array
+    public function paymentCheck(Request $request, Partner $partner, SupplierPaymentCheckService $check, OmcReader $omc): array
     {
         abort_unless($partner->is_furnizor, 404);
 
@@ -177,11 +182,18 @@ class PartnerController extends Controller
             'currency' => ['nullable', 'string', 'max:5'],
         ]);
 
-        return $check->check(
-            $partner,
-            isset($validated['amount']) && $validated['amount'] !== '' ? (float) $validated['amount'] : null,
-            $validated['currency'] ?? null,
-        );
+        $amount = isset($validated['amount']) && $validated['amount'] !== '' ? (float) $validated['amount'] : null;
+        $currency = $validated['currency'] ?? null;
+
+        if ($omc->company()?->id === $partner->company_id) {
+            $live = $this->readingOmc(fn () => $check->checkLive($partner->name, $amount, $currency));
+
+            if ($live !== null) {
+                return $live;
+            }
+        }
+
+        return $check->check($partner, $amount, $currency);
     }
 
     /**

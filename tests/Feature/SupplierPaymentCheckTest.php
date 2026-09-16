@@ -5,13 +5,18 @@ use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
 use App\Services\Invoices\SupplierPaymentCheckService;
+use App\Services\Omc\OmcReader;
 use Illuminate\Support\Carbon;
+use Mockery\MockInterface;
 
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
 
     $this->company = Company::factory()->create();
     $this->supplier = Partner::factory()->for($this->company)->create(['is_furnizor' => true, 'is_client' => false]);
+
+    // Another company is the one mirrored from OMC, so these checks read the synced invoices.
+    config()->set('omc.company_id', Company::factory()->create()->id);
 });
 
 /**
@@ -174,4 +179,56 @@ test('a supplier without invoices gets an empty check', function () {
         ->and($result['last_invoice'])->toBeNull()
         ->and($result['pattern'])->toHaveCount(24)
         ->and($result['requested']['verdict'])->toBe('missing');
+});
+
+test('the supplier page check reads live from omc for the company mirrored from it', function () {
+    config()->set('omc.company_id', $this->company->id);
+    supplierInvoice($this->supplier, ['nr_doc' => 'LOCAL-ONLY', 'val_mon' => 999]);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->with($this->supplier->name)->once()->andReturn([
+            'name' => $this->supplier->name, 'cui' => $this->supplier->cui, 'country' => 'RO', 'city' => null, 'is_company' => true,
+        ]);
+        $mock->shouldReceive('supplierInvoices')->once()->andReturn([[
+            'data_doc' => '2026-09-05', 'tip_doc' => 'FactFI', 'nr_doc' => 'LIVE', 'moneda' => 'Lei', 'curs' => 1,
+            'val_mon' => 500, 'val_mon_tva' => 79.83, 'val_mon_pl' => 0, 'val_mon_dimin_negru' => 0,
+            'data_scadenta' => '2026-09-20', 'paid_at' => null, 'description' => null, 'accounts' => null,
+        ]]);
+    });
+
+    $this->actingAs(User::factory()->create())
+        ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
+        ->assertOk()
+        ->assertJsonPath('source', 'omc')
+        ->assertJsonPath('supplier.partner_id', $this->supplier->id)
+        ->assertJsonCount(1, 'open')
+        ->assertJsonPath('open.0.nr_doc', 'LIVE')
+        ->assertJsonPath('requested.verdict', 'exact');
+});
+
+test('the supplier page check stays on the synced invoices for other companies', function () {
+    supplierInvoice($this->supplier, ['nr_doc' => 'F1', 'val_mon' => 500]);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldNotReceive('supplierInvoices');
+    });
+
+    $this->actingAs(User::factory()->create())
+        ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
+        ->assertOk()
+        ->assertJsonPath('source', 'local')
+        ->assertJsonPath('requested.invoice.nr_doc', 'F1');
+});
+
+test('an unreachable omc database falls through to a 503 on the supplier page', function () {
+    config()->set('omc.company_id', $this->company->id);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->andThrow(new RuntimeException('connection refused'));
+    });
+
+    $this->actingAs(User::factory()->create())
+        ->getJson("/suppliers/{$this->supplier->id}/payment-check")
+        ->assertStatus(503)
+        ->assertJsonPath('message', 'Baza OMC nu poate fi accesată: connection refused');
 });
