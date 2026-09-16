@@ -34,6 +34,7 @@ Route::middleware('auth')->group(function () {
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
     Route::get('companies/{company}/etrip-suppliers', [EtripSupplierController::class, 'search'])->name('companies.etrip-suppliers.search');
     Route::post('companies/{company}/etrip-suppliers/sync', [EtripSupplierController::class, 'sync'])->name('companies.etrip-suppliers.sync');
+    Route::post('etrip-suppliers/sync', [EtripSupplierController::class, 'syncAll'])->name('etrip-suppliers.sync-all');
 
     Route::get('invoices/issued', [InvoiceController::class, 'emise'])->name('invoices.emise');
     Route::post('invoices/issued/export', [InvoiceController::class, 'exportEmise'])->name('invoices.emise.export');

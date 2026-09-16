@@ -14,7 +14,15 @@ export type EtripSupplierOption = {
     name: string;
     currency: string | null;
     partner_id: number | null;
+    /** The company (and so the eTrip base) the supplier belongs to. */
+    company_id: number;
+    /** Base label, shown only when more than one base is searched. */
+    base: string | null;
 };
+
+export type EtripSupplierRef = { company_id: number; code: string };
+
+export type EtripPickerCompany = { id: number; base?: string | null };
 
 export function supplierLabel(supplier: EtripSupplierOption): string {
     return `${supplier.name} [${supplier.code}]`;
@@ -23,15 +31,15 @@ export function supplierLabel(supplier: EtripSupplierOption): string {
 const cache = new Map<number, EtripSupplierOption[]>();
 
 export function loadEtripSuppliers(
-    companyId: number,
+    company: EtripPickerCompany,
 ): Promise<EtripSupplierOption[]> {
-    const cached = cache.get(companyId);
+    const cached = cache.get(company.id);
 
     if (cached) {
         return Promise.resolve(cached);
     }
 
-    return fetch(EtripSupplierController.search(companyId).url, {
+    return fetch(EtripSupplierController.search(company.id).url, {
         headers: { Accept: 'application/json' },
     }).then(async (res) => {
         if (!res.ok) {
@@ -41,70 +49,116 @@ export function loadEtripSuppliers(
         }
 
         const data = (await res.json()) as {
-            suppliers: EtripSupplierOption[];
+            suppliers: Omit<EtripSupplierOption, 'company_id' | 'base'>[];
         };
 
-        cache.set(companyId, data.suppliers);
+        const suppliers = data.suppliers.map((supplier) => ({
+            ...supplier,
+            company_id: company.id,
+            base: company.base ?? null,
+        }));
 
-        return data.suppliers;
+        cache.set(company.id, suppliers);
+
+        return suppliers;
     });
 }
 
+function sameSupplier(
+    a: EtripSupplierRef | null | undefined,
+    b: EtripSupplierRef | null | undefined,
+): boolean {
+    return (
+        (a ?? null) === (b ?? null) ||
+        (a != null &&
+            b != null &&
+            a.company_id === b.company_id &&
+            a.code === b.code)
+    );
+}
+
 /**
- * Searchable list of a company's eTrip suppliers. The whole active list is
- * loaded once per company and filtered locally.
+ * Searchable list of eTrip suppliers. The active list of every base given is
+ * loaded once and merged, so the user types a name without choosing a
+ * company first; each option remembers the base it came from.
  */
 export default function EtripSupplierPicker({
     id,
-    companyId,
+    companies,
     value,
     onChange,
     disabled = false,
 }: {
     id?: string;
-    companyId: number | null;
-    value: string | null;
+    companies: EtripPickerCompany[];
+    value: EtripSupplierRef | null;
     onChange: (supplier: EtripSupplierOption | null) => void;
     disabled?: boolean;
 }) {
-    const [options, setOptions] = useState<EtripSupplierOption[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const companyKey = companies.map((company) => company.id).join(',');
+    const [loaded, setLoaded] = useState<{
+        key: string;
+        options: EtripSupplierOption[];
+        error: string | null;
+    }>({ key: '', options: [], error: null });
 
     useEffect(() => {
-        if (companyId === null) {
+        if (companies.length === 0) {
             return;
         }
 
         let cancelled = false;
 
-        loadEtripSuppliers(companyId)
-            .then((suppliers) => {
-                if (!cancelled) {
-                    setOptions(suppliers);
-                    setError(null);
+        Promise.allSettled(companies.map(loadEtripSuppliers)).then(
+            (results) => {
+                if (cancelled) {
+                    return;
                 }
-            })
-            .catch((err: Error) => {
-                if (!cancelled) {
-                    setError(err.message);
-                }
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setLoading(false);
-                }
-            });
+
+                const options = results.flatMap((result) =>
+                    result.status === 'fulfilled' ? result.value : [],
+                );
+                const failures = results.filter(
+                    (result) => result.status === 'rejected',
+                ).length;
+
+                options.sort((a, b) => a.name.localeCompare(b.name, 'ro'));
+                setLoaded({
+                    key: companyKey,
+                    options,
+                    error:
+                        failures === 0
+                            ? null
+                            : failures === results.length
+                              ? 'Lista furnizorilor eTrip nu a putut fi încărcată.'
+                              : 'O parte din bazele eTrip nu au răspuns; lista este incompletă.',
+                });
+            },
+        );
 
         return () => {
             cancelled = true;
         };
-    }, [companyId]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [companyKey]);
+
+    const ready = companies.length > 0 && loaded.key === companyKey;
+    const loading = companies.length > 0 && !ready;
+    const options = useMemo(
+        () => (ready ? loaded.options : []),
+        [ready, loaded.options],
+    );
+    const error = ready ? loaded.error : null;
 
     const selected = useMemo(
-        () => options.find((option) => option.code === value) ?? null,
+        () =>
+            options.find((option) =>
+                sameSupplier(option, value ?? undefined),
+            ) ?? null,
         [options, value],
     );
+
+    const showBase = companies.length > 1;
 
     return (
         <div className="grid gap-1">
@@ -113,8 +167,8 @@ export default function EtripSupplierPicker({
                 value={selected}
                 onValueChange={(item) => onChange(item)}
                 itemToStringLabel={supplierLabel}
-                isItemEqualToValue={(a, b) => a?.code === b?.code}
-                disabled={disabled || companyId === null}
+                isItemEqualToValue={(a, b) => sameSupplier(a, b)}
+                disabled={disabled || companies.length === 0}
             >
                 <ComboboxInput
                     id={id}
@@ -129,12 +183,15 @@ export default function EtripSupplierPicker({
                 <ComboboxContent>
                     <ComboboxEmpty>
                         {options.length === 0
-                            ? 'Niciun furnizor eTrip sincronizat pentru această companie.'
+                            ? 'Niciun furnizor eTrip sincronizat.'
                             : 'Niciun furnizor nu se potrivește.'}
                     </ComboboxEmpty>
                     <ComboboxList>
                         {(option: EtripSupplierOption) => (
-                            <ComboboxItem key={option.code} value={option}>
+                            <ComboboxItem
+                                key={`${option.company_id}:${option.code}`}
+                                value={option}
+                            >
                                 <span className="flex-1 truncate">
                                     {option.name}
                                 </span>
@@ -142,6 +199,9 @@ export default function EtripSupplierPicker({
                                     {option.code}
                                     {option.currency
                                         ? ` · ${option.currency}`
+                                        : ''}
+                                    {showBase && option.base
+                                        ? ` · ${option.base}`
                                         : ''}
                                 </span>
                             </ComboboxItem>

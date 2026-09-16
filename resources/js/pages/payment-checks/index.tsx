@@ -45,8 +45,18 @@ import type {
     CheckinLevel,
     CheckinLine,
     ExpectedPayload,
+    ExpectedSupplier,
     Props,
 } from './types';
+
+type ExpectedRow = ExpectedSupplier & {
+    company_id: number;
+    base: string | null;
+};
+
+type ExpectedAll = Omit<ExpectedPayload, 'suppliers'> & {
+    suppliers: ExpectedRow[];
+};
 
 const CURRENCIES = ['EUR', 'USD', 'RON', 'GBP'];
 
@@ -387,14 +397,23 @@ export default function PaymentChecksIndex({
     const [checkError, setCheckError] = useState<string | null>(null);
     const [mode, setMode] = useState<BreakdownMode>('hotel');
 
-    const [expected, setExpected] = useState<ExpectedPayload | null>(null);
+    const [expected, setExpected] = useState<ExpectedAll | null>(null);
     const [expectedDays, setExpectedDays] = useState(windows[0] ?? 2);
     const [expectedKey, setExpectedKey] = useState('');
     const [expectedError, setExpectedError] = useState<string | null>(null);
 
-    const company = companies.find((item) => item.id === companyId) ?? null;
+    const pickerCompanies = useMemo(
+        () => companies.map((item) => ({ id: item.id, base: item.etrip })),
+        [companies],
+    );
+    const companyKey = companies.map((item) => item.id).join(',');
+    const suppliersSyncedAt = companies
+        .map((item) => item.suppliers_synced_at)
+        .filter((value): value is string => value !== null)
+        .sort()[0];
 
     type CheckParams = {
+        company_id: number;
         supplier: string;
         from: string;
         to: string;
@@ -403,13 +422,9 @@ export default function PaymentChecksIndex({
         currency: string;
     };
 
-    function checkUrl(params: CheckParams): string | null {
-        if (companyId === null) {
-            return null;
-        }
-
+    function checkUrl(params: CheckParams): string {
         const query: Record<string, string> = {
-            company_id: String(companyId),
+            company_id: String(params.company_id),
             supplier: params.supplier,
             from: params.from,
             to: params.to,
@@ -427,10 +442,6 @@ export default function PaymentChecksIndex({
     function runCheck(params: CheckParams) {
         const url = checkUrl(params);
 
-        if (!url) {
-            return;
-        }
-
         setChecking(true);
         setCheckError(null);
 
@@ -440,26 +451,79 @@ export default function PaymentChecksIndex({
             .finally(() => setChecking(false));
     }
 
+    /**
+     * The expected requests of every eTrip base, merged and sorted by cost;
+     * a base that fails is reported without hiding the others.
+     */
+    function loadExpected(refresh: boolean): Promise<ExpectedAll | null> {
+        return Promise.allSettled(
+            companies.map((item) =>
+                fetchJson<ExpectedPayload>(
+                    PaymentCheckController.expected({
+                        query: {
+                            company_id: String(item.id),
+                            days: String(expectedDays),
+                            ...(refresh ? { refresh: '1' } : {}),
+                        },
+                    }).url,
+                ).then((payload) => ({ company: item, payload })),
+            ),
+        ).then((results) => {
+            const loaded = results.flatMap((result) =>
+                result.status === 'fulfilled' ? [result.value] : [],
+            );
+            const failures = results.flatMap((result) =>
+                result.status === 'rejected'
+                    ? [(result.reason as Error).message]
+                    : [],
+            );
+
+            if (loaded.length === 0) {
+                throw new Error(failures[0] ?? 'Cererea a eșuat.');
+            }
+
+            setExpectedError(
+                failures.length > 0
+                    ? `O parte din bazele eTrip nu au răspuns: ${failures.join('; ')}`
+                    : null,
+            );
+
+            const suppliers = loaded
+                .flatMap(({ company, payload }) =>
+                    payload.suppliers.map((row) => ({
+                        ...row,
+                        company_id: company.id,
+                        base: company.etrip,
+                    })),
+                )
+                .sort((a, b) => Math.abs(b.cost) - Math.abs(a.cost));
+            const first = loaded[0].payload;
+
+            return {
+                days: first.days,
+                from: first.from,
+                to: first.to,
+                cached_at: loaded
+                    .map(({ payload }) => payload.cached_at)
+                    .sort()
+                    .at(-1)!,
+                suppliers,
+            };
+        });
+    }
+
     function refreshExpected() {
-        if (companyId === null) {
+        if (companies.length === 0) {
             return;
         }
 
-        const key = `${companyId}:${expectedDays}`;
+        const key = `${companyKey}:${expectedDays}`;
 
         setExpectedKey('');
         setExpectedError(null);
 
-        fetchJson<ExpectedPayload>(
-            PaymentCheckController.expected({
-                query: {
-                    company_id: String(companyId),
-                    days: String(expectedDays),
-                    refresh: '1',
-                },
-            }).url,
-        )
-            .then(setExpected)
+        loadExpected(true)
+            .then((payload) => setExpected(payload))
             .catch((err: Error) => setExpectedError(err.message))
             .finally(() => setExpectedKey(key));
     }
@@ -471,6 +535,7 @@ export default function PaymentChecksIndex({
         }
 
         const url = checkUrl({
+            company_id: filters.company_id,
             supplier: filters.supplier,
             from: filters.from,
             to: filters.to,
@@ -478,10 +543,6 @@ export default function PaymentChecksIndex({
             amount: filters.amount ?? '',
             currency: filters.currency ?? 'EUR',
         });
-
-        if (!url) {
-            return;
-        }
 
         let cancelled = false;
 
@@ -509,25 +570,17 @@ export default function PaymentChecksIndex({
     }, []);
 
     useEffect(() => {
-        if (companyId === null) {
+        if (companies.length === 0) {
             return;
         }
 
-        const key = `${companyId}:${expectedDays}`;
+        const key = `${companyKey}:${expectedDays}`;
         let cancelled = false;
 
-        fetchJson<ExpectedPayload>(
-            PaymentCheckController.expected({
-                query: {
-                    company_id: String(companyId),
-                    days: String(expectedDays),
-                },
-            }).url,
-        )
+        loadExpected(false)
             .then((payload) => {
                 if (!cancelled) {
                     setExpected(payload);
-                    setExpectedError(null);
                 }
             })
             .catch((err: Error) => {
@@ -544,15 +597,16 @@ export default function PaymentChecksIndex({
         return () => {
             cancelled = true;
         };
-    }, [companyId, expectedDays]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [companyKey, expectedDays]);
 
     const expectedLoading =
-        companyId !== null && expectedKey !== `${companyId}:${expectedDays}`;
+        companies.length > 0 && expectedKey !== `${companyKey}:${expectedDays}`;
 
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (!supplierCode) {
+        if (!supplierCode || companyId === null) {
             setCheckError('Alege un furnizor eTrip.');
 
             return;
@@ -561,6 +615,7 @@ export default function PaymentChecksIndex({
         const [start, end] = to < from ? [to, from] : [from, to];
 
         runCheck({
+            company_id: companyId,
             supplier: supplierCode,
             from: start,
             to: end,
@@ -570,17 +625,19 @@ export default function PaymentChecksIndex({
         });
     }
 
-    function pickExpected(code: string) {
+    function pickExpected(row: ExpectedRow) {
         const start = today();
         const end = addDays(start, expectedDays - 1);
 
-        setSupplierCode(code);
+        setCompanyId(row.company_id);
+        setSupplierCode(row.supplier_code);
         setFrom(start);
         setTo(end);
         setCategory('all');
         setAmount('');
         runCheck({
-            supplier: code,
+            company_id: row.company_id,
+            supplier: row.supplier_code,
             from: start,
             to: end,
             category: 'all',
@@ -623,9 +680,9 @@ export default function PaymentChecksIndex({
                             cerută.
                         </p>
                     </div>
-                    {company && (
+                    {companies.length > 0 && (
                         <Form
-                            {...EtripSupplierController.sync.form(company.id)}
+                            {...EtripSupplierController.syncAll.form()}
                             options={{ preserveScroll: true }}
                         >
                             {({ processing }) => (
@@ -635,8 +692,8 @@ export default function PaymentChecksIndex({
                                     size="sm"
                                     disabled={processing}
                                     title={
-                                        company.suppliers_synced_at
-                                            ? `Furnizori sincronizați la ${new Date(company.suppliers_synced_at).toLocaleString('ro-RO')}`
+                                        suppliersSyncedAt
+                                            ? `Furnizori sincronizați la ${new Date(suppliersSyncedAt).toLocaleString('ro-RO')}`
                                             : 'Furnizorii eTrip nu au fost încă sincronizați'
                                     }
                                 >
@@ -666,62 +723,26 @@ export default function PaymentChecksIndex({
                                 onSubmit={submit}
                                 className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end"
                             >
-                                {companies.length > 1 && (
-                                    <div className="grid min-w-0 gap-1.5 xl:col-span-2">
-                                        <Label htmlFor="check-company">
-                                            Companie
-                                        </Label>
-                                        <Select
-                                            value={
-                                                companyId !== null
-                                                    ? String(companyId)
-                                                    : ''
-                                            }
-                                            onValueChange={(value) => {
-                                                setCompanyId(Number(value));
-                                                setSupplierCode(null);
-                                                setSupplier(null);
-                                                setCheck(null);
-                                            }}
-                                        >
-                                            <SelectTrigger
-                                                id="check-company"
-                                                className="w-full"
-                                            >
-                                                <SelectValue placeholder="Alege compania" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {companies.map((item) => (
-                                                    <SelectItem
-                                                        key={item.id}
-                                                        value={String(item.id)}
-                                                    >
-                                                        {item.name}
-                                                        {item.etrip
-                                                            ? ` · ${item.etrip}`
-                                                            : ''}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
-                                <div
-                                    className={
-                                        companies.length > 1
-                                            ? 'grid min-w-0 gap-1.5 xl:col-span-4'
-                                            : 'grid min-w-0 gap-1.5 xl:col-span-6'
-                                    }
-                                >
+                                <div className="grid min-w-0 gap-1.5 xl:col-span-6">
                                     <Label htmlFor="check-supplier">
                                         Furnizor
                                     </Label>
                                     <EtripSupplierPicker
                                         id="check-supplier"
-                                        companyId={companyId}
-                                        value={supplierCode}
+                                        companies={pickerCompanies}
+                                        value={
+                                            supplierCode && companyId !== null
+                                                ? {
+                                                      company_id: companyId,
+                                                      code: supplierCode,
+                                                  }
+                                                : null
+                                        }
                                         onChange={(option) => {
                                             setSupplier(option);
+                                            setCompanyId(
+                                                option?.company_id ?? null,
+                                            );
                                             setSupplierCode(
                                                 option?.code ?? null,
                                             );
@@ -1129,7 +1150,7 @@ export default function PaymentChecksIndex({
                                             {(expected?.suppliers ?? []).map(
                                                 (row) => (
                                                     <tr
-                                                        key={`${row.supplier_code}-${row.currency}`}
+                                                        key={`${row.company_id}-${row.supplier_code}-${row.currency}`}
                                                     >
                                                         <td className="px-3 py-2">
                                                             {row.supplier_name ??
@@ -1139,6 +1160,18 @@ export default function PaymentChecksIndex({
                                                                     row.supplier_code
                                                                 }
                                                             </span>
+                                                            {companies.length >
+                                                                1 &&
+                                                                row.base && (
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className="ml-2"
+                                                                    >
+                                                                        {
+                                                                            row.base
+                                                                        }
+                                                                    </Badge>
+                                                                )}
                                                         </td>
                                                         <td className="px-3 py-2 text-right tabular-nums">
                                                             {row.bookings}
@@ -1170,7 +1203,7 @@ export default function PaymentChecksIndex({
                                                                     variant="outline"
                                                                     onClick={() =>
                                                                         pickExpected(
-                                                                            row.supplier_code,
+                                                                            row,
                                                                         )
                                                                     }
                                                                 >

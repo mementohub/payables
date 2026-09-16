@@ -90,6 +90,54 @@ class EtripSupplierController extends Controller
         return back();
     }
 
+    /**
+     * Refresh the mirror of every eTrip base at once, for the pages that
+     * search suppliers regardless of the company.
+     */
+    public function syncAll(EtripSupplierSyncService $sync): RedirectResponse
+    {
+        $companies = Company::query()
+            ->whereIn('etrip_connection', array_keys((array) config('etrip.connections')))
+            ->orderBy('name')
+            ->get();
+
+        if ($companies->isEmpty()) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Nicio companie nu este legată de o bază eTrip.']);
+
+            return back();
+        }
+
+        $lines = [];
+        $failed = [];
+
+        foreach ($companies as $company) {
+            try {
+                $result = $sync->sync($company);
+            } catch (Throwable $e) {
+                $cause = $e->getPrevious() ?? $e;
+                $failed[] = sprintf('%s: %s', $company->name, trim($cause->getMessage()));
+
+                continue;
+            }
+
+            $lines[] = sprintf(
+                '%s: %d furnizori, %d potriviți după CUI, %d după nume, %d fără partener',
+                $company->name,
+                $result['synced'],
+                $result['matched_cui'],
+                $result['matched_name'],
+                $result['unmatched'],
+            );
+        }
+
+        Inertia::flash('toast', [
+            'type' => $failed === [] ? 'success' : 'error',
+            'message' => implode('; ', [...$lines, ...array_map(fn (string $line) => 'Baza eTrip nu poate fi accesată — '.$line, $failed)]).'.',
+        ]);
+
+        return back();
+    }
+
     public function link(Request $request, Partner $partner, EtripSupplierSyncService $sync): RedirectResponse
     {
         $validated = $request->validate([

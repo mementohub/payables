@@ -31,13 +31,41 @@ test('the page lists only companies linked to etrip and default filters', functi
             ->has('companies', 1)
             ->where('companies.0.name', 'Christian Tour')
             ->where('companies.0.etrip', 'eTrip Christian Tour')
-            ->where('filters.company_id', $this->company->id)
+            ->where('filters.company_id', null)
             ->where('filters.from', '2026-09-16')
             ->where('filters.to', '2026-09-17')
             ->where('filters.category', 'hotel')
             ->has('categories', 4)
             ->where('windows', [2, 7, 14])
         );
+});
+
+test('a deep link keeps the company of the supplier it points to', function () {
+    $this->actingAs($this->user)
+        ->get('/payment-checks?company_id='.$this->company->id.'&supplier=10')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.company_id', $this->company->id)
+            ->where('filters.supplier', '10')
+        );
+});
+
+test('all etrip bases can be mirrored with one request', function () {
+    $second = Company::factory()->create(['name' => 'Vacanza', 'etrip_connection' => 'etrip_vcz']);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) use ($second) {
+        $mock->shouldReceive('suppliers')->twice()->andReturnUsing(fn (Company $company) => $company->is($second)
+            ? [['code' => '7', 'name' => 'Vacanza Hotel', 'vat_no' => null, 'company_no' => null, 'currency' => 'EUR', 'country' => null, 'active' => true]]
+            : [['code' => '10', 'name' => 'Rida International', 'vat_no' => null, 'company_no' => null, 'currency' => 'USD', 'country' => null, 'active' => true]]);
+    });
+
+    $this->actingAs($this->user)
+        ->from('/payment-checks')
+        ->post('/etrip-suppliers/sync')
+        ->assertRedirect('/payment-checks');
+
+    expect(EtripSupplier::query()->where('company_id', $this->company->id)->pluck('code')->all())->toBe(['10'])
+        ->and(EtripSupplier::query()->where('company_id', $second->id)->pluck('code')->all())->toBe(['7']);
 });
 
 test('the check endpoint validates its input', function () {

@@ -25,8 +25,7 @@ class PaymentCheckController extends Controller
     public function index(Request $request): Response
     {
         $companies = $this->etripCompanies();
-        $requestedCompany = $request->integer('company_id');
-        $company = $companies->firstWhere('id', $requestedCompany) ?? $companies->first();
+        $company = $companies->firstWhere('id', $request->integer('company_id'));
 
         return Inertia::render('payment-checks/index', [
             'companies' => $companies->map(fn (Company $company) => [

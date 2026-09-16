@@ -110,8 +110,18 @@ export default function EtripSupplierSection({
                                         </Label>
                                         <EtripSupplierPicker
                                             id="etrip-supplier-picker"
-                                            companyId={partner.company.id}
-                                            value={picked?.code ?? null}
+                                            companies={[
+                                                { id: partner.company.id },
+                                            ]}
+                                            value={
+                                                picked
+                                                    ? {
+                                                          company_id:
+                                                              picked.company_id,
+                                                          code: picked.code,
+                                                      }
+                                                    : null
+                                            }
                                             onChange={setPicked}
                                         />
                                         <input
