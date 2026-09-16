@@ -17,8 +17,10 @@ import {
 
 export default function CompanyCreate({
     etripConnections,
+    erpConnections,
 }: {
     etripConnections: Record<string, string>;
+    erpConnections: Record<string, string>;
 }) {
     return (
         <>
@@ -128,6 +130,34 @@ export default function CompanyCreate({
                                     </NativeSelect>
                                     <InputError
                                         message={errors.etrip_connection}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="erp_connection">
+                                        Bază OMC (contabilitate)
+                                    </Label>
+                                    <NativeSelect
+                                        id="erp_connection"
+                                        name="erp_connection"
+                                        defaultValue={''}
+                                        className="w-full"
+                                    >
+                                        <NativeSelectOption value="">
+                                            Credențialele de mai jos
+                                        </NativeSelectOption>
+                                        {Object.entries(erpConnections).map(
+                                            ([value, label]) => (
+                                                <NativeSelectOption
+                                                    key={value}
+                                                    value={value}
+                                                >
+                                                    {label} (live)
+                                                </NativeSelectOption>
+                                            ),
+                                        )}
+                                    </NativeSelect>
+                                    <InputError
+                                        message={errors.erp_connection}
                                     />
                                 </div>
                                 <div className="grid gap-2">

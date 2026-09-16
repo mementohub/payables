@@ -134,7 +134,8 @@ class OmcReader
 
         $database = (string) config('database.connections.'.$this->name().'.database');
 
-        return Company::query()->where('db_database', $database)->orderBy('id')->first()
+        return Company::query()->where('erp_connection', $this->name())->orderBy('id')->first()
+            ?? Company::query()->where('db_database', $database)->orderBy('id')->first()
             ?? Company::query()->where('etrip_connection', 'etrip_chr')->orderBy('id')->first()
             ?? (Company::query()->count() === 1 ? Company::query()->first() : null);
     }

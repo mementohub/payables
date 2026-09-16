@@ -5,6 +5,8 @@ export type CompanyListItem = {
     db_host: string;
     db_port: string;
     db_database: string;
+    erp_connection: string | null;
+    source: string;
     partners_count: number;
     invoices_count: number;
     last_synced_at: string | null;
@@ -20,4 +22,5 @@ export type CompanyEditPayload = {
     db_database: string;
     db_username: string;
     etrip_connection: string | null;
+    erp_connection: string | null;
 };

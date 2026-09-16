@@ -64,7 +64,7 @@ class InvoiceController extends Controller
 
         $invoices = $paginator->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
 
-        $companies = Company::orderBy('name')->get(['id', 'name']);
+        $companies = Company::orderBy('name')->get(['id', 'name', 'last_synced_at']);
         $activeCompany = $filters['company_id']
             ? $companies->firstWhere('id', $filters['company_id'])
             : null;

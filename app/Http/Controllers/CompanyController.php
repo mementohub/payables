@@ -24,6 +24,10 @@ class CompanyController extends Controller
                 'db_host' => $company->db_host,
                 'db_port' => $company->db_port,
                 'db_database' => $company->db_database,
+                'erp_connection' => $company->erp_connection,
+                'source' => $company->erpConnection()
+                    ? config('omc.connections.'.$company->erpConnection())
+                    : "{$company->db_host}:{$company->db_port}/{$company->db_database}",
                 'partners_count' => $company->partners_count,
                 'invoices_count' => $company->invoices_count,
                 'last_synced_at' => $company->last_synced_at?->toDateTimeString(),
@@ -38,6 +42,7 @@ class CompanyController extends Controller
     {
         return Inertia::render('companies/create', [
             'etripConnections' => config('etrip.connections'),
+            'erpConnections' => config('omc.connections'),
         ]);
     }
 
@@ -63,8 +68,10 @@ class CompanyController extends Controller
                 'db_database' => $company->db_database,
                 'db_username' => $company->db_username,
                 'etrip_connection' => $company->etrip_connection,
+                'erp_connection' => $company->erp_connection,
             ],
             'etripConnections' => config('etrip.connections'),
+            'erpConnections' => config('omc.connections'),
         ]);
     }
 

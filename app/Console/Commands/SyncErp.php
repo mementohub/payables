@@ -1,0 +1,69 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Company;
+use App\Services\SyncService;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
+use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Throwable;
+
+#[Signature('erp:sync {--company= : Restrict to a single company id} {--days= : Days back from today (default: sync.recent_days)} {--from= : First document date} {--to= : Last document date}')]
+#[Description('Pull the recent documents of every company from its ERP database, inline, and refresh the invoices still open. Scheduled every ten minutes; run it by hand after a deploy or when the scheduler is off.')]
+class SyncErp extends Command
+{
+    public function handle(SyncService $sync): int
+    {
+        $companyId = (int) $this->option('company');
+        $days = $this->option('days') !== null ? max(1, (int) $this->option('days')) : null;
+        $from = $this->option('from') ? Carbon::parse($this->option('from'))->startOfDay() : null;
+        $to = $this->option('to') ? Carbon::parse($this->option('to'))->endOfDay() : null;
+
+        $companies = Company::query()
+            ->when($companyId > 0, fn ($query) => $query->whereKey($companyId))
+            ->orderBy('name')
+            ->get();
+
+        if ($companies->isEmpty()) {
+            $this->warn('Nicio companie de sincronizat.');
+
+            return self::SUCCESS;
+        }
+
+        $rows = [];
+        $failed = false;
+
+        foreach ($companies as $company) {
+            $source = $company->erpConnection()
+                ? config('omc.connections.'.$company->erpConnection())
+                : "{$company->db_host}/{$company->db_database}";
+
+            try {
+                $result = $from || $to
+                    ? $sync->sync($company, $from, $to)
+                    : $sync->syncRecent($company, $days);
+
+                $rows[] = [
+                    $company->name,
+                    $source,
+                    $result['invoices'],
+                    $result['payments'],
+                    $result['partners'],
+                    $result['statements'],
+                    $result['refreshed'] ?? '–',
+                ];
+            } catch (Throwable $e) {
+                $failed = true;
+                $this->components->error("{$company->name} ({$source}): ".trim(($e->getPrevious() ?? $e)->getMessage()));
+            }
+        }
+
+        if ($rows !== []) {
+            $this->table(['Companie', 'Sursă', 'Facturi', 'Plăți', 'Parteneri', 'Extrase', 'Facturi deschise actualizate'], $rows);
+        }
+
+        return $failed ? self::FAILURE : self::SUCCESS;
+    }
+}

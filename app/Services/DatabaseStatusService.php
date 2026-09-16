@@ -71,7 +71,8 @@ class DatabaseStatusService
     }
 
     /**
-     * Per-company ERP connections, whose credentials live in the companies table.
+     * Per-company ERP connections: the named connection a company is linked
+     * to, otherwise the credentials stored in the companies table.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -82,9 +83,13 @@ class DatabaseStatusService
             ->get()
             ->map(fn (Company $company) => $this->status(
                 "company_{$company->getKey()}",
-                $company->name,
+                $company->erpConnection()
+                    ? "{$company->name} · ".config('omc.connections.'.$company->erpConnection())
+                    : $company->name,
                 self::GROUP_COMPANIES,
-                fn () => $company->remoteConnectionConfig(),
+                $company->erpConnection()
+                    ? $this->namedConfig($company->erpConnection())
+                    : fn () => $company->remoteConnectionConfig(),
             ))
             ->all();
     }

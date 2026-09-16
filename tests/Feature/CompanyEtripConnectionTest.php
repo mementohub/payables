@@ -2,6 +2,9 @@
 
 use App\Models\Company;
 use App\Models\User;
+use App\Services\DatabaseStatusService;
+use App\Services\Omc\OmcReader;
+use App\Services\RemoteConnection;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -61,4 +64,52 @@ test('the edit page exposes the available etrip connections', function () {
             ->where('etripConnections.etrip_chr', 'eTrip Christian Tour')
             ->where('etripConnections.etrip_vcz', 'eTrip Vacanza')
         );
+});
+
+test('a company can be linked to the omc connection', function () {
+    $this->actingAs($this->user)
+        ->post('/companies', companyPayload(['erp_connection' => 'omc']))
+        ->assertRedirect();
+
+    expect(Company::where('name', 'Christian Tour')->first()->erp_connection)->toBe('omc');
+});
+
+test('an unknown erp connection is rejected', function () {
+    $this->actingAs($this->user)
+        ->post('/companies', companyPayload(['erp_connection' => 'saga']))
+        ->assertSessionHasErrors('erp_connection');
+});
+
+test('a linked company is read through the named connection, the others through their credentials', function () {
+    $linked = Company::factory()->create(['erp_connection' => 'omc']);
+    $own = Company::factory()->create();
+
+    $remote = app(RemoteConnection::class);
+
+    expect($remote->name($linked))->toBe('omc')
+        ->and($remote->connection($linked)->getName())->toBe('omc')
+        ->and($remote->name($own))->toBe("company_{$own->id}")
+        ->and($remote->connection($own)->getName())->toBe("company_{$own->id}");
+});
+
+test('the status page probes the named connection for a linked company', function () {
+    config()->set('database.connections.omc.host', '127.0.0.1');
+    config()->set('database.connections.omc.port', '1');
+    config()->set('database.connections.omc.database', 'christian_76_tour');
+
+    $company = Company::factory()->create(['name' => 'Christian Tour', 'erp_connection' => 'omc', 'db_host' => '10.9.9.9']);
+
+    $status = collect(app(DatabaseStatusService::class)->statuses())->firstWhere('name', "company_{$company->id}");
+
+    expect($status['label'])->toBe('Christian Tour · OMC Christian Tour')
+        ->and($status['host'])->toBe('127.0.0.1')
+        ->and($status['database'])->toBe('christian_76_tour')
+        ->and($status['connected'])->toBeFalse();
+});
+
+test('the omc company is the one linked to the connection', function () {
+    Company::factory()->create(['etrip_connection' => 'etrip_chr']);
+    $linked = Company::factory()->create(['erp_connection' => 'omc']);
+
+    expect(app(OmcReader::class)->company()?->id)->toBe($linked->id);
 });

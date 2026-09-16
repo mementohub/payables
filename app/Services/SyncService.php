@@ -18,6 +18,7 @@ use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\EInvoices\PartnerCuiLookup;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class SyncService
 {
@@ -46,15 +47,8 @@ class SyncService
 
         $tipDocs = [...self::FURNIZOR_DOC_TYPES, ...self::CLIENT_DOC_TYPES];
 
-        if ($to === null) {
-            $remoteMax = $remote->table('doc')
-                ->whereIn('tip_doc', $tipDocs)
-                ->max('data_doc');
-
-            $to = $remoteMax ? Carbon::parse($remoteMax)->subMonth() : Carbon::now()->endOfDay();
-        }
-
-        $from ??= $to->copy()->subMonth()->startOfDay();
+        $to ??= Carbon::now()->endOfDay();
+        $from ??= $to->copy()->subDays(max(1, (int) config('sync.window_days', 45)) - 1)->startOfDay();
 
         $partnerDocRows = $remote->table('doc')
             ->select('partener', 'tip_doc')
@@ -99,6 +93,86 @@ class SyncService
             'statements' => $statementsCount,
             'e_invoices' => $eInvoicesCount,
         ];
+    }
+
+    /**
+     * Pull the last few days of documents, then re-read every invoice still
+     * open locally from the ERP, so payments allocated today to older
+     * invoices show up without re-syncing months.
+     *
+     * @return array<string, int>
+     */
+    public function syncRecent(Company $company, ?int $days = null): array
+    {
+        $days = max(1, $days ?? (int) config('sync.recent_days', 3));
+        $to = Carbon::now()->endOfDay();
+        $from = $to->copy()->subDays($days - 1)->startOfDay();
+
+        $result = $this->sync($company, $from, $to);
+
+        return [...$result, 'refreshed' => $this->refreshOpenInvoices($company)];
+    }
+
+    /**
+     * Refresh value, payments, credit notes and due date of the invoices still
+     * open locally from their current state in the ERP, and re-pull the
+     * payment allocations of those that changed. Documents are looked up by
+     * their full key, which is the `doc` primary key. The payment status set
+     * by hand is left alone.
+     */
+    public function refreshOpenInvoices(Company $company): int
+    {
+        $remote = $this->remote->connection($company);
+
+        $open = Invoice::query()
+            ->where('company_id', $company->id)
+            ->whereRaw(sprintf('val_mon - val_mon_paid - val_mon_storno > %.2F', 0.01))
+            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc', 'partener_type', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'data_scadenta']);
+
+        $changed = collect();
+
+        foreach ($open->chunk(200) as $chunk) {
+            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?::date, ?, ?)'));
+            $bindings = $chunk
+                ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
+                ->all();
+
+            $rows = collect($remote->select(
+                'select data_doc, tip_doc, nr_doc, val_mon, coalesce(val_mon_inc, 0) as val_mon_inc, coalesce(val_mon_pl, 0) as val_mon_pl,'
+                .' coalesce(val_mon_dimin_negru, 0) as val_mon_dimin_negru, data_scadenta'
+                ." from doc where (data_doc, tip_doc, nr_doc) in ({$placeholders})",
+                $bindings,
+            ))->keyBy(fn ($row) => Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc);
+
+            foreach ($chunk as $invoice) {
+                $row = $rows->get($invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
+
+                if ($row === null) {
+                    continue;
+                }
+
+                $attributes = [
+                    'val_mon' => (float) $row->val_mon,
+                    'val_mon_paid' => $invoice->partener_type === 'furnizor' ? (float) $row->val_mon_pl : (float) $row->val_mon_inc,
+                    'val_mon_storno' => (float) $row->val_mon_dimin_negru,
+                    'data_scadenta' => $row->data_scadenta ? Carbon::parse((string) $row->data_scadenta)->toDateString() : null,
+                ];
+
+                $same = abs((float) $invoice->val_mon - $attributes['val_mon']) < 0.001
+                    && abs((float) $invoice->val_mon_paid - $attributes['val_mon_paid']) < 0.001
+                    && abs((float) $invoice->val_mon_storno - $attributes['val_mon_storno']) < 0.001
+                    && $invoice->data_scadenta?->toDateString() === $attributes['data_scadenta'];
+
+                if (! $same) {
+                    $invoice->forceFill($attributes)->save();
+                    $changed->push($invoice);
+                }
+            }
+        }
+
+        $this->syncPaymentsOfInvoices($company, $remote, $changed);
+
+        return $changed->count();
     }
 
     /**
@@ -401,6 +475,8 @@ class SyncService
     }
 
     /**
+     * Payment allocations of the invoices dated in the window.
+     *
      * @param  array<int, string>  $tipDocs
      */
     private function syncInvoicePayments(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to, array $tipDocs): int
@@ -412,12 +488,6 @@ class SyncService
 
         if ($invoices->isEmpty()) {
             return 0;
-        }
-
-        $lookup = [];
-        foreach ($invoices as $invoice) {
-            $key = $invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc;
-            $lookup[$key] = $invoice->id;
         }
 
         $rows = $remote->table('doc_fin as df')
@@ -436,13 +506,64 @@ class SyncService
             ->whereBetween('df.data_doc_com', [$from->toDateString(), $to->toDateString()])
             ->get();
 
+        return $this->storeInvoicePayments($company, $invoices, $rows);
+    }
+
+    /**
+     * Payment allocations of a given set of invoices, whatever their dates,
+     * looked up by document key (indexed on doc_fin).
+     *
+     * @param  Collection<int, Invoice>  $invoices
+     */
+    private function syncPaymentsOfInvoices(Company $company, ConnectionInterface $remote, Collection $invoices): int
+    {
+        if ($invoices->isEmpty()) {
+            return 0;
+        }
+
+        $rows = collect();
+
+        foreach ($invoices->chunk(200) as $chunk) {
+            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?::date, ?, ?)'));
+            $bindings = $chunk
+                ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
+                ->all();
+
+            $rows = $rows->merge($remote->select(
+                'select df.data_doc_com, df.tip_doc_com, df.nr_doc_com, df.data_doc_fin, df.tip_doc_fin, df.nr_doc_fin,'
+                .' df.data_repartizare, df.val_fin, df.val_com, d.moneda as fin_moneda'
+                .' from doc_fin df'
+                .' left join doc d on d.data_doc = df.data_doc_fin and d.tip_doc = df.tip_doc_fin and d.nr_doc = df.nr_doc_fin'
+                ." where (df.data_doc_com, df.tip_doc_com, df.nr_doc_com) in ({$placeholders})",
+                $bindings,
+            ));
+        }
+
+        return $this->storeInvoicePayments($company, $invoices, $rows);
+    }
+
+    /**
+     * Replace the local payment rows of the invoices with the allocations read
+     * from the ERP.
+     *
+     * @param  Collection<int, Invoice>  $invoices
+     * @param  Collection<int, object>  $rows
+     */
+    private function storeInvoicePayments(Company $company, Collection $invoices, Collection $rows): int
+    {
+        $lookup = [];
+        foreach ($invoices as $invoice) {
+            $key = $invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc;
+            $lookup[$key] = $invoice->id;
+        }
+
         InvoicePayment::whereIn('invoice_id', array_values($lookup))->delete();
 
         $bankLineLookup = $this->buildBankStatementLineLookup($company);
 
         $count = 0;
         foreach ($rows as $row) {
-            $key = $row->data_doc_com.'|'.$row->tip_doc_com.'|'.$row->nr_doc_com;
+            $key = Carbon::parse((string) $row->data_doc_com)->toDateString().'|'.$row->tip_doc_com.'|'.$row->nr_doc_com;
             $invoiceId = $lookup[$key] ?? null;
             if ($invoiceId === null) {
                 continue;

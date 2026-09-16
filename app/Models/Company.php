@@ -49,6 +49,18 @@ class Company extends Model
     }
 
     /**
+     * Name of the connection in config/database.php the company's ERP books
+     * are read through, when it is linked to one instead of the credentials
+     * stored on the company (see config/omc.php).
+     */
+    public function erpConnection(): ?string
+    {
+        $name = $this->erp_connection;
+
+        return $name && array_key_exists($name, (array) config('omc.connections')) ? $name : null;
+    }
+
+    /**
      * Name of the eTrip connection in config/database.php, when the company
      * is linked to a reservation database.
      */

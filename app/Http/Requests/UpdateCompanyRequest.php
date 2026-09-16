@@ -28,6 +28,7 @@ class UpdateCompanyRequest extends FormRequest
             'db_username' => ['required', 'string', 'max:255'],
             'db_password' => ['nullable', 'string', 'max:255'],
             'etrip_connection' => ['nullable', Rule::in(array_keys((array) config('etrip.connections')))],
+            'erp_connection' => ['nullable', Rule::in(array_keys((array) config('omc.connections')))],
         ];
     }
 }

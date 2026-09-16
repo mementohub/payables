@@ -123,7 +123,7 @@ export type IndexProps = {
     invoices: Paginated<InvoiceRow>;
     scope: Scope;
     filters: IndexFilters;
-    companies: { id: number; name: string }[];
+    companies: { id: number; name: string; last_synced_at?: string | null }[];
     currentUser: CurrentUser;
     availableResponsibles: { id: number; name: string }[];
 };

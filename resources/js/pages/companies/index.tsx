@@ -51,8 +51,10 @@ function SyncDialog({ company }: { company: Company }) {
                 <DialogHeader>
                     <DialogTitle>Sincronizează {company.name}</DialogTitle>
                     <DialogDescription>
-                        Alege intervalul de date (după data documentelor) pentru
-                        sincronizare. Va rula în fundal prin Horizon.
+                        Alege intervalul de date (după data documentelor). Până
+                        la 7 zile rulează pe loc; intervalele mai lungi merg în
+                        fundal prin Horizon. Ultimele zile se sincronizează
+                        oricum automat, la 10 minute.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
@@ -187,8 +189,12 @@ export default function CompaniesIndex({
                                         {company.cui ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 text-muted-foreground">
-                                        {company.db_host}:{company.db_port}/
-                                        {company.db_database}
+                                        {company.source}
+                                        {company.erp_connection && (
+                                            <span className="ml-1 text-xs">
+                                                (live)
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3">
                                         {company.partners_count}

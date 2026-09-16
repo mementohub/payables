@@ -5,10 +5,12 @@ import {
     ChevronDown,
     Download,
     MessageSquare,
+    RefreshCw,
     ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
+import SyncController from '@/actions/App/Http/Controllers/SyncController';
 import ApprovalStatusBadge from '@/components/approval-status-badge';
 import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
@@ -156,6 +158,60 @@ function formatDateTime(iso: string | null) {
     });
 }
 
+/**
+ * When the ERP documents were last pulled (the oldest company wins) and a
+ * button that pulls the recent days now, inline.
+ */
+function SyncChip({
+    companies,
+}: {
+    companies: { id: number; name: string; last_synced_at?: string | null }[];
+}) {
+    const syncedAt = companies
+        .map((company) => company.last_synced_at ?? null)
+        .reduce<string | null | undefined>((oldest, current) => {
+            if (oldest === undefined) {
+                return current;
+            }
+
+            if (oldest === null || current === null) {
+                return null;
+            }
+
+            return current < oldest ? current : oldest;
+        }, undefined);
+
+    return (
+        <Form
+            {...SyncController.storeAll.form()}
+            options={{ preserveScroll: true }}
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+            {({ processing }) => (
+                <>
+                    <span>
+                        Date OMC la{' '}
+                        {syncedAt ? formatDateTime(syncedAt) : 'niciodată'}
+                    </span>
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        size="sm"
+                        disabled={processing}
+                    >
+                        <RefreshCw
+                            className={processing ? 'animate-spin' : undefined}
+                        />
+                        {processing
+                            ? 'Se sincronizează…'
+                            : 'Sincronizează acum'}
+                    </Button>
+                </>
+            )}
+        </Form>
+    );
+}
+
 function ComIntIndicator({ scope }: { scope: Scope }) {
     return (
         <Tooltip>
@@ -210,8 +266,8 @@ export default function InvoicesIndex({
         scope === 'emise' ? facturiEmise().url : facturiPrimite().url;
     const description =
         scope === 'emise'
-            ? 'Facturi emise către clienți (FactCI / FactCE / FactINT) sincronizate din BD-urile companiilor.'
-            : 'Facturi primite de la furnizori (FactFI / FactFE) sincronizate din BD-urile companiilor.';
+            ? 'Facturi emise către clienți (FactCI / FactCE / FactINT), sincronizate din OMC la fiecare 10 minute.'
+            : 'Facturi primite de la furnizori (FactFI / FactFE), sincronizate din OMC la fiecare 10 minute.';
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
@@ -297,11 +353,14 @@ export default function InvoicesIndex({
             <Head title={label} />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
-                <div>
-                    <h1 className="text-2xl font-semibold">{label}</h1>
-                    <p className="text-sm text-muted-foreground">
-                        {description}
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-semibold">{label}</h1>
+                        <p className="text-sm text-muted-foreground">
+                            {description}
+                        </p>
+                    </div>
+                    <SyncChip companies={companies} />
                 </div>
 
                 <form
@@ -654,7 +713,9 @@ export default function InvoicesIndex({
                                                 {invoice.nr_doc}
                                             </Link>
                                             {invoice.has_com_int_counterpart && (
-                                                <ComIntIndicator scope={scope} />
+                                                <ComIntIndicator
+                                                    scope={scope}
+                                                />
                                             )}
                                             <CommentsIndicator
                                                 count={invoice.comments_count}

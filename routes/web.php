@@ -32,6 +32,7 @@ Route::middleware('auth')->group(function () {
     Route::get('users/import', [UserController::class, 'importForm'])->name('users.import');
     Route::post('users/import', [UserController::class, 'import'])->name('users.import.store');
     Route::resource('users', UserController::class)->except(['show', 'create', 'store']);
+    Route::post('companies/sync', [SyncController::class, 'storeAll'])->name('companies.sync-all');
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
     Route::get('companies/{company}/etrip-suppliers', [EtripSupplierController::class, 'search'])->name('companies.etrip-suppliers.search');
     Route::post('companies/{company}/etrip-suppliers/sync', [EtripSupplierController::class, 'sync'])->name('companies.etrip-suppliers.sync');

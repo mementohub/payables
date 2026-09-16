@@ -9,4 +9,6 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+Schedule::command('erp:sync')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();
+Schedule::command('erp:sync', ['--days' => (int) config('sync.window_days', 45)])->dailyAt('02:15')->withoutOverlapping(180)->runInBackground();
 Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping();

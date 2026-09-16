@@ -15,6 +15,15 @@ return [
     'connection' => env('OMC_CONNECTION', 'omc'),
 
     /*
+    | Named connections a company may keep its books in, with the label shown
+    | in the company form. A company linked here is synced through the
+    | connection instead of the credentials stored on the company.
+    */
+    'connections' => [
+        'omc' => 'OMC Christian Tour',
+    ],
+
+    /*
     | The local company mirrored from that database, used when a verified
     | request is saved in the register. Left empty, the company whose
     | db_database matches the connection is used, then the one linked to
