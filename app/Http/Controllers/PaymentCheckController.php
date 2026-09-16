@@ -1,0 +1,161 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Company;
+use App\Models\EtripSupplier;
+use App\Services\Etrip\CheckinCostCheckService;
+use App\Services\Etrip\EtripReader;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+use PDOException;
+use RuntimeException;
+
+class PaymentCheckController extends Controller
+{
+    public const EXPECTED_WINDOWS = [2, 7, 14];
+
+    public function index(Request $request): Response
+    {
+        $companies = $this->etripCompanies();
+        $requestedCompany = $request->integer('company_id') ?: (int) session('active_company_id');
+        $company = $companies->firstWhere('id', $requestedCompany) ?? $companies->first();
+
+        return Inertia::render('payment-checks/index', [
+            'companies' => $companies->map(fn (Company $company) => [
+                'id' => $company->id,
+                'name' => $company->name,
+                'etrip' => config('etrip.connections.'.$company->etrip_connection),
+                'suppliers_synced_at' => $company->etripSuppliers()->max('synced_at'),
+            ])->values(),
+            'categories' => CheckinCostCheckService::CATEGORY_LABELS,
+            'windows' => self::EXPECTED_WINDOWS,
+            'filters' => [
+                'company_id' => $company?->id,
+                'supplier' => $request->string('supplier')->toString() ?: null,
+                'from' => $request->string('from')->toString() ?: Carbon::today()->toDateString(),
+                'to' => $request->string('to')->toString() ?: Carbon::tomorrow()->toDateString(),
+                'category' => in_array($request->string('category')->toString(), CheckinCostCheckService::CATEGORIES, true)
+                    ? $request->string('category')->toString()
+                    : 'hotel',
+                'amount' => $request->string('amount')->toString() ?: null,
+                'currency' => $request->string('currency')->toString() ?: null,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function check(Request $request, CheckinCostCheckService $check): array
+    {
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->whereNotNull('etrip_connection')],
+            'supplier' => ['required', 'string', 'max:50'],
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+            'category' => ['nullable', Rule::in(CheckinCostCheckService::CATEGORIES)],
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', 'max:5'],
+        ]);
+
+        $company = Company::query()->findOrFail($validated['company_id']);
+        abort_if($company->etripConnection() === null, 422, 'Conexiunea eTrip a companiei nu este definită.');
+
+        $supplier = EtripSupplier::query()
+            ->where('company_id', $company->id)
+            ->where('code', $validated['supplier'])
+            ->firstOrFail();
+
+        return $this->readingEtrip(fn () => $check->check(
+            $company,
+            $supplier,
+            Carbon::parse($validated['from'])->startOfDay(),
+            Carbon::parse($validated['to'])->startOfDay(),
+            $validated['category'] ?? 'hotel',
+            isset($validated['amount']) && $validated['amount'] !== '' ? (float) $validated['amount'] : null,
+            $validated['currency'] ?? null,
+        ));
+    }
+
+    /**
+     * Suppliers with the largest check-in cost in the coming days, cached per
+     * eTrip database so the page does not hit the replica on every visit.
+     *
+     * @return array{days: int, from: string, to: string, cached_at: string, suppliers: list<array<string, mixed>>}
+     */
+    public function expected(Request $request, EtripReader $reader): array
+    {
+        $validated = $request->validate([
+            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->whereNotNull('etrip_connection')],
+            'days' => ['nullable', 'integer', Rule::in(self::EXPECTED_WINDOWS)],
+            'refresh' => ['nullable', 'boolean'],
+        ]);
+
+        $company = Company::query()->findOrFail($validated['company_id']);
+        abort_if($company->etripConnection() === null, 422, 'Conexiunea eTrip a companiei nu este definită.');
+
+        $days = (int) ($validated['days'] ?? self::EXPECTED_WINDOWS[0]);
+        $from = Carbon::today();
+        $to = $from->copy()->addDays($days - 1);
+        $key = sprintf('etrip:%s:expected:%d:%s', $company->etripConnection(), $days, $from->toDateString());
+
+        if ($request->boolean('refresh')) {
+            Cache::forget($key);
+        }
+
+        $payload = $this->readingEtrip(fn () => Cache::remember($key, now()->addMinutes((int) config('etrip.expected_cache_minutes', 360)), function () use ($reader, $company, $from, $to) {
+            $known = EtripSupplier::query()
+                ->where('company_id', $company->id)
+                ->get(['code', 'partner_id'])
+                ->keyBy('code');
+
+            return [
+                'cached_at' => now()->toIso8601String(),
+                'suppliers' => array_map(fn (array $row) => [
+                    ...$row,
+                    'partner_id' => $known->get($row['supplier_code'])?->partner_id,
+                ], $reader->expectedCosts($company, $from, $to)),
+            ];
+        }));
+
+        return ['days' => $days, 'from' => $from->toDateString(), 'to' => $to->toDateString(), ...$payload];
+    }
+
+    /**
+     * Run a read against eTrip, turning a database failure into a 503 whose
+     * message names the cause, so the page can show it whatever APP_DEBUG is.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $read
+     * @return T
+     */
+    private function readingEtrip(callable $read): mixed
+    {
+        try {
+            return $read();
+        } catch (QueryException|PDOException|RuntimeException $e) {
+            $cause = $e->getPrevious() ?? $e;
+
+            abort(503, 'Baza eTrip nu poate fi accesată: '.trim($cause->getMessage()));
+        }
+    }
+
+    /**
+     * @return Collection<int, Company>
+     */
+    private function etripCompanies()
+    {
+        return Company::query()
+            ->whereIn('etrip_connection', array_keys((array) config('etrip.connections')))
+            ->orderBy('name')
+            ->get(['id', 'name', 'etrip_connection']);
+    }
+}

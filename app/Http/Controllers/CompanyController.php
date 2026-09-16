@@ -36,7 +36,9 @@ class CompanyController extends Controller
 
     public function create(): Response
     {
-        return Inertia::render('companies/create');
+        return Inertia::render('companies/create', [
+            'etripConnections' => config('etrip.connections'),
+        ]);
     }
 
     public function store(StoreCompanyRequest $request): RedirectResponse
@@ -60,7 +62,9 @@ class CompanyController extends Controller
                 'db_port' => $company->db_port,
                 'db_database' => $company->db_database,
                 'db_username' => $company->db_username,
+                'etrip_connection' => $company->etrip_connection,
             ],
+            'etripConnections' => config('etrip.connections'),
         ]);
     }
 

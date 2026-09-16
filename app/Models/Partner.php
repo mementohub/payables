@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Partner extends Model
 {
@@ -34,6 +35,11 @@ class Partner extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    public function etripSupplier(): HasOne
+    {
+        return $this->hasOne(EtripSupplier::class);
     }
 
     public function bankAccounts(): HasMany

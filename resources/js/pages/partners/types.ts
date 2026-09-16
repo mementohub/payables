@@ -47,7 +47,17 @@ export type BankAccount = {
     is_discontinued: boolean;
 };
 
+export type EtripSupplierRef = {
+    id: number;
+    code: string;
+    name: string;
+    currency: string | null;
+    match_source: 'cui' | 'name' | 'manual' | null;
+};
+
 export type PartnerDetail = {
+    etrip_enabled: boolean;
+    etrip_supplier: EtripSupplierRef | null;
     id: number;
     name: string;
     cui: string | null;

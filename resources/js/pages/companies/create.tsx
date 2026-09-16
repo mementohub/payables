@@ -5,13 +5,21 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    NativeSelect,
+    NativeSelectOption,
+} from '@/components/ui/native-select';
 import AppLayout from '@/layouts/app-layout';
 import {
     create as companiesCreate,
     index as companiesIndex,
 } from '@/routes/companies';
 
-export default function CompanyCreate() {
+export default function CompanyCreate({
+    etripConnections,
+}: {
+    etripConnections: Record<string, string>;
+}) {
     return (
         <>
             <Head title="Adaugă companie" />
@@ -93,6 +101,34 @@ export default function CompanyCreate() {
                                         readOnly
                                     />
                                     <InputError message={errors.db_driver} />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="etrip_connection">
+                                        Bază eTrip
+                                    </Label>
+                                    <NativeSelect
+                                        id="etrip_connection"
+                                        name="etrip_connection"
+                                        defaultValue={''}
+                                        className="w-full"
+                                    >
+                                        <NativeSelectOption value="">
+                                            Fără verificare pe check-in
+                                        </NativeSelectOption>
+                                        {Object.entries(etripConnections).map(
+                                            ([value, label]) => (
+                                                <NativeSelectOption
+                                                    key={value}
+                                                    value={value}
+                                                >
+                                                    {label}
+                                                </NativeSelectOption>
+                                            ),
+                                        )}
+                                    </NativeSelect>
+                                    <InputError
+                                        message={errors.etrip_connection}
+                                    />
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="db_username">

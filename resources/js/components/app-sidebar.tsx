@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     Building2,
     ChartColumn,
+    ClipboardCheck,
     Contact,
     DatabaseZap,
     FileCheck2,
@@ -41,6 +42,7 @@ import {
     primite as facturiPrimite,
 } from '@/routes/invoices';
 import { clienti, furnizori } from '@/routes/partners';
+import { index as paymentChecksIndex } from '@/routes/payment-checks';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as usersIndex } from '@/routes/users';
 import type { NavItemOrGroup } from '@/types/navigation';
@@ -87,6 +89,11 @@ const mainNavItems: NavItemOrGroup[] = [
                 icon: Users,
             },
         ],
+    },
+    {
+        title: 'Verificare plăți',
+        href: paymentChecksIndex(),
+        icon: ClipboardCheck,
     },
     {
         title: 'Extrase bancare',

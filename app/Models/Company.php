@@ -43,6 +43,22 @@ class Company extends Model
         return $this->hasMany(CompanyBankAccount::class);
     }
 
+    public function etripSuppliers(): HasMany
+    {
+        return $this->hasMany(EtripSupplier::class);
+    }
+
+    /**
+     * Name of the eTrip connection in config/database.php, when the company
+     * is linked to a reservation database.
+     */
+    public function etripConnection(): ?string
+    {
+        $name = $this->etrip_connection;
+
+        return $name && array_key_exists($name, (array) config('etrip.connections')) ? $name : null;
+    }
+
     /**
      * @return array<string, mixed>
      */

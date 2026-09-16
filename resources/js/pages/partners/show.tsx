@@ -51,6 +51,7 @@ import {
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
+import EtripSupplierSection from './etrip-supplier';
 import PaymentCheckPanel from './payment-check';
 import type { InvoiceFilters, MonthlyTotal, ShowProps as Props } from './types';
 
@@ -242,6 +243,10 @@ export default function PartnerShow({
                             />
                         )}
                     </>
+                )}
+
+                {partner.is_furnizor && partner.etrip_enabled && (
+                    <EtripSupplierSection partner={partner} />
                 )}
 
                 {partner.is_furnizor && (

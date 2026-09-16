@@ -19,4 +19,5 @@ export type CompanyEditPayload = {
     db_port: string;
     db_database: string;
     db_username: string;
+    etrip_connection: string | null;
 };

@@ -29,7 +29,8 @@ class PartnerController extends Controller
     public function show(Request $request, Partner $partner): Response
     {
         $partner->load([
-            'company:id,name',
+            'company:id,name,etrip_connection',
+            'etripSupplier:id,partner_id,code,name,currency,match_source',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
             'responsabilDepartments:id,name,type',
         ]);
@@ -124,6 +125,14 @@ class PartnerController extends Controller
                     'name' => $dept->name,
                     'type' => $dept->type,
                 ])->values(),
+                'etrip_enabled' => $partner->company->etripConnection() !== null,
+                'etrip_supplier' => $partner->etripSupplier ? [
+                    'id' => $partner->etripSupplier->id,
+                    'code' => $partner->etripSupplier->code,
+                    'name' => $partner->etripSupplier->name,
+                    'currency' => $partner->etripSupplier->currency,
+                    'match_source' => $partner->etripSupplier->match_source,
+                ] : null,
             ],
             'invoices' => $invoices,
             'invoiceFilters' => [

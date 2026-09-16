@@ -8,9 +8,11 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EInvoiceController;
+use App\Http\Controllers\EtripSupplierController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
+use App\Http\Controllers\PaymentCheckController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
@@ -29,6 +31,8 @@ Route::middleware('auth')->group(function () {
     Route::post('users/import', [UserController::class, 'import'])->name('users.import.store');
     Route::resource('users', UserController::class)->except(['show', 'create', 'store']);
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
+    Route::get('companies/{company}/etrip-suppliers', [EtripSupplierController::class, 'search'])->name('companies.etrip-suppliers.search');
+    Route::post('companies/{company}/etrip-suppliers/sync', [EtripSupplierController::class, 'sync'])->name('companies.etrip-suppliers.sync');
 
     Route::get('invoices/issued', [InvoiceController::class, 'emise'])->name('invoices.emise');
     Route::post('invoices/issued/export', [InvoiceController::class, 'exportEmise'])->name('invoices.emise.export');
@@ -56,6 +60,12 @@ Route::middleware('auth')->group(function () {
     Route::get('suppliers', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
     Route::get('suppliers/{partner}', [PartnerController::class, 'show'])->name('partners.show');
     Route::get('suppliers/{partner}/payment-check', [PartnerController::class, 'paymentCheck'])->name('partners.payment-check');
+    Route::post('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'link'])->name('partners.etrip-supplier.link');
+    Route::delete('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'unlink'])->name('partners.etrip-supplier.unlink');
+
+    Route::get('payment-checks', [PaymentCheckController::class, 'index'])->name('payment-checks.index');
+    Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
+    Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
     Route::post('partners/{partner}/responsabil-departments', [PartnerController::class, 'attachResponsabilDepartment'])->name('partners.responsabil-departments.attach');
     Route::delete('partners/{partner}/responsabil-departments/{department}', [PartnerController::class, 'detachResponsabilDepartment'])->name('partners.responsabil-departments.detach');
     Route::get('clients', [PartnerController::class, 'clienti'])->name('partners.clienti');
