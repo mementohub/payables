@@ -15,14 +15,22 @@ class UpgradeApp extends Command
         $this->components->info('Migrări');
         $this->call('migrate', ['--force' => true]);
 
+        $failed = false;
+
         if (! $this->option('skip-sync')) {
             $this->components->info('Documente ERP (ultimele '.(int) config('sync.window_days', 45).' zile)');
-            $this->call('erp:sync', ['--days' => (int) config('sync.window_days', 45)]);
+            $failed = $this->call('erp:sync', ['--days' => (int) config('sync.window_days', 45)]) !== self::SUCCESS || $failed;
         }
 
         if (! $this->option('skip-etrip')) {
             $this->components->info('Furnizori eTrip');
-            $this->call('etrip:sync-suppliers');
+            $failed = $this->call('etrip:sync-suppliers') !== self::SUCCESS || $failed;
+        }
+
+        if ($failed) {
+            $this->components->error('Încheiat cu erori (vezi mai sus). Migrările au rulat; datele se pot aduce din nou cu „Sincronizează acum” după rezolvarea cauzei.');
+
+            return self::FAILURE;
         }
 
         $this->components->info('Gata. Documentele ERP se sincronizează automat la 10 minute prin scheduler (schedule:run); fără scheduler, rulează `php artisan erp:sync` sau apasă „Sincronizează acum” în aplicație.');

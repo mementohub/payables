@@ -7,6 +7,7 @@ use App\Services\Etrip\EtripSupplierSyncService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Throwable;
 
 #[Signature('etrip:sync-suppliers {--company= : Restrict to a single company id}')]
 #[Description('Mirror the eTrip suppliers of every company linked to an eTrip database and match them to ERP partners by VAT number or name.')]
@@ -29,6 +30,7 @@ class SyncEtripSuppliers extends Command
         }
 
         $rows = [];
+        $failed = false;
 
         foreach ($companies as $company) {
             if ($company->etripConnection() === null) {
@@ -37,13 +39,22 @@ class SyncEtripSuppliers extends Command
                 continue;
             }
 
-            $result = $sync->sync($company);
+            try {
+                $result = $sync->sync($company);
+            } catch (Throwable $e) {
+                $failed = true;
+                $this->components->error("{$company->name} ({$company->etrip_connection}): ".trim(($e->getPrevious() ?? $e)->getMessage()));
+
+                continue;
+            }
 
             $rows[] = [$company->name, $company->etrip_connection, $result['synced'], $result['matched_cui'], $result['matched_name'], $result['unmatched']];
         }
 
-        $this->table(['Companie', 'eTrip', 'Furnizori', 'Potriviți CUI', 'Potriviți nume', 'Nepotriviți'], $rows);
+        if ($rows !== []) {
+            $this->table(['Companie', 'eTrip', 'Furnizori', 'Potriviți CUI', 'Potriviți nume', 'Nepotriviți'], $rows);
+        }
 
-        return self::SUCCESS;
+        return $failed ? self::FAILURE : self::SUCCESS;
     }
 }

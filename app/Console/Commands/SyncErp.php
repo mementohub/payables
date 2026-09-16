@@ -8,6 +8,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 #[Signature('erp:sync {--company= : Restrict to a single company id} {--days= : Days back from today (default: sync.recent_days)} {--from= : First document date} {--to= : Last document date}')]
@@ -33,6 +34,7 @@ class SyncErp extends Command
         }
 
         $rows = [];
+        $summary = [];
         $failed = false;
 
         foreach ($companies as $company) {
@@ -54,11 +56,17 @@ class SyncErp extends Command
                     $result['statements'],
                     $result['refreshed'] ?? '–',
                 ];
+                $summary[] = sprintf('%s: %d facturi, %d plăți%s', $company->name, $result['invoices'], $result['payments'],
+                    isset($result['refreshed']) ? ", {$result['refreshed']} deschise actualizate" : '');
             } catch (Throwable $e) {
                 $failed = true;
-                $this->components->error("{$company->name} ({$source}): ".trim(($e->getPrevious() ?? $e)->getMessage()));
+                $message = trim(($e->getPrevious() ?? $e)->getMessage());
+                $summary[] = "{$company->name}: eroare – {$message}";
+                $this->components->error("{$company->name} ({$source}): {$message}");
             }
         }
+
+        Cache::forever('erp:sync:last_run', ['at' => now()->toIso8601String(), 'ok' => ! $failed, 'summary' => implode(' · ', $summary)]);
 
         if ($rows !== []) {
             $this->table(['Companie', 'Sursă', 'Facturi', 'Plăți', 'Parteneri', 'Extrase', 'Facturi deschise actualizate'], $rows);

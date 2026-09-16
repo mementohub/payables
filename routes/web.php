@@ -11,6 +11,7 @@ use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
 use App\Http\Controllers\InvoiceCheckController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\PaymentCheckController;
@@ -95,6 +96,9 @@ Route::middleware('auth')->group(function () {
     Route::delete('ai-assistant/{conversation}', [AiChatController::class, 'destroy'])->name('ai-chat.destroy');
 
     Route::get('database-status', [DatabaseStatusController::class, 'index'])->name('database-status.index');
+    Route::get('maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index');
+    Route::post('maintenance/upgrade', [MaintenanceController::class, 'upgrade'])->name('maintenance.upgrade');
+    Route::post('maintenance/migrate', [MaintenanceController::class, 'migrate'])->name('maintenance.migrate');
 
     Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
     Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');

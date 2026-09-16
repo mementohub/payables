@@ -20,6 +20,7 @@ import {
     Truck,
     UserCog,
     Users,
+    Wrench,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
@@ -44,6 +45,7 @@ import {
     emise as facturiEmise,
     primite as facturiPrimite,
 } from '@/routes/invoices';
+import { index as maintenanceIndex } from '@/routes/maintenance';
 import { clienti, furnizori } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
 import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
@@ -159,6 +161,11 @@ const settingsNavItems: NavItemOrGroup[] = [
         title: 'Stare baze de date',
         href: databaseStatusIndex(),
         icon: DatabaseZap,
+    },
+    {
+        title: 'Întreținere',
+        href: maintenanceIndex(),
+        icon: Wrench,
     },
 ];
 

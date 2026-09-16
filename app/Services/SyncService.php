@@ -132,7 +132,7 @@ class SyncService
         $changed = collect();
 
         foreach ($open->chunk(200) as $chunk) {
-            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?::date, ?, ?)'));
+            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
             $bindings = $chunk
                 ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
                 ->all();
@@ -352,18 +352,21 @@ class SyncService
         $count = 0;
 
         foreach ($headers as $header) {
-            $statement = BankStatement::updateOrCreate(
-                [
+            $statement = BankStatement::query()
+                ->where('company_id', $company->id)
+                ->where('iban', $header->cont_banca_eu)
+                ->whereDate('data_extras', Carbon::parse((string) $header->data_extras)->toDateString())
+                ->first() ?? new BankStatement([
                     'company_id' => $company->id,
                     'data_extras' => $header->data_extras,
                     'iban' => $header->cont_banca_eu,
-                ],
-                [
-                    'banca' => $header->banca_eu !== '-' ? $header->banca_eu : null,
-                    'operator' => $header->operator,
-                    'moneda' => $header->moneda,
-                ]
-            );
+                ]);
+
+            $statement->forceFill([
+                'banca' => $header->banca_eu !== '-' ? $header->banca_eu : null,
+                'operator' => $header->operator,
+                'moneda' => $header->moneda,
+            ])->save();
 
             $lines = $remote->table('doc')
                 ->select([
@@ -482,7 +485,7 @@ class SyncService
     private function syncInvoicePayments(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to, array $tipDocs): int
     {
         $invoices = Invoice::where('company_id', $company->id)
-            ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
+            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
             ->whereIn('tip_doc', $tipDocs)
             ->get(['id', 'data_doc', 'tip_doc', 'nr_doc']);
 
@@ -524,7 +527,7 @@ class SyncService
         $rows = collect();
 
         foreach ($invoices->chunk(200) as $chunk) {
-            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?::date, ?, ?)'));
+            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
             $bindings = $chunk
                 ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
                 ->all();
@@ -562,6 +565,7 @@ class SyncService
         $bankLineLookup = $this->buildBankStatementLineLookup($company);
 
         $count = 0;
+        $seen = [];
         foreach ($rows as $row) {
             $key = Carbon::parse((string) $row->data_doc_com)->toDateString().'|'.$row->tip_doc_com.'|'.$row->nr_doc_com;
             $invoiceId = $lookup[$key] ?? null;
@@ -570,23 +574,23 @@ class SyncService
             }
 
             $paymentKey = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
-            $bankStatementLineId = $bankLineLookup[$paymentKey] ?? null;
+            $allocationKey = $invoiceId.'|'.$paymentKey.'|'.$row->data_repartizare;
+            if (isset($seen[$allocationKey])) {
+                continue;
+            }
+            $seen[$allocationKey] = true;
 
-            InvoicePayment::updateOrCreate(
-                [
-                    'invoice_id' => $invoiceId,
-                    'data_doc' => $row->data_doc_fin,
-                    'tip_doc' => $row->tip_doc_fin,
-                    'nr_doc' => $row->nr_doc_fin,
-                    'data_repartizare' => $row->data_repartizare,
-                ],
-                [
-                    'val_fin' => $row->val_fin ?? 0,
-                    'val_com' => $row->val_com ?? 0,
-                    'moneda' => $row->fin_moneda,
-                    'bank_statement_line_id' => $bankStatementLineId,
-                ]
-            );
+            InvoicePayment::create([
+                'invoice_id' => $invoiceId,
+                'data_doc' => $row->data_doc_fin,
+                'tip_doc' => $row->tip_doc_fin,
+                'nr_doc' => $row->nr_doc_fin,
+                'data_repartizare' => $row->data_repartizare,
+                'val_fin' => $row->val_fin ?? 0,
+                'val_com' => $row->val_com ?? 0,
+                'moneda' => $row->fin_moneda,
+                'bank_statement_line_id' => $bankLineLookup[$paymentKey] ?? null,
+            ]);
             $count++;
         }
 
@@ -783,9 +787,22 @@ class SyncService
             ->whereIn('tip_doc', $tipDocs)
             ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
             ->orderBy('data_doc')
-            ->chunk(500, function ($chunk) use ($company, $remote, $partnerLookup, &$invoicesCount, &$detailsCount) {
+            ->chunk(500, function ($chunk) use ($company, $remote, $partnerLookup, $tipDocs, &$invoicesCount, &$detailsCount) {
                 $invoiceIds = [];
                 $rowsByKey = [];
+
+                // The chunk is ordered by date, so its first and last rows bound
+                // the local rows it may update; matching on the normalized
+                // document key sidesteps how each driver stores a date.
+                $existing = Invoice::query()
+                    ->where('company_id', $company->id)
+                    ->whereIn('tip_doc', $tipDocs)
+                    ->whereBetween('data_doc', [
+                        Carbon::parse((string) $chunk->first()->data_doc)->toDateString(),
+                        Carbon::parse((string) $chunk->last()->data_doc)->endOfDay()->toDateTimeString(),
+                    ])
+                    ->get()
+                    ->keyBy(fn (Invoice $invoice) => $invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
 
                 $clientComIntCodes = collect($chunk)
                     ->filter(fn ($r) => in_array($r->tip_doc, self::CLIENT_DOC_TYPES, true) && ! empty($r->com_int))
@@ -809,13 +826,16 @@ class SyncService
                         : null;
                     $dataCalatoriei = is_string($rawTravel) && trim($rawTravel) === '' ? null : $rawTravel;
 
-                    $invoice = Invoice::updateOrCreate(
-                        [
-                            'company_id' => $company->id,
-                            'data_doc' => $row->data_doc,
-                            'tip_doc' => $row->tip_doc,
-                            'nr_doc' => $row->nr_doc,
-                        ],
+                    $key = Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc;
+
+                    $invoice = $existing->get($key) ?? new Invoice([
+                        'company_id' => $company->id,
+                        'data_doc' => $row->data_doc,
+                        'tip_doc' => $row->tip_doc,
+                        'nr_doc' => $row->nr_doc,
+                    ]);
+
+                    $invoice->forceFill(
                         [
                             'partner_id' => $partnerLookup[$row->partener] ?? null,
                             'partener_type' => $type,
@@ -834,11 +854,10 @@ class SyncService
                             'tip_doc_baza' => $row->tip_doc_baza ?: null,
                             'nr_doc_baza' => $row->nr_doc_baza ?: null,
                         ]
-                    );
+                    )->save();
 
                     $invoicesCount++;
                     $invoiceIds[] = $invoice->id;
-                    $key = $row->data_doc.'|'.$row->tip_doc.'|'.$row->nr_doc;
                     $rowsByKey[$key] = $invoice->id;
                 }
 

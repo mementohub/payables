@@ -5,6 +5,7 @@ namespace App\Services\Omc;
 use App\Models\Company;
 use App\Services\SyncService;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -134,7 +135,13 @@ class OmcReader
 
         $database = (string) config('database.connections.'.$this->name().'.database');
 
-        return Company::query()->where('erp_connection', $this->name())->orderBy('id')->first()
+        try {
+            $linked = Company::query()->where('erp_connection', $this->name())->orderBy('id')->first();
+        } catch (QueryException) {
+            $linked = null; // the column arrives with a migration; keep the page usable until app:upgrade runs
+        }
+
+        return $linked
             ?? Company::query()->where('db_database', $database)->orderBy('id')->first()
             ?? Company::query()->where('etrip_connection', 'etrip_chr')->orderBy('id')->first()
             ?? (Company::query()->count() === 1 ? Company::query()->first() : null);
