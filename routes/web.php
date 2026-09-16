@@ -99,6 +99,7 @@ Route::middleware('auth')->group(function () {
     Route::get('maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index');
     Route::post('maintenance/upgrade', [MaintenanceController::class, 'upgrade'])->name('maintenance.upgrade');
     Route::post('maintenance/migrate', [MaintenanceController::class, 'migrate'])->name('maintenance.migrate');
+    Route::post('maintenance/stop/{run}', [MaintenanceController::class, 'stop'])->name('maintenance.stop');
 
     Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index');
     Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');

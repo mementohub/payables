@@ -69,6 +69,23 @@ class MaintenanceController extends Controller
         return back();
     }
 
+    public function stop(Request $request, string $run, ArtisanRunner $runner): RedirectResponse
+    {
+        abort_unless(in_array($run, [ArtisanRunner::UPGRADE, ArtisanRunner::SYNC], true), 404);
+
+        try {
+            $runner->stop($run, $request->user()?->name);
+        } catch (Throwable $e) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Procesul nu a putut fi oprit: '.trim($e->getMessage())]);
+
+            return back();
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Procesul a fost oprit; ce apucase să aducă rămâne, restul se reia la următoarea sincronizare.']);
+
+        return back();
+    }
+
     public function migrate(Request $request, ArtisanRunner $runner): RedirectResponse
     {
         try {

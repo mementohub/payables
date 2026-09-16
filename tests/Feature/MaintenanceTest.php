@@ -129,3 +129,52 @@ test('a run without an end is reported as lost after three hours', function () {
         ->and($status['stale'])->toBeTrue()
         ->and($status['exit_code'])->toBeNull();
 });
+
+test('a running upgrade can be stopped from the page', function () {
+    Process::fake(['*' => Process::result(output: "4242\n")]);
+
+    $this->actingAs($this->user)->post('/maintenance/upgrade')->assertRedirect();
+
+    expect(app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE)['pid'])->toBe(4242);
+
+    $this->actingAs($this->user)
+        ->post('/maintenance/stop/upgrade')
+        ->assertRedirect();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'pkill -TERM -P 4242; kill -TERM 4242;')
+        && str_contains($process->command, "pkill -TERM -f 'artisan app:upgrad[e]'"));
+
+    $status = app(ArtisanRunner::class)->status(ArtisanRunner::UPGRADE);
+
+    expect($status['running'])->toBeFalse()
+        ->and($status['exit_code'])->toBe(143)
+        ->and($status['log'])->toContain('Oprită de Bogdan')
+        ->and(lastToast()['type'])->toBe('success');
+});
+
+test('a sync started before the pid was recorded is still stopped by name', function () {
+    Process::fake();
+    Cache::forever('maintenance:erp:sync', ['started_at' => now()->toIso8601String(), 'mode' => 'background', 'by' => null, 'arguments' => []]);
+
+    $this->actingAs($this->user)->post('/maintenance/stop/sync')->assertRedirect();
+
+    Process::assertRan(fn ($process) => ! str_contains($process->command, 'kill -TERM 0')
+        && str_contains($process->command, "pkill -TERM -f 'artisan erp:syn[c]'"));
+
+    expect(app(ArtisanRunner::class)->isRunning(ArtisanRunner::SYNC))->toBeFalse();
+});
+
+test('only known runs can be stopped', function () {
+    $this->actingAs($this->user)->post('/maintenance/stop/rm-rf')->assertNotFound();
+});
+
+test('stopping a run that already ended keeps its real outcome', function () {
+    Process::fake();
+    Cache::forever('maintenance:erp:sync', ['started_at' => now()->toIso8601String(), 'mode' => 'background', 'by' => null, 'arguments' => [], 'pid' => 77]);
+    File::ensureDirectoryExists($this->dir);
+    File::put($this->dir.'/erp:sync.log', "Gata.\n__EXIT:0\n");
+
+    $this->actingAs($this->user)->post('/maintenance/stop/sync')->assertRedirect();
+
+    expect(app(ArtisanRunner::class)->status(ArtisanRunner::SYNC)['exit_code'])->toBe(0);
+});

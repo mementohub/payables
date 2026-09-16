@@ -1,5 +1,11 @@
 import { Form, Head, router } from '@inertiajs/react';
-import { CircleAlert, CircleCheck, Play, RefreshCw } from 'lucide-react';
+import {
+    CircleAlert,
+    CircleCheck,
+    Play,
+    RefreshCw,
+    Square,
+} from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import SyncController from '@/actions/App/Http/Controllers/SyncController';
@@ -90,6 +96,42 @@ function RunBadge({ upgrade }: { upgrade: RunStatus }) {
     return <Badge variant="outline">nu a rulat încă din aplicație</Badge>;
 }
 
+function StopButton({
+    run,
+    status,
+}: {
+    run: 'upgrade' | 'sync';
+    status: RunStatus;
+}) {
+    if (!status.running && !status.stale) {
+        return null;
+    }
+
+    return (
+        <Form
+            {...MaintenanceController.stop.form({ run })}
+            options={{ preserveScroll: true }}
+            onBefore={() =>
+                confirm(
+                    'Oprești procesul? Ce a apucat să aducă rămâne; restul se reia la următoarea sincronizare.',
+                )
+            }
+        >
+            {({ processing }) => (
+                <Button
+                    type="submit"
+                    variant="destructive"
+                    size="sm"
+                    disabled={processing}
+                >
+                    <Square />
+                    Oprește
+                </Button>
+            )}
+        </Form>
+    );
+}
+
 function RunLog({ log, empty }: { log: string; empty: string }) {
     const ref = useRef<HTMLPreElement>(null);
 
@@ -166,6 +208,7 @@ export default function MaintenanceIndex({
                     <CardContent className="space-y-4">
                         <div className="flex flex-wrap items-center gap-3">
                             <RunBadge upgrade={upgrade} />
+                            <StopButton run="upgrade" status={upgrade} />
                             <Badge
                                 variant={
                                     pendingMigrations.length > 0
@@ -300,6 +343,7 @@ export default function MaintenanceIndex({
                     <CardContent className="space-y-4">
                         <div className="flex flex-wrap items-center gap-3">
                             <RunBadge upgrade={syncRun} />
+                            <StopButton run="sync" status={syncRun} />
                             {syncRun.arguments.length > 0 && (
                                 <span className="font-mono text-xs text-muted-foreground">
                                     erp:sync {syncRun.arguments.join(' ')}

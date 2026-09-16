@@ -62,7 +62,7 @@ class ArtisanRunner
             '--no-ansi',
         ]);
         $script = sprintf('cd %s && %s; echo "%s$?"', escapeshellarg(base_path()), $artisan, self::SENTINEL);
-        $command = sprintf('nohup sh -c %s >> %s 2>&1 &', escapeshellarg($script), escapeshellarg($this->logPath($run)));
+        $command = sprintf('nohup sh -c %s >> %s 2>&1 & echo $!', escapeshellarg($script), escapeshellarg($this->logPath($run)));
 
         File::ensureDirectoryExists(dirname($this->logPath($run)));
         File::put($this->logPath($run), '');
@@ -82,7 +82,38 @@ class ArtisanRunner
             'mode' => 'background',
             'by' => $startedBy,
             'arguments' => $arguments,
+            'pid' => (int) trim($result->output()) ?: null,
         ]);
+    }
+
+    /**
+     * Kill the run: the shell we started and its artisan child, plus any
+     * artisan process of that command started before the pid was recorded.
+     * The log gets the SIGTERM exit code so the page shows it as stopped.
+     */
+    public function stop(string $run, ?string $stoppedBy = null): void
+    {
+        $state = (array) Cache::get($this->stateKey($run), []);
+        $pid = (int) ($state['pid'] ?? 0);
+        $command = $this->command($run);
+        // The bracket keeps the pattern from matching the shell that runs pkill itself.
+        $pattern = escapeshellarg('artisan '.substr($command, 0, -1).'['.substr($command, -1).']');
+
+        $script = ($pid > 0 ? "pkill -TERM -P {$pid}; kill -TERM {$pid}; " : '')."pkill -TERM -f {$pattern}; true";
+
+        try {
+            Process::timeout(20)->run($script);
+        } catch (Throwable $e) {
+            throw new RuntimeException(trim($e->getMessage()), 0, $e);
+        }
+
+        if ($this->status($run)['exit_code'] !== null) {
+            return; // it had already ended by itself; keep its real exit code
+        }
+
+        $path = $this->logPath($run);
+        File::ensureDirectoryExists(dirname($path));
+        File::append($path, sprintf("\nOprită%s la %s.\n%s143\n", $stoppedBy ? " de {$stoppedBy}" : '', now()->format('d.m.Y H:i'), self::SENTINEL));
     }
 
     /**
@@ -115,7 +146,7 @@ class ArtisanRunner
     }
 
     /**
-     * @return array{running: bool, stale: bool, mode: ?string, started_at: ?string, started_by: ?string, arguments: list<string>, exit_code: ?int, log: string}
+     * @return array{running: bool, stale: bool, mode: ?string, started_at: ?string, started_by: ?string, arguments: list<string>, pid: ?int, exit_code: ?int, log: string}
      */
     public function status(string $run): array
     {
@@ -133,6 +164,7 @@ class ArtisanRunner
             'started_at' => $startedAt?->toIso8601String(),
             'started_by' => $state['by'] ?? null,
             'arguments' => array_values((array) ($state['arguments'] ?? [])),
+            'pid' => isset($state['pid']) ? (int) $state['pid'] : null,
             'exit_code' => $exit,
             'log' => $this->tail($this->plain(preg_replace('/'.preg_quote(self::SENTINEL, '/').'\d+\s*$/', '', $log) ?? $log)),
         ];
