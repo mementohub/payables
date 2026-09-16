@@ -924,7 +924,7 @@ function MonthlyChart({
 
     const config = useMemo<ChartConfig>(
         () => ({
-            total: { label: 'Total', color: 'oklch(0.62 0.17 250)' },
+            total: { label: 'Total', color: '#1f4ea3' },
         }),
         [],
     );

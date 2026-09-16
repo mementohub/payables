@@ -53,22 +53,22 @@ function formatMoney(value: number, moneda: string): string {
 }
 
 const STATE_COLORS: Record<PaymentState['state'], string> = {
-    paid: 'oklch(0.62 0.17 150)',
-    partial: 'oklch(0.80 0.17 85)',
-    unpaid: 'oklch(0.68 0.03 250)',
-    overdue: 'oklch(0.58 0.22 27)',
+    paid: '#1e7d3b',
+    partial: '#d98a00',
+    unpaid: '#74809a',
+    overdue: '#c8102e',
 };
 
 const AGING_COLORS: Record<string, string> = {
-    '0-30': 'oklch(0.82 0.16 95)',
-    '31-60': 'oklch(0.75 0.17 65)',
-    '61-90': 'oklch(0.68 0.19 40)',
-    '90+': 'oklch(0.58 0.22 27)',
+    '0-30': '#e0b13a',
+    '31-60': '#d98a00',
+    '61-90': '#ff4200',
+    '90+': '#c8102e',
 };
 
 const CASHFLOW_COLORS = {
-    incoming: 'oklch(0.62 0.17 150)',
-    outgoing: 'oklch(0.58 0.22 27)',
+    incoming: '#1e7d3b',
+    outgoing: '#c8102e',
 };
 
 export default function Dashboard({

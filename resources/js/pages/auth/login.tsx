@@ -10,7 +10,7 @@ import { redirect as microsoftRedirect } from '@/routes/auth/microsoft';
 
 export default function Login({ status }: { status?: string }) {
     return (
-        <AuthLayout title="Bun venit" description="Autentifică-te în Payables">
+        <AuthLayout title="Bun venit" description="Autentifică-te în Incasari">
             <Head title="Autentificare" />
 
             {status && (
