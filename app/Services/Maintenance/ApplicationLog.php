@@ -24,6 +24,17 @@ class ApplicationLog
 
     public function __construct(private ?string $directory = null) {}
 
+    /**
+     * The deployment this code runs from: a release directory on a managed
+     * host, otherwise the project directory. Every logged exception carries
+     * it, so an entry written by an older release is obvious at a glance
+     * instead of being read as news.
+     */
+    public static function release(): string
+    {
+        return basename(base_path());
+    }
+
     public function directory(): string
     {
         return $this->directory ?? storage_path('logs');

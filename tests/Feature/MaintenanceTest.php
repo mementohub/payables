@@ -262,3 +262,15 @@ test('ini sizes are read the way PHP writes them', function () {
         ->and($limit->bytes('-1'))->toBe(-1)
         ->and($limit->bytes(''))->toBe(0);
 });
+
+test('the page says which deployment the code runs from', function () {
+    $response = $this->actingAs($this->user)->get('/maintenance');
+
+    $response->assertOk();
+
+    // A managed host serves each deploy from its own directory, so the name of
+    // the one in use tells a log entry written before the last deploy apart
+    // from one written after it.
+    expect(ApplicationLog::release())->toBe(basename(base_path()))
+        ->and($response->viewData('page')['props']['release'])->toBe(ApplicationLog::release());
+});

@@ -3,6 +3,7 @@
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\KickErpSync;
+use App\Services\Maintenance\ApplicationLog;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -42,6 +43,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     : trim((string) request()?->method().' '.(string) request()?->fullUrl()),
                 'memory_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
                 'memory_limit' => ini_get('memory_limit'),
+                'release' => ApplicationLog::release(),
             ];
         });
     })->create();

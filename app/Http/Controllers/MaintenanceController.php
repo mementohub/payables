@@ -47,6 +47,7 @@ class MaintenanceController extends Controller
                 'from' => (string) config('sync.history_from', '2016-01-01'),
             ],
             'sync' => Cache::get('erp:sync:last_run'),
+            'release' => ApplicationLog::release(),
             'appLog' => Inertia::defer(fn () => $log->tail()),
             'companies' => Company::query()->orderBy('name')->get()->map(fn (Company $company) => [
                 'id' => $company->id,

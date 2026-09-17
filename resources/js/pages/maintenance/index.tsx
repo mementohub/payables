@@ -46,6 +46,8 @@ type Props = {
         timezone: string;
     };
     history: { from: string };
+    /** The deployment the code runs from, so a stale log entry is obvious. */
+    release: string;
     sync: { at: string; ok: boolean; summary: string } | null;
     companies: {
         id: number;
@@ -187,6 +189,7 @@ export default function MaintenanceIndex({
     sync,
     companies,
     appLog,
+    release,
 }: Props) {
     const polling = upgrade.running || syncRun.running;
 
@@ -492,7 +495,7 @@ export default function MaintenanceIndex({
                     </CardContent>
                 </Card>
 
-                <ApplicationLogCard log={appLog} />
+                <ApplicationLogCard log={appLog} release={release} />
             </div>
         </>
     );
@@ -502,7 +505,13 @@ export default function MaintenanceIndex({
  * The end of the application log. When a page answers with a gateway error
  * and nobody can open a shell on the server, this is where the reason is.
  */
-function ApplicationLogCard({ log }: { log?: Props['appLog'] }) {
+function ApplicationLogCard({
+    log,
+    release,
+}: {
+    log?: Props['appLog'];
+    release: string;
+}) {
     const [open, setOpen] = useState<number | null>(null);
 
     return (
@@ -515,6 +524,10 @@ function ApplicationLogCard({ log }: { log?: Props['appLog'] }) {
                         ? `, din ${log.path} (${(log.size / 1048576).toFixed(1)} MB, scris ${dateTime(log.written_at)})`
                         : ''}
                     . Cele mai recente primele; apasă o linie ca să vezi tot.
+                    Fiecare eroare spune din ce versiune a fost scrisă; acum
+                    rulează <code className="font-mono">{release}</code>, deci o
+                    înregistrare cu altă versiune este dinaintea ultimei
+                    publicări.
                 </CardDescription>
             </CardHeader>
             <CardContent>
