@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Services\Maintenance\ApplicationLog;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Maintenance\AutoSync;
+use App\Services\Maintenance\RequestProbe;
 use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,6 +50,7 @@ class MaintenanceController extends Controller
             'sync' => Cache::get('erp:sync:last_run'),
             'release' => ApplicationLog::release(),
             'appLog' => Inertia::defer(fn () => $log->tail()),
+            'requests' => Inertia::defer(fn () => app(RequestProbe::class)->tail()),
             'companies' => Company::query()->orderBy('name')->get()->map(fn (Company $company) => [
                 'id' => $company->id,
                 'name' => $company->name,

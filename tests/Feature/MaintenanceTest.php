@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Services\Maintenance\ApplicationLog;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Maintenance\MemoryLimit;
+use App\Services\Maintenance\RequestProbe;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -273,4 +274,34 @@ test('the page says which deployment the code runs from', function () {
     // from one written after it.
     expect(ApplicationLog::release())->toBe(basename(base_path()))
         ->and($response->viewData('page')['props']['release'])->toBe(ApplicationLog::release());
+});
+
+test('a request that never came back is the one still showing its opening line', function () {
+    $probe = new RequestProbe($this->dir);
+
+    $probe->started('aaa111', 'GET', '/dashboard');
+    $probe->finished('aaa111', 'GET', '/dashboard', 200, 0.042);
+    $probe->started('bbb222', 'GET', '/reports/cash-flow');
+
+    $entries = $probe->tail()['entries'];
+
+    // The served request keeps one row, the one that answered; the request
+    // whose worker went away keeps the row nobody closed.
+    expect($entries)->toHaveCount(2)
+        ->and($entries[0]['unfinished'])->toBeTrue()
+        ->and($entries[0]['line'])->toContain('/reports/cash-flow')
+        ->and($entries[1]['unfinished'])->toBeFalse()
+        ->and($entries[1]['line'])->toContain('200');
+});
+
+test('a page view leaves both of its breadcrumbs behind', function () {
+    $this->app->instance(RequestProbe::class, new RequestProbe($this->dir));
+
+    $this->actingAs($this->user)->get('/maintenance')->assertOk();
+
+    $entries = (new RequestProbe($this->dir))->tail()['entries'];
+
+    expect($entries)->not->toBeEmpty()
+        ->and(collect($entries)->pluck('unfinished'))->each->toBeFalse()
+        ->and($entries[0]['line'])->toContain('/maintenance');
 });

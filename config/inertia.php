@@ -15,8 +15,13 @@ return [
     |
     */
 
+    /*
+    | Off unless it is asked for: the deploy builds the client bundle only
+    | (`npm run build`, not `build:ssr`), and with nothing listening on the
+    | port below every render pays for a request that can only fail.
+    */
     'ssr' => [
-        'enabled' => true,
+        'enabled' => (bool) env('INERTIA_SSR_ENABLED', false),
         'url' => 'http://127.0.0.1:13714',
         // 'bundle' => base_path('bootstrap/ssr/ssr.mjs'),
 

@@ -56,6 +56,15 @@ type Props = {
         last_synced_at: string | null;
         history_until: string | null;
     }[];
+    /** Deferred: undefined until Inertia has loaded the breadcrumbs. */
+    requests?: {
+        entries: {
+            at: string | null;
+            id: string;
+            line: string;
+            unfinished: boolean;
+        }[];
+    };
     /** Deferred: undefined until Inertia has loaded the log. */
     appLog?: {
         path: string | null;
@@ -189,6 +198,7 @@ export default function MaintenanceIndex({
     sync,
     companies,
     appLog,
+    requests,
     release,
 }: Props) {
     const polling = upgrade.running || syncRun.running;
@@ -496,6 +506,8 @@ export default function MaintenanceIndex({
                 </Card>
 
                 <ApplicationLogCard log={appLog} release={release} />
+
+                <RequestTraceCard requests={requests} />
             </div>
         </>
     );
@@ -600,3 +612,70 @@ MaintenanceIndex.layout = (page: React.ReactNode) => (
         {page}
     </AppLayout>
 );
+
+/**
+ * A line before and after every page request. A request whose answer never
+ * came back is the one still showing its opening line: PHP did not give up,
+ * something outside it took the process away, and that is the difference a
+ * gateway error alone never tells you.
+ */
+function RequestTraceCard({ requests }: { requests?: Props['requests'] }) {
+    const unfinished =
+        requests?.entries.filter((e) => e.unfinished).length ?? 0;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Ultimele cereri</CardTitle>
+                <CardDescription>
+                    Fiecare cerere lasă o urmă înainte și după ce e servită.
+                    {unfinished > 0
+                        ? ` ${unfinished} ${unfinished === 1 ? 'cerere a rămas' : 'cereri au rămas'} fără răspuns: procesul a fost oprit din afara aplicației, nu de PHP.`
+                        : ' Toate cererile de mai jos au primit răspuns.'}
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {requests === undefined ? (
+                    <div className="space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="h-7 animate-pulse rounded bg-muted"
+                            />
+                        ))}
+                    </div>
+                ) : requests.entries.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                        Nicio cerere înregistrată încă.
+                    </p>
+                ) : (
+                    <div className="divide-y divide-sidebar-border/70 rounded-xl border border-sidebar-border/70 dark:divide-sidebar-border dark:border-sidebar-border">
+                        {requests.entries.map((entry) => (
+                            <div
+                                key={entry.id + (entry.unfinished ? '>' : '<')}
+                                className={cn(
+                                    'flex items-baseline gap-3 px-3 py-1.5 text-sm',
+                                    entry.unfinished &&
+                                        'bg-destructive/5 text-destructive',
+                                )}
+                            >
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                    {dateTime(entry.at)}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                                    {entry.unfinished ? '… ' : ''}
+                                    {entry.line}
+                                </span>
+                                {entry.unfinished && (
+                                    <span className="shrink-0 text-xs font-semibold uppercase">
+                                        fără răspuns
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
