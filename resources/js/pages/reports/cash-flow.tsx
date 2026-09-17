@@ -31,7 +31,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
-import type { CashFlowPageProps } from '@/types/cash-flow';
+import type { CashFlowPageProps, CharterSummary } from '@/types/cash-flow';
 
 const STATUS_LABEL: Record<string, string> = {
     ok: 'complet',
@@ -397,12 +397,12 @@ export default function CashFlowReport({
                                     <Kpi
                                         label="Plăți din rezervări și contracte"
                                         value={`${fmtCompact(payload.kpis.payables_existing)} RON`}
-                                        hint={`facturi furnizor deschise OMC: ${fmtCompact(payload.kpis.suppliers_open)} RON`}
+                                        hint={`facturi furnizor deschise OMC: ${fmtCompact(payload.kpis.suppliers_open)} RON; încasări charter: ${fmtCompact(payload.kpis.charter_incoming ?? 0)} RON`}
                                     />
                                     <Kpi
                                         label="Scenariu vânzări noi"
                                         value={`${fmtRon(payload.kpis.scenario_bookings)} dosare`}
-                                        hint={`încasări ${fmtCompact(payload.kpis.scenario_receipts ?? 0)} RON pe segment (B10.1–B10.7); anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
+                                        hint={`încasări ${fmtCompact(payload.kpis.scenario_receipts ?? 0)} RON pe segment (B11.1–B11.7); anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
                                     />
                                 </div>
 
@@ -571,7 +571,7 @@ export default function CashFlowReport({
                                                 dosarele create în aceleași
                                                 săptămâni ale anului anterior,
                                                 decalat 52 de săptămâni × factor
-                                                (liniile B10.1–B10.7).
+                                                (liniile B11.1–B11.7).
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
@@ -632,6 +632,24 @@ export default function CashFlowReport({
                                         </CardContent>
                                     </Card>
                                 </div>
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>
+                                            Charter – contracte și termeni
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Ce aduce fiecare contract în
+                                            orizontul raportului, pe termenii
+                                            lui. Contractele fără efect de cash
+                                            sunt păstrate doar ca termeni.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <CharterContractsTable
+                                            rows={payload.charter}
+                                        />
+                                    </CardContent>
+                                </Card>
                             </>
                         )}
                     </TabsContent>
@@ -744,6 +762,79 @@ function StructureTable({
                         </tr>
                     </tfoot>
                 )}
+            </table>
+        </div>
+    );
+}
+
+function CharterContractsTable({ rows }: { rows: CharterSummary[] }) {
+    if (rows.length === 0) {
+        return (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+                Niciun contract charter. Adaugă unul în tabul Charter.
+            </p>
+        );
+    }
+
+    return (
+        <div className="max-h-[420px] overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+            <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground uppercase backdrop-blur">
+                    <tr>
+                        <th className="px-3 py-2">Contract</th>
+                        <th className="px-3 py-2">Termeni</th>
+                        <th className="px-3 py-2 text-right">Rotații</th>
+                        <th className="px-3 py-2 text-right">În orizont</th>
+                        <th className="px-3 py-2 text-right">Taxe</th>
+                        <th className="px-3 py-2 text-right">Depozit</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                    {rows.map((row) => (
+                        <tr
+                            key={row.id}
+                            className={cn(!row.in_cash_flow && 'opacity-60')}
+                        >
+                            <td className="px-3 py-2">
+                                <div className="font-medium">{row.name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                    {[
+                                        row.counterparty,
+                                        row.season,
+                                        row.direction === 'in'
+                                            ? 'încasare'
+                                            : 'plată',
+                                        row.in_cash_flow
+                                            ? null
+                                            : 'fără efect de cash',
+                                    ]
+                                        .filter(Boolean)
+                                        .join(' · ')}
+                                </div>
+                            </td>
+                            <td className="max-w-[360px] px-3 py-2 text-xs text-muted-foreground">
+                                <div>{row.terms.rotation}</div>
+                                <div>{row.terms.taxes}</div>
+                                <div>depozit: {row.terms.deposit}</div>
+                                {row.terms.fx && (
+                                    <div>curs: {row.terms.fx}</div>
+                                )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                                {row.flights}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                                {fmtRon(row.in_horizon)} {row.currency}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                                {fmtRon(row.taxes)} {row.currency}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                                {fmtRon(row.deposit)} {row.currency}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
             </table>
         </div>
     );

@@ -143,14 +143,14 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and(array_slice(lineValues($snapshot, 'B8'), 0, 5))->toBe([200.0, 200.0, 200.0, 200.0, 0.0])
         ->and($snapshot->payload['kpis']['overdue_recent'])->toEqual(['RON' => 1000]);
 
-    // New sales per segment: last year's receipts of the package (RON), Sphinx (EUR × 5) and unsegmented bookings, 52 weeks later; B10 subtotals them.
+    // New sales per segment: last year's receipts of the package (RON), Sphinx (EUR × 5) and unsegmented bookings, 52 weeks later; B11 subtotals them.
     $lines = collect($snapshot->payload['lines'])->keyBy('code');
-    expect(lineValues($snapshot, 'B10.1')[0])->toBe(10000.0)
-        ->and(lineValues($snapshot, 'B10.4')[0])->toBe(2000.0)
-        ->and(lineValues($snapshot, 'B10.7')[1])->toBe(500.0)
-        ->and(array_slice(lineValues($snapshot, 'B10'), 0, 2))->toBe([12000.0, 500.0])
-        ->and($lines['B10'])->toMatchArray(['kind' => 'subtotal', 'scenario' => true, 'total' => 12500])
-        ->and($lines['B10.1'])->toMatchArray(['parent' => 'B10', 'scenario' => true, 'label' => 'Vânzări noi – Pachete charter/sejur'])
+    expect(lineValues($snapshot, 'B11.1')[0])->toBe(10000.0)
+        ->and(lineValues($snapshot, 'B11.4')[0])->toBe(2000.0)
+        ->and(lineValues($snapshot, 'B11.7')[1])->toBe(500.0)
+        ->and(array_slice(lineValues($snapshot, 'B11'), 0, 2))->toBe([12000.0, 500.0])
+        ->and($lines['B11'])->toMatchArray(['kind' => 'subtotal', 'scenario' => true, 'total' => 12500])
+        ->and($lines['B11.1'])->toMatchArray(['parent' => 'B11', 'scenario' => true, 'label' => 'Vânzări noi – Pachete charter/sejur'])
         ->and(lineValues($snapshot, 'B')[1])->toBe(1700.0)
         ->and($snapshot->payload['kpis']['scenario_receipts'])->toEqual(12500)
         ->and($snapshot->payload['structure']['new_sales_receipts'])->toContainEqual(['segment' => 'pachete', 'label' => 'Pachete charter/sejur', 'currency' => 'RON', 'amount' => 10000, 'lei' => 10000, 'receipts' => 3])
@@ -328,7 +328,7 @@ test('without saved balances in OMC the balance starts at zero and says so', fun
         ->and(collect($snapshot->sources)->firstWhere('key', 'opening'))->toMatchArray(['status' => 'skipped'])
         ->and(collect($snapshot->sources)->firstWhere('key', 'new_sales')['status'])->toBe('skipped')
         ->and(lineValues($snapshot, 'A')[0])->toBe(0.0)
-        ->and(array_sum(lineValues($snapshot, 'B10')))->toBe(0.0)
+        ->and(array_sum(lineValues($snapshot, 'B11')))->toBe(0.0)
         ->and(lineValues($snapshot, 'E5')[0])->toBe('DEFICIT');
 });
 
@@ -342,4 +342,61 @@ test('old snapshots are pruned', function () {
 
     expect(CashFlowSnapshot::query()->count())->toBe(2)
         ->and(CashFlowSnapshot::latest()->built_by)->toBeNull();
+});
+
+test('every charter contract is settled on its own terms', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => [
+        'fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5],
+        'scenario' => ['enabled' => false, 'charter_base_season' => null, 'charter_target_season' => null, 'charter_factor' => 0],
+    ]]);
+    mockOmc();
+    mockEtrip();
+
+    // Signed, taxes reconciled monthly, and lei at the BNR rate plus the 2 % the contract adds.
+    $signed = CharterContract::factory()->create([
+        'season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10,
+        'taxes_rule' => CharterContract::TAXES_MONTHLY, 'taxes_month_day' => 5, 'fx_markup_pct' => 2,
+    ]);
+    CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100]);
+
+    // The same season, but the taxes fall three days after the flight.
+    $afterFlight = CharterContract::factory()->create([
+        'name' => 'CTR 281', 'season' => 'W25-26', 'status' => 'signed', 'days_before_flight' => 10,
+        'taxes_rule' => CharterContract::TAXES_AFTER, 'taxes_days' => 3, 'fx_markup_pct' => 0,
+    ]);
+    CharterFlight::factory()->for($afterFlight, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 500, 'taxes' => 200]);
+
+    // CHR sells the seats: rotation and taxes come in together, 10 days before the flight.
+    $incoming = CharterContract::factory()->create([
+        'name' => 'CTR 1585', 'season' => 'S26', 'status' => 'signed', 'direction' => CharterContract::DIRECTION_IN,
+        'days_before_flight' => 10, 'taxes_rule' => CharterContract::TAXES_WITH_ROTATION, 'fx_markup_pct' => 0,
+    ]);
+    CharterFlight::factory()->for($incoming, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 2000, 'taxes' => 60]);
+
+    // Memento Air's own contract with a carrier: terms only, no cash.
+    $reference = CharterContract::factory()->create([
+        'name' => 'Anima Wings C7', 'season' => 'S26', 'status' => 'signed', 'in_cash_flow' => false, 'days_before_flight' => 7,
+    ]);
+    CharterFlight::factory()->for($reference, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 9999, 'taxes' => 9999]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+
+    // Weeks from 14.09.2026: 05.10 is week 3, 12–18.10 week 4, 02–08.11 week 7.
+    expect(lineValues($snapshot, 'C6')[3])->toBe(1000 * 5 * 1.02 + 500 * 5)
+        ->and(lineValues($snapshot, 'C9')[7])->toBe(100 * 5 * 1.02)
+        ->and(lineValues($snapshot, 'C9')[4])->toBe(200 * 5.0)
+        ->and(lineValues($snapshot, 'B10')[3])->toBe((2000 + 60) * 5.0)
+        ->and(array_sum(lineValues($snapshot, 'C7')))->toBe(0.0)
+        ->and(array_sum(lineValues($snapshot, 'C8')))->toBe(0.0);
+
+    // The reference contract stays out of every line but keeps its terms on the summary.
+    $contracts = collect($snapshot->payload['charter'])->keyBy('name');
+    expect(array_sum(lineValues($snapshot, 'C6')) + array_sum(lineValues($snapshot, 'C9')))
+        ->toBe(1000 * 5 * 1.02 + 500 * 5 + 100 * 5 * 1.02 + 200 * 5.0)
+        ->and($contracts['Anima Wings C7'])->toMatchArray(['in_cash_flow' => false, 'in_horizon' => 0.0])
+        ->and($contracts['Anima Wings C7']['terms']['rotation'])->toBe('OP cu 7 zile înainte de fiecare rotație')
+        ->and($contracts['CTR 1585']['terms']['taxes'])->toBe('odată cu rotația')
+        ->and($contracts['CTR 281']['terms']['taxes'])->toBe('la 3 zile după zbor')
+        ->and($contracts[$signed->name]['terms']['fx'])->toBe('EUR sau RON la BNR + 2%')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['message'])->toContain('3 contracte în flux (din 4)');
 });

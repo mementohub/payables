@@ -32,6 +32,34 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Contract, Flight } from '@/types/cash-flow';
 import { fmtRon } from './report-math';
 
+/** How the contract settles a rotation, in one line. */
+function rotationTerm(contract: Contract): string {
+    const days = contract.days_before_flight;
+
+    switch (contract.payment_basis) {
+        case 'week_start':
+            return `rotația: cu ${days} zile înainte de luni`;
+        case 'signing':
+            return 'rotația: integral la semnare';
+        default:
+            return `rotația: OP cu ${days} zile înainte de zbor`;
+    }
+}
+
+/** How the contract settles the airport taxes, in one line. */
+function taxTerm(contract: Contract): string {
+    switch (contract.taxes_rule) {
+        case 'with_rotation':
+            return 'taxe: odată cu rotația';
+        case 'days_after_flight':
+            return `taxe: la ${contract.taxes_days ?? 3} zile după zbor`;
+        case 'days_before_flight':
+            return `taxe: în avans, cu ${contract.taxes_days ?? 14} zile înainte`;
+        default:
+            return `taxe: lunar, ziua ${contract.taxes_month_day} a lunii următoare`;
+    }
+}
+
 function ContractFields({
     contract,
     errors,
@@ -43,6 +71,7 @@ function ContractFields({
         name: keyof Contract,
         label: string,
         props: React.ComponentProps<typeof Input> = {},
+        hint?: string,
     ) => (
         <div className="grid gap-1.5">
             <Label htmlFor={`c-${name}`}>{label}</Label>
@@ -56,54 +85,157 @@ function ContractFields({
                 }
                 {...props}
             />
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
             <InputError message={errors[name]} />
         </div>
+    );
+
+    const select = (
+        name: keyof Contract,
+        label: string,
+        options: [string, string][],
+        fallback: string,
+        hint?: string,
+    ) => (
+        <div className="grid gap-1.5">
+            <Label htmlFor={`c-${name}`}>{label}</Label>
+            <NativeSelect
+                id={`c-${name}`}
+                name={name}
+                defaultValue={
+                    contract?.[name] === null || contract?.[name] === undefined
+                        ? fallback
+                        : String(contract[name])
+                }
+            >
+                {options.map(([value, text]) => (
+                    <NativeSelectOption key={value} value={value}>
+                        {text}
+                    </NativeSelectOption>
+                ))}
+            </NativeSelect>
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+            <InputError message={errors[name]} />
+        </div>
+    );
+
+    const section = (title: string) => (
+        <p className="mt-2 border-t border-sidebar-border/70 pt-3 text-xs font-semibold text-muted-foreground uppercase sm:col-span-2 dark:border-sidebar-border">
+            {title}
+        </p>
     );
 
     return (
         <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
                 {field('name', 'Contract', {
-                    placeholder: 'CTR 317/11.11.2025 Memento Air',
+                    placeholder: 'CTR 317 Memento Air – S26',
                     required: true,
                 })}
             </div>
+            {field('counterparty', 'Contraparte', {
+                placeholder: 'Memento Air S.R.L.',
+            })}
+            {field('buyer', 'Cumpărător', {
+                placeholder: "Christian'76 Tour",
+            })}
+            {field('contract_no', 'Număr contract', {
+                placeholder: '317/11.11.2025',
+            })}
+            {field('signed_date', 'Data semnării', { type: 'date' })}
             {field('season', 'Sezon', { placeholder: 'S26', required: true })}
-            <div className="grid gap-1.5">
-                <Label htmlFor="c-status">Status</Label>
-                <NativeSelect
-                    id="c-status"
-                    name="status"
-                    defaultValue={contract?.status ?? 'signed'}
-                >
-                    <NativeSelectOption value="signed">
-                        semnat – rotațiile intră la C6
-                    </NativeSelectOption>
-                    <NativeSelectOption value="draft">
-                        draft – rotațiile intră la C7 (net de depozit)
-                    </NativeSelectOption>
-                </NativeSelect>
-                <InputError message={errors.status} />
-            </div>
             {field('operator', 'Operator', { placeholder: 'Memento Air' })}
+            {field('period_from', 'Primul zbor', { type: 'date' })}
+            {field('period_to', 'Ultimul zbor', { type: 'date' })}
+
+            {section('Încadrare în flux')}
+            {select(
+                'direction',
+                'Direcție',
+                [
+                    ['out', 'plată CHR – rotațiile intră la C6/C7'],
+                    ['in', 'încasare CHR – rotațiile intră la B10'],
+                ],
+                'out',
+            )}
+            {select(
+                'in_cash_flow',
+                'Intră în raport',
+                [
+                    ['1', 'da – generează plăți/încasări'],
+                    ['0', 'nu – doar termenii, fără efect de cash'],
+                ],
+                '1',
+                'Contractele Memento Air cu companiile aeriene stau pe „nu” până se confirmă cine plătește efectiv carrierii.',
+            )}
+            {select(
+                'status',
+                'Status',
+                [
+                    ['signed', 'semnat – rotațiile intră la C6'],
+                    ['draft', 'draft – rotațiile intră la C7, net de depozit'],
+                ],
+                'signed',
+            )}
             {field('currency', 'Monedă', {
                 defaultValue: contract?.currency ?? 'EUR',
                 maxLength: 3,
             })}
-            {field(
-                'days_before_flight',
-                'Plata rotației: zile înainte de zbor',
-                {
-                    type: 'number',
-                    defaultValue: String(contract?.days_before_flight ?? 10),
-                    required: true,
-                },
+
+            {section('Plata rotației')}
+            {select(
+                'payment_basis',
+                'Regula de plată',
+                [
+                    ['flight', 'cu N zile înainte de fiecare zbor'],
+                    [
+                        'week_start',
+                        'cu N zile înainte de luni, pe săptămâna de operare',
+                    ],
+                    ['signing', 'integral la semnare'],
+                ],
+                'flight',
             )}
-            {field('contract_value', 'Valoare contract (monedă)', {
+            {field('days_before_flight', 'Zile (N)', {
                 type: 'number',
-                step: '0.01',
+                defaultValue: String(contract?.days_before_flight ?? 10),
+                required: true,
             })}
-            {field('deposit_percent', 'Depozit (% din contract)', {
+
+            {section('Taxe de aeroport')}
+            {select(
+                'taxes_rule',
+                'Regula taxelor',
+                [
+                    [
+                        'monthly_first_week',
+                        'reconciliere lunară, prima săptămână a lunii următoare (C9)',
+                    ],
+                    [
+                        'with_rotation',
+                        'odată cu rotația (intră în C6/C7 sau B10)',
+                    ],
+                    ['days_after_flight', 'la N zile după zbor (C9)'],
+                    ['days_before_flight', 'în avans, cu N zile înainte (C9)'],
+                ],
+                'monthly_first_week',
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+                {field('taxes_month_day', 'Ziua lunii (reconciliere)', {
+                    type: 'number',
+                    min: 1,
+                    max: 28,
+                    defaultValue: String(contract?.taxes_month_day ?? 5),
+                    required: true,
+                })}
+                {field('taxes_days', 'Zile (după/înainte)', {
+                    type: 'number',
+                    min: 0,
+                })}
+            </div>
+
+            {section('Depozit')}
+            {field('deposit_percent', 'Depozit (% din valoare)', {
                 type: 'number',
                 step: '0.01',
             })}
@@ -111,33 +243,105 @@ function ContractFields({
                 type: 'number',
                 step: '0.01',
             })}
-            {field('deposit_due_date', 'Data plății depozitului', {
+            {field('deposit_due_date', 'Scadența depozitului', {
                 type: 'date',
             })}
-            <div className="grid gap-1.5">
-                <Label htmlFor="c-deposit_paid">Depozit</Label>
-                <NativeSelect
-                    id="c-deposit_paid"
-                    name="deposit_paid"
-                    defaultValue={contract?.deposit_paid ? '1' : '0'}
-                >
-                    <NativeSelectOption value="0">
-                        neplătit – intră la C8 la data de mai sus
-                    </NativeSelectOption>
-                    <NativeSelectOption value="1">
-                        plătit deja
-                    </NativeSelectOption>
-                </NativeSelect>
-                <InputError message={errors.deposit_paid} />
+            {select(
+                'deposit_paid',
+                'Stare depozit',
+                [
+                    ['0', 'neachitat – intră la C8 la scadență'],
+                    ['1', 'achitat deja'],
+                ],
+                '0',
+            )}
+            <div className="sm:col-span-2">
+                {field('deposit_settlement', 'Regularizare', {
+                    placeholder:
+                        'regularizare la plata ultimei rotații (art. 3.5)',
+                    maxLength: 60,
+                })}
+            </div>
+
+            {section('Valori și clauze')}
+            {field('contract_value', 'Valoare netă (monedă)', {
+                type: 'number',
+                step: '0.01',
+            })}
+            {field('contract_value_with_taxes', 'Valoare cu taxe pax', {
+                type: 'number',
+                step: '0.01',
+            })}
+            {field(
+                'fx_markup_pct',
+                'Adaos curs la plata în RON (%)',
+                {
+                    type: 'number',
+                    step: '0.01',
+                    defaultValue: String(contract?.fx_markup_pct ?? 0),
+                    required: true,
+                },
+                'Contractele Memento Air: RON la cursul BNR din ziua plății + 2%.',
+            )}
+            {field('late_penalty_pct_per_day', 'Penalitate întârziere (%/zi)', {
+                type: 'number',
+                step: '0.001',
+            })}
+            <div className="sm:col-span-2">
+                {field('invoicing', 'Facturare', {
+                    placeholder:
+                        'factură per rotație; taxele pe reconcilierea lunară',
+                    maxLength: 255,
+                })}
             </div>
             <div className="grid gap-1.5 sm:col-span-2">
-                <Label htmlFor="c-notes">Note (termeni de plată, anexe)</Label>
+                <Label htmlFor="c-fuel_rule">Combustibil / curs</Label>
+                <Textarea
+                    id="c-fuel_rule"
+                    name="fuel_rule"
+                    rows={2}
+                    defaultValue={contract?.fuel_rule ?? ''}
+                    placeholder="Platts FOB MED + SAF 70 EUR/t, bază 750 USD/t; recalcul pe 15 și 30…"
+                />
+                <InputError message={errors.fuel_rule} />
+            </div>
+            <div className="grid gap-1.5 sm:col-span-2">
+                <Label htmlFor="c-cancellation_terms">Anulare</Label>
+                <Textarea
+                    id="c-cancellation_terms"
+                    name="cancellation_terms"
+                    rows={2}
+                    defaultValue={contract?.cancellation_terms ?? ''}
+                    placeholder="100% din valoarea lanțului după semnare…"
+                />
+                <InputError message={errors.cancellation_terms} />
+            </div>
+
+            {section('Sursă')}
+            <div className="sm:col-span-2">
+                {field('source', 'Document sursă', {
+                    placeholder: 'CTR 317/11.11.2025 + anexa AA30/ADD7',
+                    maxLength: 255,
+                })}
+            </div>
+            {select(
+                'confidence',
+                'Încredere',
+                [
+                    ['R', 'R – clauză citită clar'],
+                    ['M', 'M – medie'],
+                    ['S', 'S – scăzută, dedusă'],
+                ],
+                'R',
+            )}
+            <div className="grid gap-1.5 sm:col-span-2">
+                <Label htmlFor="c-notes">Note</Label>
                 <Textarea
                     id="c-notes"
                     name="notes"
                     rows={3}
                     defaultValue={contract?.notes ?? ''}
-                    placeholder="art. 3.2 b: fiecare rotație prin OP cu 10 zile înainte de operare; taxe aeroport reconciliate lunar…"
+                    placeholder="ipoteze de model, lipsuri din anexe, ce rămâne de confirmat cu Financiarul…"
                 />
                 <InputError message={errors.notes} />
             </div>
@@ -168,9 +372,10 @@ function ContractDialog({
                             : 'Contract charter nou'}
                     </DialogTitle>
                     <DialogDescription>
-                        Termenii din contractul semnat cu operatorul: câte zile
-                        înainte de zbor se plătește rotația, depozitul și
-                        statusul (semnat sau draft).
+                        Termenii pe care se decontează contractul: când se
+                        plătește rotația, cum se decontează taxele de aeroport,
+                        depozitul, clauza de curs și direcția banilor. Raportul
+                        aplică exact ce se salvează aici.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
@@ -479,8 +684,11 @@ export default function CharterPanel({
                         <CardDescription>
                             Fiecare contract are propriile reguli: rotațiile
                             semnate intră la C6, cele draft la C7 net de
-                            depozit, depozitul la C8, taxele de aeroport la C9
-                            în prima săptămână a lunii următoare zborului.
+                            depozit, depozitul la C8 la scadența lui, taxele de
+                            aeroport la C9 pe regula contractului. Contractele
+                            în care CHR vinde locuri sunt încasare și intră la
+                            B10; cele fără efect de cash sunt păstrate doar ca
+                            termeni.
                         </CardDescription>
                     </div>
                     <ContractDialog
@@ -507,6 +715,7 @@ export default function CharterPanel({
                                         <th className="px-3 py-2">Contract</th>
                                         <th className="px-3 py-2">Sezon</th>
                                         <th className="px-3 py-2">Status</th>
+                                        <th className="px-3 py-2">Termeni</th>
                                         <th className="px-3 py-2 text-right">
                                             Plată
                                         </th>
@@ -547,11 +756,15 @@ export default function CharterPanel({
                                                 >
                                                     {contract.name}
                                                 </button>
-                                                {contract.operator && (
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {contract.operator}
-                                                    </div>
-                                                )}
+                                                <div className="text-xs text-muted-foreground">
+                                                    {[
+                                                        contract.counterparty ??
+                                                            contract.operator,
+                                                        contract.contract_no,
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(' · ')}
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2 font-mono text-xs">
                                                 {contract.season}
@@ -570,10 +783,23 @@ export default function CharterPanel({
                                                         ? 'semnat'
                                                         : 'draft'}
                                                 </Badge>
+                                                {contract.direction ===
+                                                    'in' && (
+                                                    <div className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                                                        încasare
+                                                    </div>
+                                                )}
+                                                {!contract.in_cash_flow && (
+                                                    <div className="mt-1 text-xs text-muted-foreground">
+                                                        fără efect de cash
+                                                    </div>
+                                                )}
                                             </td>
-                                            <td className="px-3 py-2 text-right whitespace-nowrap">
-                                                {contract.days_before_flight}{' '}
-                                                zile înainte
+                                            <td className="max-w-[320px] px-3 py-2 text-xs text-muted-foreground">
+                                                <div>
+                                                    {rotationTerm(contract)}
+                                                </div>
+                                                <div>{taxTerm(contract)}</div>
                                             </td>
                                             <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
                                                 {contract.deposit_percent !==

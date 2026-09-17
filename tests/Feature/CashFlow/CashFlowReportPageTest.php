@@ -130,7 +130,9 @@ test('charter contracts and flights can be managed from the page', function () {
     $this->actingAs($this->user)
         ->post('/reports/cash-flow/contracts', [
             'name' => 'CTR 317/11.11.2025', 'season' => 'S26', 'status' => 'signed', 'operator' => 'Memento Air', 'currency' => 'eur',
-            'days_before_flight' => 10, 'deposit_percent' => null, 'deposit_amount' => null, 'deposit_due_date' => null, 'deposit_paid' => false, 'contract_value' => null, 'notes' => null,
+            'counterparty' => 'Memento Air S.R.L.', 'direction' => 'out', 'in_cash_flow' => true,
+            'days_before_flight' => 10, 'payment_basis' => 'flight', 'taxes_rule' => 'monthly_first_week', 'taxes_month_day' => 5, 'fx_markup_pct' => 2,
+            'deposit_percent' => null, 'deposit_amount' => null, 'deposit_due_date' => null, 'deposit_paid' => false, 'contract_value' => null, 'notes' => null,
         ])
         ->assertRedirect();
 
@@ -153,10 +155,19 @@ test('charter contracts and flights can be managed from the page', function () {
         ->and((float) $flight->fresh()->net_value)->toBe(30000.0);
 
     $this->actingAs($this->user)
-        ->put('/reports/cash-flow/contracts/'.$contract->id, ['name' => 'W26/27', 'season' => 'W26-27', 'status' => 'draft', 'operator' => null, 'currency' => 'EUR', 'days_before_flight' => 10, 'deposit_percent' => 50, 'deposit_amount' => null, 'deposit_due_date' => '2026-10-05', 'deposit_paid' => false, 'contract_value' => 7257134, 'notes' => 'draft'])
+        ->put('/reports/cash-flow/contracts/'.$contract->id, [
+            'name' => 'W26/27', 'season' => 'W26-27', 'status' => 'draft', 'operator' => null, 'currency' => 'EUR',
+            'direction' => 'out', 'in_cash_flow' => true, 'days_before_flight' => 10, 'payment_basis' => 'flight',
+            'taxes_rule' => 'days_after_flight', 'taxes_days' => 3, 'taxes_month_day' => 5, 'fx_markup_pct' => 2,
+            'deposit_percent' => 50, 'deposit_amount' => null, 'deposit_due_date' => '2026-10-05', 'deposit_paid' => false,
+            'contract_value' => 7257134, 'notes' => 'draft',
+        ])
         ->assertRedirect();
 
-    expect($contract->fresh()->status)->toBe('draft');
+    // Editing the terms moves the rotations the contract already has.
+    expect($contract->fresh()->status)->toBe('draft')
+        ->and($contract->fresh()->taxes_rule)->toBe('days_after_flight')
+        ->and($flight->fresh()->taxesPaymentDate()->toDateString())->toBe('2026-10-18');
 
     $this->actingAs($this->user)->delete('/reports/cash-flow/flights/'.$flight->id)->assertRedirect();
     $this->actingAs($this->user)->delete('/reports/cash-flow/contracts/'.$contract->id)->assertRedirect();
@@ -247,8 +258,10 @@ test('a contract annex is expanded into weekly rotations paid per the contract t
         ->and($flights->where('operator', 'ANIMA WINGS')->pluck('flight_date')->map->toDateString()->all())->toBe(['2026-10-06', '2026-10-13', '2026-10-20', '2026-10-27'])
         ->and((float) $flights->where('operator', 'ANIMA WINGS')->first()->net_value)->toBe(29084.4)
         ->and((float) $flights->where('operator', 'ANIMA WINGS')->first()->taxes)->toBe(round(180 * 40.56, 2))
-        ->and($flights->where('operator', 'ANIMA WINGS')->first()->pay_date->toDateString())->toBe('2026-09-26')
-        ->and($flights->where('operator', 'ANIMA WINGS')->first()->taxes_pay_date->toDateString())->toBe('2026-11-05')
+        // No dates on the rows: the rotation follows the contract, 10 days before the flight, taxes on the 5th of the next month.
+        ->and($flights->where('operator', 'ANIMA WINGS')->first()->pay_date)->toBeNull()
+        ->and($flights->where('operator', 'ANIMA WINGS')->first()->paymentDate()->toDateString())->toBe('2026-09-26')
+        ->and($flights->where('operator', 'ANIMA WINGS')->first()->taxesPaymentDate()->toDateString())->toBe('2026-11-05')
         ->and($flights->where('operator', 'CORENDON')->count())->toBe(3)
         // 2 rotations announced over 3 Mondays: the value per flight is scaled by 2/3 so the total matches the annex.
         ->and(round((float) $flights->where('operator', 'CORENDON')->sum('net_value'), 2))->toBe(round(2 * 149 * 185.28, 2));

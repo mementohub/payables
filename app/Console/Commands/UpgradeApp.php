@@ -22,15 +22,15 @@ class UpgradeApp extends Command
         try {
             if (($loaded = $charter->load()) !== null) {
                 $this->components->info(sprintf(
-                    'Contracte charter: programul din pachetul de predare (%s) a fost încărcat – %s, %d rotații. Raportul WCFR îl folosește de la următoarea reconstrucție.',
+                    'Contracte charter: %d contracte și %d rotații încărcate din %s. Raportul WCFR le folosește de la următoarea reconstrucție.',
+                    $loaded['contracts'],
+                    $loaded['flights'],
                     CharterScheduleLoader::VERSION,
-                    implode(', ', $loaded['contracts']),
-                    $loaded['imported'],
                 ));
             }
         } catch (Throwable $e) {
             report($e);
-            $this->components->warn('Contracte charter: programul din pachetul de predare nu a putut fi încărcat ('.$e->getMessage().'); se poate importa din Rapoarte → WCFR 52 Weeks → Charter.');
+            $this->components->warn('Contracte charter: pachetul nu a putut fi încărcat ('.$e->getMessage().'); contractele se pot adăuga din Rapoarte → WCFR 52 Weeks → Charter.');
         }
 
         if (! $this->option('skip-sync')) {

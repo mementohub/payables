@@ -57,7 +57,7 @@ class CharterFlightImporter
     /**
      * @return array{imported: int, skipped: int, contracts: list<string>, replaced: int}
      */
-    public function import(string $path, string $originalName, CharterContract $contract, bool $replace = true, ?string $sheet = null): array
+    public function import(string $path, string $originalName, CharterContract $contract, bool $replace = true, ?string $sheet = null, bool $useContractRules = false): array
     {
         $rows = Str::endsWith(Str::lower($originalName), '.csv') ? $this->csv($path) : XlsxReader::rows($path, $sheet);
         [$annexColumns, $annexStart] = $this->columns($rows, self::ANNEX_HEADERS, ['first', 'last', 'seats', 'price']);
@@ -98,8 +98,8 @@ class CharterFlightImporter
                 'price_per_seat' => isset($columns['price_per_seat']) ? $this->number($row[$columns['price_per_seat']] ?? null) : null,
                 'net_value' => $net,
                 'taxes' => isset($columns['taxes']) ? ($this->number($row[$columns['taxes']] ?? null) ?? 0.0) : 0.0,
-                'pay_date' => isset($columns['pay_date']) ? $this->date($row[$columns['pay_date']] ?? null) : null,
-                'taxes_pay_date' => isset($columns['taxes_pay_date']) ? $this->date($row[$columns['taxes_pay_date']] ?? null) : null,
+                'pay_date' => $useContractRules || ! isset($columns['pay_date']) ? null : $this->date($row[$columns['pay_date']] ?? null),
+                'taxes_pay_date' => $useContractRules || ! isset($columns['taxes_pay_date']) ? null : $this->date($row[$columns['taxes_pay_date']] ?? null),
             ];
         }
 
@@ -132,6 +132,13 @@ class CharterFlightImporter
                         'operator' => $flight['operator'] !== '' ? $flight['operator'] : null,
                         'currency' => $contract->currency,
                         'days_before_flight' => $contract->days_before_flight,
+                        'payment_basis' => $contract->payment_basis,
+                        'taxes_rule' => $contract->taxes_rule,
+                        'taxes_days' => $contract->taxes_days,
+                        'taxes_month_day' => $contract->taxes_month_day,
+                        'direction' => $contract->direction,
+                        'counterparty' => $contract->counterparty,
+                        'fx_markup_pct' => $contract->fx_markup_pct,
                     ]);
 
                 if ($replace && ! isset($touched[$target->id])) {
@@ -297,8 +304,9 @@ class CharterFlightImporter
                     'price_per_seat' => $price,
                     'net_value' => round($seats * $price * $scale, 2),
                     'taxes' => round($seats * $taxesPerSeat * $scale, 2),
-                    'pay_date' => $date->subDays((int) $contract->days_before_flight)->toDateString(),
-                    'taxes_pay_date' => $date->addMonthNoOverflow()->startOfMonth()->addDays(4)->toDateString(),
+                    // Left to the contract, so editing its terms moves these rotations too.
+                    'pay_date' => null,
+                    'taxes_pay_date' => null,
                 ];
             }
         }

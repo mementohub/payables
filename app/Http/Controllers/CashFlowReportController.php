@@ -50,22 +50,44 @@ class CashFlowReportController extends Controller
                 ->withSum('flights', 'taxes')
                 ->withMin('flights', 'flight_date')
                 ->withMax('flights', 'flight_date')
+                ->orderByDesc('in_cash_flow')
                 ->orderBy('season')
                 ->orderBy('name')
                 ->get()
                 ->map(fn (CharterContract $contract) => [
                     'id' => $contract->id,
                     'name' => $contract->name,
+                    'counterparty' => $contract->counterparty,
+                    'buyer' => $contract->buyer,
+                    'direction' => $contract->direction,
+                    'in_cash_flow' => $contract->in_cash_flow,
+                    'contract_no' => $contract->contract_no,
+                    'signed_date' => $contract->signed_date?->toDateString(),
+                    'period_from' => $contract->period_from?->toDateString(),
+                    'period_to' => $contract->period_to?->toDateString(),
                     'season' => $contract->season,
                     'status' => $contract->status,
                     'operator' => $contract->operator,
                     'currency' => $contract->currency,
                     'days_before_flight' => $contract->days_before_flight,
+                    'payment_basis' => $contract->payment_basis,
+                    'taxes_rule' => $contract->taxes_rule,
+                    'taxes_days' => $contract->taxes_days,
+                    'taxes_month_day' => $contract->taxes_month_day,
                     'deposit_percent' => $contract->deposit_percent !== null ? (float) $contract->deposit_percent : null,
                     'deposit_amount' => $contract->deposit_amount !== null ? (float) $contract->deposit_amount : null,
                     'deposit_due_date' => $contract->deposit_due_date?->toDateString(),
                     'deposit_paid' => $contract->deposit_paid,
+                    'deposit_settlement' => $contract->deposit_settlement,
                     'contract_value' => $contract->contract_value !== null ? (float) $contract->contract_value : null,
+                    'contract_value_with_taxes' => $contract->contract_value_with_taxes !== null ? (float) $contract->contract_value_with_taxes : null,
+                    'invoicing' => $contract->invoicing,
+                    'fuel_rule' => $contract->fuel_rule,
+                    'fx_markup_pct' => (float) $contract->fx_markup_pct,
+                    'late_penalty_pct_per_day' => $contract->late_penalty_pct_per_day !== null ? (float) $contract->late_penalty_pct_per_day : null,
+                    'cancellation_terms' => $contract->cancellation_terms,
+                    'source' => $contract->source,
+                    'confidence' => $contract->confidence,
                     'notes' => $contract->notes,
                     'flights_count' => (int) $contract->flights_count,
                     'flights_net' => (float) ($contract->flights_sum_net_value ?? 0),

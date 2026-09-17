@@ -54,6 +54,7 @@ export type ReportKpis = {
     bookings: number;
     scenario_bookings: number;
     scenario_receipts?: number;
+    charter_incoming?: number;
 };
 
 export type OpeningRow = {
@@ -125,11 +126,28 @@ export type OpexCategory = {
     source: string;
 };
 
+export type CharterTerms = {
+    rotation: string;
+    taxes: string;
+    deposit: string;
+    settlement: string;
+    invoicing: string;
+    fuel: string;
+    fx: string;
+    penalty: string;
+    cancellation: string;
+    source: string;
+    confidence: string;
+};
+
 export type CharterSummary = {
     id: number;
     name: string;
+    counterparty: string | null;
     season: string;
     status: string;
+    direction: 'out' | 'in';
+    in_cash_flow: boolean;
     operator: string | null;
     currency: string;
     flights: number;
@@ -137,6 +155,7 @@ export type CharterSummary = {
     in_horizon: number;
     taxes: number;
     deposit: number;
+    terms: CharterTerms;
 };
 
 export type ReportPayload = {
@@ -227,19 +246,50 @@ export type Parameters = {
     opex: Record<string, number | null>;
 };
 
+export type PaymentBasis = 'flight' | 'week_start' | 'signing';
+
+export type TaxesRule =
+    | 'monthly_first_week'
+    | 'with_rotation'
+    | 'days_after_flight'
+    | 'days_before_flight';
+
 export type Contract = {
     id: number;
     name: string;
+    counterparty: string | null;
+    buyer: string | null;
+    /** out = CHR pays, in = CHR collects. */
+    direction: 'out' | 'in';
+    /** false keeps the contract's terms on file without any cash effect. */
+    in_cash_flow: boolean;
+    contract_no: string | null;
+    signed_date: string | null;
+    period_from: string | null;
+    period_to: string | null;
     season: string;
     status: 'signed' | 'draft';
     operator: string | null;
     currency: string;
     days_before_flight: number;
+    payment_basis: PaymentBasis;
+    taxes_rule: TaxesRule;
+    taxes_days: number | null;
+    taxes_month_day: number;
     deposit_percent: number | null;
     deposit_amount: number | null;
     deposit_due_date: string | null;
     deposit_paid: boolean;
+    deposit_settlement: string | null;
     contract_value: number | null;
+    contract_value_with_taxes: number | null;
+    invoicing: string | null;
+    fuel_rule: string | null;
+    fx_markup_pct: number;
+    late_penalty_pct_per_day: number | null;
+    cancellation_terms: string | null;
+    source: string | null;
+    confidence: string | null;
     notes: string | null;
     flights_count: number;
     flights_net: number;

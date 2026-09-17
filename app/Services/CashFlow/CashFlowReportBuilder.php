@@ -108,7 +108,7 @@ class CashFlowReportBuilder
             ?? ['lines' => ['hotel' => $this->grid->zeros(), 'transfer' => $this->grid->zeros(), 'insurance' => $this->grid->zeros(), 'flight' => $this->grid->zeros(), 'other' => $this->grid->zeros()], 'structure' => []];
 
         $charter = $this->source('charter', 'Contracte charter (aplicație)', fn () => $this->charter())
-            ?? ['signed' => $this->grid->zeros(), 'draft' => $this->grid->zeros(), 'deposit' => $this->grid->zeros(), 'taxes' => $this->grid->zeros(), 'estimate' => $this->grid->zeros(), 'estimate_taxes' => $this->grid->zeros(), 'contracts' => []];
+            ?? ['signed' => $this->grid->zeros(), 'draft' => $this->grid->zeros(), 'deposit' => $this->grid->zeros(), 'taxes' => $this->grid->zeros(), 'incoming' => $this->grid->zeros(), 'estimate' => $this->grid->zeros(), 'estimate_taxes' => $this->grid->zeros(), 'contracts' => []];
 
         $suppliers = $this->source('suppliers_open', 'Furnizori – facturi neachitate (OMC)', fn () => $this->openSuppliers())
             ?? ['line' => $this->grid->zeros(), 'total' => 0.0, 'overdue' => 0.0, 'mode' => 'none'];
@@ -459,68 +459,126 @@ class CashFlowReportBuilder
     ];
 
     /**
+     * The charter contracts, each settled on its own terms: rotations on the
+     * notice the contract gives, airport taxes the way that contract settles
+     * them, the deposit on its due date, and the contracts where CHR sells
+     * the seats as money coming in. Contracts marked as not counting stay
+     * out of the report and only carry their terms.
+     *
      * @return array<string, mixed>
      */
     private function charter(): array
     {
-        $rotations = [CharterContract::STATUS_SIGNED => $this->grid->zeros(), CharterContract::STATUS_DRAFT => $this->grid->zeros()];
-        $deposit = $this->grid->zeros();
-        $taxes = $this->grid->zeros();
+        $series = array_fill_keys(
+            [CharterContract::STATUS_SIGNED, CharterContract::STATUS_DRAFT, 'deposit', 'taxes', 'incoming'],
+            $this->grid->zeros(),
+        );
         $estimate = $this->grid->zeros();
         $estimateTaxes = $this->grid->zeros();
         $summary = [];
 
-        $contracts = CharterContract::query()->with(['flights' => fn ($q) => $q->orderBy('flight_date')])->orderBy('season')->orderBy('name')->get();
+        $contracts = CharterContract::query()
+            ->with(['flights' => fn ($q) => $q->orderBy('flight_date')])
+            ->orderByDesc('in_cash_flow')
+            ->orderBy('season')
+            ->orderBy('name')
+            ->get();
+
         $factor = (float) ($this->params['scenario']['charter_factor'] ?? 1);
-        [$estimates, $contracted] = $this->charterEstimates($contracts);
+        [$estimates, $contracted] = $this->charterEstimates($contracts->where('in_cash_flow', true));
         $flights = 0;
+        $counted = 0;
 
         foreach ($contracts as $contract) {
-            $netFactor = $contract->deposit_percent !== null ? 1 - (float) $contract->deposit_percent / 100 : 1.0;
-            $row = ['id' => $contract->id, 'name' => $contract->name, 'season' => $contract->season, 'status' => $contract->status, 'operator' => $contract->operator, 'currency' => $contract->currency, 'flights' => $contract->flights->count(), 'total_net' => 0.0, 'in_horizon' => 0.0, 'taxes' => 0.0, 'deposit' => 0.0];
+            $incomingContract = $contract->isIncoming();
+            $withTaxes = $contract->taxesRideWithRotation();
+            $netFactor = ! $incomingContract && $contract->status === CharterContract::STATUS_DRAFT
+                ? $contract->netOfDepositFactor()
+                : 1.0;
+            $bucket = $contract->status === CharterContract::STATUS_DRAFT
+                ? CharterContract::STATUS_DRAFT
+                : CharterContract::STATUS_SIGNED;
+
+            $row = [
+                'id' => $contract->id,
+                'name' => $contract->name,
+                'counterparty' => $contract->counterparty,
+                'season' => $contract->season,
+                'status' => $contract->status,
+                'direction' => $contract->direction,
+                'in_cash_flow' => $contract->in_cash_flow,
+                'operator' => $contract->operator,
+                'currency' => $contract->currency,
+                'flights' => $contract->flights->count(),
+                'total_net' => 0.0,
+                'in_horizon' => 0.0,
+                'taxes' => 0.0,
+                'deposit' => 0.0,
+                'terms' => $this->charterTerms($contract),
+            ];
+
+            foreach ($contract->flights as $flight) {
+                $row['total_net'] += (float) $flight->net_value;
+            }
+
+            if (! $contract->in_cash_flow) {
+                $summary[] = array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $row);
+
+                continue;
+            }
+
+            $counted++;
 
             foreach ($contract->flights as $flight) {
                 $flight->setRelation('contract', $contract);
                 $flights++;
-                $row['total_net'] += (float) $flight->net_value;
                 $payDate = $flight->paymentDate();
+                $flightTaxes = (float) $flight->taxes;
 
                 if ($payDate->gte($this->today)) {
-                    $lei = $this->lei((float) $flight->net_value * $netFactor, $contract->currency);
-                    $bucket = $contract->status === CharterContract::STATUS_DRAFT ? CharterContract::STATUS_DRAFT : CharterContract::STATUS_SIGNED;
+                    $due = (float) $flight->net_value * $netFactor + ($withTaxes ? $flightTaxes : 0.0);
+                    $key = $incomingContract ? 'incoming' : $bucket;
 
-                    if ($this->grid->add($rotations[$bucket], $payDate, $lei)) {
-                        $row['in_horizon'] += (float) $flight->net_value * $netFactor;
+                    if ($this->grid->add($series[$key], $payDate, $this->charterLei($due, $contract))) {
+                        $row['in_horizon'] += $due;
+
+                        if ($withTaxes) {
+                            $row['taxes'] += $flightTaxes;
+                        }
                     }
                 }
 
-                $taxDate = $flight->taxesPaymentDate();
+                $taxDate = $withTaxes ? null : $flight->taxesPaymentDate();
 
-                if ((float) $flight->taxes > 0 && $taxDate->gte($this->today) && $this->grid->add($taxes, $taxDate, $this->lei((float) $flight->taxes, $contract->currency))) {
-                    $row['taxes'] += (float) $flight->taxes;
+                if ($flightTaxes > 0 && $taxDate !== null && $taxDate->gte($this->today)) {
+                    $key = $incomingContract ? 'incoming' : 'taxes';
+
+                    if ($this->grid->add($series[$key], $taxDate, $this->charterLei($flightTaxes, $contract))) {
+                        $row['taxes'] += $flightTaxes;
+                    }
                 }
 
-                if ($factor > 0 && array_key_exists($contract->season, $estimates)) {
+                if (! $incomingContract && $factor > 0 && array_key_exists($contract->season, $estimates)) {
                     $shifted = $payDate->copy()->addDays(364);
 
                     if ($shifted->gte($this->today)) {
-                        $this->grid->add($estimate, $shifted, $this->lei((float) $flight->net_value * $factor, $contract->currency));
+                        $this->grid->add($estimate, $shifted, $this->charterLei((float) $flight->net_value * $factor, $contract));
                     }
 
-                    $shiftedTax = $taxDate->copy()->addDays(364);
+                    $shiftedTax = ($taxDate ?? $payDate)->copy()->addDays(364);
 
-                    if ((float) $flight->taxes > 0 && $shiftedTax->gte($this->today)) {
-                        $this->grid->add($estimateTaxes, $shiftedTax, $this->lei((float) $flight->taxes * $factor, $contract->currency));
+                    if ($flightTaxes > 0 && $shiftedTax->gte($this->today)) {
+                        $this->grid->add($estimateTaxes, $shiftedTax, $this->charterLei($flightTaxes * $factor, $contract));
                     }
                 }
             }
 
             if (! $contract->deposit_paid && $contract->deposit_due_date !== null) {
-                $amount = $contract->deposit_amount !== null
-                    ? (float) $contract->deposit_amount
-                    : ($contract->deposit_percent !== null ? (float) ($contract->contract_value ?? $row['total_net']) * (float) $contract->deposit_percent / 100 : 0.0);
+                $amount = $contract->depositAmount($row['total_net']);
+                $key = $incomingContract ? 'incoming' : 'deposit';
 
-                if ($amount > 0 && $contract->deposit_due_date->gte($this->today) && $this->grid->add($deposit, $contract->deposit_due_date, $this->lei($amount, $contract->currency))) {
+                if ($amount > 0 && $contract->deposit_due_date->gte($this->today)
+                    && $this->grid->add($series[$key], $contract->deposit_due_date, $this->charterLei($amount, $contract))) {
                     $row['deposit'] = $amount;
                 }
             }
@@ -528,7 +586,7 @@ class CashFlowReportBuilder
             $summary[] = array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $row);
         }
 
-        $message = sprintf('%d contracte, %d rotații.', $contracts->count(), $flights);
+        $message = sprintf('%d contracte în flux (din %d), %d rotații.', $counted, $contracts->count(), $flights);
 
         foreach ($estimates as $base => $target) {
             $message .= sprintf(' Sezonul %s este estimat din programul %s decalat 364 de zile × %.2f.', $target ?? 'următor', $base, $factor);
@@ -538,23 +596,85 @@ class CashFlowReportBuilder
             $message .= sprintf(' Sezonul %s este contractat; programul %s nu se mai decalează.', $target, $base);
         }
 
-        if ($estimates === [] && $contracted === []) {
-            $message .= ' Niciun sezon următor de estimat: nu există contracte semnate.';
-        }
-
         return [
-            'signed' => $rotations[CharterContract::STATUS_SIGNED],
-            'draft' => $rotations[CharterContract::STATUS_DRAFT],
-            'deposit' => $deposit,
-            'taxes' => $taxes,
+            'signed' => $series[CharterContract::STATUS_SIGNED],
+            'draft' => $series[CharterContract::STATUS_DRAFT],
+            'deposit' => $series['deposit'],
+            'taxes' => $series['taxes'],
+            'incoming' => $series['incoming'],
             'estimate' => $estimate,
             'estimate_taxes' => $estimateTaxes,
             'estimates' => $estimates,
             'contracts' => $summary,
             '_rows' => $flights,
             '_message' => $message,
-            '_skipped' => $contracts->isEmpty(),
+            '_skipped' => $counted === 0,
         ];
+    }
+
+    /**
+     * The contract's terms in one line each, for the report and the Charter tab.
+     *
+     * @return array<string, string>
+     */
+    private function charterTerms(CharterContract $contract): array
+    {
+        $days = (int) $contract->days_before_flight;
+
+        $rotation = match ($contract->payment_basis) {
+            CharterContract::BASIS_WEEK => sprintf('cu %d zile înainte de luni, pe săptămâna de operare', $days),
+            CharterContract::BASIS_SIGNING => 'integral la semnare',
+            default => sprintf('OP cu %d zile înainte de fiecare rotație', $days),
+        };
+
+        $taxes = match ($contract->taxes_rule) {
+            CharterContract::TAXES_WITH_ROTATION => 'odată cu rotația',
+            CharterContract::TAXES_AFTER => sprintf('la %d zile după zbor', (int) ($contract->taxes_days ?? 3)),
+            CharterContract::TAXES_BEFORE => sprintf('în avans, cu %d zile înainte, la capacitate maximă', (int) ($contract->taxes_days ?? 14)),
+            default => sprintf('reconciliere lunară, ziua %d a lunii următoare', (int) ($contract->taxes_month_day ?? 5)),
+        };
+
+        $deposit = match (true) {
+            $contract->deposit_amount !== null => number_format((float) $contract->deposit_amount, 0, ',', '.').' '.$contract->currency,
+            $contract->deposit_percent !== null => rtrim(rtrim(number_format((float) $contract->deposit_percent, 2, ',', '.'), '0'), ',').'%',
+            default => 'fără depozit',
+        };
+
+        if ($contract->deposit_due_date !== null) {
+            $deposit .= ' scadent '.$contract->deposit_due_date->format('d.m.Y');
+        }
+
+        if ($contract->deposit_paid) {
+            $deposit .= ' (achitat)';
+        }
+
+        return [
+            'rotation' => $rotation,
+            'taxes' => $taxes,
+            'deposit' => $deposit,
+            'settlement' => (string) ($contract->deposit_settlement ?? ''),
+            'invoicing' => (string) ($contract->invoicing ?? ''),
+            'fuel' => (string) ($contract->fuel_rule ?? ''),
+            'fx' => (float) $contract->fx_markup_pct > 0
+                ? sprintf('%s sau RON la BNR + %s%%', $contract->currency, rtrim(rtrim(number_format((float) $contract->fx_markup_pct, 2, ',', '.'), '0'), ','))
+                : (string) $contract->currency,
+            'penalty' => $contract->late_penalty_pct_per_day !== null
+                ? rtrim(rtrim(number_format((float) $contract->late_penalty_pct_per_day, 3, ',', '.'), '0'), ',').'%/zi'
+                : '',
+            'cancellation' => (string) ($contract->cancellation_terms ?? ''),
+            'source' => (string) ($contract->source ?? ''),
+            'confidence' => (string) ($contract->confidence ?? ''),
+        ];
+    }
+
+    /**
+     * A contract amount in lei, at its own currency clause.
+     */
+    private function charterLei(float $amount, CharterContract $contract): float
+    {
+        $currency = OmcCashFlowReader::currency((string) $contract->currency);
+
+        return $amount * $contract->rate((float) ($this->fx[$currency] ?? 1.0));
     }
 
     /**
@@ -1048,26 +1168,28 @@ class CashFlowReportBuilder
         $recoveryOld = $this->recovery($receivables['overdue_old'] ?? [], (float) ($this->params['overdue']['old_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B8', sprintf('Recuperare solduri restante ≤ %d zile (scadență depășită)', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recovery, note: sprintf('%s%% din restanțe, egal pe %d săptămâni', $this->params['overdue']['recent_pct'] ?? 0, $this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B9', sprintf('Recuperare solduri restante > %d zile', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recoveryOld, note: sprintf('%s%% din restanțele vechi', $this->params['overdue']['old_pct'] ?? 0));
+        $this->line('B10', 'Încasări din vânzarea de locuri charter (contracte hard block)', 'B', $charter['incoming'], note: 'contracte charter în care CHR vinde locuri; rotația, taxele și depozitul pe termenii contractului');
+
         $newSales = [];
 
         foreach (array_keys($codes) as $index => $segment) {
-            $code = 'B10.'.($index + 1);
+            $code = 'B11.'.($index + 1);
             $newSales[] = $code;
-            $this->line($code, 'Vânzări noi – '.BookingSegments::LABELS[$segment], 'B', $scenario['receipts'][$segment] ?? $this->grid->zeros(), scenario: true, note: 'eTrip: încasările dosarelor din acest segment create în aceeași săptămână a anului anterior, × factor', parent: 'B10');
+            $this->line($code, 'Vânzări noi – '.BookingSegments::LABELS[$segment], 'B', $scenario['receipts'][$segment] ?? $this->grid->zeros(), scenario: true, note: 'eTrip: încasările dosarelor din acest segment create în aceeași săptămână a anului anterior, × factor', parent: 'B11');
         }
 
-        $this->line('B10', 'Încasări din vânzări noi – total (scenariu: curba anului anterior × factor)', 'B', $this->sum($newSales), kind: 'subtotal', scenario: true, note: 'suma liniilor B10.1–B10.7; intră în total doar cu scenariul pornit');
-        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'], $scenarioOn ? $newSales : []), kind: 'total');
+        $this->line('B11', 'Încasări din vânzări noi – total (scenariu: curba anului anterior × factor)', 'B', $this->sum($newSales), kind: 'subtotal', scenario: true, note: 'suma liniilor B11.1–B11.7; intră în total doar cu scenariul pornit');
+        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10'], $scenarioOn ? $newSales : []), kind: 'total');
 
         $this->line('C1', 'Plăți cazare (hoteluri) – rezervări existente', 'C', $payables['lines']['hotel'], note: 'eTrip: cost furnizor net, plată cu N zile înainte de check-in');
         $this->line('C2', 'Plăți transferuri, excursii, autocar, servicii la sol', 'C', $payables['lines']['transfer']);
         $this->line('C3', 'Plăți asigurări', 'C', $payables['lines']['insurance']);
         $this->line('C4', sprintf('Plăți bilete avion linie (comenzi din ultimele %d zile)', (int) ($this->params['payables']['ticket_days'] ?? 7)), 'C', $payables['lines']['flight']);
         $this->line('C5', 'Alte costuri directe de produs', 'C', $payables['lines']['other']);
-        $this->line('C6', 'Charter – rotații contracte semnate', 'C', $charter['signed'], note: 'contracte charter din aplicație, plata cu N zile înainte de zbor');
-        $this->line('C7', 'Charter – rotații contracte draft (net de depozit)', 'C', $charter['draft']);
-        $this->line('C8', 'Charter – depozite contracte', 'C', $charter['deposit']);
-        $this->line('C9', 'Charter – taxe aeroport (reconciliere lunară, estimare)', 'C', $charter['taxes']);
+        $this->line('C6', 'Charter – rotații contracte semnate', 'C', $charter['signed'], note: 'fiecare rotație pe termenul contractului ei (CTR 317: OP cu 10 zile înainte de operare)');
+        $this->line('C7', 'Charter – rotații contracte draft (net de depozit)', 'C', $charter['draft'], note: 'valoarea rotației × (1 − % depozit), pentru contractele nesemnate încă');
+        $this->line('C8', 'Charter – depozite contracte', 'C', $charter['deposit'], note: 'depozitul fiecărui contract neachitat, la scadența lui');
+        $this->line('C9', 'Charter – taxe aeroport', 'C', $charter['taxes'], note: 'pe regula fiecărui contract: reconciliere lunară în prima săptămână a lunii următoare, la N zile după zbor sau în avans; taxele plătite odată cu rotația sunt deja în C6/C7');
         $this->line('C10', 'Furnizori – sold neachitat la data raportului (facturi scadente)', 'C', $suppliers['line'], note: $suppliers['mode'] === 'manual' ? 'parametri' : 'OMC: facturi furnizor deschise, pe scadență');
         $this->line('C11', 'Plăți furnizori pentru vânzări noi – cazare, servicii, bilete (scenariu)', 'C', $scenario['costs'], scenario: true);
         $estimates = (array) ($charter['estimates'] ?? []);
@@ -1112,7 +1234,7 @@ class CashFlowReportBuilder
         $this->line('E4', 'Marja peste pragul minim (deficit dacă este negativ)', 'E', array_map(fn (float $v) => round($v - $minimum, 2), $closing), kind: 'total');
         $this->line('E5', 'Semnal', 'E', array_map(fn (float $v) => $v < $minimum ? 'DEFICIT' : ($v < $comfort ? 'ATENȚIE' : 'OK'), $closing), kind: 'text');
 
-        $existing = $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']);
+        $existing = $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']);
         $coverage = array_map(fn (float $v) => $v > 0 ? 'existing' : 'scenario', $existing);
         $this->line('E6', 'Acoperire date', 'E', array_map(fn (string $c) => $c === 'existing'
             ? ($scenarioOn ? 'rezervări existente + vânzări noi (scenariu)' : 'rezervări existente')
@@ -1146,7 +1268,8 @@ class CashFlowReportBuilder
             'suppliers_open' => $suppliers['total'] ?? 0.0,
             'bookings' => $receivables['bookings'] ?? 0,
             'scenario_bookings' => $scenario['bookings'] ?? 0,
-            'scenario_receipts' => round(array_sum($this->values('B10')), 2),
+            'scenario_receipts' => round(array_sum($this->values('B11')), 2),
+            'charter_incoming' => round(array_sum($this->values('B10')), 2),
         ];
 
         return [
