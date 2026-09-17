@@ -8,7 +8,6 @@ use App\Services\Maintenance\ApplicationLog;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,10 +22,18 @@ return Application::configure(basePath: dirname(__DIR__))
             TraceRequests::class,
         ]);
 
+        // AddLinkHeadersForPreloadedAssets is deliberately absent. The root
+        // view hands @vite the page component, so its Link header carries
+        // every chunk that page imports — nearly 3 KB on the cash flow report
+        // and over 4 KB on a partner — and with the cookies alongside it that
+        // is more response header than nginx's FastCGI buffer holds. nginx
+        // answers 502 without PHP ever hearing about it, and only the pages
+        // with the most chunks are affected. The same assets are already in
+        // the head as <link rel="modulepreload">, so the header bought us
+        // nothing that the document does not already say.
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
             KickErpSync::class,
         ]);
     })
