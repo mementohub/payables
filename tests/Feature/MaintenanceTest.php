@@ -280,18 +280,38 @@ test('a request that never came back is the one still showing its opening line',
     $probe = new RequestProbe($this->dir);
 
     $probe->started('aaa111', 'GET', '/dashboard');
-    $probe->finished('aaa111', 'GET', '/dashboard', 200, 0.042);
+    $probe->finished('aaa111', 'GET', '/dashboard', 200, 0.042, 812);
+
+    // Old enough that nobody is still waiting for it.
+    Carbon::setTestNow(Carbon::now()->addMinutes(5));
     $probe->started('bbb222', 'GET', '/reports/cash-flow');
+    Carbon::setTestNow(Carbon::now()->addMinutes(5));
 
     $entries = $probe->tail()['entries'];
 
-    // The served request keeps one row, the one that answered; the request
-    // whose worker went away keeps the row nobody closed.
+    // The served request keeps one row, the one that answered, with the size
+    // of the header a gateway has to read; the request whose worker went away
+    // keeps the row nobody closed.
     expect($entries)->toHaveCount(2)
         ->and($entries[0]['unfinished'])->toBeTrue()
+        ->and($entries[0]['in_flight'])->toBeFalse()
         ->and($entries[0]['line'])->toContain('/reports/cash-flow')
         ->and($entries[1]['unfinished'])->toBeFalse()
-        ->and($entries[1]['line'])->toContain('200');
+        ->and($entries[1]['line'])->toContain('200')
+        ->and($entries[1]['line'])->toContain('antet=812B');
+});
+
+test('a request still being served is not reported as lost', function () {
+    $probe = new RequestProbe($this->dir);
+
+    $probe->started('ccc333', 'GET', '/maintenance');
+
+    $entry = $probe->tail()['entries'][0];
+
+    // The page listing these is itself one of them; it has not answered yet
+    // because it is busy drawing this.
+    expect($entry['in_flight'])->toBeTrue()
+        ->and($entry['unfinished'])->toBeFalse();
 });
 
 test('a page view leaves both of its breadcrumbs behind', function () {
@@ -303,5 +323,7 @@ test('a page view leaves both of its breadcrumbs behind', function () {
 
     expect($entries)->not->toBeEmpty()
         ->and(collect($entries)->pluck('unfinished'))->each->toBeFalse()
-        ->and($entries[0]['line'])->toContain('/maintenance');
+        // A full page load asks for a document; an Inertia visit does not.
+        ->and($entries[0]['line'])->toContain('/maintenance [document]')
+        ->and($entries[0]['line'])->toContain('antet=');
 });

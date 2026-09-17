@@ -37,25 +37,37 @@ class RequestProbe
         $this->write(sprintf('%s %s > %s %s', $this->now(), $id, $method, $path));
     }
 
-    public function finished(string $id, string $method, string $path, int $status, float $seconds): void
+    /**
+     * The closing line carries the size of the response header as well: a
+     * gateway reads that into a buffer of a few kilobytes and hangs up when
+     * it does not fit, which looks from the application's side exactly like a
+     * request that went perfectly.
+     */
+    public function finished(string $id, string $method, string $path, int $status, float $seconds, int $headerBytes): void
     {
         $this->write(sprintf(
-            '%s %s < %d %s %s %s %s',
+            '%s %s < %d %s %s antet=%dB %s %s',
             $this->now(),
             $id,
             $status,
             $this->duration($seconds),
             $this->peak(),
+            $headerBytes,
             $method,
             $path,
         ));
     }
 
+    /** A request without its closing line is only alarming once this old. */
+    private const IN_FLIGHT_SECONDS = 30;
+
     /**
      * The last requests, newest first, each with the id that pairs its two
-     * lines and whether the second one ever arrived.
+     * lines and whether the second one ever arrived. A request that opened
+     * moments ago is still being served — the page reading this is one of
+     * them — so only an older one counts as having gone missing.
      *
-     * @return array{entries: list<array{at: ?string, id: string, line: string, unfinished: bool}>}
+     * @return array{entries: list<array{at: ?string, id: string, line: string, unfinished: bool, in_flight: bool}>}
      */
     public function tail(): array
     {
@@ -82,11 +94,16 @@ class RequestProbe
                 continue;
             }
 
+            $at = $this->date($matches[1]);
+            $open = $matches[3] === '>';
+            $recent = $open && $at !== null && Carbon::parse($at)->gt(Carbon::now()->subSeconds(self::IN_FLIGHT_SECONDS));
+
             $entries[] = [
-                'at' => $this->date($matches[1]),
+                'at' => $at,
                 'id' => $matches[2],
                 'line' => trim($matches[4]),
-                'unfinished' => $matches[3] === '>',
+                'unfinished' => $open && ! $recent,
+                'in_flight' => $recent,
             ];
         }
 

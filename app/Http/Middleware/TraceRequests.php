@@ -32,19 +32,44 @@ class TraceRequests
             $this->label($request, $path),
             $response->getStatusCode(),
             microtime(true) - (float) ($request->server('REQUEST_TIME_FLOAT') ?: microtime(true)),
+            $this->headerBytes($response),
         );
 
         return $response;
     }
 
     /**
-     * An Inertia partial reload asks the same URL for a different piece of the
-     * page, so the piece belongs in the line.
+     * Roughly what the gateway has to read before the body starts: the status
+     * line plus every header, each with its colon, space and line break.
+     */
+    private function headerBytes(Response $response): int
+    {
+        $bytes = strlen('HTTP/1.1 '.$response->getStatusCode().' ') + 4;
+
+        foreach ($response->headers->allPreserveCase() as $name => $values) {
+            foreach ($values as $value) {
+                $bytes += strlen($name) + strlen((string) $value) + 4;
+            }
+        }
+
+        return $bytes;
+    }
+
+    /**
+     * A full page load and an Inertia visit ask for the same URL and get very
+     * different answers — one a document, the other JSON — so the line says
+     * which, and which piece of the page a partial reload came back for.
      */
     private function label(Request $request, string $path): string
     {
+        $url = '/'.ltrim($path, '/');
+
+        if (! $request->hasHeader('X-Inertia')) {
+            return $url.' [document]';
+        }
+
         $partial = (string) $request->header('X-Inertia-Partial-Data', '');
 
-        return $partial === '' ? '/'.ltrim($path, '/') : '/'.ltrim($path, '/').' ['.$partial.']';
+        return $partial === '' ? $url : $url.' ['.$partial.']';
     }
 }

@@ -63,6 +63,7 @@ type Props = {
             id: string;
             line: string;
             unfinished: boolean;
+            in_flight: boolean;
         }[];
     };
     /** Deferred: undefined until Inertia has loaded the log. */
@@ -628,10 +629,13 @@ function RequestTraceCard({ requests }: { requests?: Props['requests'] }) {
             <CardHeader>
                 <CardTitle>Ultimele cereri</CardTitle>
                 <CardDescription>
-                    Fiecare cerere lasă o urmă înainte și după ce e servită.
+                    Fiecare cerere lasă o urmă înainte și după ce e servită, cu
+                    durata, memoria și mărimea antetului de răspuns — un antet
+                    mai mare decât reține gateway-ul se întoarce ca 502, deși
+                    aplicația a răspuns corect.
                     {unfinished > 0
                         ? ` ${unfinished} ${unfinished === 1 ? 'cerere a rămas' : 'cereri au rămas'} fără răspuns: procesul a fost oprit din afara aplicației, nu de PHP.`
-                        : ' Toate cererile de mai jos au primit răspuns.'}
+                        : ' Toate cererile încheiate de mai jos au primit răspuns.'}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -657,18 +661,23 @@ function RequestTraceCard({ requests }: { requests?: Props['requests'] }) {
                                     'flex items-baseline gap-3 px-3 py-1.5 text-sm',
                                     entry.unfinished &&
                                         'bg-destructive/5 text-destructive',
+                                    entry.in_flight && 'text-muted-foreground',
                                 )}
                             >
                                 <span className="shrink-0 text-xs text-muted-foreground">
                                     {dateTime(entry.at)}
                                 </span>
                                 <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                                    {entry.unfinished ? '… ' : ''}
+                                    {entry.unfinished || entry.in_flight
+                                        ? '… '
+                                        : ''}
                                     {entry.line}
                                 </span>
-                                {entry.unfinished && (
+                                {(entry.unfinished || entry.in_flight) && (
                                     <span className="shrink-0 text-xs font-semibold uppercase">
-                                        fără răspuns
+                                        {entry.in_flight
+                                            ? 'în lucru'
+                                            : 'fără răspuns'}
                                     </span>
                                 )}
                             </div>
