@@ -221,3 +221,37 @@ test('the full history can be started from the page and by the command', functio
 
     $this->artisan('erp:sync', ['--company' => $this->company->id, '--history' => true, '--from' => '2024-01-01'])->assertSuccessful();
 });
+
+test('a second sync stands down while one is already running', function () {
+    // A history run holds the floor; the scheduler's ten-minute pass must not
+    // rewrite the same payment rows underneath it.
+    Cache::put('erp:sync:running', Carbon::parse('2026-09-16 09:40:00')->toIso8601String(), 900);
+
+    $this->mock(SyncService::class, function (MockInterface $mock) {
+        $mock->shouldNotReceive('syncRecent');
+    });
+
+    $this->artisan('erp:sync')
+        ->expectsOutputToContain('rulează deja')
+        ->assertSuccessful();
+});
+
+test('a sync that finishes leaves the floor to the next one', function () {
+    $this->mock(SyncService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('syncRecent')->once()->andReturn(syncResult(['refreshed' => 0]));
+    });
+
+    $this->artisan('erp:sync')->assertSuccessful();
+
+    expect(Cache::has('erp:sync:running'))->toBeFalse();
+});
+
+test('a sync that blows up still leaves the floor to the next one', function () {
+    $this->mock(SyncService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('syncRecent')->once()->andThrow(new RuntimeException('no route to host'));
+    });
+
+    $this->artisan('erp:sync')->assertFailed();
+
+    expect(Cache::has('erp:sync:running'))->toBeFalse();
+});

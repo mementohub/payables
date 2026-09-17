@@ -435,6 +435,19 @@ class SyncService
         return PartnerCuiLookup::normalize($cui);
     }
 
+    /**
+     * An ERP date as the local date columns keep it, so that "2026-09-15" and
+     * "2026-09-15 00:00:00" cannot pass for two different days.
+     */
+    private static function day(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return Carbon::parse((string) $value)->toDateString();
+    }
+
     private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
     {
         $headers = $remote->table('extrasb as e')
@@ -695,7 +708,21 @@ class SyncService
             }
 
             $paymentKey = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
-            $allocationKey = $invoiceId.'|'.$paymentKey.'|'.$row->data_repartizare;
+
+            // The unique index is (invoice_id, data_doc, tip_doc, nr_doc,
+            // data_repartizare), so the key that decides what is a repeat has
+            // to be the database's, not PHP's: dates as the date column stores
+            // them, and the document number the way the collation compares it.
+            $paidOn = self::day($row->data_doc_fin);
+            $allocatedOn = self::day($row->data_repartizare);
+            $allocationKey = implode('|', [
+                $invoiceId,
+                $paidOn,
+                mb_strtolower(trim((string) $row->tip_doc_fin)),
+                mb_strtolower(trim((string) $row->nr_doc_fin)),
+                $allocatedOn ?? '',
+            ]);
+
             if (isset($seen[$allocationKey])) {
                 continue;
             }
@@ -703,10 +730,10 @@ class SyncService
 
             $payload[] = [
                 'invoice_id' => $invoiceId,
-                'data_doc' => $row->data_doc_fin,
+                'data_doc' => $paidOn,
                 'tip_doc' => $row->tip_doc_fin,
                 'nr_doc' => $row->nr_doc_fin,
-                'data_repartizare' => $row->data_repartizare,
+                'data_repartizare' => $allocatedOn,
                 'val_fin' => $row->val_fin ?? 0,
                 'val_com' => $row->val_com ?? 0,
                 'moneda' => $row->fin_moneda,
@@ -718,9 +745,15 @@ class SyncService
         }
 
         // The rows above were just deleted, so they go back in bulk: a history
-        // slice carries a few thousand allocations.
+        // slice carries a few thousand allocations. Written as an upsert, not
+        // an insert: an allocation the ERP hands us twice under keys only the
+        // database sees as one must not take the whole slice down with it.
         foreach (array_chunk($payload, 500) as $chunk) {
-            InvoicePayment::query()->insert($chunk);
+            InvoicePayment::query()->upsert(
+                $chunk,
+                ['invoice_id', 'data_doc', 'tip_doc', 'nr_doc', 'data_repartizare'],
+                ['val_fin', 'val_com', 'moneda', 'bank_statement_line_id', 'updated_at'],
+            );
         }
 
         return $count;

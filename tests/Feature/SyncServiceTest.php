@@ -264,3 +264,24 @@ test('a document key the local database cannot tell apart updates the row that h
         ->and((float) Invoice::where('nr_doc', 'GR/16/Inv1')->first()->val_mon)->toBe(2000.0)
         ->and(Invoice::where('nr_doc', 'VDF9')->exists())->toBeTrue();
 });
+
+test('an allocation the ERP hands over twice is stored once, not thrown', function () {
+    erpDoc();
+    DB::connection('omc')->table('doc')->where('nr_doc', 'VDF1')->update(['val_mon_pl' => 1000]);
+
+    // The same allocation, spelled the two ways the ERP spells dates and with
+    // the trailing space a document number picks up along the way. The date
+    // column and the collation see one row; only PHP sees two.
+    DB::connection('omc')->table('doc_fin')->insert([
+        ['data_doc_fin' => '2026-09-15', 'tip_doc_fin' => 'Ch_INC', 'nr_doc_fin' => 'CTA 40014439', 'data_doc_com' => '2026-09-14', 'tip_doc_com' => 'FactFI', 'nr_doc_com' => 'VDF1', 'data_repartizare' => '2026-09-15', 'val_fin' => 600, 'val_com' => 600],
+        ['data_doc_fin' => '2026-09-15 00:00:00', 'tip_doc_fin' => 'Ch_INC', 'nr_doc_fin' => 'CTA 40014439', 'data_doc_com' => '2026-09-14', 'tip_doc_com' => 'FactFI', 'nr_doc_com' => 'VDF1', 'data_repartizare' => '2026-09-15 00:00:00', 'val_fin' => 400, 'val_com' => 400],
+    ]);
+
+    $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-13'), Carbon::parse('2026-09-16'));
+
+    $payment = Invoice::where('nr_doc', 'VDF1')->first()->payments()->sole();
+
+    expect($result['payments'])->toBe(1)
+        ->and($payment->data_doc->toDateString())->toBe('2026-09-15')
+        ->and($payment->data_repartizare->toDateString())->toBe('2026-09-15');
+});
