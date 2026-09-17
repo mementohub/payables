@@ -232,3 +232,35 @@ test('an unreachable omc database falls through to a 503 on the supplier page', 
         ->assertStatus(503)
         ->assertJsonPath('message', 'Baza OMC nu poate fi accesată: connection refused');
 });
+
+test('the live check matches the synced copies without reading them as models', function () {
+    config()->set('omc.company_id', $this->company->id);
+    $synced = supplierInvoice($this->supplier, ['nr_doc' => 'LIVE', 'data_doc' => '2026-09-05', 'val_mon' => 500]);
+
+    $this->partialMock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplier')->andReturn([
+            'name' => $this->supplier->name, 'cui' => $this->supplier->cui, 'country' => 'RO', 'city' => null, 'is_company' => true,
+        ]);
+        $mock->shouldReceive('supplierInvoices')->once()->andReturn([[
+            'data_doc' => '2026-09-05 00:00:00', 'tip_doc' => 'FactFI', 'nr_doc' => 'LIVE', 'moneda' => 'Lei', 'curs' => 1,
+            'val_mon' => 500, 'val_mon_tva' => 79.83, 'val_mon_pl' => 0, 'val_mon_dimin_negru' => 0,
+            'data_scadenta' => '2026-09-20', 'paid_at' => null, 'description' => null, 'accounts' => null,
+        ]]);
+    });
+
+    // Two years of a busy supplier run to tens of thousands of documents;
+    // a model for each match is how this page ran out of memory.
+    $hydrated = 0;
+    Invoice::retrieved(function () use (&$hydrated) {
+        $hydrated++;
+    });
+
+    $this->actingAs(User::factory()->create())
+        ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
+        ->assertOk()
+        // The OMC row and the synced copy are the same document, whichever
+        // way the two databases spell its date.
+        ->assertJsonPath('open.0.id', $synced->id);
+
+    expect($hydrated)->toBe(0);
+});

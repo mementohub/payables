@@ -73,6 +73,16 @@ final readonly class InvoiceRow
     }
 
     /**
+     * The ERP document key of a raw row, without building a row for it: the
+     * payment check walks two years of a supplier's documents, and an object
+     * per lookup is an object too many.
+     */
+    public static function keyFor(mixed $dataDoc, mixed $tipDoc, mixed $nrDoc): string
+    {
+        return Carbon::parse((string) $dataDoc)->toDateString()."|{$tipDoc}|{$nrDoc}";
+    }
+
+    /**
      * The ERP document key: the same invoice number repeats across types and years.
      */
     public function key(): string

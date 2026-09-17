@@ -10,6 +10,7 @@ use App\Services\SyncService;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Checks a supplier's payment request against its invoices in the ERP: which
@@ -34,6 +35,9 @@ class SupplierPaymentCheckService
     public const AVERAGE_MONTHS = 12;
 
     public const RECENT_LIMIT = 5;
+
+    /** How many document numbers one lookup asks the database about. */
+    private const LOOKUP_CHUNK = 1000;
 
     private const MONTH_LABELS = [
         'ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.',
@@ -240,20 +244,47 @@ class SupplierPaymentCheckService
      */
     private function withLocalIds(Collection $rows, ?Company $company): Collection
     {
-        $local = $company === null || $rows->isEmpty()
-            ? collect()
-            : Invoice::query()
+        $local = $this->localIds($rows, $company);
+
+        // Once per row, not twice: the key is worked out from the row itself,
+        // so looking up the local copy costs nothing to throw away.
+        return $rows->map(fn (array $row) => InvoiceRow::fromOmc(
+            $row,
+            $local[InvoiceRow::keyFor($row['data_doc'], $row['tip_doc'], $row['nr_doc'])] ?? null,
+        ))->values();
+    }
+
+    /**
+     * The id of the locally synced copy of each document, by document key.
+     *
+     * Read as rows and asked for in batches: two years of a busy supplier run
+     * to tens of thousands of documents, and neither one `in` list that long
+     * nor a model per match is something a page view can carry.
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return array<string, int>
+     */
+    private function localIds(Collection $rows, ?Company $company): array
+    {
+        if ($company === null || $rows->isEmpty()) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach ($rows->pluck('nr_doc')->unique()->chunk(self::LOOKUP_CHUNK) as $chunk) {
+            DB::table('invoices')
                 ->where('company_id', $company->id)
                 ->whereIn('tip_doc', SyncService::FURNIZOR_DOC_TYPES)
-                ->whereIn('nr_doc', $rows->pluck('nr_doc')->unique()->all())
-                ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
-                ->keyBy(fn (Invoice $invoice) => InvoiceRow::fromModel($invoice)->key());
+                ->whereIn('nr_doc', $chunk->values()->all())
+                ->select(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+                ->cursor()
+                ->each(function (object $row) use (&$ids): void {
+                    $ids[InvoiceRow::keyFor($row->data_doc, $row->tip_doc, $row->nr_doc)] = (int) $row->id;
+                });
+        }
 
-        return $rows->map(function (array $row) use ($local) {
-            $key = InvoiceRow::fromOmc($row)->key();
-
-            return InvoiceRow::fromOmc($row, $local->get($key)?->id);
-        })->values();
+        return $ids;
     }
 
     /**
