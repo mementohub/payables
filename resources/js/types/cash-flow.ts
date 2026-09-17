@@ -64,6 +64,12 @@ export type OpeningRow = {
 
 export type OpeningDetail = {
     date: string | null;
+    /** The day of the last saved balance each section starts from. */
+    anchors?: {
+        bank: string | null;
+        cash: string | null;
+        deposits: string | null;
+    };
     as_of: string;
     currencies: string[];
     rows: OpeningRow[];

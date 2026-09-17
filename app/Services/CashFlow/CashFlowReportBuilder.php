@@ -212,39 +212,41 @@ class CashFlowReportBuilder
     }
 
     /**
-     * The treasury position: the last closed month-end balances in OMC
-     * (bank accounts, cash desks, deposits on 5081) rolled forward with
-     * every bank and cash document up to today.
+     * The treasury position: the latest balances OMC saved before today
+     * (bank accounts and cash desks day by day, deposits on 5081 at the
+     * month-end closing), each rolled forward with the bank and cash
+     * documents dated after its own balance day, up to today.
      *
      * @return array<string, mixed>
      */
     private function opening(): array
     {
-        $anchor = $this->omc->monthEndAnchor($this->today);
+        $this->anchor = $this->omc->monthEndAnchor($this->today);
+        $anchors = $this->omc->balanceAnchors($this->today);
 
-        if ($anchor === null) {
+        if ($anchors['bank'] === null && $anchors['cash'] === null && $anchors['deposits'] === null) {
             return [
                 ...$this->emptyOpening(),
                 '_skipped' => true,
-                '_message' => 'OMC nu are solduri de sfârșit de lună (eu_banca_sold): poziția de trezorerie nu poate fi calculată.',
+                '_message' => 'OMC nu are solduri salvate (eu_banca_sold, casa_sold, conta_sold 5081): poziția de trezorerie nu poate fi calculată.',
             ];
         }
 
-        $this->anchor = $anchor;
-        $position = $this->omc->openingPosition($anchor, $this->today);
+        $position = $this->omc->openingPosition($anchors, $this->today);
         $currencies = array_values(array_unique(['RON', 'EUR', 'USD', ...array_column($position, 'currency')]));
         $rows = [];
+        $at = fn (string $section) => $anchors[$section]?->format('d.m.Y') ?? 'lipsă';
         $labels = [
-            'bank_open' => 'Conturi curente bănci la '.$anchor->format('d.m.Y'),
-            'bank_in' => 'Încasări prin bancă după '.$anchor->format('d.m.Y'),
-            'bank_out' => 'Plăți prin bancă după '.$anchor->format('d.m.Y'),
+            'bank_open' => 'Conturi curente bănci la '.$at('bank'),
+            'bank_in' => 'Încasări prin bancă după '.$at('bank'),
+            'bank_out' => 'Plăți prin bancă după '.$at('bank'),
             'bank_now' => 'Conturi curente bănci azi',
-            'cash_open' => 'Numerar în casierii la '.$anchor->format('d.m.Y'),
-            'cash_in' => 'Încasări în numerar',
-            'cash_out' => 'Plăți în numerar',
+            'cash_open' => 'Numerar în casierii la '.$at('cash'),
+            'cash_in' => 'Încasări în numerar după '.$at('cash'),
+            'cash_out' => 'Plăți în numerar după '.$at('cash'),
             'cash_now' => 'Numerar în casierii azi',
-            'deposits_open' => 'Depozite bancare (5081) la '.$anchor->format('d.m.Y'),
-            'deposits_change' => 'Depozite plasate (+) / lichidate (−) după '.$anchor->format('d.m.Y'),
+            'deposits_open' => 'Depozite bancare (5081) la '.$at('deposits'),
+            'deposits_change' => 'Depozite plasate (+) / lichidate (−) după '.$at('deposits'),
             'deposits_now' => 'Depozite bancare azi',
             'position' => 'Poziție de trezorerie azi',
         ];
@@ -275,7 +277,8 @@ class CashFlowReportBuilder
         }
 
         return [
-            'date' => $anchor->toDateString(),
+            'date' => ($anchors['bank'] ?? $anchors['cash'] ?? $anchors['deposits'])->toDateString(),
+            'anchors' => array_map(fn (?CarbonImmutable $anchor) => $anchor?->toDateString(), $anchors),
             'as_of' => $this->today->toDateString(),
             'currencies' => $currencies,
             'rows' => array_values($rows),
@@ -283,8 +286,10 @@ class CashFlowReportBuilder
             'total' => round($total, 2),
             '_rows' => count($position),
             '_message' => sprintf(
-                'Solduri OMC la %s (bănci, casierii, depozite 5081) rulate cu documentele de bancă și casă până la %s.',
-                $anchor->format('d.m.Y'),
+                'Solduri OMC: bănci la %s (eu_banca_sold), casierii la %s (casa_sold), depozite 5081 la %s (conta_sold), fiecare rulat cu documentele de bancă și casă de după acea zi până la %s.',
+                $at('bank'),
+                $at('cash'),
+                $at('deposits'),
                 $this->today->format('d.m.Y'),
             ),
         ];
@@ -295,7 +300,7 @@ class CashFlowReportBuilder
      */
     private function emptyOpening(): array
     {
-        return ['date' => null, 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
+        return ['date' => null, 'anchors' => ['bank' => null, 'cash' => null, 'deposits' => null], 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
     }
 
     /**
@@ -1007,7 +1012,7 @@ class CashFlowReportBuilder
         $weeks = $this->grid->weeks;
         $scenarioOn = (bool) ($this->params['scenario']['enabled'] ?? true);
 
-        $this->line('A', 'Sold inițial de trezorerie (bănci + casierii + depozite)', 'A', array_fill(0, $weeks, 0.0), kind: 'balance', note: 'S+1: parametri rulați cu OMC; apoi soldul final al săptămânii anterioare');
+        $this->line('A', 'Sold inițial de trezorerie (bănci + casierii + depozite)', 'A', array_fill(0, $weeks, 0.0), kind: 'balance', note: 'S+1: ultimele solduri salvate în OMC, rulate cu documentele până azi; apoi soldul final al săptămânii anterioare');
 
         $codes = ['pachete' => 'B1', 'circuite' => 'B2', 'exotic' => 'B3', 'sphinx' => 'B4', 'cazare' => 'B5', 'bilete' => 'B6', 'altele' => 'B7'];
 

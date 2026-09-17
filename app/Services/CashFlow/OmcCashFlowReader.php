@@ -45,30 +45,59 @@ class OmcCashFlowReader
     }
 
     /**
-     * Treasury position per currency: the month-end balances of the bank
-     * accounts (eu_banca_sold), cash desks (casa_sold) and deposits
-     * (conta_sold on 5081) at the anchor, plus the bank / cash documents
-     * dated after the anchor up to and including $until, recognised by the
-     * tip_doc flags; deposit moves (counterpart 5081 on OP_PL / OP_INC) are
-     * reported apart so the deposits can be rolled too.
+     * The latest day before today with saved balances, per table: bank
+     * accounts (eu_banca_sold), cash desks (casa_sold) and the ledger
+     * account of the deposits (conta_sold on 5081). OMC saves the bank and
+     * cash balances day by day where the registers are closed daily, the
+     * ledger balances at each month-end closing; whichever is there, the
+     * position starts from the freshest one and rolls only the documents
+     * after it.
      *
+     * @return array{bank: ?CarbonImmutable, cash: ?CarbonImmutable, deposits: ?CarbonImmutable}
+     */
+    public function balanceAnchors(CarbonInterface $today): array
+    {
+        $day = $today->toDateString();
+        $row = $this->omc->connection()->selectOne(<<<'SQL'
+            select (select max(s.data_sold) from eu_banca_sold s where s.data_sold < ?::date) as bank,
+                   (select max(s.data_sold) from casa_sold s where s.data_sold < ?::date) as cash,
+                   (select max(s.data_sold) from conta_sold s where s.conts = ? and s.data_sold < ?::date) as deposits
+            SQL, [$day, $day, (string) config('cashflow.omc.deposit_account', '5081'), $day]);
+
+        $parse = fn ($value) => $value !== null ? CarbonImmutable::parse((string) $value) : null;
+
+        return ['bank' => $parse($row?->bank), 'cash' => $parse($row?->cash), 'deposits' => $parse($row?->deposits)];
+    }
+
+    /**
+     * Treasury position per currency: the last saved balance of every bank
+     * account (eu_banca_sold), cash desk (casa_sold) and deposit account
+     * (conta_sold on 5081) on or before its anchor, plus the bank / cash
+     * documents dated after that anchor up to and including $until,
+     * recognised by the tip_doc flags; deposit moves (counterpart 5081 on
+     * OP_PL / OP_INC) are reported apart so the deposits can be rolled too.
+     * A section without an anchor opens at zero and is not rolled.
+     *
+     * @param  array{bank: ?CarbonInterface, cash: ?CarbonInterface, deposits: ?CarbonInterface}  $anchors
      * @return list<array{currency: string, bank_open: float, bank_in: float, bank_out: float, cash_open: float, cash_in: float, cash_out: float, deposits_open: float, deposits_open_lei: float, deposits_change: float}>
      */
-    public function openingPosition(CarbonInterface $anchor, CarbonInterface $until): array
+    public function openingPosition(array $anchors, CarbonInterface $until): array
     {
         $connection = $this->omc->connection();
         $deposit = (string) config('cashflow.omc.deposit_account', '5081');
-        $from = $anchor->toDateString();
         $to = CarbonImmutable::instance($until)->addDay()->toDateString();
+        $balancesAt = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? '1900-01-01';
+        $movesAfter = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? $to;
 
         $rows = $connection->select(<<<'SQL'
             with acc as (
                 select banca, cont_banca, moneda from eu_banca where not coalesce(discontinued, false)
             ),
             s1 as (
-                select banca, cont_banca, sold_banca_db - sold_banca_cr as s
-                from eu_banca_sold
-                where data_sold = ?::date
+                select distinct on (s.banca, s.cont_banca) s.banca, s.cont_banca, s.sold_banca_db - s.sold_banca_cr as s
+                from eu_banca_sold s
+                where s.data_sold <= ?::date
+                order by s.banca, s.cont_banca, s.data_sold desc
             ),
             mv as (
                 select d.banca_eu as banca, d.cont_banca_eu as cont_banca,
@@ -93,9 +122,13 @@ class OmcCashFlowReader
             ),
             cash as (
                 select c.moneda, sum(cs.sold_casa_db) as casa_m
-                from casa_sold cs
+                from (
+                    select distinct on (s.casa, s.moneda) s.casa, s.moneda, s.sold_casa_db
+                    from casa_sold s
+                    where s.data_sold <= ?::date
+                    order by s.casa, s.moneda, s.data_sold desc
+                ) cs
                 join casa c on c.casa = cs.casa and c.moneda = cs.moneda
-                where cs.data_sold = ?::date
                 group by 1
             ),
             cashmv as (
@@ -135,17 +168,25 @@ class OmcCashFlowReader
             left join cashmv cm on cm.moneda = cu.moneda
             left join dep dp on dp.moneda = cu.moneda
             order by 1
-            SQL, [$from, $from, $to, $from, $from, $to, $from, $to, $deposit]);
+            SQL, [
+            $balancesAt($anchors['bank']), $movesAfter($anchors['bank']), $to,
+            $balancesAt($anchors['cash']), $movesAfter($anchors['cash']), $to,
+            $movesAfter($anchors['deposits']), $to, $deposit,
+        ]);
 
         $deposits = $connection->select(<<<'SQL'
             select coalesce(c.moneda, 'Lei') as moneda,
                    sum(cs.sold_db - coalesce(cs.sold_cr, 0)) as sold,
                    sum(cs.sold_db_lei - coalesce(cs.sold_cr_lei, 0)) as sold_lei
-            from conta_sold cs
+            from (
+                select distinct on (s.conts, s.conta) s.conts, s.conta, s.sold_db, s.sold_cr, s.sold_db_lei, s.sold_cr_lei
+                from conta_sold s
+                where s.conts = ? and s.data_sold <= ?::date
+                order by s.conts, s.conta, s.data_sold desc
+            ) cs
             left join conta c on c.conts = cs.conts and c.conta = cs.conta
-            where cs.data_sold = ?::date and cs.conts = ?
             group by 1
-            SQL, [$from, $deposit]);
+            SQL, [$deposit, $balancesAt($anchors['deposits'])]);
 
         $position = [];
 

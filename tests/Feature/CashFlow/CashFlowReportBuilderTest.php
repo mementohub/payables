@@ -49,12 +49,15 @@ function mockOmc(bool $anchor = true): void
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
         $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
+        $mock->shouldReceive('balanceAnchors')->andReturn($anchor
+            ? ['bank' => CarbonImmutable::parse('2026-09-15'), 'cash' => CarbonImmutable::parse('2026-09-15'), 'deposits' => CarbonImmutable::parse('2026-08-31')]
+            : ['bank' => null, 'cash' => null, 'deposits' => null]);
         $mock->shouldReceive('monthEndPositions')->andReturn([
             ['date' => '2025-08-31', 'bank' => ['RON' => 1000000], 'cash' => ['RON' => 0], 'deposits' => ['RON' => 4000000], 'rates' => []],
             ['date' => '2025-09-30', 'bank' => ['RON' => 1500000, 'EUR' => 10000], 'cash' => [], 'deposits' => ['RON' => 4000000], 'rates' => ['EUR' => 5.1]],
             ['date' => '2026-08-31', 'bank' => ['RON' => 1000000, 'EUR' => 100000], 'cash' => ['RON' => 10000], 'deposits' => ['RON' => 5000000], 'rates' => ['EUR' => 5.05]],
         ]);
-        $mock->shouldReceive('openingPosition')->andReturn([
+        $mock->shouldReceive('openingPosition')->with(Mockery::type('array'), Mockery::type(CarbonInterface::class))->andReturn([
             ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
             ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],
         ]);
@@ -261,7 +264,7 @@ test('a source that fails leaves a partial snapshot with the others filled', fun
         ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['status'])->toBe('skipped');
 });
 
-test('the position comes from the OMC month-end balances rolled forward', function () {
+test('the position starts from the latest balances OMC saved, each rolled forward from its own day', function () {
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
     mockOmc();
     mockEtrip();
@@ -272,7 +275,10 @@ test('the position comes from the OMC month-end balances rolled forward', functi
 
     // RON: 1,000,000 + 200,000 − 300,000 banks, 10,000 + 5,000 cash, 5,000,000 + 300,000 deposits; EUR: 90,000 × 5.
     expect($snapshot->status)->toBe('ok')
-        ->and($opening['date'])->toBe('2026-08-31')
+        ->and($opening['date'])->toBe('2026-09-15')
+        ->and($opening['anchors'])->toBe(['bank' => '2026-09-15', 'cash' => '2026-09-15', 'deposits' => '2026-08-31'])
+        ->and($rows['bank_open']['label'])->toBe('Conturi curente bănci la 15.09.2026')
+        ->and($rows['deposits_open']['label'])->toBe('Depozite bancare (5081) la 31.08.2026')
         ->and($opening['currencies'])->toBe(['RON', 'EUR', 'USD'])
         ->and($rows['bank_now']['values']['RON'])->toEqual(900000)
         ->and($rows['cash_now']['values']['RON'])->toEqual(15000)
@@ -281,10 +287,11 @@ test('the position comes from the OMC month-end balances rolled forward', functi
         ->and($rows['position']['values']['EUR'])->toEqual(90000)
         ->and($opening['total'])->toEqual(6665000)
         ->and(lineValues($snapshot, 'A')[0])->toBe(6665000.0)
-        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('31.08.2026');
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci la 15.09.2026')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('depozite 5081 la 31.08.2026');
 });
 
-test('without month-end balances in OMC the balance starts at zero and says so', function () {
+test('without saved balances in OMC the balance starts at zero and says so', function () {
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
     mockOmc(anchor: false);
     mockEtrip();

@@ -343,7 +343,7 @@ export default function CashFlowReport({
                                         value={`${fmtCompact(report.opening[0])} RON`}
                                         hint={
                                             payload.opening.date
-                                                ? `solduri la ${payload.opening.date}, rulate cu OMC`
+                                                ? `bănci la ${payload.opening.anchors?.bank ?? payload.opening.date}, depozite la ${payload.opening.anchors?.deposits ?? payload.opening.date}, rulate cu OMC până azi`
                                                 : 'lipsește soldul inițial'
                                         }
                                         tone={
