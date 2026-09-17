@@ -210,7 +210,11 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['recent'][11]['balance'])->toEqual(6665000 - 150000)
         ->and($snapshot->payload['recent'][0]['week'])->toBe('2026-06-15')
         ->and($snapshot->payload['charter'][0])->toMatchArray(['season' => 'S26', 'status' => 'signed', 'flights' => 1])
-        ->and($snapshot->payload['charter'][0]['in_horizon'])->toEqual(1000);
+        ->and($snapshot->payload['charter'][0]['in_horizon'])->toEqual(1000)
+        // The page shows a contract's terms straight from the stored report,
+        // so every row has to carry them.
+        ->and($snapshot->payload['charter'][0]['terms'])
+        ->toHaveKeys(['rotation', 'taxes', 'deposit', 'fx']);
 });
 
 test('without a base season every signed season estimates its next edition until that one is contracted', function () {

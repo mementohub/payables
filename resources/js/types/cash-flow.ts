@@ -141,6 +141,11 @@ export type CharterTerms = {
     confidence: string;
 };
 
+/**
+ * One contract as the stored report summarises it. A snapshot outlives the
+ * code that wrote it, so anything added since may be missing from the one
+ * being read.
+ */
 export type CharterSummary = {
     id: number;
     name: string;
@@ -156,7 +161,8 @@ export type CharterSummary = {
     in_horizon: number;
     taxes: number;
     deposit: number;
-    terms: CharterTerms;
+    /** Absent in a snapshot built before the contracts carried their terms. */
+    terms?: CharterTerms;
 };
 
 export type ReportPayload = {

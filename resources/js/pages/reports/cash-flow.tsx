@@ -13,6 +13,7 @@ import {
     weekLabel,
 } from '@/components/cash-flow/report-math';
 import SourcesPanel from '@/components/cash-flow/sources-panel';
+import StoredReportBoundary from '@/components/cash-flow/stored-report-boundary';
 import WeeklyTable from '@/components/cash-flow/weekly-table';
 import YoyTable from '@/components/cash-flow/yoy-table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -263,292 +264,390 @@ export default function CashFlowReport({
                     </TabsList>
 
                     <TabsContent value="report" className="grid gap-4">
-                        {snapshot === undefined ? (
-                            <Card>
-                                <CardContent className="space-y-3 py-6">
-                                    {Array.from({ length: 5 }).map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="h-8 animate-pulse rounded bg-muted"
-                                        />
-                                    ))}
-                                </CardContent>
-                            </Card>
-                        ) : !payload || !report ? (
-                            <Card>
-                                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                                    {run.running
-                                        ? 'Prima construire a raportului este în curs; pagina se actualizează singură.'
-                                        : 'Raportul nu a fost încă construit. Apasă „Recalculează”.'}
-                                </CardContent>
-                            </Card>
-                        ) : (
-                            <>
-                                <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-sidebar-border/70 px-4 py-3 text-sm dark:border-sidebar-border">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-muted-foreground">
-                                            Orizont
-                                        </span>
-                                        <ToggleGroup
-                                            type="single"
-                                            variant="outline"
-                                            size="sm"
-                                            value={String(horizon)}
-                                            onValueChange={(value) =>
-                                                value &&
-                                                setHorizon(
-                                                    Number(value) as 13 | 52,
-                                                )
-                                            }
-                                        >
-                                            <ToggleGroupItem value="13">
-                                                13 săpt.
-                                            </ToggleGroupItem>
-                                            <ToggleGroupItem value="52">
-                                                52 săpt.
-                                            </ToggleGroupItem>
-                                        </ToggleGroup>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-muted-foreground">
-                                            Tabel
-                                        </span>
-                                        <ToggleGroup
-                                            type="single"
-                                            variant="outline"
-                                            size="sm"
-                                            value={monthly ? 'month' : 'week'}
-                                            onValueChange={(value) =>
-                                                value &&
-                                                setMonthly(value === 'month')
-                                            }
-                                        >
-                                            <ToggleGroupItem value="week">
-                                                săptămânal
-                                            </ToggleGroupItem>
-                                            <ToggleGroupItem value="month">
-                                                lunar
-                                            </ToggleGroupItem>
-                                        </ToggleGroup>
-                                    </div>
-                                    <label className="flex items-center gap-2">
-                                        <Switch
-                                            checked={scenarioOn}
-                                            onCheckedChange={setScenarioOn}
-                                        />
-                                        Scenariu vânzări noi
-                                    </label>
-                                    <label className="flex items-center gap-2">
-                                        <Switch
-                                            checked={compare}
-                                            onCheckedChange={setCompare}
-                                        />
-                                        Compară cu anul anterior (OMC efectiv,
-                                        aceeași săptămână)
-                                    </label>
-                                </div>
-
-                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                    <Kpi
-                                        label="Sold inițial"
-                                        value={`${fmtCompact(report.opening[0])} RON`}
-                                        hint={
-                                            payload.opening.date
-                                                ? `poziția din OMC la ${payload.opening.date}, sfârșitul zilei de ieri`
-                                                : 'lipsește soldul inițial'
-                                        }
-                                        tone={
-                                            payload.opening.date
-                                                ? 'default'
-                                                : 'bad'
-                                        }
-                                    />
-                                    <Kpi
-                                        label={`Sold minim în ${span} săpt.`}
-                                        value={`${fmtCompact(report.closing[minIndex])} RON`}
-                                        hint={`săptămâna ${weekLabel(report.weeks[minIndex], true)}`}
-                                        tone={
-                                            report.closing[minIndex] <
-                                            report.minimum
-                                                ? 'bad'
-                                                : report.closing[minIndex] <
-                                                    report.comfort
-                                                  ? 'warn'
-                                                  : 'good'
-                                        }
-                                    />
-                                    <Kpi
-                                        label={`Sold final S+${span}`}
-                                        value={`${fmtCompact(report.closing[span - 1])} RON`}
-                                        hint={`${report.signal.slice(0, span).filter((s) => s !== 'OK').length} săptămâni sub confort`}
-                                    />
-                                    <Kpi
-                                        label={`Încasări − plăți, ${span} săpt.`}
-                                        value={`${fmtCompact(sum(report.inflows))} − ${fmtCompact(sum(report.outflows) + sum(report.opex))}`}
-                                        hint={`flux net ${fmtCompact(sum(report.net))} RON`}
-                                        tone={
-                                            sum(report.net) < 0
-                                                ? 'warn'
-                                                : 'good'
-                                        }
-                                    />
-                                    <Kpi
-                                        label="Restanțe clienți recente"
-                                        value={amounts(
-                                            payload.kpis.overdue_recent,
-                                        )}
-                                        hint={`recuperate ${payload.params.overdue?.recent_pct ?? 0}% pe ${payload.params.overdue?.recent_weeks ?? 0} săpt.; vechi: ${amounts(payload.kpis.overdue_old)}`}
-                                        tone="warn"
-                                    />
-                                    <Kpi
-                                        label="Rezervări cu sold"
-                                        value={fmtRon(payload.kpis.bookings)}
-                                        hint={`încasări viitoare ${fmtCompact(payload.kpis.receivables_existing)} RON; după orizont: ${amounts(payload.kpis.beyond_horizon)}`}
-                                    />
-                                    <Kpi
-                                        label="Plăți din rezervări și contracte"
-                                        value={`${fmtCompact(payload.kpis.payables_existing)} RON`}
-                                        hint={`facturi furnizor deschise OMC: ${fmtCompact(payload.kpis.suppliers_open)} RON; încasări charter: ${fmtCompact(payload.kpis.charter_incoming ?? 0)} RON`}
-                                    />
-                                    <Kpi
-                                        label="Scenariu vânzări noi"
-                                        value={`${fmtRon(payload.kpis.scenario_bookings)} dosare`}
-                                        hint={`încasări ${fmtCompact(payload.kpis.scenario_receipts ?? 0)} RON pe segment (B11.1–B11.7); anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
-                                    />
-                                </div>
-
+                        <StoredReportBoundary builtAt={snapshot?.built_at}>
+                            {snapshot === undefined ? (
                                 <Card>
-                                    <CardHeader>
-                                        <CardTitle>
-                                            Soldul de trezorerie, săptămână cu
-                                            săptămână
-                                        </CardTitle>
-                                        <CardDescription>
-                                            RON. Soldul final (axa stângă) și
-                                            fluxurile săptămânii – încasări,
-                                            plăți produs + OPEX (axa dreaptă).
-                                            Fundalul gri marchează săptămânile
-                                            acoperite doar de scenariu; linia
-                                            roșie punctată este pragul minim.
-                                            {compare &&
-                                                ' Liniile întrerupte sunt valorile efective ale anului anterior din OMC.'}
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <BalanceChart
-                                            report={report}
-                                            lastyear={payload.lastyear}
-                                            coverage={payload.coverage}
-                                            horizon={span}
-                                            compare={compare}
-                                        />
+                                    <CardContent className="space-y-3 py-6">
+                                        {Array.from({ length: 5 }).map(
+                                            (_, i) => (
+                                                <div
+                                                    key={i}
+                                                    className="h-8 animate-pulse rounded bg-muted"
+                                                />
+                                            ),
+                                        )}
                                     </CardContent>
                                 </Card>
+                            ) : !payload || !report ? (
+                                <Card>
+                                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                                        {run.running
+                                            ? 'Prima construire a raportului este în curs; pagina se actualizează singură.'
+                                            : 'Raportul nu a fost încă construit. Apasă „Recalculează”.'}
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <>
+                                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-sidebar-border/70 px-4 py-3 text-sm dark:border-sidebar-border">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-muted-foreground">
+                                                Orizont
+                                            </span>
+                                            <ToggleGroup
+                                                type="single"
+                                                variant="outline"
+                                                size="sm"
+                                                value={String(horizon)}
+                                                onValueChange={(value) =>
+                                                    value &&
+                                                    setHorizon(
+                                                        Number(value) as
+                                                            | 13
+                                                            | 52,
+                                                    )
+                                                }
+                                            >
+                                                <ToggleGroupItem value="13">
+                                                    13 săpt.
+                                                </ToggleGroupItem>
+                                                <ToggleGroupItem value="52">
+                                                    52 săpt.
+                                                </ToggleGroupItem>
+                                            </ToggleGroup>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-muted-foreground">
+                                                Tabel
+                                            </span>
+                                            <ToggleGroup
+                                                type="single"
+                                                variant="outline"
+                                                size="sm"
+                                                value={
+                                                    monthly ? 'month' : 'week'
+                                                }
+                                                onValueChange={(value) =>
+                                                    value &&
+                                                    setMonthly(
+                                                        value === 'month',
+                                                    )
+                                                }
+                                            >
+                                                <ToggleGroupItem value="week">
+                                                    săptămânal
+                                                </ToggleGroupItem>
+                                                <ToggleGroupItem value="month">
+                                                    lunar
+                                                </ToggleGroupItem>
+                                            </ToggleGroup>
+                                        </div>
+                                        <label className="flex items-center gap-2">
+                                            <Switch
+                                                checked={scenarioOn}
+                                                onCheckedChange={setScenarioOn}
+                                            />
+                                            Scenariu vânzări noi
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <Switch
+                                                checked={compare}
+                                                onCheckedChange={setCompare}
+                                            />
+                                            Compară cu anul anterior (OMC
+                                            efectiv, aceeași săptămână)
+                                        </label>
+                                    </div>
 
-                                {compare && (
+                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                        <Kpi
+                                            label="Sold inițial"
+                                            value={`${fmtCompact(report.opening[0])} RON`}
+                                            hint={
+                                                payload.opening.date
+                                                    ? `poziția din OMC la ${payload.opening.date}, sfârșitul zilei de ieri`
+                                                    : 'lipsește soldul inițial'
+                                            }
+                                            tone={
+                                                payload.opening.date
+                                                    ? 'default'
+                                                    : 'bad'
+                                            }
+                                        />
+                                        <Kpi
+                                            label={`Sold minim în ${span} săpt.`}
+                                            value={`${fmtCompact(report.closing[minIndex])} RON`}
+                                            hint={`săptămâna ${weekLabel(report.weeks[minIndex], true)}`}
+                                            tone={
+                                                report.closing[minIndex] <
+                                                report.minimum
+                                                    ? 'bad'
+                                                    : report.closing[minIndex] <
+                                                        report.comfort
+                                                      ? 'warn'
+                                                      : 'good'
+                                            }
+                                        />
+                                        <Kpi
+                                            label={`Sold final S+${span}`}
+                                            value={`${fmtCompact(report.closing[span - 1])} RON`}
+                                            hint={`${report.signal.slice(0, span).filter((s) => s !== 'OK').length} săptămâni sub confort`}
+                                        />
+                                        <Kpi
+                                            label={`Încasări − plăți, ${span} săpt.`}
+                                            value={`${fmtCompact(sum(report.inflows))} − ${fmtCompact(sum(report.outflows) + sum(report.opex))}`}
+                                            hint={`flux net ${fmtCompact(sum(report.net))} RON`}
+                                            tone={
+                                                sum(report.net) < 0
+                                                    ? 'warn'
+                                                    : 'good'
+                                            }
+                                        />
+                                        <Kpi
+                                            label="Restanțe clienți recente"
+                                            value={amounts(
+                                                payload.kpis.overdue_recent,
+                                            )}
+                                            hint={`recuperate ${payload.params.overdue?.recent_pct ?? 0}% pe ${payload.params.overdue?.recent_weeks ?? 0} săpt.; vechi: ${amounts(payload.kpis.overdue_old)}`}
+                                            tone="warn"
+                                        />
+                                        <Kpi
+                                            label="Rezervări cu sold"
+                                            value={fmtRon(
+                                                payload.kpis.bookings,
+                                            )}
+                                            hint={`încasări viitoare ${fmtCompact(payload.kpis.receivables_existing)} RON; după orizont: ${amounts(payload.kpis.beyond_horizon)}`}
+                                        />
+                                        <Kpi
+                                            label="Plăți din rezervări și contracte"
+                                            value={`${fmtCompact(payload.kpis.payables_existing)} RON`}
+                                            hint={`facturi furnizor deschise OMC: ${fmtCompact(payload.kpis.suppliers_open)} RON; încasări charter: ${fmtCompact(payload.kpis.charter_incoming ?? 0)} RON`}
+                                        />
+                                        <Kpi
+                                            label="Scenariu vânzări noi"
+                                            value={`${fmtRon(payload.kpis.scenario_bookings)} dosare`}
+                                            hint={`încasări ${fmtCompact(payload.kpis.scenario_receipts ?? 0)} RON pe segment (B11.1–B11.7); anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
+                                        />
+                                    </div>
+
                                     <Card>
                                         <CardHeader>
                                             <CardTitle>
-                                                Comparație cu anul anterior,
-                                                săptămână cu săptămână
+                                                Soldul de trezorerie, săptămână
+                                                cu săptămână
                                             </CardTitle>
                                             <CardDescription>
-                                                An curent = prognoza acestui
-                                                raport; an anterior = încasările
-                                                și plățile efective din OMC în
-                                                aceeași săptămână, cu soldul
-                                                reconstituit din soldul de azi
-                                                (estimare).
+                                                RON. Soldul final (axa stângă)
+                                                și fluxurile săptămânii –
+                                                încasări, plăți produs + OPEX
+                                                (axa dreaptă). Fundalul gri
+                                                marchează săptămânile acoperite
+                                                doar de scenariu; linia roșie
+                                                punctată este pragul minim.
+                                                {compare &&
+                                                    ' Liniile întrerupte sunt valorile efective ale anului anterior din OMC.'}
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <YoyTable
+                                            <BalanceChart
                                                 report={report}
                                                 lastyear={payload.lastyear}
+                                                coverage={payload.coverage}
                                                 horizon={span}
+                                                compare={compare}
                                             />
                                         </CardContent>
                                     </Card>
-                                )}
 
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>
-                                            Situația fluxurilor de trezorerie
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Toate liniile raportului, în RON,
-                                            {monthly
-                                                ? ' grupate pe luni.'
-                                                : ' pe săptămâni.'}{' '}
-                                            Liniile marcate „scenariu” intră în
-                                            totaluri doar cu scenariul pornit.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <WeeklyTable
-                                            report={report}
-                                            horizon={span}
-                                            monthly={monthly}
-                                            scenarioOn={scenarioOn}
-                                        />
-                                    </CardContent>
-                                </Card>
+                                    {compare && (
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>
+                                                    Comparație cu anul anterior,
+                                                    săptămână cu săptămână
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    An curent = prognoza acestui
+                                                    raport; an anterior =
+                                                    încasările și plățile
+                                                    efective din OMC în aceeași
+                                                    săptămână, cu soldul
+                                                    reconstituit din soldul de
+                                                    azi (estimare).
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <YoyTable
+                                                    report={report}
+                                                    lastyear={payload.lastyear}
+                                                    horizon={span}
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
-                                <div className="grid gap-4 xl:grid-cols-2">
                                     <Card>
                                         <CardHeader>
                                             <CardTitle>
-                                                Încasări din rezervări existente
+                                                Situația fluxurilor de
+                                                trezorerie
                                             </CardTitle>
                                             <CardDescription>
-                                                Pe segment, tip de scadență,
-                                                canal și moneda dosarului
-                                                (eTrip).
+                                                Toate liniile raportului, în
+                                                RON,
+                                                {monthly
+                                                    ? ' grupate pe luni.'
+                                                    : ' pe săptămâni.'}{' '}
+                                                Liniile marcate „scenariu” intră
+                                                în totaluri doar cu scenariul
+                                                pornit.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <StructureTable
-                                                rows={payload.structure.receivables.map(
-                                                    (row) => ({
-                                                        key: `${row.segment}-${row.bucket}-${row.channel}-${row.currency}`,
+                                            <WeeklyTable
+                                                report={report}
+                                                horizon={span}
+                                                monthly={monthly}
+                                                scenarioOn={scenarioOn}
+                                            />
+                                        </CardContent>
+                                    </Card>
+
+                                    <div className="grid gap-4 xl:grid-cols-2">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>
+                                                    Încasări din rezervări
+                                                    existente
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Pe segment, tip de scadență,
+                                                    canal și moneda dosarului
+                                                    (eTrip).
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <StructureTable
+                                                    rows={payload.structure.receivables.map(
+                                                        (row) => ({
+                                                            key: `${row.segment}-${row.bucket}-${row.channel}-${row.currency}`,
+                                                            cells: [
+                                                                row.label,
+                                                                row.bucket,
+                                                                row.channel,
+                                                                row.currency,
+                                                            ],
+                                                            amount: row.amount,
+                                                            lei: row.lei,
+                                                            count: row.tranches,
+                                                        }),
+                                                    )}
+                                                    headers={[
+                                                        'Segment',
+                                                        'Tip',
+                                                        'Canal',
+                                                        'Monedă',
+                                                    ]}
+                                                    countLabel="Scadențe"
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>
+                                                    Plăți furnizori din
+                                                    rezervări existente
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Pe categorie și moneda
+                                                    furnizorului (eTrip), fără
+                                                    charter.
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <StructureTable
+                                                    rows={payload.structure.payables.map(
+                                                        (row) => ({
+                                                            key: `${row.category}-${row.currency}`,
+                                                            cells: [
+                                                                row.label,
+                                                                row.currency,
+                                                            ],
+                                                            amount: row.amount,
+                                                            lei: row.lei,
+                                                            count: row.items,
+                                                        }),
+                                                    )}
+                                                    headers={[
+                                                        'Categorie',
+                                                        'Monedă',
+                                                    ]}
+                                                    countLabel="Servicii"
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+
+                                    <div className="grid gap-4 xl:grid-cols-2">
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>
+                                                    Încasări din vânzări noi
+                                                    (scenariu)
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Pe segmentul dosarului și
+                                                    moneda încasării: ce au
+                                                    încasat dosarele create în
+                                                    aceleași săptămâni ale
+                                                    anului anterior, decalat 52
+                                                    de săptămâni × factor
+                                                    (liniile B11.1–B11.7).
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <StructureTable
+                                                    rows={(
+                                                        payload.structure
+                                                            .new_sales_receipts ??
+                                                        []
+                                                    ).map((row) => ({
+                                                        key: `${row.segment}-${row.currency}`,
                                                         cells: [
                                                             row.label,
-                                                            row.bucket,
-                                                            row.channel,
                                                             row.currency,
                                                         ],
                                                         amount: row.amount,
                                                         lei: row.lei,
-                                                        count: row.tranches,
-                                                    }),
-                                                )}
-                                                headers={[
-                                                    'Segment',
-                                                    'Tip',
-                                                    'Canal',
-                                                    'Monedă',
-                                                ]}
-                                                countLabel="Scadențe"
-                                            />
-                                        </CardContent>
-                                    </Card>
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>
-                                                Plăți furnizori din rezervări
-                                                existente
-                                            </CardTitle>
-                                            <CardDescription>
-                                                Pe categorie și moneda
-                                                furnizorului (eTrip), fără
-                                                charter.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <StructureTable
-                                                rows={payload.structure.payables.map(
-                                                    (row) => ({
+                                                        count: row.receipts,
+                                                    }))}
+                                                    headers={[
+                                                        'Segment',
+                                                        'Monedă',
+                                                    ]}
+                                                    countLabel="Încasări"
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle>
+                                                    Plăți furnizori pentru
+                                                    vânzări noi (scenariu)
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    Pe categorie și moneda
+                                                    furnizorului, din aceleași
+                                                    dosare ale anului anterior,
+                                                    fără charter (linia C11).
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <StructureTable
+                                                    rows={(
+                                                        payload.structure
+                                                            .new_sales_costs ??
+                                                        []
+                                                    ).map((row) => ({
                                                         key: `${row.category}-${row.currency}`,
                                                         cells: [
                                                             row.label,
@@ -557,112 +656,38 @@ export default function CashFlowReport({
                                                         amount: row.amount,
                                                         lei: row.lei,
                                                         count: row.items,
-                                                    }),
-                                                )}
-                                                headers={[
-                                                    'Categorie',
-                                                    'Monedă',
-                                                ]}
-                                                countLabel="Servicii"
-                                            />
-                                        </CardContent>
-                                    </Card>
-                                </div>
-
-                                <div className="grid gap-4 xl:grid-cols-2">
+                                                    }))}
+                                                    headers={[
+                                                        'Categorie',
+                                                        'Monedă',
+                                                    ]}
+                                                    countLabel="Servicii"
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    </div>
                                     <Card>
                                         <CardHeader>
                                             <CardTitle>
-                                                Încasări din vânzări noi
-                                                (scenariu)
+                                                Charter – contracte și termeni
                                             </CardTitle>
                                             <CardDescription>
-                                                Pe segmentul dosarului și moneda
-                                                încasării: ce au încasat
-                                                dosarele create în aceleași
-                                                săptămâni ale anului anterior,
-                                                decalat 52 de săptămâni × factor
-                                                (liniile B11.1–B11.7).
+                                                Ce aduce fiecare contract în
+                                                orizontul raportului, pe
+                                                termenii lui. Contractele fără
+                                                efect de cash sunt păstrate doar
+                                                ca termeni.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <StructureTable
-                                                rows={(
-                                                    payload.structure
-                                                        .new_sales_receipts ??
-                                                    []
-                                                ).map((row) => ({
-                                                    key: `${row.segment}-${row.currency}`,
-                                                    cells: [
-                                                        row.label,
-                                                        row.currency,
-                                                    ],
-                                                    amount: row.amount,
-                                                    lei: row.lei,
-                                                    count: row.receipts,
-                                                }))}
-                                                headers={['Segment', 'Monedă']}
-                                                countLabel="Încasări"
+                                            <CharterContractsTable
+                                                rows={payload.charter}
                                             />
                                         </CardContent>
                                     </Card>
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>
-                                                Plăți furnizori pentru vânzări
-                                                noi (scenariu)
-                                            </CardTitle>
-                                            <CardDescription>
-                                                Pe categorie și moneda
-                                                furnizorului, din aceleași
-                                                dosare ale anului anterior, fără
-                                                charter (linia C11).
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <StructureTable
-                                                rows={(
-                                                    payload.structure
-                                                        .new_sales_costs ?? []
-                                                ).map((row) => ({
-                                                    key: `${row.category}-${row.currency}`,
-                                                    cells: [
-                                                        row.label,
-                                                        row.currency,
-                                                    ],
-                                                    amount: row.amount,
-                                                    lei: row.lei,
-                                                    count: row.items,
-                                                }))}
-                                                headers={[
-                                                    'Categorie',
-                                                    'Monedă',
-                                                ]}
-                                                countLabel="Servicii"
-                                            />
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>
-                                            Charter – contracte și termeni
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Ce aduce fiecare contract în
-                                            orizontul raportului, pe termenii
-                                            lui. Contractele fără efect de cash
-                                            sunt păstrate doar ca termeni.
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <CharterContractsTable
-                                            rows={payload.charter}
-                                        />
-                                    </CardContent>
-                                </Card>
-                            </>
-                        )}
+                                </>
+                            )}
+                        </StoredReportBoundary>
                     </TabsContent>
 
                     <TabsContent value="parameters">
@@ -828,11 +853,21 @@ function CharterContractsTable({ rows }: { rows: CharterSummary[] }) {
                                 </div>
                             </td>
                             <td className="max-w-[360px] px-3 py-2 text-xs text-muted-foreground">
-                                <div>{row.terms.rotation}</div>
-                                <div>{row.terms.taxes}</div>
-                                <div>depozit: {row.terms.deposit}</div>
-                                {row.terms.fx && (
-                                    <div>curs: {row.terms.fx}</div>
+                                {row.terms ? (
+                                    <>
+                                        <div>{row.terms.rotation}</div>
+                                        <div>{row.terms.taxes}</div>
+                                        <div>depozit: {row.terms.deposit}</div>
+                                        {row.terms.fx && (
+                                            <div>curs: {row.terms.fx}</div>
+                                        )}
+                                    </>
+                                ) : (
+                                    // A snapshot from before the contracts
+                                    // carried their own terms.
+                                    <div>
+                                        termenii vin la următoarea recalculare
+                                    </div>
                                 )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
