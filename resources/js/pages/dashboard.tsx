@@ -1,15 +1,17 @@
 import { Deferred, Head, router } from '@inertiajs/react';
-import { useMemo } from 'react';
+import { Link } from '@inertiajs/react';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import {
     Bar,
     BarChart,
     CartesianGrid,
     Cell,
+    ComposedChart,
     Line,
-    LineChart,
     Pie,
     PieChart,
+    ReferenceLine,
     XAxis,
     YAxis,
 } from 'recharts';
@@ -29,19 +31,14 @@ import {
 } from '@/components/ui/chart';
 import type { ChartConfig } from '@/components/ui/chart';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
+import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import type {
     AgingBucket,
     CashflowPoint,
+    CashflowSeries,
     Filters,
     PaymentState,
     Props,
@@ -73,23 +70,20 @@ const CASHFLOW_COLORS = {
 
 export default function Dashboard({
     filters,
-    companies,
     paymentBreakdown,
     agingBuckets,
     topOverdueSuppliers,
     cashflow,
 }: Props) {
-    const moneda = filters.moneda || 'Lei';
+    const moneda = 'Lei';
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
         router.get(
             dashboard().url,
             {
-                company_id: merged.company_id ?? undefined,
                 from: merged.from ?? undefined,
                 to: merged.to ?? undefined,
-                moneda: merged.moneda ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -116,35 +110,6 @@ export default function Dashboard({
                     onSubmit={(e) => e.preventDefault()}
                 >
                     <div className="grid gap-1">
-                        <Label className="text-xs">Companie</Label>
-                        <Select
-                            value={
-                                filters.company_id
-                                    ? String(filters.company_id)
-                                    : 'all'
-                            }
-                            onValueChange={(v) =>
-                                applyFilter({
-                                    company_id: v === 'all' ? null : Number(v),
-                                })
-                            }
-                        >
-                            <SelectTrigger className="min-h-11 w-[200px]">
-                                <SelectValue placeholder="Companie" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Toate companiile
-                                </SelectItem>
-                                {companies.map((c) => (
-                                    <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid gap-1">
                         <Label className="text-xs">Perioadă</Label>
                         <DateRangePicker
                             className="w-[260px]"
@@ -156,23 +121,6 @@ export default function Dashboard({
                                 })
                             }
                         />
-                    </div>
-                    <div className="grid gap-1">
-                        <Label className="text-xs">Monedă</Label>
-                        <Select
-                            value={moneda}
-                            onValueChange={(v) => applyFilter({ moneda: v })}
-                        >
-                            <SelectTrigger className="min-h-11 w-[100px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Lei">Lei</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="GBP">GBP</SelectItem>
-                            </SelectContent>
-                        </Select>
                     </div>
                 </form>
 
@@ -223,7 +171,9 @@ export default function Dashboard({
                         />
                     }
                 >
-                    <CashflowCard data={cashflow ?? []} moneda={moneda} />
+                    <CashflowCard
+                        data={cashflow ?? { built_at: null, points: [] }}
+                    />
                 </Deferred>
             </div>
         </>
@@ -539,65 +489,115 @@ function TopSuppliersCard({
     );
 }
 
-function CashflowCard({
-    data,
-    moneda,
-}: {
-    data: CashflowPoint[];
-    moneda: string;
-}) {
+function CashflowCard({ data }: { data: CashflowSeries }) {
     const config = useMemo<ChartConfig>(
         () => ({
             incoming: { label: 'Încasări', color: CASHFLOW_COLORS.incoming },
             outgoing: { label: 'Plăți', color: CASHFLOW_COLORS.outgoing },
+            balance: { label: 'Poziție de trezorerie', color: '#1f2a44' },
         }),
         [],
     );
+
+    const points = useMemo(
+        () =>
+            data.points.map((point) => ({
+                ...point,
+                label: `${point.week.slice(8, 10)}.${point.week.slice(5, 7)}`,
+            })),
+        [data.points],
+    );
+    const firstForecast = points.find((point) => point.kind === 'forecast');
+    const actualWeeks = points.filter((p) => p.kind === 'actual').length;
+    const forecastWeeks = points.length - actualWeeks;
 
     return (
         <Card className="md:col-span-2 lg:col-span-3">
             <CardHeader>
                 <CardTitle>Flux de numerar săptămânal</CardTitle>
                 <CardDescription>
-                    Total încasări vs. plăți pe săptămână din extrasele bancare
+                    Încasări și plăți pe săptămână, în lei: ultimele{' '}
+                    {actualWeeks} săptămâni așa cum le-a înregistrat OMC (bancă
+                    + casă, fără transferuri interne) și următoarele{' '}
+                    {forecastWeeks} după prognoza WCFR 52 Weeks (barele
+                    deschise). Linia este poziția de trezorerie la finalul
+                    săptămânii.
+                    {data.built_at &&
+                        ` Prognoză construită ${new Date(data.built_at).toLocaleString('ro-RO')}.`}
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                {data.length === 0 ? (
-                    <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
-                        Niciun extras bancar în perioada selectată.
+                {points.length === 0 ? (
+                    <div className="flex h-[260px] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <span>
+                            Raportul WCFR 52 Weeks nu a fost încă construit.
+                        </span>
+                        <Link
+                            href={cashFlowIndex()}
+                            className="underline underline-offset-4"
+                        >
+                            Deschide raportul și apasă „Recalculează”
+                        </Link>
                     </div>
                 ) : (
                     <ChartContainer
                         config={config}
-                        className="h-[280px] w-full"
+                        className="h-[320px] w-full"
                     >
-                        <LineChart
-                            data={data}
-                            margin={{ left: 0, right: 20, top: 10, bottom: 0 }}
+                        <ComposedChart
+                            data={points}
+                            margin={{ left: 0, right: 12, top: 10, bottom: 0 }}
+                            barGap={2}
                         >
                             <CartesianGrid
                                 strokeDasharray="3 3"
                                 vertical={false}
                             />
                             <XAxis
-                                dataKey="week"
+                                dataKey="label"
                                 tickLine={false}
                                 axisLine={false}
-                                tickFormatter={(v: string) =>
-                                    v.replace(/^\d{4}-/, '')
-                                }
+                                fontSize={11}
                             />
                             <YAxis
+                                yAxisId="flows"
                                 tickLine={false}
                                 axisLine={false}
-                                width={80}
+                                width={64}
+                                fontSize={11}
                                 tickFormatter={(v) =>
                                     new Intl.NumberFormat('ro-RO', {
                                         notation: 'compact',
                                     }).format(Number(v))
                                 }
                             />
+                            <YAxis
+                                yAxisId="balance"
+                                orientation="right"
+                                tickLine={false}
+                                axisLine={false}
+                                width={64}
+                                fontSize={11}
+                                tickFormatter={(v) =>
+                                    new Intl.NumberFormat('ro-RO', {
+                                        notation: 'compact',
+                                    }).format(Number(v))
+                                }
+                            />
+                            {firstForecast && (
+                                <ReferenceLine
+                                    x={firstForecast.label}
+                                    yAxisId="flows"
+                                    stroke="var(--muted-foreground)"
+                                    strokeDasharray="4 4"
+                                    label={{
+                                        value: 'azi',
+                                        position: 'insideTopLeft',
+                                        fontSize: 10,
+                                        fill: 'var(--muted-foreground)',
+                                    }}
+                                />
+                            )}
                             <ChartTooltip
                                 content={
                                     <ChartTooltipContent
@@ -608,18 +608,20 @@ function CashflowCard({
                                                 | undefined;
 
                                             return row
-                                                ? `Săptămâna ${row.week}`
+                                                ? `Săptămâna ${row.week} · ${row.kind === 'actual' ? 'efectiv (OMC)' : 'prognoză (WCFR)'}`
                                                 : '';
                                         }}
                                         formatter={(value, name) => (
-                                            <div className="flex min-w-[180px] items-center justify-between gap-2">
-                                                <span className="text-muted-foreground capitalize">
-                                                    {String(name)}
+                                            <div className="flex min-w-[200px] items-center justify-between gap-2">
+                                                <span className="text-muted-foreground">
+                                                    {config[
+                                                        name as keyof typeof config
+                                                    ]?.label ?? String(name)}
                                                 </span>
                                                 <span className="font-medium tabular-nums">
                                                     {formatMoney(
                                                         Number(value),
-                                                        moneda,
+                                                        'Lei',
                                                     )}
                                                 </span>
                                             </div>
@@ -627,21 +629,49 @@ function CashflowCard({
                                     />
                                 }
                             />
-                            <Line
-                                type="monotone"
+                            <Bar
+                                yAxisId="flows"
                                 dataKey="incoming"
-                                stroke={CASHFLOW_COLORS.incoming}
-                                strokeWidth={2}
-                                dot={false}
-                            />
-                            <Line
-                                type="monotone"
+                                fill={CASHFLOW_COLORS.incoming}
+                                radius={[3, 3, 0, 0]}
+                                isAnimationActive={false}
+                            >
+                                {points.map((point) => (
+                                    <Cell
+                                        key={`in-${point.week}`}
+                                        fillOpacity={
+                                            point.kind === 'forecast' ? 0.4 : 1
+                                        }
+                                    />
+                                ))}
+                            </Bar>
+                            <Bar
+                                yAxisId="flows"
                                 dataKey="outgoing"
-                                stroke={CASHFLOW_COLORS.outgoing}
+                                fill={CASHFLOW_COLORS.outgoing}
+                                radius={[3, 3, 0, 0]}
+                                isAnimationActive={false}
+                            >
+                                {points.map((point) => (
+                                    <Cell
+                                        key={`out-${point.week}`}
+                                        fillOpacity={
+                                            point.kind === 'forecast' ? 0.4 : 1
+                                        }
+                                    />
+                                ))}
+                            </Bar>
+                            <Line
+                                yAxisId="balance"
+                                type="monotone"
+                                dataKey="balance"
+                                stroke="#1f2a44"
                                 strokeWidth={2}
                                 dot={false}
+                                connectNulls
+                                isAnimationActive={false}
                             />
-                        </LineChart>
+                        </ComposedChart>
                     </ChartContainer>
                 )}
             </CardContent>

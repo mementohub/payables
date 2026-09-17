@@ -18,6 +18,9 @@ use Throwable;
  */
 class CashFlowReportBuilder
 {
+    /** Weeks before the horizon kept in the snapshot as actual flows. */
+    public const RECENT_WEEKS = 13;
+
     private WeekGrid $grid;
 
     private CarbonImmutable $today;
@@ -116,7 +119,7 @@ class CashFlowReportBuilder
             ?? ['receipts' => $this->grid->zeros(), 'costs' => $this->grid->zeros(), 'bookings' => 0];
 
         $actuals = $this->source('actuals', 'Fluxuri efective an anterior (OMC)', fn () => $this->actuals($opening['total']))
-            ?? ['lastyear' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
+            ?? ['lastyear' => [], 'recent' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
 
         return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals);
     }
@@ -842,6 +845,29 @@ class CashFlowReportBuilder
             return $anchors[$previous] + $cumulative + ($anchors[$next] - $anchors[$previous] - $total) * $k / $count;
         };
 
+        // This year's last weeks as OMC recorded them, with the position at the end of each
+        // week walked back from today's position (the current, partial week comes first).
+        $recent = [];
+        $net = fn (string $monday) => ($weekly[$monday]['in'] ?? 0.0) - ($weekly[$monday]['out'] ?? 0.0);
+        $running = $openingTotal - $net($this->grid->start->toDateString());
+
+        for ($i = 1; $i <= self::RECENT_WEEKS; $i++) {
+            $monday = $this->grid->start->subWeeks($i);
+            $key = $monday->toDateString();
+            $week = $weekly[$key] ?? ['in' => 0.0, 'out' => 0.0, 'out_partner' => 0.0, 'out_salaries' => 0.0];
+
+            array_unshift($recent, [
+                'week' => $key,
+                'in' => round($week['in'], 2),
+                'out' => round($week['out'], 2),
+                'out_partner' => round($week['out_partner'], 2),
+                'out_salaries' => round($week['out_salaries'], 2),
+                'balance' => round($running, 2),
+            ]);
+
+            $running -= $net($key);
+        }
+
         $in = $this->grid->zeros();
         $outPartner = $this->grid->zeros();
         $outSalaries = $this->grid->zeros();
@@ -875,6 +901,7 @@ class CashFlowReportBuilder
 
         return [
             'lastyear' => $lastyear,
+            'recent' => $recent,
             'in' => $in,
             'out_partner' => $outPartner,
             'out_salaries' => $outSalaries,
@@ -1017,6 +1044,7 @@ class CashFlowReportBuilder
             'lines' => $this->lines,
             'coverage' => $coverage,
             'lastyear' => $actuals['lastyear'],
+            'recent' => $actuals['recent'],
             'kpis' => $kpis,
             'opening' => $opening,
             'structure' => [

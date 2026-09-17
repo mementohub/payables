@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BankStatementLine;
-use App\Models\Company;
+use App\Models\CashFlowSnapshot;
 use App\Models\Invoice;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -11,45 +10,48 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
+/**
+ * Panou principal: the received invoices of the period (every currency,
+ * in lei at the document rate) and the weekly cash flow — the last weeks
+ * as they happened in OMC, the coming ones as the WCFR 52 Weeks forecast.
+ */
 class DashboardController extends Controller
 {
+    public const WEEKS_BACK = 13;
+
+    public const WEEKS_AHEAD = 13;
+
+    /** Outstanding amount of an invoice, in lei at the document rate. */
+    private const OUTSTANDING_LEI = '(val_mon - val_mon_paid) * coalesce(curs, 1)';
+
     public function index(Request $request): Response
     {
-        $companyId = $request->integer('company_id');
         $from = $this->parseDate($request->string('from')->toString());
         $to = $this->parseDate($request->string('to')->toString());
-        $moneda = $request->string('moneda')->toString() ?: 'Lei';
-
-        $filters = [
-            'company_id' => $companyId ?: null,
-            'from' => $from?->toDateString(),
-            'to' => $to?->toDateString(),
-            'moneda' => $moneda,
-        ];
 
         return Inertia::render('dashboard', [
-            'filters' => $filters,
-            'companies' => Company::orderBy('name')->get(['id', 'name']),
-            'paymentBreakdown' => Inertia::defer(fn () => $this->paymentBreakdown($companyId, $from, $to, $moneda)),
-            'agingBuckets' => Inertia::defer(fn () => $this->agingBuckets($companyId, $from, $to, $moneda)),
-            'topOverdueSuppliers' => Inertia::defer(fn () => $this->topOverdueSuppliers($companyId, $from, $to, $moneda)),
-            'cashflow' => Inertia::defer(fn () => $this->weeklyCashflow($companyId, $from, $to, $moneda)),
+            'filters' => [
+                'from' => $from?->toDateString(),
+                'to' => $to?->toDateString(),
+            ],
+            'paymentBreakdown' => Inertia::defer(fn () => $this->paymentBreakdown($from, $to)),
+            'agingBuckets' => Inertia::defer(fn () => $this->agingBuckets($from, $to)),
+            'topOverdueSuppliers' => Inertia::defer(fn () => $this->topOverdueSuppliers($from, $to)),
+            'cashflow' => Inertia::defer(fn () => $this->weeklyCashflow()),
         ]);
     }
 
     /**
      * Received invoices grouped by payment state.
      *
-     * @return array<int, array{state: string, label: string, count: int, total: float}>
+     * @return array<int, array{state: string, label: string, count: int, total: float, outstanding: float}>
      */
-    private function paymentBreakdown(?int $companyId, ?CarbonImmutable $from, ?CarbonImmutable $to, string $moneda): array
+    private function paymentBreakdown(?CarbonImmutable $from, ?CarbonImmutable $to): array
     {
         $today = CarbonImmutable::today()->toDateString();
 
         $rows = Invoice::query()
             ->furnizor()
-            ->where('moneda', $moneda)
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
             ->when($from, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
             ->selectRaw("
@@ -61,9 +63,9 @@ class DashboardController extends Controller
                     else 'partial'
                 end as state,
                 count(*) as count,
-                coalesce(sum(val_mon - val_mon_paid), 0) as outstanding,
-                coalesce(sum(val_mon), 0) as total
-            ", [$today, $today])
+                coalesce(sum(".self::OUTSTANDING_LEI.'), 0) as outstanding,
+                coalesce(sum(val_mon * coalesce(curs, 1)), 0) as total
+            ', [$today, $today])
             ->groupBy('state')
             ->get();
 
@@ -81,8 +83,8 @@ class DashboardController extends Controller
                 'state' => $state,
                 'label' => $labels[$state],
                 'count' => (int) ($byState[$state]->count ?? 0),
-                'total' => (float) ($byState[$state]->total ?? 0),
-                'outstanding' => (float) ($byState[$state]->outstanding ?? 0),
+                'total' => round((float) ($byState[$state]->total ?? 0), 2),
+                'outstanding' => round((float) ($byState[$state]->outstanding ?? 0), 2),
             ])
             ->values()
             ->all();
@@ -93,16 +95,14 @@ class DashboardController extends Controller
      *
      * @return array<int, array{bucket: string, count: int, outstanding: float}>
      */
-    private function agingBuckets(?int $companyId, ?CarbonImmutable $from, ?CarbonImmutable $to, string $moneda): array
+    private function agingBuckets(?CarbonImmutable $from, ?CarbonImmutable $to): array
     {
         $today = CarbonImmutable::today();
 
         $rows = Invoice::query()
             ->furnizor()
-            ->where('moneda', $moneda)
             ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
             ->where('data_scadenta', '<', $today)
-            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
             ->when($from, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
             ->selectRaw("
@@ -113,8 +113,8 @@ class DashboardController extends Controller
                     else '90+'
                 end as bucket,
                 count(*) as count,
-                coalesce(sum(val_mon - val_mon_paid), 0) as outstanding
-            ", [$today->subDays(30)->toDateString(), $today->subDays(60)->toDateString(), $today->subDays(90)->toDateString()])
+                coalesce(sum(".self::OUTSTANDING_LEI.'), 0) as outstanding
+            ', [$today->subDays(30)->toDateString(), $today->subDays(60)->toDateString(), $today->subDays(90)->toDateString()])
             ->groupBy('bucket')
             ->get()
             ->keyBy('bucket');
@@ -123,7 +123,7 @@ class DashboardController extends Controller
             ->map(fn ($bucket) => [
                 'bucket' => $bucket,
                 'count' => (int) ($rows[$bucket]->count ?? 0),
-                'outstanding' => (float) ($rows[$bucket]->outstanding ?? 0),
+                'outstanding' => round((float) ($rows[$bucket]->outstanding ?? 0), 2),
             ])
             ->values()
             ->all();
@@ -134,16 +134,14 @@ class DashboardController extends Controller
      *
      * @return array<int, array{partner_id: int|null, name: string, outstanding: float, invoices: int}>
      */
-    private function topOverdueSuppliers(?int $companyId, ?CarbonImmutable $from, ?CarbonImmutable $to, string $moneda): array
+    private function topOverdueSuppliers(?CarbonImmutable $from, ?CarbonImmutable $to): array
     {
         $today = CarbonImmutable::today();
 
         return Invoice::query()
             ->furnizor()
-            ->where('moneda', $moneda)
             ->whereColumn('invoices.val_mon_paid', '<', DB::raw('invoices.val_mon - 0.01'))
             ->where('invoices.data_scadenta', '<', $today)
-            ->when($companyId, fn ($q, $id) => $q->where('invoices.company_id', $id))
             ->when($from, fn ($q, $d) => $q->where('invoices.data_doc', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('invoices.data_doc', '<=', $d))
             ->leftJoin('partners', 'invoices.partner_id', '=', 'partners.id')
@@ -151,7 +149,7 @@ class DashboardController extends Controller
                 invoices.partner_id,
                 coalesce(partners.name, ?) as name,
                 count(*) as invoices,
-                coalesce(sum(val_mon - val_mon_paid), 0) as outstanding
+                coalesce(sum((invoices.val_mon - invoices.val_mon_paid) * coalesce(invoices.curs, 1)), 0) as outstanding
             ', ['Fără partener'])
             ->groupBy('invoices.partner_id', 'partners.name')
             ->orderByDesc('outstanding')
@@ -161,45 +159,59 @@ class DashboardController extends Controller
                 'partner_id' => $r->partner_id ? (int) $r->partner_id : null,
                 'name' => (string) $r->name,
                 'invoices' => (int) $r->invoices,
-                'outstanding' => (float) $r->outstanding,
+                'outstanding' => round((float) $r->outstanding, 2),
             ])
             ->values()
             ->all();
     }
 
     /**
-     * Weekly incoming vs outgoing cashflow from bank-statement lines.
-     * Uses the filter date range or defaults to the last 12 weeks.
+     * Weekly cash flow around today, in lei: the last weeks as OMC recorded
+     * them (receipts, payments and the treasury position at the end of the
+     * week) and the coming weeks as the latest WCFR 52 Weeks snapshot
+     * forecasts them (total inflows, product payments + OPEX, closing
+     * balance).
      *
-     * @return array<int, array{week: string, incoming: float, outgoing: float}>
+     * @return array{built_at: ?string, points: list<array{week: string, kind: string, incoming: float, outgoing: float, balance: ?float}>}
      */
-    private function weeklyCashflow(?int $companyId, ?CarbonImmutable $from, ?CarbonImmutable $to, string $moneda): array
+    private function weeklyCashflow(): array
     {
-        $rangeTo = $to ?? CarbonImmutable::today();
-        $rangeFrom = $from ?? $rangeTo->subWeeks(12)->startOfWeek();
+        $snapshot = CashFlowSnapshot::latest();
+        $payload = $snapshot?->payload;
 
-        return BankStatementLine::query()
-            ->join('bank_statements', 'bank_statement_lines.bank_statement_id', '=', 'bank_statements.id')
-            ->where('bank_statement_lines.moneda', $moneda)
-            ->whereBetween('bank_statement_lines.data_doc', [$rangeFrom, $rangeTo])
-            ->when($companyId, fn ($q, $id) => $q->where('bank_statements.company_id', $id))
-            ->selectRaw("
-                date_format(bank_statement_lines.data_doc, '%x-W%v') as week,
-                min(bank_statement_lines.data_doc) as week_start,
-                coalesce(sum(case when bank_statement_lines.direction = 'incoming' then bank_statement_lines.val_mon else 0 end), 0) as incoming,
-                coalesce(sum(case when bank_statement_lines.direction = 'outgoing' then bank_statement_lines.val_mon else 0 end), 0) as outgoing
-            ")
-            ->groupBy('week')
-            ->orderBy('week_start')
-            ->get()
-            ->map(fn ($r) => [
-                'week' => (string) $r->week,
-                'week_start' => CarbonImmutable::parse($r->week_start)->toDateString(),
-                'incoming' => (float) $r->incoming,
-                'outgoing' => (float) $r->outgoing,
-            ])
-            ->values()
-            ->all();
+        if (! is_array($payload) || empty($payload['weeks'])) {
+            return ['built_at' => null, 'points' => []];
+        }
+
+        $points = [];
+
+        foreach (array_slice((array) ($payload['recent'] ?? []), -self::WEEKS_BACK) as $week) {
+            $points[] = [
+                'week' => (string) $week['week'],
+                'kind' => 'actual',
+                'incoming' => round((float) $week['in'], 2),
+                'outgoing' => round((float) $week['out'], 2),
+                'balance' => isset($week['balance']) ? round((float) $week['balance'], 2) : null,
+            ];
+        }
+
+        $lines = collect($payload['lines'] ?? [])->keyBy('code');
+        $inflows = $lines->get('B')['values'] ?? [];
+        $product = $lines->get('C')['values'] ?? [];
+        $opex = $lines->get('D')['values'] ?? [];
+        $closing = $lines->get('E2')['values'] ?? [];
+
+        foreach (array_slice($payload['weeks'], 0, self::WEEKS_AHEAD) as $i => $monday) {
+            $points[] = [
+                'week' => (string) $monday,
+                'kind' => 'forecast',
+                'incoming' => round((float) ($inflows[$i] ?? 0), 2),
+                'outgoing' => round((float) ($product[$i] ?? 0) + (float) ($opex[$i] ?? 0), 2),
+                'balance' => isset($closing[$i]) ? round((float) $closing[$i], 2) : null,
+            ];
+        }
+
+        return ['built_at' => $snapshot->built_at->toIso8601String(), 'points' => $points];
     }
 
     private function parseDate(?string $value): ?CarbonImmutable

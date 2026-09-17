@@ -21,23 +21,26 @@ export type TopSupplier = {
 
 export type CashflowPoint = {
     week: string;
-    week_start: string;
+    kind: 'actual' | 'forecast';
     incoming: number;
     outgoing: number;
+    balance: number | null;
+};
+
+export type CashflowSeries = {
+    built_at: string | null;
+    points: CashflowPoint[];
 };
 
 export type Filters = {
-    company_id: number | null;
     from: string | null;
     to: string | null;
-    moneda: string;
 };
 
 export type Props = {
     filters: Filters;
-    companies: { id: number; name: string }[];
     paymentBreakdown?: PaymentState[];
     agingBuckets?: AgingBucket[];
     topOverdueSuppliers?: TopSupplier[];
-    cashflow?: CashflowPoint[];
+    cashflow?: CashflowSeries;
 };

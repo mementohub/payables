@@ -180,6 +180,12 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['lastyear'][0]['ly_bal'])->toBeGreaterThan(5000000)
         ->and($snapshot->payload['lastyear'][0]['ly_bal'])->toBeLessThan(5551000)
         ->and($snapshot->payload['lastyear'][0]['ly_bal_open'])->toBeGreaterThanOrEqual(5000000)
+        // Recent weeks: 13 before S+1. Nothing moved in the current week, so 07.09 ends at today's
+        // position; the week before ends 150,000 lower (the +200,000 / −50,000 of 10–11.09).
+        ->and($snapshot->payload['recent'])->toHaveCount(13)
+        ->and($snapshot->payload['recent'][12])->toMatchArray(['week' => '2026-09-07', 'in' => 200000, 'out' => 50000, 'balance' => 6665000])
+        ->and($snapshot->payload['recent'][11]['balance'])->toEqual(6665000 - 150000)
+        ->and($snapshot->payload['recent'][0]['week'])->toBe('2026-06-15')
         ->and($snapshot->payload['charter'][0])->toMatchArray(['season' => 'S26', 'status' => 'signed', 'flights' => 1])
         ->and($snapshot->payload['charter'][0]['in_horizon'])->toEqual(1000);
 });
