@@ -35,9 +35,9 @@ function omcFlows(): array
     ];
 }
 
-function mockOmc(bool $anchor = true): void
+function mockOmc(bool $anchor = true, bool $daily = true): void
 {
-    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor) {
+    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor, $daily) {
         $mock->shouldReceive('dailyFlows')->andReturnUsing(fn (CarbonInterface $from, CarbonInterface $to) => array_values(array_filter(
             omcFlows(),
             fn (array $row) => $row['day'] >= $from->toDateString() && $row['day'] < $to->toDateString(),
@@ -49,17 +49,19 @@ function mockOmc(bool $anchor = true): void
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
         $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
-        $mock->shouldReceive('balanceAnchors')->andReturn($anchor
-            ? ['bank' => CarbonImmutable::parse('2026-09-15'), 'cash' => CarbonImmutable::parse('2026-09-15'), 'deposits' => CarbonImmutable::parse('2026-08-31')]
-            : ['bank' => null, 'cash' => null, 'deposits' => null]);
+        $mock->shouldReceive('balanceAnchors')->andReturn(match (true) {
+            ! $anchor => ['bank' => null, 'bank_month_end' => null, 'bank_daily' => false, 'bank_note' => 'eu_banca_sold_zile nu are solduri zilnice', 'cash' => null, 'deposits' => null],
+            $daily => ['bank' => CarbonImmutable::parse('2026-09-15'), 'bank_month_end' => CarbonImmutable::parse('2026-08-31'), 'bank_daily' => true, 'bank_note' => 'eu_banca_sold_zile validat (2 conturi-luni identice cu eu_banca_sold), ultima zi 15.09.2026', 'cash' => CarbonImmutable::parse('2026-08-31'), 'deposits' => CarbonImmutable::parse('2026-08-31')],
+            default => ['bank' => CarbonImmutable::parse('2026-08-31'), 'bank_month_end' => CarbonImmutable::parse('2026-08-31'), 'bank_daily' => false, 'bank_note' => 'eu_banca_sold_zile nu are zile după 31.08.2026 (ultima: 31.08.2026)', 'cash' => CarbonImmutable::parse('2026-08-31'), 'deposits' => CarbonImmutable::parse('2026-08-31')],
+        });
         $mock->shouldReceive('monthEndPositions')->andReturn([
             ['date' => '2025-08-31', 'bank' => ['RON' => 1000000], 'cash' => ['RON' => 0], 'deposits' => ['RON' => 4000000], 'rates' => []],
             ['date' => '2025-09-30', 'bank' => ['RON' => 1500000, 'EUR' => 10000], 'cash' => [], 'deposits' => ['RON' => 4000000], 'rates' => ['EUR' => 5.1]],
             ['date' => '2026-08-31', 'bank' => ['RON' => 1000000, 'EUR' => 100000], 'cash' => ['RON' => 10000], 'deposits' => ['RON' => 5000000], 'rates' => ['EUR' => 5.05]],
         ]);
         $mock->shouldReceive('openingPosition')->with(Mockery::type('array'), Mockery::type(CarbonInterface::class))->andReturn([
-            ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
-            ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],
+            ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'bank_check' => $daily ? 0 : null, 'bank_check_accounts' => $daily ? 1 : 0, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
+            ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'bank_check' => $daily ? 2500 : null, 'bank_check_accounts' => $daily ? 1 : 0, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],
         ]);
     });
 }
@@ -276,8 +278,12 @@ test('the position starts from the latest balances OMC saved, each rolled forwar
     // RON: 1,000,000 + 200,000 − 300,000 banks, 10,000 + 5,000 cash, 5,000,000 + 300,000 deposits; EUR: 90,000 × 5.
     expect($snapshot->status)->toBe('ok')
         ->and($opening['date'])->toBe('2026-09-15')
-        ->and($opening['anchors'])->toBe(['bank' => '2026-09-15', 'cash' => '2026-09-15', 'deposits' => '2026-08-31'])
-        ->and($rows['bank_open']['label'])->toBe('Conturi curente bănci la 15.09.2026')
+        ->and($opening['anchors'])->toBe(['bank' => '2026-09-15', 'cash' => '2026-08-31', 'deposits' => '2026-08-31'])
+        ->and($opening['sources'])->toBe(['bank' => 'eu_banca_sold_zile', 'cash' => 'casa_sold', 'deposits' => 'conta_sold'])
+        ->and($rows['bank_open']['label'])->toBe('Conturi curente bănci la 15.09.2026 (solduri zilnice)')
+        ->and($rows['bank_check']['label'])->toBe('Verificare: soldurile zilnice minus soldurile de sfârșit de lună rulate până la 15.09.2026')
+        ->and($rows['bank_check']['values'])->toEqual(['RON' => 2500, 'EUR' => 0, 'USD' => 0])
+        ->and($rows['cash_open']['label'])->toBe('Numerar în casierii la 31.08.2026')
         ->and($rows['deposits_open']['label'])->toBe('Depozite bancare (5081) la 31.08.2026')
         ->and($opening['currencies'])->toBe(['RON', 'EUR', 'USD'])
         ->and($rows['bank_now']['values']['RON'])->toEqual(900000)
@@ -287,8 +293,28 @@ test('the position starts from the latest balances OMC saved, each rolled forwar
         ->and($rows['position']['values']['EUR'])->toEqual(90000)
         ->and($opening['total'])->toEqual(6665000)
         ->and(lineValues($snapshot, 'A')[0])->toBe(6665000.0)
-        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci la 15.09.2026')
-        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('depozite 5081 la 31.08.2026');
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci la 15.09.2026 (eu_banca_sold_zile)')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('depozite 5081 la 31.08.2026')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('eu_banca_sold_zile validat (2 conturi-luni');
+});
+
+test('without usable daily balances the banks start from the month-end and the reason is shown', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
+    mockOmc(daily: false);
+    mockEtrip();
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $opening = $snapshot->payload['opening'];
+    $rows = collect($opening['rows'])->keyBy('key');
+
+    expect($opening['anchors'])->toBe(['bank' => '2026-08-31', 'cash' => '2026-08-31', 'deposits' => '2026-08-31'])
+        ->and($opening['sources']['bank'])->toBe('eu_banca_sold')
+        ->and($opening['notes']['bank'])->toBe('eu_banca_sold_zile nu are zile după 31.08.2026 (ultima: 31.08.2026)')
+        ->and($rows->has('bank_check'))->toBeFalse()
+        ->and($rows['bank_open']['label'])->toBe('Conturi curente bănci la 31.08.2026 (solduri de sfârșit de lună)')
+        ->and($opening['total'])->toEqual(6665000)
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci la 31.08.2026 (eu_banca_sold)')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('eu_banca_sold_zile nu are zile după 31.08.2026');
 });
 
 test('without saved balances in OMC the balance starts at zero and says so', function () {

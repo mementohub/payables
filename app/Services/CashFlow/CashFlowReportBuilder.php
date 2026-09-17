@@ -213,9 +213,10 @@ class CashFlowReportBuilder
 
     /**
      * The treasury position: the latest balances OMC saved before today
-     * (bank accounts and cash desks day by day, deposits on 5081 at the
-     * month-end closing), each rolled forward with the bank and cash
-     * documents dated after its own balance day, up to today.
+     * (bank accounts from the daily balances when OMC keeps them and they
+     * check out against the month-end ones, cash desks and deposits on
+     * 5081 from their last saved day), each rolled forward with the bank
+     * and cash documents dated after its own balance day, up to today.
      *
      * @return array<string, mixed>
      */
@@ -235,12 +236,14 @@ class CashFlowReportBuilder
         $position = $this->omc->openingPosition($anchors, $this->today);
         $currencies = array_values(array_unique(['RON', 'EUR', 'USD', ...array_column($position, 'currency')]));
         $rows = [];
+        $daily = (bool) ($anchors['bank_daily'] ?? false);
         $at = fn (string $section) => $anchors[$section]?->format('d.m.Y') ?? 'lipsă';
         $labels = [
-            'bank_open' => 'Conturi curente bănci la '.$at('bank'),
+            'bank_open' => 'Conturi curente bănci la '.$at('bank').($daily ? ' (solduri zilnice)' : ' (solduri de sfârșit de lună)'),
             'bank_in' => 'Încasări prin bancă după '.$at('bank'),
             'bank_out' => 'Plăți prin bancă după '.$at('bank'),
             'bank_now' => 'Conturi curente bănci azi',
+            ...($daily ? ['bank_check' => 'Verificare: soldurile zilnice minus soldurile de sfârșit de lună rulate până la '.$at('bank')] : []),
             'cash_open' => 'Numerar în casierii la '.$at('cash'),
             'cash_in' => 'Încasări în numerar după '.$at('cash'),
             'cash_out' => 'Plăți în numerar după '.$at('cash'),
@@ -268,6 +271,10 @@ class CashFlowReportBuilder
                 $rows[$key]['values'][$currency] = round($row[$key], 2);
             }
 
+            if ($daily) {
+                $rows['bank_check']['values'][$currency] = round((float) ($row['bank_check'] ?? 0), 2);
+            }
+
             $rows['bank_now']['values'][$currency] = round($bankNow, 2);
             $rows['cash_now']['values'][$currency] = round($cashNow, 2);
             $rows['deposits_now']['values'][$currency] = round($depositsNow, 2);
@@ -276,9 +283,14 @@ class CashFlowReportBuilder
             $total += $this->lei($bankNow + $cashNow + $depositsNow, $currency);
         }
 
+        $sources = ['bank' => $daily ? 'eu_banca_sold_zile' : 'eu_banca_sold', 'cash' => 'casa_sold', 'deposits' => 'conta_sold'];
+        $note = trim((string) ($anchors['bank_note'] ?? ''));
+
         return [
             'date' => ($anchors['bank'] ?? $anchors['cash'] ?? $anchors['deposits'])->toDateString(),
-            'anchors' => array_map(fn (?CarbonImmutable $anchor) => $anchor?->toDateString(), $anchors),
+            'anchors' => ['bank' => $anchors['bank']?->toDateString(), 'cash' => $anchors['cash']?->toDateString(), 'deposits' => $anchors['deposits']?->toDateString()],
+            'sources' => $sources,
+            'notes' => ['bank' => $note],
             'as_of' => $this->today->toDateString(),
             'currencies' => $currencies,
             'rows' => array_values($rows),
@@ -286,11 +298,13 @@ class CashFlowReportBuilder
             'total' => round($total, 2),
             '_rows' => count($position),
             '_message' => sprintf(
-                'Solduri OMC: bănci la %s (eu_banca_sold), casierii la %s (casa_sold), depozite 5081 la %s (conta_sold), fiecare rulat cu documentele de bancă și casă de după acea zi până la %s.',
+                'Solduri OMC: bănci la %s (%s), casierii la %s (casa_sold), depozite 5081 la %s (conta_sold), fiecare rulat cu documentele de bancă și casă de după acea zi până la %s.%s',
                 $at('bank'),
+                $sources['bank'],
                 $at('cash'),
                 $at('deposits'),
                 $this->today->format('d.m.Y'),
+                $note !== '' ? ' '.rtrim($note, '.').'.' : '',
             ),
         ];
     }
@@ -300,7 +314,17 @@ class CashFlowReportBuilder
      */
     private function emptyOpening(): array
     {
-        return ['date' => null, 'anchors' => ['bank' => null, 'cash' => null, 'deposits' => null], 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
+        return [
+            'date' => null,
+            'anchors' => ['bank' => null, 'cash' => null, 'deposits' => null],
+            'sources' => ['bank' => 'eu_banca_sold', 'cash' => 'casa_sold', 'deposits' => 'conta_sold'],
+            'notes' => ['bank' => ''],
+            'as_of' => $this->today->toDateString(),
+            'currencies' => ['RON', 'EUR', 'USD'],
+            'rows' => [],
+            'by_currency' => [],
+            'total' => 0.0,
+        ];
     }
 
     /**

@@ -70,6 +70,10 @@ export type OpeningDetail = {
         cash: string | null;
         deposits: string | null;
     };
+    /** The OMC table each section starts from. */
+    sources?: { bank: string; cash: string; deposits: string };
+    /** What was found in the daily bank balances (eu_banca_sold_zile). */
+    notes?: { bank: string };
     as_of: string;
     currencies: string[];
     rows: OpeningRow[];
