@@ -6,7 +6,6 @@ use App\Models\CashFlowSnapshot;
 use App\Models\Invoice;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,8 +20,15 @@ class DashboardController extends Controller
 
     public const WEEKS_AHEAD = 13;
 
-    /** Outstanding amount of an invoice, in lei at the document rate. */
-    private const OUTSTANDING_LEI = '(val_mon - val_mon_paid) * coalesce(curs, 1)';
+    /**
+     * Outstanding amount of an invoice, in lei at the document rate: the
+     * document total less what the ERP settled, payments and credit notes
+     * alike, the same rule the invoice pages use.
+     */
+    private const OUTSTANDING_LEI = '(val_mon - val_mon_paid - val_mon_storno) * coalesce(curs, 1)';
+
+    /** What the ERP settled on the document. */
+    private const SETTLED = '(val_mon_paid + val_mon_storno)';
 
     public function index(Request $request): Response
     {
@@ -56,10 +62,10 @@ class DashboardController extends Controller
             ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
             ->selectRaw("
                 case
-                    when val_mon_paid >= val_mon - 0.01 then 'paid'
-                    when val_mon_paid <= 0.009 and data_scadenta < ? then 'overdue'
-                    when val_mon_paid <= 0.009 then 'unpaid'
-                    when val_mon_paid > 0.009 and val_mon_paid < val_mon - 0.01 and data_scadenta < ? then 'overdue'
+                    when (val_mon_paid + val_mon_storno) >= val_mon - 0.01 then 'paid'
+                    when (val_mon_paid + val_mon_storno) <= 0.009 and data_scadenta < ? then 'overdue'
+                    when (val_mon_paid + val_mon_storno) <= 0.009 then 'unpaid'
+                    when (val_mon_paid + val_mon_storno) > 0.009 and (val_mon_paid + val_mon_storno) < val_mon - 0.01 and data_scadenta < ? then 'overdue'
                     else 'partial'
                 end as state,
                 count(*) as count,
@@ -101,7 +107,7 @@ class DashboardController extends Controller
 
         $rows = Invoice::query()
             ->furnizor()
-            ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01'))
+            ->whereRaw(self::SETTLED.' < val_mon - 0.01')
             ->where('data_scadenta', '<', $today)
             ->when($from, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('data_doc', '<=', $d))
@@ -140,7 +146,7 @@ class DashboardController extends Controller
 
         return Invoice::query()
             ->furnizor()
-            ->whereColumn('invoices.val_mon_paid', '<', DB::raw('invoices.val_mon - 0.01'))
+            ->whereRaw('(invoices.val_mon_paid + invoices.val_mon_storno) < invoices.val_mon - 0.01')
             ->where('invoices.data_scadenta', '<', $today)
             ->when($from, fn ($q, $d) => $q->where('invoices.data_doc', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('invoices.data_doc', '<=', $d))
@@ -149,7 +155,7 @@ class DashboardController extends Controller
                 invoices.partner_id,
                 coalesce(partners.name, ?) as name,
                 count(*) as invoices,
-                coalesce(sum((invoices.val_mon - invoices.val_mon_paid) * coalesce(invoices.curs, 1)), 0) as outstanding
+                coalesce(sum((invoices.val_mon - invoices.val_mon_paid - invoices.val_mon_storno) * coalesce(invoices.curs, 1)), 0) as outstanding
             ', ['Fără partener'])
             ->groupBy('invoices.partner_id', 'partners.name')
             ->orderByDesc('outstanding')

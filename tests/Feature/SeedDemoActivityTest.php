@@ -25,7 +25,6 @@ function seedDemoFurnizorInvoice(Department $responsabil, int $count = 25): void
             'partener_type' => 'furnizor',
             'val_mon' => 1000,
             'val_mon_paid' => fake()->randomElement([0, 500, 1000]),
-            'payment_status' => fake()->randomElement(['unpaid', 'partial', 'paid']),
         ]);
     }
 }

@@ -36,6 +36,9 @@ class Invoice extends Model
         self::PAYMENT_PAID,
     ];
 
+    /** Two amounts count as equal below this difference. */
+    public const PAYMENT_TOLERANCE = 0.01;
+
     protected function casts(): array
     {
         return [
@@ -124,6 +127,75 @@ class Invoice extends Model
     public function outstandingAmount(): float
     {
         return round((float) $this->val_mon - (float) $this->val_mon_paid - (float) $this->val_mon_storno, 2);
+    }
+
+    /**
+     * What the ERP has settled on the document: payments allocated to it plus
+     * the credit notes offset against it. `val_mon` is the document total,
+     * VAT included, so both sides of the comparison are gross.
+     */
+    public function settledAmount(): float
+    {
+        return round((float) $this->val_mon_paid + (float) $this->val_mon_storno, 2);
+    }
+
+    /**
+     * The payment status as the ERP knows it.
+     */
+    public function erpPaymentStatus(): string
+    {
+        $settled = $this->settledAmount();
+
+        if ($settled + self::PAYMENT_TOLERANCE >= abs((float) $this->val_mon)) {
+            return self::PAYMENT_PAID;
+        }
+
+        return $settled <= self::PAYMENT_TOLERANCE - 0.001 ? self::PAYMENT_UNPAID : self::PAYMENT_PARTIAL;
+    }
+
+    /**
+     * The status shown everywhere: what the ERP settled, and while it still
+     * shows the document as open, the override the payments department set
+     * by hand for a payment the ERP has not recorded yet.
+     */
+    public function paymentStatus(): string
+    {
+        $erp = $this->erpPaymentStatus();
+
+        if ($erp === self::PAYMENT_PAID) {
+            return $erp;
+        }
+
+        return $this->payment_status_manual ?? $erp;
+    }
+
+    /**
+     * Whether the status shown comes from the manual override rather than
+     * from the amounts the ERP settled.
+     */
+    public function hasPaymentOverride(): bool
+    {
+        return $this->payment_status_manual !== null
+            && $this->erpPaymentStatus() !== self::PAYMENT_PAID
+            && $this->payment_status_manual !== $this->erpPaymentStatus();
+    }
+
+    /**
+     * The same rule as {@see self::paymentStatus()} in SQL, so filtering and
+     * sorting cannot drift from what the page shows.
+     */
+    public static function paymentStatusSql(string $prefix = 'invoices.'): string
+    {
+        $tolerance = self::PAYMENT_TOLERANCE;
+
+        return <<<SQL
+            case
+                when {$prefix}val_mon_paid + {$prefix}val_mon_storno + {$tolerance} >= abs({$prefix}val_mon) then 'paid'
+                when {$prefix}payment_status_manual is not null then {$prefix}payment_status_manual
+                when {$prefix}val_mon_paid + {$prefix}val_mon_storno <= {$tolerance} - 0.001 then 'unpaid'
+                else 'partial'
+            end
+            SQL;
     }
 
     public function scopeFurnizor(Builder $query): Builder

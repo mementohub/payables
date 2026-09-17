@@ -125,7 +125,7 @@ class InvoiceController extends Controller
                     (float) $invoice->val_mon_tva,
                     (float) $invoice->val_mon_paid,
                     $rest,
-                    $this->presenter->paymentStatusLabel($invoice->payment_status),
+                    $this->presenter->paymentStatusLabel($invoice->paymentStatus()),
                 ];
 
                 if ($scope === 'primite') {
@@ -190,7 +190,10 @@ class InvoiceController extends Controller
                 'val_mon' => (float) $invoice->val_mon,
                 'val_mon_tva' => (float) $invoice->val_mon_tva,
                 'val_mon_paid' => (float) $invoice->val_mon_paid,
-                'payment_status' => $invoice->payment_status,
+                'val_mon_storno' => (float) $invoice->val_mon_storno,
+                'payment_status' => $invoice->paymentStatus(),
+                'payment_status_erp' => $invoice->erpPaymentStatus(),
+                'payment_status_manual' => $invoice->payment_status_manual,
                 'payment_status_updated_at' => $invoice->payment_status_updated_at?->toIso8601String(),
                 'data_scadenta' => $invoice->data_scadenta?->toDateString(),
                 'data_inchidere' => $invoice->data_inchidere?->toDateString(),
@@ -324,13 +327,15 @@ class InvoiceController extends Controller
         abort_unless($user, 403);
 
         $validated = $request->validate([
-            'status' => ['required', 'string', 'in:'.implode(',', Invoice::PAYMENT_STATUSES)],
+            'status' => ['required', 'string', 'in:'.implode(',', [...Invoice::PAYMENT_STATUSES, InvoicePaymentService::AUTO])],
             'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $this->paymentService->updateStatus($invoice, $user, $validated['status'], $validated['note'] ?? null);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Status plată actualizat.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $validated['status'] === InvoicePaymentService::AUTO
+            ? 'Marcajul manual a fost eliminat; statusul urmează ERP-ul.'
+            : 'Status plată actualizat.']);
 
         return back();
     }

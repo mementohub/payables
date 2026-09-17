@@ -1,5 +1,10 @@
 import { Form } from '@inertiajs/react';
-import { CircleAlert, CircleCheck, CircleDashed } from 'lucide-react';
+import {
+    CircleAlert,
+    CircleCheck,
+    CircleDashed,
+    RotateCcw,
+} from 'lucide-react';
 import PaymentStatusBadge from '@/components/payment-status-badge';
 import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +17,12 @@ const labels: Record<PaymentStatus, string> = {
     paid: 'Marchează plătită',
     partial: 'Marchează parțial',
     unpaid: 'Marchează neplătită',
+};
+
+const erpLabels: Record<PaymentStatus, string> = {
+    paid: 'achitată integral',
+    partial: 'achitată parțial',
+    unpaid: 'neachitată',
 };
 
 const Icons: Record<PaymentStatus, typeof CircleCheck> = {
@@ -27,18 +38,29 @@ const colorClasses: Record<PaymentStatus, string> = {
     unpaid: 'border-red-600/40 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20',
 };
 
+/**
+ * The payment status of a received invoice. It follows the amounts the ERP
+ * settled; the payments department can override it while the ERP has not
+ * recorded a payment yet, and the override drops away once the ERP settles
+ * the invoice.
+ */
 export function InvoicePaymentCard({
     invoiceId,
     status,
+    erpStatus,
+    manualStatus,
     updatedAt,
     currentUser,
 }: {
     invoiceId: number;
     status: PaymentStatus;
+    erpStatus: PaymentStatus;
+    manualStatus: PaymentStatus | null;
     updatedAt: string | null;
     currentUser: CurrentUser;
 }) {
     const canEdit = currentUser.plati_department_ids.length > 0;
+    const overridden = status !== erpStatus;
 
     const updatedLabel = updatedAt
         ? new Intl.DateTimeFormat('ro-RO', {
@@ -56,11 +78,15 @@ export function InvoicePaymentCard({
                 <PaymentStatusBadge status={status} />
             </div>
 
-            {updatedLabel && (
-                <p className="text-xs text-muted-foreground">
-                    Actualizat la {updatedLabel}
-                </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+                În ERP: {erpLabels[erpStatus]}.{' '}
+                {overridden
+                    ? `Marcat manual ${erpLabels[status]}, pentru o plată pe care ERP-ul nu o are încă.`
+                    : 'Statusul urmează sumele decontate în ERP.'}
+                {updatedLabel && manualStatus
+                    ? ` Marcat la ${updatedLabel}.`
+                    : ''}
+            </p>
 
             {!canEdit ? (
                 <p className="text-xs text-muted-foreground">
@@ -69,7 +95,7 @@ export function InvoicePaymentCard({
             ) : (
                 <div className="flex flex-wrap gap-2">
                     {order
-                        .filter((s) => s !== status)
+                        .filter((s) => s !== manualStatus)
                         .map((target) => {
                             const Icon = Icons[target];
 
@@ -103,6 +129,33 @@ export function InvoicePaymentCard({
                                 </Form>
                             );
                         })}
+
+                    {manualStatus && (
+                        <Form
+                            {...updatePaymentStatusRoute.form(invoiceId)}
+                            options={{ preserveScroll: true }}
+                        >
+                            {({ processing }) => (
+                                <>
+                                    <input
+                                        type="hidden"
+                                        name="status"
+                                        value="auto"
+                                    />
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={processing}
+                                        className="h-8 gap-1.5"
+                                    >
+                                        <RotateCcw className="size-3.5" />
+                                        Urmează ERP-ul
+                                    </Button>
+                                </>
+                            )}
+                        </Form>
+                    )}
                 </div>
             )}
         </div>

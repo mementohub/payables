@@ -11,8 +11,8 @@ import {
     primite as facturiPrimite,
 } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
-import { InvoicePaymentCard } from './invoice-payment-card';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
+import { InvoicePaymentCard } from './invoice-payment-card';
 import { InvoiceTimeline } from './invoice-timeline';
 import type { Invoice, ShowProps } from './types';
 
@@ -89,7 +89,9 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                                 rămas{' '}
                                 <span className="font-medium tabular-nums">
                                     {formatAmount(
-                                        invoice.val_mon - invoice.val_mon_paid,
+                                        invoice.val_mon -
+                                            invoice.val_mon_paid -
+                                            invoice.val_mon_storno,
                                         invoice.moneda,
                                     )}
                                 </span>
@@ -450,6 +452,8 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                             <InvoicePaymentCard
                                 invoiceId={invoice.id}
                                 status={invoice.payment_status}
+                                erpStatus={invoice.payment_status_erp}
+                                manualStatus={invoice.payment_status_manual}
                                 updatedAt={invoice.payment_status_updated_at}
                                 currentUser={currentUser}
                             />
@@ -601,6 +605,7 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                                                             match.val_mon_paid,
                                                         0,
                                                     );
+
                                                     return (
                                                         <tr key={match.id}>
                                                             <td className="px-4 py-2 text-muted-foreground">

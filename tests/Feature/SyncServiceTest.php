@@ -233,3 +233,34 @@ test('the history pull starts at the configured date, resumes where it stopped a
         ->and($restarted['invoices'])->toBe(2)
         ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(3);
 });
+
+test('two documents whose number differs only in case are mirrored as the two invoices the ERP holds', function () {
+    erpDoc(['nr_doc' => 'GR/16/Inv1', 'val_mon' => 1000]);
+    erpDoc(['nr_doc' => 'GR/16/INV1', 'val_mon' => 2000]);
+
+    $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    expect($result['invoices'])->toBe(2)
+        ->and($result['key_collisions'])->toBe(0)
+        ->and(Invoice::where('company_id', $this->company->id)->orderBy('nr_doc')->pluck('nr_doc')->all())
+        ->toBe(['GR/16/INV1', 'GR/16/Inv1']);
+});
+
+test('a document key the local database cannot tell apart updates the row that holds it instead of stopping the run', function () {
+    // What MySQL does on utf8mb4_unicode_ci: the two numbers below are one key.
+    DB::statement('drop index invoices_doc_unique');
+    DB::statement('create unique index invoices_doc_unique on invoices (company_id, data_doc, tip_doc, nr_doc collate nocase)');
+
+    erpDoc(['nr_doc' => 'GR/16/Inv1', 'val_mon' => 1000]);
+    erpDoc(['nr_doc' => 'GR/16/INV1', 'val_mon' => 2000]);
+    erpDoc(['nr_doc' => 'VDF9', 'val_mon' => 300]);
+
+    $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    // The run finishes, the later document wins the key it collides on, and
+    // the documents after it are still pulled.
+    expect($result['key_collisions'])->toBe(1)
+        ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(2)
+        ->and((float) Invoice::where('nr_doc', 'GR/16/Inv1')->first()->val_mon)->toBe(2000.0)
+        ->and(Invoice::where('nr_doc', 'VDF9')->exists())->toBeTrue();
+});

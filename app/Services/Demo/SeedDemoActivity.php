@@ -214,7 +214,7 @@ class SeedDemoActivity
      */
     private function recordPaymentEvent(Invoice $invoice, ?Department $platiDept, Collection $usersByDepartment): int
     {
-        if ($platiDept === null || $invoice->payment_status !== Invoice::PAYMENT_PAID) {
+        if ($platiDept === null || $invoice->paymentStatus() !== Invoice::PAYMENT_PAID) {
             return 0;
         }
 

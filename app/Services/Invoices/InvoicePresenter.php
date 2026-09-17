@@ -31,7 +31,9 @@ class InvoicePresenter
             'val_mon' => (float) $invoice->val_mon,
             'val_mon_tva' => (float) $invoice->val_mon_tva,
             'val_mon_paid' => (float) $invoice->val_mon_paid,
-            'payment_status' => $invoice->payment_status,
+            'val_mon_storno' => (float) $invoice->val_mon_storno,
+            'payment_status' => $invoice->paymentStatus(),
+            'payment_status_manual' => $invoice->payment_status_manual,
             'comments_count' => (int) ($invoice->comments_count ?? 0),
             'has_com_int_counterpart' => (bool) ($invoice->has_com_int_counterpart ?? false),
             'source_invoice' => $this->sourceInvoicePayload($invoice),
@@ -186,8 +188,8 @@ class InvoicePresenter
             ->orderBy('data_doc')
             ->get([
                 'id', 'data_doc', 'tip_doc', 'nr_doc', 'partner_id',
-                'moneda', 'val_mon', 'val_mon_tva', 'val_mon_paid',
-                'payment_status', 'data_inchidere',
+                'moneda', 'val_mon', 'val_mon_tva', 'val_mon_paid', 'val_mon_storno',
+                'payment_status_manual', 'data_inchidere',
             ])
             ->map(fn (Invoice $match) => [
                 'id' => $match->id,
@@ -198,7 +200,7 @@ class InvoicePresenter
                 'val_mon' => (float) $match->val_mon,
                 'val_mon_tva' => (float) $match->val_mon_tva,
                 'val_mon_paid' => (float) $match->val_mon_paid,
-                'payment_status' => $match->payment_status,
+                'payment_status' => $match->paymentStatus(),
                 'data_inchidere' => $match->data_inchidere?->toDateString(),
                 'partner' => $match->partner ? [
                     'id' => $match->partner->id,

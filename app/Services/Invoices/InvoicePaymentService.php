@@ -13,11 +13,22 @@ use Illuminate\Validation\ValidationException;
 
 class InvoicePaymentService
 {
+    /** Passed as the status to drop the override and follow the ERP again. */
+    public const AUTO = 'auto';
+
+    /**
+     * Set or clear the manual override. The status shown on the invoice comes
+     * from the amounts the ERP settled; the override only speaks for a
+     * payment the ERP has not recorded yet, and stops counting as soon as the
+     * ERP settles the document.
+     */
     public function updateStatus(Invoice $invoice, User $user, string $status, ?string $note = null): void
     {
-        if (! in_array($status, Invoice::PAYMENT_STATUSES, true)) {
+        if ($status !== self::AUTO && ! in_array($status, Invoice::PAYMENT_STATUSES, true)) {
             throw ValidationException::withMessages(['status' => 'Status plată invalid.']);
         }
+
+        $override = $status === self::AUTO ? null : $status;
 
         if ($invoice->partener_type !== 'furnizor') {
             throw ValidationException::withMessages(['invoice' => 'Doar facturile primite pot fi marcate.']);
@@ -31,18 +42,18 @@ class InvoicePaymentService
             throw new AuthorizationException('Doar membrii departamentului de plăți pot marca plăți.');
         }
 
-        if ($invoice->payment_status === $status) {
+        if ($invoice->payment_status_manual === $override) {
             return;
         }
 
-        DB::transaction(function () use ($invoice, $user, $status, $note) {
-            $previous = $invoice->payment_status;
+        DB::transaction(function () use ($invoice, $user, $override, $note) {
+            $previous = $invoice->paymentStatus();
             $now = Carbon::now();
 
             $invoice->forceFill([
-                'payment_status' => $status,
-                'payment_status_updated_at' => $now,
-                'payment_status_updated_by_id' => $user->id,
+                'payment_status_manual' => $override,
+                'payment_status_updated_at' => $override === null ? null : $now,
+                'payment_status_updated_by_id' => $override === null ? null : $user->id,
             ])->save();
 
             InvoiceEvent::create([
@@ -52,7 +63,8 @@ class InvoicePaymentService
                 'body' => $note !== null && trim($note) !== '' ? trim($note) : null,
                 'payload' => [
                     'from' => $previous,
-                    'to' => $status,
+                    'to' => $invoice->paymentStatus(),
+                    'override' => $override,
                 ],
             ]);
         });

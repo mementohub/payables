@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\Company;
 use App\Models\Department;
+use App\Models\Invoice;
 use App\Models\Partner;
 use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
@@ -12,7 +13,6 @@ use App\Services\SyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -65,16 +65,14 @@ class PartnerController extends Controller
 
         $invoices = $partner->invoices()
             ->whereIn('tip_doc', $tipDocsForRole)
-            ->when($invoiceSearch, fn ($q, $term) => $q->where('nr_doc', 'like', "%{$term}%"))
+            ->when($invoiceSearch, fn ($q, $term) => $q->whereRaw('lower(nr_doc) like ?', ['%'.mb_strtolower($term).'%']))
             ->when($invoiceTipDoc, fn ($q, $type) => $q->where('tip_doc', $type))
             ->when($invoiceFrom, fn ($q, $d) => $q->where('data_doc', '>=', $d))
             ->when($invoiceTo, fn ($q, $d) => $q->where('data_doc', '<=', $d))
-            ->when($invoicePayment === 'paid', fn ($q) => $q->whereColumn('val_mon_paid', '>=', DB::raw('val_mon + val_mon_tva - 0.01')))
-            ->when($invoicePayment === 'unpaid', fn ($q) => $q->where('val_mon_paid', '<=', 0.009))
-            ->when($invoicePayment === 'partial', function ($q) {
-                $q->where('val_mon_paid', '>', 0.009)
-                    ->whereColumn('val_mon_paid', '<', DB::raw('val_mon + val_mon_tva - 0.01'));
-            })
+            ->when(
+                in_array($invoicePayment, Invoice::PAYMENT_STATUSES, true),
+                fn ($q) => $q->whereRaw('('.Invoice::paymentStatusSql().') = ?', [$invoicePayment]),
+            )
             ->orderByDesc('data_doc')
             ->paginate(15, pageName: 'invoices')
             ->withQueryString()
@@ -87,7 +85,7 @@ class PartnerController extends Controller
                 'val_mon' => (float) $invoice->val_mon,
                 'val_mon_tva' => (float) $invoice->val_mon_tva,
                 'val_mon_paid' => (float) $invoice->val_mon_paid,
-                'payment_status' => $invoice->payment_status,
+                'payment_status' => $invoice->paymentStatus(),
                 'data_scadenta' => $invoice->data_scadenta?->toDateString(),
                 'data_inchidere' => $invoice->data_inchidere?->toDateString(),
             ]);

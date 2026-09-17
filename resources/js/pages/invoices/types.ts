@@ -89,7 +89,10 @@ export type InvoiceRow = {
     val_mon: number;
     val_mon_tva: number;
     val_mon_paid: number;
+    val_mon_storno: number;
+    /** What the ERP settled decides, unless a manual override is in force. */
     payment_status: PaymentStatus;
+    payment_status_manual: PaymentStatus | null;
     comments_count: number;
     has_com_int_counterpart: boolean;
     source_invoice: SourceInvoiceRef | null;
@@ -184,7 +187,13 @@ export type Invoice = {
     val_mon: number;
     val_mon_tva: number;
     val_mon_paid: number;
+    val_mon_storno: number;
+    /** What the ERP settled decides, unless a manual override is in force. */
     payment_status: PaymentStatus;
+    /** The status the settled amounts alone give. */
+    payment_status_erp: PaymentStatus;
+    /** Set by the payments department for a payment the ERP does not have yet. */
+    payment_status_manual: PaymentStatus | null;
     payment_status_updated_at: string | null;
     data_scadenta: string | null;
     data_inchidere: string | null;

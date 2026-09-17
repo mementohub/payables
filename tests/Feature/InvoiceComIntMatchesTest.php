@@ -35,7 +35,6 @@ it('returns issued invoices that share the received invoice com_int', function (
         'moneda' => 'EUR',
         'val_mon' => 33.49,
         'val_mon_paid' => 33.49,
-        'payment_status' => Invoice::PAYMENT_PAID,
     ]);
 
     $payload = (new InvoicePresenter)->comIntMatchesPayload($received);
@@ -224,7 +223,6 @@ it('exposes com_int_matches on the invoice show Inertia payload', function () {
         'moneda' => 'EUR',
         'val_mon' => 33.49,
         'val_mon_paid' => 0,
-        'payment_status' => Invoice::PAYMENT_UNPAID,
     ]);
 
     $response = $this->actingAs(User::factory()->create())

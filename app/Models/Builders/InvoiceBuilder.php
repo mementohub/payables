@@ -5,7 +5,6 @@ namespace App\Models\Builders;
 use App\Models\Invoice;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 
 /**
  * @extends Builder<Invoice>
@@ -65,14 +64,11 @@ class InvoiceBuilder extends Builder
 
     public function paymentStatus(?string $status): self
     {
-        return match ($status) {
-            'paid' => $this->whereColumn('val_mon_paid', '>=', DB::raw('val_mon - 0.01')),
-            'unpaid' => $this->where('val_mon_paid', '<=', 0.009),
-            'partial' => $this
-                ->where('val_mon_paid', '>', 0.009)
-                ->whereColumn('val_mon_paid', '<', DB::raw('val_mon - 0.01')),
-            default => $this,
-        };
+        if (! in_array($status, Invoice::PAYMENT_STATUSES, true)) {
+            return $this;
+        }
+
+        return $this->whereRaw('('.Invoice::paymentStatusSql().') = ?', [$status]);
     }
 
     public function approvalStage(?string $stage): self
@@ -109,8 +105,12 @@ class InvoiceBuilder extends Builder
             return $this;
         }
 
-        return $this->where(function ($q) use ($term) {
-            $q->where('nr_doc', 'like', "%{$term}%")
+        // `nr_doc` mirrors the ERP key byte for byte, so the column is stored
+        // on a case-sensitive collation; the search folds the case itself.
+        $folded = '%'.mb_strtolower($term).'%';
+
+        return $this->where(function ($q) use ($term, $folded) {
+            $q->whereRaw('lower(nr_doc) like ?', [$folded])
                 ->orWhereHas('partner', fn ($p) => $p->where('name', 'like', "%{$term}%"));
         });
     }

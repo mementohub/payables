@@ -17,15 +17,23 @@ use App\Models\PartnerBankAccount;
 use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\EInvoices\PartnerCuiLookup;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class SyncService
 {
     public const array FURNIZOR_DOC_TYPES = ['FactFI', 'FactFE'];
 
     public const array CLIENT_DOC_TYPES = ['FactCI', 'FactCE', 'FactINT'];
+
+    /**
+     * Documents whose key the local database refused as a duplicate of one it
+     * compares as equal, although the ERP keeps them apart.
+     */
+    private int $keyCollisions = 0;
 
     public function __construct(
         private readonly RemoteConnection $remote,
@@ -34,10 +42,11 @@ class SyncService
     ) {}
 
     /**
-     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, company_bank_accounts: int, payments: int, statements: int, e_invoices: int}
+     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, company_bank_accounts: int, payments: int, statements: int, e_invoices: int, key_collisions: int}
      */
     public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null): array
     {
+        $this->keyCollisions = 0;
         $remote = $this->remote->connection($company);
 
         try {
@@ -93,6 +102,7 @@ class SyncService
             'payments' => $paymentsCount,
             'statements' => $statementsCount,
             'e_invoices' => $eInvoicesCount,
+            'key_collisions' => $this->keyCollisions,
         ];
     }
 
@@ -874,6 +884,50 @@ class SyncService
     }
 
     /**
+     * Write the mirrored invoice. A document key the ERP keeps apart can still
+     * collide locally when the database compares two keys as equal, for
+     * instance on a collation that ignores letter case or trailing spaces.
+     * Update the row that holds the key rather than losing the whole slice,
+     * and record the collision so the run reports it.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function storeInvoice(Company $company, Invoice $invoice, object $row, array $attributes): Invoice
+    {
+        try {
+            $invoice->forceFill($attributes)->save();
+
+            return $invoice;
+        } catch (UniqueConstraintViolationException $e) {
+            // Found the way the database compared them, not the way PHP does,
+            // so the row that holds the key turns up whatever its collation.
+            $conflict = Invoice::query()
+                ->where('company_id', $company->id)
+                ->whereDate('data_doc', Carbon::parse((string) $row->data_doc)->toDateString())
+                ->whereRaw('lower(trim(tip_doc)) = ?', [mb_strtolower(trim((string) $row->tip_doc))])
+                ->whereRaw('lower(trim(nr_doc)) = ?', [mb_strtolower(trim((string) $row->nr_doc))])
+                ->orderBy('id')
+                ->first();
+
+            if ($conflict === null) {
+                throw $e;
+            }
+
+            $this->keyCollisions++;
+
+            Log::warning('Sync: document key collides with one already stored', [
+                'company_id' => $company->id,
+                'incoming' => sprintf('%s|%s|%s', $row->data_doc, $row->tip_doc, $row->nr_doc),
+                'stored' => sprintf('%s|%s|%s', $conflict->data_doc->toDateString(), $conflict->tip_doc, $conflict->nr_doc),
+            ]);
+
+            $conflict->forceFill($attributes)->save();
+
+            return $conflict;
+        }
+    }
+
+    /**
      * @param  array<int, string>  $tipDocs
      * @return array{0: int, 1: int}
      */
@@ -943,26 +997,24 @@ class SyncService
                         'nr_doc' => $row->nr_doc,
                     ]);
 
-                    $invoice->forceFill(
-                        [
-                            'partner_id' => $partnerLookup[$row->partener] ?? null,
-                            'partener_type' => $type,
-                            'moneda' => $row->moneda,
-                            'curs' => $row->curs,
-                            'val_mon' => $row->val_mon ?? 0,
-                            'val_mon_tva' => $row->val_mon_tva ?? 0,
-                            'val_mon_paid' => $paid ?? 0,
-                            'val_mon_storno' => $row->val_mon_dimin_negru ?? 0,
-                            'data_scadenta' => $row->data_scadenta,
-                            'data_inchidere' => $row->data_inchidere,
-                            'emitent' => $row->emitent,
-                            'com_int' => $row->com_int ?: null,
-                            'data_calatoriei' => $dataCalatoriei,
-                            'data_doc_baza' => ! empty($row->data_doc_baza) ? $row->data_doc_baza : null,
-                            'tip_doc_baza' => $row->tip_doc_baza ?: null,
-                            'nr_doc_baza' => $row->nr_doc_baza ?: null,
-                        ]
-                    )->save();
+                    $invoice = $this->storeInvoice($company, $invoice, $row, [
+                        'partner_id' => $partnerLookup[$row->partener] ?? null,
+                        'partener_type' => $type,
+                        'moneda' => $row->moneda,
+                        'curs' => $row->curs,
+                        'val_mon' => $row->val_mon ?? 0,
+                        'val_mon_tva' => $row->val_mon_tva ?? 0,
+                        'val_mon_paid' => $paid ?? 0,
+                        'val_mon_storno' => $row->val_mon_dimin_negru ?? 0,
+                        'data_scadenta' => $row->data_scadenta,
+                        'data_inchidere' => $row->data_inchidere,
+                        'emitent' => $row->emitent,
+                        'com_int' => $row->com_int ?: null,
+                        'data_calatoriei' => $dataCalatoriei,
+                        'data_doc_baza' => ! empty($row->data_doc_baza) ? $row->data_doc_baza : null,
+                        'tip_doc_baza' => $row->tip_doc_baza ?: null,
+                        'nr_doc_baza' => $row->nr_doc_baza ?: null,
+                    ]);
 
                     $invoicesCount++;
                     $invoiceIds[] = $invoice->id;

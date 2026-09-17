@@ -190,7 +190,8 @@ it('lets a plati department member mark the invoice as paid', function () {
         ->assertRedirect();
 
     $invoice->refresh();
-    expect($invoice->payment_status)->toBe('paid')
+    expect($invoice->paymentStatus())->toBe('paid')
+        ->and($invoice->payment_status_manual)->toBe('paid')
         ->and($invoice->payment_status_updated_by_id)->toBe($user->id);
 
     $event = InvoiceEvent::where('invoice_id', $invoice->id)
@@ -213,7 +214,7 @@ it('blocks payment status updates from non-plati users', function () {
         ->post("/invoices/{$invoice->id}/payment-status", ['status' => 'paid'])
         ->assertForbidden();
 
-    expect($invoice->fresh()->payment_status)->toBe('unpaid');
+    expect($invoice->fresh()->paymentStatus())->toBe('unpaid');
 });
 
 it('rejects unknown payment statuses', function () {
