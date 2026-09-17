@@ -108,9 +108,7 @@ export default function SourcesPanel({
                     <CardTitle>Poziția de trezorerie (sold inițial)</CardTitle>
                     <CardDescription>
                         {opening?.date
-                            ? opening.mode === 'auto'
-                                ? `Solduri OMC la ${opening.date} (eu_banca_sold, casa_sold, conta_sold 5081), rulate cu documentele de bancă și casă până la ${opening.as_of}.`
-                                : `Solduri introduse manual la ${opening.date}, rulate cu OMC până la ${opening.as_of}.`
+                            ? `Solduri OMC la ${opening.date} (eu_banca_sold, casa_sold, conta_sold 5081), rulate cu documentele de bancă și casă până la ${opening.as_of}.`
                             : 'Nu există încă o poziție: OMC nu a răspuns sau lipsesc soldurile de sfârșit de lună.'}
                     </CardDescription>
                 </CardHeader>

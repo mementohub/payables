@@ -3,41 +3,40 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ReadsRemote;
-use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\Etrip\EtripReader;
 use App\Services\Etrip\EtripSupplierSyncService;
+use App\Services\Omc\OmcReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
+/**
+ * Verificare plăți → Check-in (eTrip): the supplier cost of the services
+ * booked in any eTrip base, compared with a payment request.
+ */
 class PaymentCheckController extends Controller
 {
     use ReadsRemote;
 
     public const EXPECTED_WINDOWS = [2, 7, 14];
 
-    public function index(Request $request): Response
+    public function index(Request $request, OmcReader $omc): Response
     {
-        $companies = $this->etripCompanies();
-        $company = $companies->firstWhere('id', $request->integer('company_id'));
+        $bases = $this->bases();
+        $requested = $request->string('connection')->toString();
 
         return Inertia::render('payment-checks/index', [
-            'companies' => $companies->map(fn (Company $company) => [
-                'id' => $company->id,
-                'name' => $company->name,
-                'etrip' => config('etrip.connections.'.$company->etrip_connection),
-                'suppliers_synced_at' => $company->etripSuppliers()->max('synced_at'),
-            ])->values(),
+            'bases' => $bases,
+            'company_id' => $omc->company()?->id,
             'categories' => CheckinCostCheckService::CATEGORY_LABELS,
             'windows' => self::EXPECTED_WINDOWS,
             'filters' => [
-                'company_id' => $company?->id,
+                'connection' => array_key_exists($requested, (array) config('etrip.connections')) ? $requested : null,
                 'supplier' => $request->string('supplier')->toString() ?: null,
                 'from' => $request->string('from')->toString() ?: Carbon::today()->toDateString(),
                 'to' => $request->string('to')->toString() ?: Carbon::tomorrow()->toDateString(),
@@ -56,7 +55,7 @@ class PaymentCheckController extends Controller
     public function check(Request $request, CheckinCostCheckService $check, EtripSupplierSyncService $sync): array
     {
         $validated = $request->validate([
-            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->whereNotNull('etrip_connection')],
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
             'supplier' => ['required', 'string', 'max:50'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
@@ -65,19 +64,18 @@ class PaymentCheckController extends Controller
             'currency' => ['nullable', 'string', 'max:5'],
         ]);
 
-        $company = Company::query()->findOrFail($validated['company_id']);
-        abort_if($company->etripConnection() === null, 422, 'Conexiunea eTrip a companiei nu este definită.');
+        $connection = $validated['connection'];
 
         $supplier = EtripSupplier::query()
-            ->where('company_id', $company->id)
+            ->forConnection($connection)
             ->where('code', $validated['supplier'])
             ->first()
-            ?? $this->readingEtrip(fn () => $sync->remember($company, $validated['supplier']));
+            ?? $this->readingEtrip(fn () => $sync->remember($connection, $validated['supplier']));
 
         abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
 
         return $this->readingEtrip(fn () => $check->check(
-            $company,
+            $connection,
             $supplier,
             Carbon::parse($validated['from'])->startOfDay(),
             Carbon::parse($validated['to'])->startOfDay(),
@@ -96,18 +94,16 @@ class PaymentCheckController extends Controller
     public function expected(Request $request, EtripReader $reader): array
     {
         $validated = $request->validate([
-            'company_id' => ['required', 'integer', Rule::exists('companies', 'id')->whereNotNull('etrip_connection')],
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
             'days' => ['nullable', 'integer', Rule::in(self::EXPECTED_WINDOWS)],
             'refresh' => ['nullable', 'boolean'],
         ]);
 
-        $company = Company::query()->findOrFail($validated['company_id']);
-        abort_if($company->etripConnection() === null, 422, 'Conexiunea eTrip a companiei nu este definită.');
-
+        $connection = $validated['connection'];
         $days = (int) ($validated['days'] ?? self::EXPECTED_WINDOWS[0]);
         $from = Carbon::today();
         $to = $from->copy()->addDays($days - 1);
-        $key = sprintf('etrip:%s:expected:%d:%s', $company->etripConnection(), $days, $from->toDateString());
+        $key = sprintf('etrip:%s:expected:%d:%s', $connection, $days, $from->toDateString());
 
         $minutes = (int) config('etrip.expected_cache_minutes', 0);
 
@@ -115,9 +111,9 @@ class PaymentCheckController extends Controller
             Cache::forget($key);
         }
 
-        $payload = $this->readingEtrip(fn () => Cache::remember($key, now()->addMinutes(max(1, $minutes)), function () use ($reader, $company, $from, $to) {
+        $payload = $this->readingEtrip(fn () => Cache::remember($key, now()->addMinutes(max(1, $minutes)), function () use ($reader, $connection, $from, $to) {
             $known = EtripSupplier::query()
-                ->where('company_id', $company->id)
+                ->forConnection($connection)
                 ->get(['code', 'partner_id'])
                 ->keyBy('code');
 
@@ -126,7 +122,7 @@ class PaymentCheckController extends Controller
                 'suppliers' => array_map(fn (array $row) => [
                     ...$row,
                     'partner_id' => $known->get($row['supplier_code'])?->partner_id,
-                ], $reader->expectedCosts($company, $from, $to)),
+                ], $reader->expectedCosts($connection, $from, $to)),
             ];
         }));
 
@@ -134,13 +130,25 @@ class PaymentCheckController extends Controller
     }
 
     /**
-     * @return Collection<int, Company>
+     * @return list<array{key: string, label: string, suppliers_synced_at: ?string}>
      */
-    private function etripCompanies()
+    private function bases(): array
     {
-        return Company::query()
-            ->whereIn('etrip_connection', array_keys((array) config('etrip.connections')))
-            ->orderBy('name')
-            ->get(['id', 'name', 'etrip_connection']);
+        $synced = EtripSupplier::query()
+            ->selectRaw('etrip_connection, max(synced_at) as synced_at')
+            ->groupBy('etrip_connection')
+            ->pluck('synced_at', 'etrip_connection');
+
+        $bases = [];
+
+        foreach ((array) config('etrip.connections') as $key => $label) {
+            $bases[] = [
+                'key' => $key,
+                'label' => (string) $label,
+                'suppliers_synced_at' => isset($synced[$key]) ? Carbon::parse($synced[$key])->toIso8601String() : null,
+            ];
+        }
+
+        return $bases;
     }
 }

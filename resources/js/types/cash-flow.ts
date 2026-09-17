@@ -59,7 +59,6 @@ export type OpeningRow = {
 };
 
 export type OpeningDetail = {
-    mode: 'auto' | 'manual';
     date: string | null;
     as_of: string;
     currencies: string[];
@@ -200,13 +199,6 @@ export type Parameters = {
         charter_factor: number;
         charter_base_season: string | null;
         charter_target_season: string | null;
-    };
-    opening: {
-        mode: 'auto' | 'manual';
-        date: string | null;
-        bank: Record<string, number>;
-        cash: Record<string, number>;
-        deposits: Record<string, number>;
     };
     opex: Record<string, number | null>;
 };

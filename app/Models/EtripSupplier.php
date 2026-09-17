@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A supplier from the eTrip reservation database a company is linked to,
- * mirrored locally so it can be searched and tied to the ERP partner that
- * sends the payment requests.
+ * A supplier of one of the eTrip bases (config/etrip.php), mirrored locally
+ * so it can be searched and tied to the ERP partner that sends the payment
+ * requests; company_id is the company whose partners it is matched to.
  */
 class EtripSupplier extends Model
 {
@@ -42,6 +42,11 @@ class EtripSupplier extends Model
     public function partner(): BelongsTo
     {
         return $this->belongsTo(Partner::class);
+    }
+
+    public function scopeForConnection(Builder $query, string $connection): Builder
+    {
+        return $query->where('etrip_connection', $connection);
     }
 
     public function scopeActive(Builder $query): Builder

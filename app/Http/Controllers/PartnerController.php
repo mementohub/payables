@@ -34,7 +34,7 @@ class PartnerController extends Controller
     {
         $partner->load([
             'company:id,name,etrip_connection',
-            'etripSupplier:id,partner_id,code,name,currency,match_source',
+            'etripSupplier:id,partner_id,etrip_connection,code,name,currency,match_source',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
             'responsabilDepartments:id,name,type',
         ]);
@@ -129,9 +129,11 @@ class PartnerController extends Controller
                     'name' => $dept->name,
                     'type' => $dept->type,
                 ])->values(),
-                'etrip_enabled' => $partner->company->etripConnection() !== null,
+                'etrip_enabled' => (array) config('etrip.connections') !== [],
+                'etrip_bases' => collect((array) config('etrip.connections'))->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
                 'etrip_supplier' => $partner->etripSupplier ? [
                     'id' => $partner->etripSupplier->id,
+                    'etrip_connection' => $partner->etripSupplier->etrip_connection,
                     'code' => $partner->etripSupplier->code,
                     'name' => $partner->etripSupplier->name,
                     'currency' => $partner->etripSupplier->currency,

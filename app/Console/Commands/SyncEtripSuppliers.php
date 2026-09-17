@@ -2,29 +2,27 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Company;
 use App\Services\Etrip\EtripSupplierSyncService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Throwable;
 
-#[Signature('etrip:sync-suppliers {--company= : Restrict to a single company id}')]
-#[Description('Mirror the eTrip suppliers of every company linked to an eTrip database and match them to ERP partners by VAT number or name.')]
+#[Signature('etrip:sync-suppliers {--connection= : Restrict to a single eTrip base (config/etrip.php key)}')]
+#[Description('Mirror the suppliers of every eTrip base and match them to the ERP partners by VAT number or name.')]
 class SyncEtripSuppliers extends Command
 {
     public function handle(EtripSupplierSyncService $sync): int
     {
-        $companyId = (int) $this->option('company');
+        $only = (string) $this->option('connection');
+        $connections = array_keys((array) config('etrip.connections'));
 
-        $companies = Company::query()
-            ->whereNotNull('etrip_connection')
-            ->when($companyId > 0, fn ($query) => $query->whereKey($companyId))
-            ->orderBy('name')
-            ->get();
+        if ($only !== '') {
+            $connections = array_values(array_filter($connections, fn (string $name) => $name === $only));
+        }
 
-        if ($companies->isEmpty()) {
-            $this->warn('Nicio companie legată de o bază eTrip.');
+        if ($connections === []) {
+            $this->warn('Nicio bază eTrip de sincronizat.');
 
             return self::SUCCESS;
         }
@@ -32,27 +30,21 @@ class SyncEtripSuppliers extends Command
         $rows = [];
         $failed = false;
 
-        foreach ($companies as $company) {
-            if ($company->etripConnection() === null) {
-                $this->warn("{$company->name}: conexiunea „{$company->etrip_connection}” nu este definită.");
-
-                continue;
-            }
-
+        foreach ($connections as $connection) {
             try {
-                $result = $sync->sync($company);
+                $result = $sync->sync($connection);
             } catch (Throwable $e) {
                 $failed = true;
-                $this->components->error("{$company->name} ({$company->etrip_connection}): ".trim(($e->getPrevious() ?? $e)->getMessage()));
+                $this->components->error(config('etrip.connections.'.$connection, $connection).': '.trim(($e->getPrevious() ?? $e)->getMessage()));
 
                 continue;
             }
 
-            $rows[] = [$company->name, $company->etrip_connection, $result['synced'], $result['matched_cui'], $result['matched_name'], $result['unmatched']];
+            $rows[] = [config('etrip.connections.'.$connection, $connection), $connection, $result['synced'], $result['matched_cui'], $result['matched_name'], $result['unmatched']];
         }
 
         if ($rows !== []) {
-            $this->table(['Companie', 'eTrip', 'Furnizori', 'Potriviți CUI', 'Potriviți nume', 'Nepotriviți'], $rows);
+            $this->table(['Bază eTrip', 'Conexiune', 'Furnizori', 'Potriviți CUI', 'Potriviți nume', 'Nepotriviți'], $rows);
         }
 
         return $failed ? self::FAILURE : self::SUCCESS;

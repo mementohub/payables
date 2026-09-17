@@ -2,7 +2,6 @@
 
 namespace App\Services\Etrip;
 
-use App\Models\Company;
 use App\Models\EtripSupplier;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -42,7 +41,7 @@ class CheckinCostCheckService
      * }
      */
     public function check(
-        Company $company,
+        string $connection,
         EtripSupplier $supplier,
         Carbon $from,
         Carbon $to,
@@ -50,9 +49,9 @@ class CheckinCostCheckService
         ?float $requested = null,
         ?string $currency = null,
     ): array {
-        $labels = $this->reader->productTypes($company);
+        $labels = $this->reader->productTypes($connection);
 
-        $lines = collect($this->reader->costLines($company, $supplier->code, $from, $to))
+        $lines = collect($this->reader->costLines($connection, $supplier->code, $from, $to))
             ->map(fn (array $row) => $this->line($row, $labels))
             ->filter(fn (array $line) => $category === 'all' || $line['category'] === $category)
             ->values();
@@ -72,7 +71,7 @@ class CheckinCostCheckService
             'by_product' => $this->breakdown($lines, fn (array $line) => ['product_type' => $line['product_type'], 'label' => $line['product_label']]),
             'lines' => $lines->take(self::MAX_LINES)->all(),
             'lines_total' => $lines->count(),
-            'requested' => $requested === null ? null : $this->verdict($company, $totals, $requested, $currency),
+            'requested' => $requested === null ? null : $this->verdict($connection, $totals, $requested, $currency),
         ];
     }
 
@@ -174,7 +173,7 @@ class CheckinCostCheckService
      * @param  Collection<string, array{currency: string, cost: float, items: int, bookings: int}>  $totals
      * @return array<string, mixed>
      */
-    private function verdict(Company $company, Collection $totals, float $requested, ?string $currency): array
+    private function verdict(string $connection, Collection $totals, float $requested, ?string $currency): array
     {
         $currency = strtoupper(trim((string) $currency)) ?: null;
         $main = $totals->has((string) $currency) ? $currency : ($totals->keys()->first() ?? $currency ?? 'EUR');
@@ -195,8 +194,8 @@ class CheckinCostCheckService
 
         if ($currency !== null && $currency !== $main) {
             $today = Carbon::today();
-            $fromRon = $this->reader->ronPerUnit($company, $currency, $today);
-            $toRon = $this->reader->ronPerUnit($company, $main, $today);
+            $fromRon = $this->reader->ronPerUnit($connection, $currency, $today);
+            $toRon = $this->reader->ronPerUnit($connection, $main, $today);
 
             if (! $fromRon || ! $toRon) {
                 return [...$result, 'compared_amount' => null,

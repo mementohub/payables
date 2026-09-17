@@ -22,8 +22,6 @@ import { Switch } from '@/components/ui/switch';
 import type { OpexCategory, Parameters } from '@/types/cash-flow';
 import { fmtRon } from './report-math';
 
-const CURRENCIES = ['RON', 'EUR', 'USD'] as const;
-
 function Field({
     id,
     label,
@@ -66,13 +64,6 @@ export default function ParametersForm({
 }) {
     const form = useForm<Parameters>({
         ...parameters,
-        opening: {
-            mode: parameters.opening.mode ?? 'auto',
-            date: parameters.opening.date ?? '',
-            bank: { ...parameters.opening.bank },
-            cash: { ...parameters.opening.cash },
-            deposits: { ...parameters.opening.deposits },
-        },
         opex: { ...parameters.opex },
     });
 
@@ -91,146 +82,6 @@ export default function ParametersForm({
     return (
         <form onSubmit={submit} className="grid gap-4">
             <div className="grid gap-4 xl:grid-cols-2">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Sold inițial de trezorerie</CardTitle>
-                        <CardDescription>
-                            Automat: soldurile de sfârșit de lună din OMC
-                            (bănci, casierii, depozite 5081) rulate cu
-                            documentele de bancă și casă până azi. Manual:
-                            soldurile de mai jos la data lor, rulate la fel.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid gap-4">
-                        <Field
-                            id="opening-mode"
-                            label="Sursa soldului inițial"
-                            error={errors['opening.mode']}
-                        >
-                            <NativeSelect
-                                id="opening-mode"
-                                value={form.data.opening.mode}
-                                onChange={(e) =>
-                                    form.setData('opening', {
-                                        ...form.data.opening,
-                                        mode: e.target.value as
-                                            | 'auto'
-                                            | 'manual',
-                                    })
-                                }
-                            >
-                                <NativeSelectOption value="auto">
-                                    automat din OMC (ultima lună închisă +
-                                    documente până azi)
-                                </NativeSelectOption>
-                                <NativeSelectOption value="manual">
-                                    manual (soldurile de mai jos)
-                                </NativeSelectOption>
-                            </NativeSelect>
-                        </Field>
-                        <Field
-                            id="opening-date"
-                            label="Data soldurilor (doar manual)"
-                            error={errors['opening.date']}
-                            hint="Ex. 2026-08-31. Fără dată, raportul pornește de la zero."
-                        >
-                            <Input
-                                id="opening-date"
-                                type="date"
-                                value={form.data.opening.date ?? ''}
-                                onChange={(e) =>
-                                    form.setData('opening', {
-                                        ...form.data.opening,
-                                        date: e.target.value || null,
-                                    })
-                                }
-                            />
-                        </Field>
-                        <div className="overflow-auto">
-                            <table className="w-full text-sm">
-                                <thead className="text-xs text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="py-1 text-left">
-                                            Element
-                                        </th>
-                                        {CURRENCIES.map((currency) => (
-                                            <th
-                                                key={currency}
-                                                className="py-1 text-right"
-                                            >
-                                                {currency}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(
-                                        [
-                                            ['bank', 'Conturi curente bănci'],
-                                            ['cash', 'Numerar în casierii'],
-                                            [
-                                                'deposits',
-                                                'Depozite bancare / plasamente (5081)',
-                                            ],
-                                        ] as const
-                                    ).map(([key, label]) => (
-                                        <tr key={key}>
-                                            <td className="py-1 pr-2">
-                                                {label}
-                                            </td>
-                                            {CURRENCIES.map((currency) => (
-                                                <td
-                                                    key={currency}
-                                                    className="py-1 pl-2"
-                                                >
-                                                    <Input
-                                                        type="number"
-                                                        step="0.01"
-                                                        className="text-right"
-                                                        aria-label={`${label} ${currency}`}
-                                                        value={number(
-                                                            form.data.opening[
-                                                                key
-                                                            ][currency],
-                                                        )}
-                                                        onChange={(e) =>
-                                                            form.setData(
-                                                                'opening',
-                                                                {
-                                                                    ...form.data
-                                                                        .opening,
-                                                                    [key]: {
-                                                                        ...form
-                                                                            .data
-                                                                            .opening[
-                                                                            key
-                                                                        ],
-                                                                        [currency]:
-                                                                            e
-                                                                                .target
-                                                                                .value ===
-                                                                            ''
-                                                                                ? 0
-                                                                                : Number(
-                                                                                      e
-                                                                                          .target
-                                                                                          .value,
-                                                                                  ),
-                                                                    },
-                                                                },
-                                                            )
-                                                        }
-                                                    />
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </CardContent>
-                </Card>
-
                 <Card>
                     <CardHeader>
                         <CardTitle>Surse și curs</CardTitle>

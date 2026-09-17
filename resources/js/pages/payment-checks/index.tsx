@@ -50,7 +50,7 @@ import type {
 } from './types';
 
 type ExpectedRow = ExpectedSupplier & {
-    company_id: number;
+    connection: string;
     base: string | null;
 };
 
@@ -372,13 +372,14 @@ function fetchJson<T>(url: string): Promise<T> {
 }
 
 export default function PaymentChecksIndex({
-    companies,
+    bases,
+    company_id: partnersCompanyId,
     categories,
     windows,
     filters,
 }: Props) {
-    const [companyId, setCompanyId] = useState<number | null>(
-        filters.company_id,
+    const [connection, setConnection] = useState<string | null>(
+        filters.connection,
     );
     const [supplier, setSupplier] = useState<EtripSupplierOption | null>(null);
     const [supplierCode, setSupplierCode] = useState<string | null>(
@@ -392,7 +393,7 @@ export default function PaymentChecksIndex({
 
     const [check, setCheck] = useState<CheckinCheck | null>(null);
     const [checking, setChecking] = useState(
-        Boolean(filters.supplier && filters.company_id !== null),
+        Boolean(filters.supplier && filters.connection !== null),
     );
     const [checkError, setCheckError] = useState<string | null>(null);
     const [mode, setMode] = useState<BreakdownMode>('hotel');
@@ -402,18 +403,18 @@ export default function PaymentChecksIndex({
     const [expectedKey, setExpectedKey] = useState('');
     const [expectedError, setExpectedError] = useState<string | null>(null);
 
-    const pickerCompanies = useMemo(
-        () => companies.map((item) => ({ id: item.id, base: item.etrip })),
-        [companies],
+    const pickerBases = useMemo(
+        () => bases.map((item) => ({ key: item.key, label: item.label })),
+        [bases],
     );
-    const companyKey = companies.map((item) => item.id).join(',');
-    const suppliersSyncedAt = companies
+    const baseKey = bases.map((item) => item.key).join(',');
+    const suppliersSyncedAt = bases
         .map((item) => item.suppliers_synced_at)
         .filter((value): value is string => value !== null)
         .sort()[0];
 
     type CheckParams = {
-        company_id: number;
+        connection: string;
         supplier: string;
         from: string;
         to: string;
@@ -424,7 +425,7 @@ export default function PaymentChecksIndex({
 
     function checkUrl(params: CheckParams): string {
         const query: Record<string, string> = {
-            company_id: String(params.company_id),
+            connection: params.connection,
             supplier: params.supplier,
             from: params.from,
             to: params.to,
@@ -457,16 +458,16 @@ export default function PaymentChecksIndex({
      */
     function loadExpected(refresh: boolean): Promise<ExpectedAll | null> {
         return Promise.allSettled(
-            companies.map((item) =>
+            bases.map((item) =>
                 fetchJson<ExpectedPayload>(
                     PaymentCheckController.expected({
                         query: {
-                            company_id: String(item.id),
+                            connection: item.key,
                             days: String(expectedDays),
                             ...(refresh ? { refresh: '1' } : {}),
                         },
                     }).url,
-                ).then((payload) => ({ company: item, payload })),
+                ).then((payload) => ({ base: item, payload })),
             ),
         ).then((results) => {
             const loaded = results.flatMap((result) =>
@@ -489,11 +490,11 @@ export default function PaymentChecksIndex({
             );
 
             const suppliers = loaded
-                .flatMap(({ company, payload }) =>
+                .flatMap(({ base, payload }) =>
                     payload.suppliers.map((row) => ({
                         ...row,
-                        company_id: company.id,
-                        base: company.etrip,
+                        connection: base.key,
+                        base: base.label,
                     })),
                 )
                 .sort((a, b) => Math.abs(b.cost) - Math.abs(a.cost));
@@ -513,11 +514,11 @@ export default function PaymentChecksIndex({
     }
 
     function refreshExpected() {
-        if (companies.length === 0) {
+        if (bases.length === 0) {
             return;
         }
 
-        const key = `${companyKey}:${expectedDays}`;
+        const key = `${baseKey}:${expectedDays}`;
 
         setExpectedKey('');
         setExpectedError(null);
@@ -530,12 +531,12 @@ export default function PaymentChecksIndex({
 
     useEffect(() => {
         // A deep link (e.g. from the supplier page) runs its check once on mount.
-        if (!filters.supplier || filters.company_id === null) {
+        if (!filters.supplier || filters.connection === null) {
             return;
         }
 
         const url = checkUrl({
-            company_id: filters.company_id,
+            connection: filters.connection,
             supplier: filters.supplier,
             from: filters.from,
             to: filters.to,
@@ -570,11 +571,11 @@ export default function PaymentChecksIndex({
     }, []);
 
     useEffect(() => {
-        if (companies.length === 0) {
+        if (bases.length === 0) {
             return;
         }
 
-        const key = `${companyKey}:${expectedDays}`;
+        const key = `${baseKey}:${expectedDays}`;
         let cancelled = false;
 
         loadExpected(false)
@@ -598,15 +599,15 @@ export default function PaymentChecksIndex({
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyKey, expectedDays]);
+    }, [baseKey, expectedDays]);
 
     const expectedLoading =
-        companies.length > 0 && expectedKey !== `${companyKey}:${expectedDays}`;
+        bases.length > 0 && expectedKey !== `${baseKey}:${expectedDays}`;
 
     function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
-        if (!supplierCode || companyId === null) {
+        if (!supplierCode || connection === null) {
             setCheckError('Alege un furnizor eTrip.');
 
             return;
@@ -615,7 +616,7 @@ export default function PaymentChecksIndex({
         const [start, end] = to < from ? [to, from] : [from, to];
 
         runCheck({
-            company_id: companyId,
+            connection,
             supplier: supplierCode,
             from: start,
             to: end,
@@ -629,14 +630,14 @@ export default function PaymentChecksIndex({
         const start = today();
         const end = addDays(start, expectedDays - 1);
 
-        setCompanyId(row.company_id);
+        setConnection(row.connection);
         setSupplierCode(row.supplier_code);
         setFrom(start);
         setTo(end);
         setCategory('all');
         setAmount('');
         runCheck({
-            company_id: row.company_id,
+            connection: row.connection,
             supplier: row.supplier_code,
             from: start,
             to: end,
@@ -680,7 +681,7 @@ export default function PaymentChecksIndex({
                             cerută.
                         </p>
                     </div>
-                    {companies.length > 0 && (
+                    {bases.length > 0 && (
                         <Form
                             {...EtripSupplierController.syncAll.form()}
                             options={{ preserveScroll: true }}
@@ -705,12 +706,11 @@ export default function PaymentChecksIndex({
                     )}
                 </div>
 
-                {companies.length === 0 ? (
+                {bases.length === 0 ? (
                     <Card>
                         <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                            Nicio companie nu este legată de o bază eTrip. Alege
-                            „Bază eTrip” în setările companiei ca să poți
-                            verifica cererile pe check-in.
+                            Nicio bază eTrip nu este definită în configurația
+                            aplicației.
                         </CardContent>
                     </Card>
                 ) : (
@@ -729,19 +729,19 @@ export default function PaymentChecksIndex({
                                     </Label>
                                     <EtripSupplierPicker
                                         id="check-supplier"
-                                        companies={pickerCompanies}
+                                        bases={pickerBases}
                                         value={
-                                            supplierCode && companyId !== null
+                                            supplierCode && connection !== null
                                                 ? {
-                                                      company_id: companyId,
+                                                      connection,
                                                       code: supplierCode,
                                                   }
                                                 : null
                                         }
                                         onChange={(option) => {
                                             setSupplier(option);
-                                            setCompanyId(
-                                                option?.company_id ?? null,
+                                            setConnection(
+                                                option?.connection ?? null,
                                             );
                                             setSupplierCode(
                                                 option?.code ?? null,
@@ -858,7 +858,7 @@ export default function PaymentChecksIndex({
                                 </div>
                                 <Button
                                     type="submit"
-                                    disabled={checking || companyId === null}
+                                    disabled={checking || connection === null}
                                 >
                                     <Search />
                                     Verifică
@@ -1014,12 +1014,12 @@ export default function PaymentChecksIndex({
                             </CardContent>
                         </Card>
 
-                        {check.requested && companyId !== null && (
+                        {check.requested && partnersCompanyId !== null && (
                             <SavePaymentRequest
                                 title="Salvează verificarea în registru"
                                 description="Cererea rămâne în registru cu cifrele eTrip din acest moment, ca dovadă pentru aprobare."
                                 payload={{
-                                    company_id: companyId,
+                                    company_id: partnersCompanyId,
                                     kind: 'checkin',
                                     supplier_name:
                                         supplier?.name ?? check.supplier.name,
@@ -1058,7 +1058,7 @@ export default function PaymentChecksIndex({
                     </>
                 )}
 
-                {companies.length > 0 && (
+                {bases.length > 0 && (
                     <Card>
                         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
                             <div>
@@ -1150,7 +1150,7 @@ export default function PaymentChecksIndex({
                                             {(expected?.suppliers ?? []).map(
                                                 (row) => (
                                                     <tr
-                                                        key={`${row.company_id}-${row.supplier_code}-${row.currency}`}
+                                                        key={`${row.connection}-${row.supplier_code}-${row.currency}`}
                                                     >
                                                         <td className="px-3 py-2">
                                                             {row.supplier_name ??
@@ -1160,8 +1160,7 @@ export default function PaymentChecksIndex({
                                                                     row.supplier_code
                                                                 }
                                                             </span>
-                                                            {companies.length >
-                                                                1 &&
+                                                            {bases.length > 1 &&
                                                                 row.base && (
                                                                     <Badge
                                                                         variant="outline"

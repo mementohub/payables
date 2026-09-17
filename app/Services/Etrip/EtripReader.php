@@ -2,7 +2,6 @@
 
 namespace App\Services\Etrip;
 
-use App\Models\Company;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -10,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * Read-only access to the eTrip reservation database a company is linked to.
+ * Read-only access to an eTrip reservation database (config/etrip.php).
  *
  * Every query here runs against a hot-standby replica; keep them filtered on
  * indexed columns (supplier, start_date) and bounded by the statement timeout.
@@ -103,10 +102,11 @@ class EtripReader
     /** @var array<string, true> */
     private array $prepared = [];
 
-    public function connection(Company $company): ConnectionInterface
+    public function connection(string $name): ConnectionInterface
     {
-        $name = $company->etripConnection()
-            ?? throw new RuntimeException("Compania {$company->name} nu este legată de o bază eTrip.");
+        if (! array_key_exists($name, (array) config('etrip.connections'))) {
+            throw new RuntimeException("Baza eTrip „{$name}” nu este definită.");
+        }
 
         $connection = DB::connection($name);
 
@@ -121,9 +121,9 @@ class EtripReader
     /**
      * @return list<array{code: string, name: string, vat_no: ?string, company_no: ?string, currency: ?string, country: ?string, active: bool}>
      */
-    public function suppliers(Company $company): array
+    public function suppliers(string $connection): array
     {
-        return array_map(fn ($row) => $this->supplierRow($row), $this->connection($company)->select(self::SUPPLIERS_SQL));
+        return array_map(fn ($row) => $this->supplierRow($row), $this->connection($connection)->select(self::SUPPLIERS_SQL));
     }
 
     /**
@@ -145,9 +145,9 @@ class EtripReader
     /**
      * @return array{code: string, name: string, vat_no: ?string, company_no: ?string, currency: ?string, country: ?string, active: bool}|null
      */
-    public function supplier(Company $company, string $code): ?array
+    public function supplier(string $connection, string $code): ?array
     {
-        $row = $this->connection($company)->selectOne(self::SUPPLIER_SQL, [$code]);
+        $row = $this->connection($connection)->selectOne(self::SUPPLIER_SQL, [$code]);
 
         return $row ? $this->supplierRow($row) : null;
     }
@@ -157,14 +157,12 @@ class EtripReader
      *
      * @return array<int, string>
      */
-    public function productTypes(Company $company): array
+    public function productTypes(string $connection): array
     {
-        $name = $company->etripConnection() ?? 'none';
-
-        return Cache::remember("etrip:{$name}:product-types", now()->addDay(), function () use ($company) {
+        return Cache::remember("etrip:{$connection}:product-types", now()->addDay(), function () use ($connection) {
             $labels = [];
 
-            foreach ($this->connection($company)->select(self::PRODUCT_TYPES_SQL) as $row) {
+            foreach ($this->connection($connection)->select(self::PRODUCT_TYPES_SQL) as $row) {
                 $labels[(int) $row->id] = (string) $row->label;
             }
 
@@ -175,9 +173,9 @@ class EtripReader
     /**
      * @return list<array<string, mixed>>
      */
-    public function costLines(Company $company, string $supplierCode, Carbon $from, Carbon $to): array
+    public function costLines(string $connection, string $supplierCode, Carbon $from, Carbon $to): array
     {
-        $rows = $this->connection($company)->select(self::COST_LINES_SQL, [
+        $rows = $this->connection($connection)->select(self::COST_LINES_SQL, [
             $supplierCode,
             $from->toDateString(),
             $to->copy()->addDay()->toDateString(),
@@ -189,9 +187,9 @@ class EtripReader
     /**
      * @return list<array{supplier_code: string, supplier_name: ?string, currency: ?string, cost: float, bookings: int, items: int}>
      */
-    public function expectedCosts(Company $company, Carbon $from, Carbon $to, int $limit = 25): array
+    public function expectedCosts(string $connection, Carbon $from, Carbon $to, int $limit = 25): array
     {
-        $rows = $this->connection($company)->select(self::EXPECTED_SQL, [
+        $rows = $this->connection($connection)->select(self::EXPECTED_SQL, [
             $from->toDateString(),
             $to->copy()->addDay()->toDateString(),
             $limit,
@@ -210,13 +208,13 @@ class EtripReader
     /**
      * BNR rate (lei per one unit of the currency) on or before the date; 1 for lei.
      */
-    public function ronPerUnit(Company $company, string $currency, Carbon $date): ?float
+    public function ronPerUnit(string $connection, string $currency, Carbon $date): ?float
     {
         if (in_array(strtoupper($currency), ['RON', 'LEI'], true)) {
             return 1.0;
         }
 
-        $row = $this->connection($company)->selectOne(self::RATE_SQL, [strtoupper($currency), $date->toDateString()]);
+        $row = $this->connection($connection)->selectOne(self::RATE_SQL, [strtoupper($currency), $date->toDateString()]);
 
         return $row && $row->ron_per_unit !== null ? (float) $row->ron_per_unit : null;
     }

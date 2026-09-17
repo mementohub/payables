@@ -35,8 +35,8 @@ Route::middleware('auth')->group(function () {
     Route::resource('users', UserController::class)->except(['show', 'create', 'store']);
     Route::post('companies/sync', [SyncController::class, 'storeAll'])->name('companies.sync-all');
     Route::post('companies/{company}/sync', [SyncController::class, 'store'])->name('companies.sync');
-    Route::get('companies/{company}/etrip-suppliers', [EtripSupplierController::class, 'search'])->name('companies.etrip-suppliers.search');
-    Route::post('companies/{company}/etrip-suppliers/sync', [EtripSupplierController::class, 'sync'])->name('companies.etrip-suppliers.sync');
+    Route::get('etrip/{connection}/suppliers', [EtripSupplierController::class, 'search'])->name('etrip.suppliers.search');
+    Route::post('etrip/{connection}/suppliers/sync', [EtripSupplierController::class, 'sync'])->name('etrip.suppliers.sync');
     Route::post('etrip-suppliers/sync', [EtripSupplierController::class, 'syncAll'])->name('etrip-suppliers.sync-all');
 
     Route::get('invoices/issued', [InvoiceController::class, 'emise'])->name('invoices.emise');

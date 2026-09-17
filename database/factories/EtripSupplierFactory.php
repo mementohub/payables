@@ -15,6 +15,7 @@ class EtripSupplierFactory extends Factory
     {
         return [
             'company_id' => Company::factory(['etrip_connection' => 'etrip_chr']),
+            'etrip_connection' => 'etrip_chr',
             'code' => (string) fake()->unique()->numberBetween(1, 99999),
             'name' => fake()->unique()->company(),
             'vat_no' => 'RO'.fake()->unique()->numberBetween(1000000, 99999999),

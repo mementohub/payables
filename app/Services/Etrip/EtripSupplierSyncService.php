@@ -6,27 +6,42 @@ use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Models\Partner;
 use App\Services\EInvoices\PartnerCuiLookup;
+use App\Services\Omc\OmcReader;
+use RuntimeException;
 
 /**
- * Mirrors the suppliers of a company's eTrip database locally and ties each
- * one to the ERP partner with the same VAT number or, failing that, the same
- * name. Links made by hand are never overwritten.
+ * Mirrors the suppliers of an eTrip base locally and ties each one to the
+ * ERP partner with the same VAT number or, failing that, the same name.
+ * Links made by hand are never overwritten.
  */
 class EtripSupplierSyncService
 {
-    public function __construct(private EtripReader $reader) {}
+    public function __construct(private EtripReader $reader, private OmcReader $omc) {}
+
+    /**
+     * The company whose partners the eTrip suppliers are matched to: the
+     * one whose books are read live from OMC.
+     */
+    public function partnersCompany(): Company
+    {
+        return $this->omc->company()
+            ?? Company::query()->orderBy('id')->first()
+            ?? throw new RuntimeException('Nicio companie în aplicație: furnizorii eTrip nu au parteneri de potrivit.');
+    }
 
     /**
      * @return array{synced: int, matched_cui: int, matched_name: int, unmatched: int}
      */
-    public function sync(Company $company): array
+    public function sync(string $connection, ?Company $company = null): array
     {
+        $company ??= $this->partnersCompany();
         $now = now();
-        $rows = $this->reader->suppliers($company);
+        $rows = $this->reader->suppliers($connection);
 
         foreach (array_chunk($rows, 500) as $chunk) {
             EtripSupplier::upsert(
                 array_map(fn (array $row) => [
+                    'etrip_connection' => $connection,
                     'company_id' => $company->id,
                     'code' => mb_substr($row['code'], 0, 50),
                     'name' => mb_substr($row['name'], 0, 120),
@@ -37,15 +52,15 @@ class EtripSupplierSyncService
                     'is_active' => $row['active'],
                     'synced_at' => $now,
                 ], $chunk),
-                ['company_id', 'code'],
-                ['name', 'vat_no', 'company_no', 'currency', 'country', 'is_active', 'synced_at'],
+                ['etrip_connection', 'code'],
+                ['company_id', 'name', 'vat_no', 'company_no', 'currency', 'country', 'is_active', 'synced_at'],
             );
         }
 
         return [
             'synced' => count($rows),
-            ...$this->match($company),
-            'unmatched' => EtripSupplier::query()->where('company_id', $company->id)->unmatched()->count(),
+            ...$this->match($connection, $company),
+            'unmatched' => EtripSupplier::query()->forConnection($connection)->unmatched()->count(),
         ];
     }
 
@@ -53,17 +68,18 @@ class EtripSupplierSyncService
      * Mirror a single supplier read live from eTrip, keeping any partner link it
      * already has. Null when eTrip does not know the code.
      */
-    public function remember(Company $company, string $code): ?EtripSupplier
+    public function remember(string $connection, string $code, ?Company $company = null): ?EtripSupplier
     {
-        $row = $this->reader->supplier($company, $code);
+        $row = $this->reader->supplier($connection, $code);
 
         if ($row === null) {
             return null;
         }
 
         return EtripSupplier::query()->updateOrCreate(
-            ['company_id' => $company->id, 'code' => mb_substr($row['code'], 0, 50)],
+            ['etrip_connection' => $connection, 'code' => mb_substr($row['code'], 0, 50)],
             [
+                'company_id' => ($company ?? $this->partnersCompany())->id,
                 'name' => mb_substr($row['name'], 0, 120),
                 'vat_no' => $row['vat_no'] !== null ? mb_substr($row['vat_no'], 0, 40) : null,
                 'company_no' => $row['company_no'] !== null ? mb_substr($row['company_no'], 0, 40) : null,
@@ -80,10 +96,10 @@ class EtripSupplierSyncService
      *
      * @return array{matched_cui: int, matched_name: int}
      */
-    public function match(Company $company): array
+    public function match(string $connection, Company $company): array
     {
         $taken = EtripSupplier::query()
-            ->where('company_id', $company->id)
+            ->forConnection($connection)
             ->whereNotNull('partner_id')
             ->pluck('partner_id')
             ->flip();
@@ -109,7 +125,7 @@ class EtripSupplierSyncService
         $matched = ['matched_cui' => 0, 'matched_name' => 0];
 
         EtripSupplier::query()
-            ->where('company_id', $company->id)
+            ->forConnection($connection)
             ->unmatched()
             ->orderBy('id')
             ->each(function (EtripSupplier $supplier) use (&$byCui, &$byName, &$matched) {

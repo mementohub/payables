@@ -39,9 +39,9 @@ beforeEach(function () {
     $this->mock(EtripReader::class, function (MockInterface $mock) {
         $mock->shouldReceive('productTypes')->andReturn([7 => 'Hotel allotment', 5 => 'Transfer', 26 => 'Flight international']);
         $mock->shouldReceive('costLines')
-            ->withArgs(fn (Company $company, string $code) => $company->is($this->company) && $code === '10')
+            ->withArgs(fn (string $connection, string $code) => $connection === 'etrip_chr' && $code === '10')
             ->andReturn(checkinRows());
-        $mock->shouldReceive('ronPerUnit')->andReturnUsing(fn (Company $company, string $currency) => match (strtoupper($currency)) {
+        $mock->shouldReceive('ronPerUnit')->andReturnUsing(fn (string $connection, string $currency) => match (strtoupper($currency)) {
             'EUR' => 5.0,
             'USD' => 4.6,
             'RON' => 1.0,
@@ -53,7 +53,7 @@ beforeEach(function () {
 function checkin(string $category = 'hotel', ?float $amount = null, ?string $currency = null): array
 {
     return app(CheckinCostCheckService::class)->check(
-        test()->company,
+        'etrip_chr',
         test()->supplier,
         Carbon::parse('2026-09-16'),
         Carbon::parse('2026-09-17'),

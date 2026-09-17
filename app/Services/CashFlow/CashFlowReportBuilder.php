@@ -208,34 +208,21 @@ class CashFlowReportBuilder
     }
 
     /**
-     * The treasury position: by default the last closed month-end balances
-     * in OMC (bank accounts, cash desks, deposits on 5081) rolled forward
-     * with every bank and cash document up to today; or, when the
-     * parameters say so, the balances typed in at their date, rolled the
-     * same way.
+     * The treasury position: the last closed month-end balances in OMC
+     * (bank accounts, cash desks, deposits on 5081) rolled forward with
+     * every bank and cash document up to today.
      *
      * @return array<string, mixed>
      */
     private function opening(): array
-    {
-        $mode = ($this->params['opening']['mode'] ?? 'auto') === 'manual' ? 'manual' : 'auto';
-
-        return $mode === 'manual' ? $this->manualOpening() : $this->omcOpening();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function omcOpening(): array
     {
         $anchor = $this->omc->monthEndAnchor($this->today);
 
         if ($anchor === null) {
             return [
                 ...$this->emptyOpening(),
-                'mode' => 'auto',
                 '_skipped' => true,
-                '_message' => 'OMC nu are solduri de sfârșit de lună (eu_banca_sold); introduceți soldurile manual în parametri.',
+                '_message' => 'OMC nu are solduri de sfârșit de lună (eu_banca_sold): poziția de trezorerie nu poate fi calculată.',
             ];
         }
 
@@ -284,7 +271,6 @@ class CashFlowReportBuilder
         }
 
         return [
-            'mode' => 'auto',
             'date' => $anchor->toDateString(),
             'as_of' => $this->today->toDateString(),
             'currencies' => $currencies,
@@ -303,77 +289,9 @@ class CashFlowReportBuilder
     /**
      * @return array<string, mixed>
      */
-    private function manualOpening(): array
-    {
-        $opening = $this->params['opening'] ?? [];
-        $date = ! empty($opening['date']) ? CarbonImmutable::parse($opening['date'])->startOfDay() : null;
-        $currencies = ['RON', 'EUR', 'USD'];
-        $labels = ['bank' => 'Conturi curente bănci', 'cash' => 'Numerar în casierii', 'deposits' => 'Depozite bancare / plasamente'];
-        $rows = [];
-
-        foreach ($labels as $key => $label) {
-            $rows[$key] = ['key' => $key, 'label' => $label.($date ? ' la '.$date->format('d.m.Y') : ''), 'values' => []];
-
-            foreach ($currencies as $currency) {
-                $rows[$key]['values'][$currency] = (float) ($opening[$key][$currency] ?? 0);
-            }
-        }
-
-        if ($date === null) {
-            return [
-                ...$this->emptyOpening(),
-                'mode' => 'manual',
-                'currencies' => $currencies,
-                'rows' => array_values($rows),
-                '_skipped' => true,
-                '_message' => 'Introduceți soldul inițial (bănci, casierii, depozite) și data lui în parametri, sau treceți pe „automat din OMC”.',
-            ];
-        }
-
-        $rolled = array_fill_keys($currencies, 0.0);
-        $flows = $this->omc->dailyFlows($date->addDay(), $this->today->addDay());
-
-        foreach ($flows as $flow) {
-            if ($flow['group'] === OmcCashFlowReader::GROUP_INTERNAL) {
-                continue;
-            }
-
-            $currency = in_array($flow['currency'], $currencies, true) ? $flow['currency'] : 'RON';
-            $amount = $currency === $flow['currency'] ? $flow['amount'] : $flow['lei'];
-            $rolled[$currency] += $flow['kind'] === 'in' ? $amount : -$amount;
-        }
-
-        $rows['rolled'] = ['key' => 'rolled', 'label' => 'Mișcări OMC (bancă + casă) după '.$date->format('d.m.Y'), 'values' => array_map(fn (float $v) => round($v, 2), $rolled)];
-        $rows['position'] = ['key' => 'position', 'label' => 'Poziție de trezorerie azi', 'values' => []];
-        $byCurrency = [];
-        $total = 0.0;
-
-        foreach ($currencies as $currency) {
-            $now = $rows['bank']['values'][$currency] + $rows['cash']['values'][$currency] + $rows['deposits']['values'][$currency] + $rolled[$currency];
-            $rows['position']['values'][$currency] = round($now, 2);
-            $byCurrency[$currency] = round($now, 2);
-            $total += $this->lei($now, $currency);
-        }
-
-        return [
-            'mode' => 'manual',
-            'date' => $date->toDateString(),
-            'as_of' => $this->today->toDateString(),
-            'currencies' => $currencies,
-            'rows' => array_values($rows),
-            'by_currency' => $byCurrency,
-            'total' => round($total, 2),
-            '_rows' => count($flows),
-            '_message' => sprintf('Solduri introduse manual la %s, rulate cu documentele de bancă/casă OMC până la %s.', $date->format('d.m.Y'), $this->today->format('d.m.Y')),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     private function emptyOpening(): array
     {
-        return ['mode' => 'auto', 'date' => null, 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
+        return ['date' => null, 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
     }
 
     /**

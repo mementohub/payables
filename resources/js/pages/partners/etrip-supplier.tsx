@@ -59,7 +59,7 @@ export default function EtripSupplierSection({
                         <Link
                             href={paymentChecksIndex({
                                 query: {
-                                    company_id: partner.company.id,
+                                    connection: linked.etrip_connection,
                                     supplier: linked.code,
                                 },
                             })}
@@ -110,19 +110,22 @@ export default function EtripSupplierSection({
                                         </Label>
                                         <EtripSupplierPicker
                                             id="etrip-supplier-picker"
-                                            companies={[
-                                                { id: partner.company.id },
-                                            ]}
+                                            bases={partner.etrip_bases}
                                             value={
                                                 picked
                                                     ? {
-                                                          company_id:
-                                                              picked.company_id,
+                                                          connection:
+                                                              picked.connection,
                                                           code: picked.code,
                                                       }
                                                     : null
                                             }
                                             onChange={setPicked}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            name="etrip_connection"
+                                            value={picked?.connection ?? ''}
                                         />
                                         <input
                                             type="hidden"

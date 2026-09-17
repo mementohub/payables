@@ -41,13 +41,6 @@ class CashFlowParameters
                 'charter_base_season' => null,
                 'charter_target_season' => null,
             ],
-            'opening' => [
-                'mode' => 'auto',
-                'date' => null,
-                'bank' => ['RON' => 0, 'EUR' => 0, 'USD' => 0],
-                'cash' => ['RON' => 0, 'EUR' => 0, 'USD' => 0],
-                'deposits' => ['RON' => 0, 'EUR' => 0, 'USD' => 0],
-            ],
             'opex' => $opex,
         ];
     }
@@ -76,7 +69,7 @@ class CashFlowParameters
         }
 
         // A null override means "back to automatic", which array_replace_recursive would drop.
-        foreach (['opex', 'payables', 'scenario', 'opening'] as $section) {
+        foreach (['opex', 'payables', 'scenario'] as $section) {
             foreach ((array) ($values[$section] ?? []) as $key => $value) {
                 if ($value === null) {
                     $merged[$section][$key] = null;

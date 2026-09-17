@@ -48,6 +48,7 @@ export type BankAccount = {
 };
 
 export type EtripSupplierRef = {
+    etrip_connection: string;
     id: number;
     code: string;
     name: string;
@@ -57,6 +58,7 @@ export type EtripSupplierRef = {
 
 export type PartnerDetail = {
     etrip_enabled: boolean;
+    etrip_bases: { key: string; label: string }[];
     etrip_supplier: EtripSupplierRef | null;
     id: number;
     name: string;

@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\Company;
 use App\Services\Etrip\EtripSupplierSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -16,18 +15,18 @@ class SyncEtripSuppliersJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public Company $company)
+    public function __construct(public string $connection)
     {
         $this->onQueue('long');
     }
 
     public function handle(EtripSupplierSyncService $sync): void
     {
-        if ($this->company->etripConnection() === null) {
+        if (! array_key_exists($this->connection, (array) config('etrip.connections'))) {
             return;
         }
 
-        $sync->sync($this->company);
+        $sync->sync($this->connection);
     }
 
     /**
@@ -35,6 +34,6 @@ class SyncEtripSuppliersJob implements ShouldQueue
      */
     public function tags(): array
     {
-        return ['etrip', 'etrip-suppliers', 'company:'.$this->company->id, 'company:'.$this->company->name];
+        return ['etrip', 'etrip-suppliers', 'connection:'.$this->connection];
     }
 }

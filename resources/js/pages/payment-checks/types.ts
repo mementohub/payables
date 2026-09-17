@@ -1,7 +1,6 @@
-export type EtripCompany = {
-    id: number;
-    name: string;
-    etrip: string | null;
+export type EtripBase = {
+    key: string;
+    label: string;
     suppliers_synced_at: string | null;
 };
 
@@ -105,7 +104,7 @@ export type ExpectedPayload = {
 };
 
 export type Filters = {
-    company_id: number | null;
+    connection: string | null;
     supplier: string | null;
     from: string;
     to: string;
@@ -115,7 +114,8 @@ export type Filters = {
 };
 
 export type Props = {
-    companies: EtripCompany[];
+    bases: EtripBase[];
+    company_id: number | null;
     categories: Record<CheckinCategory, string>;
     windows: number[];
     filters: Filters;

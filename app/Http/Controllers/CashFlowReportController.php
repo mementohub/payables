@@ -151,27 +151,14 @@ class CashFlowReportController extends Controller
             'scenario.charter_factor' => ['required', 'numeric', 'between:0,5'],
             'scenario.charter_base_season' => ['nullable', 'string', 'max:20'],
             'scenario.charter_target_season' => ['nullable', 'string', 'max:20'],
-            'opening.mode' => ['required', Rule::in(['auto', 'manual'])],
-            'opening.date' => ['nullable', 'date', 'before_or_equal:today', 'required_if:opening.mode,manual'],
-            'opening.bank' => ['required', 'array'],
-            'opening.cash' => ['required', 'array'],
-            'opening.deposits' => ['required', 'array'],
-            'opening.bank.*' => ['nullable', 'numeric'],
-            'opening.cash.*' => ['nullable', 'numeric'],
-            'opening.deposits.*' => ['nullable', 'numeric'],
             'opex' => ['required', 'array'],
             'opex.*' => ['nullable', 'numeric', 'min:0'],
         ]);
-
-        foreach (['bank', 'cash', 'deposits'] as $component) {
-            $validated['opening'][$component] = array_map(fn ($v) => $v === null || $v === '' ? 0 : (float) $v, array_intersect_key($validated['opening'][$component], array_flip(['RON', 'EUR', 'USD'])) + ['RON' => 0, 'EUR' => 0, 'USD' => 0]);
-        }
 
         $validated['opex'] = array_map(fn ($v) => $v === null || $v === '' ? null : (float) $v, array_intersect_key($validated['opex'], array_flip($opexKeys)));
         $validated['payables']['supplier_balance'] = $validated['payables']['supplier_balance'] === null || $validated['payables']['supplier_balance'] === '' ? null : (float) $validated['payables']['supplier_balance'];
         $validated['scenario']['charter_base_season'] = $validated['scenario']['charter_base_season'] ?: null;
         $validated['scenario']['charter_target_season'] = $validated['scenario']['charter_target_season'] ?: null;
-        $validated['opening']['date'] = $validated['opening']['date'] ?: null;
 
         $parameters->save($validated, $request->user());
 

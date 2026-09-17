@@ -22,16 +22,22 @@ test('guests are redirected to the login page', function () {
     $this->get('/payment-checks')->assertRedirect('/login');
 });
 
-test('the page lists only companies linked to etrip and default filters', function () {
+test('the page lists the etrip bases from the configuration and default filters', function () {
+    EtripSupplier::factory()->for($this->company)->create(['etrip_connection' => 'etrip_chr', 'synced_at' => '2026-09-16 09:00:00']);
+
     $this->actingAs($this->user)
         ->get('/payment-checks')
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('payment-checks/index')
-            ->has('companies', 1)
-            ->where('companies.0.name', 'Christian Tour')
-            ->where('companies.0.etrip', 'eTrip Christian Tour')
-            ->where('filters.company_id', null)
+            ->has('bases', 2)
+            ->where('bases.0.key', 'etrip_chr')
+            ->where('bases.0.label', 'eTrip Christian Tour')
+            ->where('bases.0.suppliers_synced_at', '2026-09-16T09:00:00+00:00')
+            ->where('bases.1.key', 'etrip_vcz')
+            ->where('bases.1.suppliers_synced_at', null)
+            ->where('company_id', $this->company->id)
+            ->where('filters.connection', null)
             ->where('filters.from', '2026-09-16')
             ->where('filters.to', '2026-09-17')
             ->where('filters.category', 'hotel')
@@ -40,21 +46,23 @@ test('the page lists only companies linked to etrip and default filters', functi
         );
 });
 
-test('a deep link keeps the company of the supplier it points to', function () {
+test('a deep link keeps the base of the supplier it points to', function () {
     $this->actingAs($this->user)
-        ->get('/payment-checks?company_id='.$this->company->id.'&supplier=10')
+        ->get('/payment-checks?connection=etrip_vcz&supplier=10')
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('filters.company_id', $this->company->id)
+            ->where('filters.connection', 'etrip_vcz')
             ->where('filters.supplier', '10')
         );
+
+    $this->actingAs($this->user)
+        ->get('/payment-checks?connection=nope&supplier=10')
+        ->assertInertia(fn ($page) => $page->where('filters.connection', null));
 });
 
 test('all etrip bases can be mirrored with one request', function () {
-    $second = Company::factory()->create(['name' => 'Vacanza', 'etrip_connection' => 'etrip_vcz']);
-
-    $this->mock(EtripReader::class, function (MockInterface $mock) use ($second) {
-        $mock->shouldReceive('suppliers')->twice()->andReturnUsing(fn (Company $company) => $company->is($second)
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('suppliers')->twice()->andReturnUsing(fn (string $connection) => $connection === 'etrip_vcz'
             ? [['code' => '7', 'name' => 'Vacanza Hotel', 'vat_no' => null, 'company_no' => null, 'currency' => 'EUR', 'country' => null, 'active' => true]]
             : [['code' => '10', 'name' => 'Rida International', 'vat_no' => null, 'company_no' => null, 'currency' => 'USD', 'country' => null, 'active' => true]]);
     });
@@ -64,22 +72,21 @@ test('all etrip bases can be mirrored with one request', function () {
         ->post('/etrip-suppliers/sync')
         ->assertRedirect('/payment-checks');
 
-    expect(EtripSupplier::query()->where('company_id', $this->company->id)->pluck('code')->all())->toBe(['10'])
-        ->and(EtripSupplier::query()->where('company_id', $second->id)->pluck('code')->all())->toBe(['7']);
+    expect(EtripSupplier::query()->forConnection('etrip_chr')->pluck('code')->all())->toBe(['10'])
+        ->and(EtripSupplier::query()->forConnection('etrip_vcz')->pluck('code')->all())->toBe(['7'])
+        ->and(EtripSupplier::query()->where('company_id', '!=', $this->company->id)->exists())->toBeFalse();
 });
 
 test('the check endpoint validates its input', function () {
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&from=2026-09-16&to=2026-09-10')
+        ->getJson('/payment-checks/check?connection=etrip_chr&from=2026-09-16&to=2026-09-10')
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['supplier', 'to']);
 });
 
-test('the check endpoint rejects a company without etrip', function () {
-    $company = Company::factory()->create(['etrip_connection' => null]);
-
+test('the check endpoint rejects an unknown etrip base', function () {
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$company->id.'&supplier=10&from=2026-09-16&to=2026-09-17')
+        ->getJson('/payment-checks/check?connection=etrip_nope&supplier=10&from=2026-09-16&to=2026-09-17')
         ->assertUnprocessable();
 });
 
@@ -89,7 +96,7 @@ test('the check endpoint returns the etrip comparison as json', function () {
     $this->mock(EtripReader::class, function (MockInterface $mock) {
         $mock->shouldReceive('productTypes')->andReturn([7 => 'Hotel allotment']);
         $mock->shouldReceive('costLines')
-            ->withArgs(fn (Company $company, string $code, Carbon $from, Carbon $to) => $code === '10'
+            ->withArgs(fn (string $connection, string $code, Carbon $from, Carbon $to) => $connection === 'etrip_chr' && $code === '10'
                 && $from->toDateString() === '2026-09-16' && $to->toDateString() === '2026-09-17')
             ->once()
             ->andReturn([[
@@ -100,7 +107,7 @@ test('the check endpoint returns the etrip comparison as json', function () {
     });
 
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=10&from=2026-09-16&to=2026-09-17&amount=1500&currency=EUR')
+        ->getJson('/payment-checks/check?connection=etrip_chr&supplier=10&from=2026-09-16&to=2026-09-17&amount=1500&currency=EUR')
         ->assertOk()
         ->assertJsonPath('supplier.name', 'Rida International')
         ->assertJsonPath('totals.0.cost', 1500)
@@ -116,14 +123,14 @@ test('an unreachable etrip database is reported with its cause', function () {
     });
 
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=10&from=2026-09-16&to=2026-09-17')
+        ->getJson('/payment-checks/check?connection=etrip_chr&supplier=10&from=2026-09-16&to=2026-09-17')
         ->assertStatus(503)
         ->assertJsonPath('message', 'Baza eTrip nu poate fi accesată: connection to server at "10.0.0.9" failed');
 });
 
 test('the check endpoint reads a supplier that is not mirrored yet from etrip', function () {
     $this->mock(EtripReader::class, function (MockInterface $mock) {
-        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '10')->once()->andReturn([
+        $mock->shouldReceive('supplier')->with('etrip_chr', '10')->once()->andReturn([
             'code' => '10', 'name' => 'Rida International', 'vat_no' => null, 'company_no' => null,
             'currency' => 'USD', 'country' => null, 'active' => true,
         ]);
@@ -132,12 +139,12 @@ test('the check endpoint reads a supplier that is not mirrored yet from etrip', 
     });
 
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=10&from=2026-09-16&to=2026-09-17')
+        ->getJson('/payment-checks/check?connection=etrip_chr&supplier=10&from=2026-09-16&to=2026-09-17')
         ->assertOk()
         ->assertJsonPath('supplier.name', 'Rida International')
         ->assertJsonPath('supplier.currency', 'USD');
 
-    expect(EtripSupplier::query()->where('company_id', $this->company->id)->where('code', '10')->first())
+    expect(EtripSupplier::query()->forConnection('etrip_chr')->where('code', '10')->first())
         ->toMatchArray(['name' => 'Rida International', 'currency' => 'USD', 'partner_id' => null]);
 });
 
@@ -147,7 +154,7 @@ test('the check endpoint rejects a supplier etrip does not know', function () {
     });
 
     $this->actingAs($this->user)
-        ->getJson('/payment-checks/check?company_id='.$this->company->id.'&supplier=404&from=2026-09-16&to=2026-09-17')
+        ->getJson('/payment-checks/check?connection=etrip_chr&supplier=404&from=2026-09-16&to=2026-09-17')
         ->assertNotFound();
 });
 
@@ -159,7 +166,7 @@ test('expected requests are cached when a cache window is configured', function 
 
     $this->mock(EtripReader::class, function (MockInterface $mock) {
         $mock->shouldReceive('expectedCosts')
-            ->withArgs(fn (Company $company, Carbon $from, Carbon $to) => $from->toDateString() === '2026-09-16'
+            ->withArgs(fn (string $connection, Carbon $from, Carbon $to) => $connection === 'etrip_chr' && $from->toDateString() === '2026-09-16'
                 && $to->toDateString() === '2026-09-22')
             ->once()
             ->andReturn([
@@ -168,7 +175,7 @@ test('expected requests are cached when a cache window is configured', function 
             ]);
     });
 
-    $url = '/payment-checks/expected?company_id='.$this->company->id.'&days=7';
+    $url = '/payment-checks/expected?connection=etrip_chr&days=7';
 
     $this->actingAs($this->user)
         ->getJson($url)
@@ -187,7 +194,7 @@ test('expected requests are read live from etrip by default', function () {
         $mock->shouldReceive('expectedCosts')->twice()->andReturn([]);
     });
 
-    $url = '/payment-checks/expected?company_id='.$this->company->id.'&days=2';
+    $url = '/payment-checks/expected?connection=etrip_chr&days=2';
 
     $this->actingAs($this->user)->getJson($url)->assertOk()->assertJsonPath('days', 2);
     $this->actingAs($this->user)->getJson($url)->assertOk();
@@ -206,7 +213,7 @@ test('the supplier search reads the active suppliers live from etrip', function 
     });
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers')
+        ->getJson('/etrip/etrip_chr/suppliers')
         ->assertOk()
         ->assertJsonCount(2, 'suppliers')
         ->assertJsonPath('suppliers.0.code', '10')
@@ -216,7 +223,7 @@ test('the supplier search reads the active suppliers live from etrip', function 
         ->assertJsonPath('suppliers.1.partner_id', null);
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers?q=memento')
+        ->getJson('/etrip/etrip_chr/suppliers?q=memento')
         ->assertOk()
         ->assertJsonCount(1, 'suppliers')
         ->assertJsonPath('suppliers.0.code', '12');
@@ -228,7 +235,7 @@ test('the supplier search reports an unreachable etrip database', function () {
     });
 
     $this->actingAs($this->user)
-        ->getJson('/companies/'.$this->company->id.'/etrip-suppliers')
+        ->getJson('/etrip/etrip_chr/suppliers')
         ->assertStatus(503)
         ->assertJsonPath('message', 'Baza eTrip nu poate fi accesată: connection refused');
 });
@@ -245,10 +252,10 @@ test('the sync button mirrors the suppliers inline and reports the matches', fun
 
     $this->actingAs($this->user)
         ->from('/payment-checks')
-        ->post('/companies/'.$this->company->id.'/etrip-suppliers/sync')
+        ->post('/etrip/etrip_chr/suppliers/sync')
         ->assertRedirect('/payment-checks');
 
-    expect(EtripSupplier::query()->where('company_id', $this->company->id)->count())->toBe(2)
+    expect(EtripSupplier::query()->forConnection('etrip_chr')->count())->toBe(2)
         ->and(EtripSupplier::query()->where('code', '10')->first()->match_source)->toBe('cui');
 });
 
@@ -258,20 +265,20 @@ test('a partner can be linked to and unlinked from an etrip supplier', function 
     $supplier = EtripSupplier::factory()->for($this->company)->create(['code' => '10', 'name' => 'Old name', 'partner_id' => $previous->id, 'match_source' => 'cui']);
 
     $this->mock(EtripReader::class, function (MockInterface $mock) {
-        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '404')->andReturnNull();
-        $mock->shouldReceive('supplier')->with(Mockery::type(Company::class), '10')->andReturn([
+        $mock->shouldReceive('supplier')->with('etrip_chr', '404')->andReturnNull();
+        $mock->shouldReceive('supplier')->with('etrip_chr', '10')->andReturn([
             'code' => '10', 'name' => 'Rida International', 'vat_no' => 'RO1', 'company_no' => null,
             'currency' => 'USD', 'country' => null, 'active' => true,
         ]);
     });
 
     $this->actingAs($this->user)
-        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_code' => '404'])
+        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_connection' => 'etrip_chr', 'etrip_supplier_code' => '404'])
         ->assertSessionHasErrors('etrip_supplier_code');
 
     $this->actingAs($this->user)
         ->from("/suppliers/{$partner->id}")
-        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_supplier_code' => '10'])
+        ->post("/partners/{$partner->id}/etrip-supplier", ['etrip_connection' => 'etrip_chr', 'etrip_supplier_code' => '10'])
         ->assertRedirect("/suppliers/{$partner->id}");
 
     expect($supplier->fresh())->toMatchArray(['partner_id' => $partner->id, 'match_source' => 'manual', 'name' => 'Rida International'])

@@ -52,7 +52,6 @@ test('the page shows the last snapshot, the parameters and the charter contracts
             ->where('snapshot.payload.kpis.opening', 5)
             ->where('run.running', false)
             ->where('parameters.fx.mode', 'auto')
-            ->where('parameters.opening.mode', 'auto')
             ->where('parameters.thresholds.minimum', 3000000)
             ->where('opex.4.key', 'chirii')
             ->where('opex.4.computed', 120000)
@@ -101,7 +100,6 @@ test('parameters are validated, saved and trigger a rebuild', function () {
         'overdue' => ['recent_days' => 60, 'recent_pct' => 80, 'recent_weeks' => 4, 'old_pct' => 0],
         'payables' => ['days_before_checkin' => 7, 'prepaid_pct' => 0, 'ticket_days' => 7, 'supplier_balance' => '', 'supplier_balance_weeks' => 2],
         'scenario' => ['enabled' => true, 'factor' => 0.95, 'charter_factor' => 1, 'charter_base_season' => 'S26', 'charter_target_season' => 'S27'],
-        'opening' => ['mode' => 'manual', 'date' => '2026-08-31', 'bank' => ['RON' => 3572477, 'EUR' => 794405, 'USD' => 4861], 'cash' => ['RON' => 88516, 'EUR' => 66516, 'USD' => 572], 'deposits' => ['RON' => 130920000, 'EUR' => 357000, 'USD' => '']],
         'opex' => ['salarii_nete' => 574000, 'chirii' => '', 'capex' => 0],
     ];
 
@@ -114,20 +112,18 @@ test('parameters are validated, saved and trigger a rebuild', function () {
 
     expect($saved['etrip_connections'])->toBe(['etrip_chr', 'etrip_vcz'])
         ->and($saved['fx'])->toEqual(['mode' => 'manual', 'EUR' => 5.1, 'USD' => 4.4])
-        ->and($saved['opening']['deposits'])->toEqual(['RON' => 130920000, 'EUR' => 357000, 'USD' => 0])
         ->and($saved['payables']['supplier_balance'])->toBeNull()
         ->and($saved['opex']['chirii'])->toBeNull()
         ->and($saved['opex']['salarii_nete'])->toEqual(574000)
         ->and($saved['opex']['capex'])->toEqual(0)
-        ->and($saved['opening']['mode'])->toBe('manual')
         ->and($saved['scenario']['charter_base_season'])->toBe('S26')
         ->and(cashFlowToast()['message'])->toContain('recalculează în fundal');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'artisan cashflow:build'));
 
     $this->actingAs($this->user)
-        ->put('/reports/cash-flow/parameters', [...$payload, 'fx' => ['mode' => 'auto', 'EUR' => 0, 'USD' => 4], 'etrip_connections' => ['nope'], 'opening' => [...$payload['opening'], 'date' => '']])
-        ->assertSessionHasErrors(['fx.EUR', 'etrip_connections.0', 'opening.date']);
+        ->put('/reports/cash-flow/parameters', [...$payload, 'fx' => ['mode' => 'auto', 'EUR' => 0, 'USD' => 4], 'etrip_connections' => ['nope']])
+        ->assertSessionHasErrors(['fx.EUR', 'etrip_connections.0']);
 });
 
 test('charter contracts and flights can be managed from the page', function () {

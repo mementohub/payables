@@ -19,13 +19,6 @@ beforeEach(function () {
         'fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5],
         'thresholds' => ['minimum' => 1000000, 'comfort' => 2000000],
         'scenario' => ['enabled' => true, 'factor' => 1, 'charter_factor' => 1, 'charter_base_season' => 'S26', 'charter_target_season' => 'S27'],
-        'opening' => [
-            'mode' => 'manual',
-            'date' => '2026-08-31',
-            'bank' => ['RON' => 1000000, 'EUR' => 100000, 'USD' => 0],
-            'cash' => ['RON' => 10000, 'EUR' => 0, 'USD' => 0],
-            'deposits' => ['RON' => 5000000, 'EUR' => 0, 'USD' => 0],
-        ],
     ]]);
 });
 
@@ -42,9 +35,9 @@ function omcFlows(): array
     ];
 }
 
-function mockOmc(): void
+function mockOmc(bool $anchor = true): void
 {
-    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) {
+    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor) {
         $mock->shouldReceive('dailyFlows')->andReturnUsing(fn (CarbonInterface $from, CarbonInterface $to) => array_values(array_filter(
             omcFlows(),
             fn (array $row) => $row['day'] >= $from->toDateString() && $row['day'] < $to->toDateString(),
@@ -55,7 +48,7 @@ function mockOmc(): void
         ]);
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
-        $mock->shouldReceive('monthEndAnchor')->andReturn(CarbonImmutable::parse('2026-08-31'));
+        $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
         $mock->shouldReceive('monthEndPositions')->andReturn([
             ['date' => '2025-08-31', 'bank' => ['RON' => 1000000], 'cash' => ['RON' => 0], 'deposits' => ['RON' => 4000000], 'rates' => []],
             ['date' => '2025-09-30', 'bank' => ['RON' => 1500000, 'EUR' => 10000], 'cash' => [], 'deposits' => ['RON' => 4000000], 'rates' => ['EUR' => 5.1]],
@@ -129,10 +122,10 @@ test('the snapshot puts every source on its week in lei', function () {
             'suppliers_open' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok',
         ]);
 
-    // Opening: parameters at 31.08 rolled with September's OMC documents.
-    expect($snapshot->payload['opening']['total'])->toEqual(6660000)
-        ->and($snapshot->payload['opening']['by_currency'])->toEqual(['RON' => 6210000, 'EUR' => 90000, 'USD' => 0])
-        ->and(lineValues($snapshot, 'A')[0])->toBe(6660000.0);
+    // Opening: OMC month-end position at 31.08 rolled with September's documents (see mockOmc()).
+    expect($snapshot->payload['opening']['total'])->toEqual(6665000)
+        ->and($snapshot->payload['opening']['by_currency'])->toEqual(['RON' => 6215000, 'EUR' => 90000, 'USD' => 0])
+        ->and(lineValues($snapshot, 'A')[0])->toBe(6665000.0);
 
     // Receivables: the EUR package's open tranches on their weeks, the overdue Sphinx booking recovered 80 % over 4 weeks.
     $b1 = lineValues($snapshot, 'B1');
@@ -175,7 +168,7 @@ test('the snapshot puts every source on its week in lei', function () {
     // Balances chain week after week and the year-earlier actuals sit on the same week.
     $net = lineValues($snapshot, 'E1');
     $closing = lineValues($snapshot, 'E2');
-    expect($closing[0])->toBe(round(6660000 + $net[0], 2))
+    expect($closing[0])->toBe(round(6665000 + $net[0], 2))
         ->and($closing[1])->toBe(round($closing[0] + $net[1], 2))
         ->and(lineValues($snapshot, 'E5')[0])->toBe('OK')
         ->and(lineValues($snapshot, 'F1')[0])->toBe(300000.0)
@@ -205,7 +198,7 @@ test('a source that fails leaves a partial snapshot with the others filled', fun
         ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['status'])->toBe('skipped');
 });
 
-test('by default the position comes from the OMC month-end balances rolled forward', function () {
+test('the position comes from the OMC month-end balances rolled forward', function () {
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
     mockOmc();
     mockEtrip();
@@ -216,7 +209,6 @@ test('by default the position comes from the OMC month-end balances rolled forwa
 
     // RON: 1,000,000 + 200,000 − 300,000 banks, 10,000 + 5,000 cash, 5,000,000 + 300,000 deposits; EUR: 90,000 × 5.
     expect($snapshot->status)->toBe('ok')
-        ->and($opening['mode'])->toBe('auto')
         ->and($opening['date'])->toBe('2026-08-31')
         ->and($opening['currencies'])->toBe(['RON', 'EUR', 'USD'])
         ->and($rows['bank_now']['values']['RON'])->toEqual(900000)
@@ -229,9 +221,9 @@ test('by default the position comes from the OMC month-end balances rolled forwa
         ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('31.08.2026');
 });
 
-test('without month-end balances in OMC and no manual date the balance starts at zero and says so', function () {
-    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'opening' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
-    mockOmc();
+test('without month-end balances in OMC the balance starts at zero and says so', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
+    mockOmc(anchor: false);
     mockEtrip();
 
     $snapshot = app(CashFlowReportBuilder::class)->build();
