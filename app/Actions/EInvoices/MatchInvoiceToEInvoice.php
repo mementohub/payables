@@ -4,17 +4,20 @@ namespace App\Actions\EInvoices;
 
 use App\Models\EInvoice;
 use App\Models\Invoice;
-use App\Models\Partner;
 use App\Services\EInvoices\PartnerCuiLookup;
 use App\Services\SyncService;
+use Illuminate\Support\Facades\DB;
 
 class MatchInvoiceToEInvoice
 {
     /** @var array<int, PartnerCuiLookup> */
     private array $cuiLookupCache = [];
 
-    /** @var array<int, list<array{id: int, normName: string}>> */
-    private array $partnersCache = [];
+    /** @var array<int, array<string, list<int>>> */
+    private array $duplicateNamesCache = [];
+
+    /** @var array<string, list<int>> */
+    private array $resolvedCache = [];
 
     /**
      * Find the best Invoice candidate for a given EInvoice using:
@@ -67,34 +70,102 @@ class MatchInvoiceToEInvoice
      */
     private function resolvePartnerIds(int $companyId, string $supplierCui): array
     {
+        // The same supplier shows up on e-invoice after e-invoice, so the
+        // answer is worked out once per CUI and not once per document.
+        $memo = $companyId.'|'.PartnerCuiLookup::normalize($supplierCui);
+
+        if (isset($this->resolvedCache[$memo])) {
+            return $this->resolvedCache[$memo];
+        }
+
         $lookup = $this->cuiLookupCache[$companyId] ??= new PartnerCuiLookup($companyId);
-        $cuiIds = $lookup->findAll($supplierCui);
+        $ids = $lookup->findAll($supplierCui);
 
-        if ($cuiIds === []) {
-            return [];
+        if ($ids === []) {
+            return $this->resolvedCache[$memo] = [];
         }
 
-        $partners = $this->partnersCache[$companyId] ??= Partner::query()
+        $duplicates = $this->duplicateNames($companyId);
+
+        foreach ($this->nameKeys($ids) as $key) {
+            foreach ($duplicates[$key] ?? [] as $id) {
+                if (! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+
+        return $this->resolvedCache[$memo] = $ids;
+    }
+
+    /**
+     * The normalized names of the given partners.
+     *
+     * @param  list<int>  $ids
+     * @return list<string>
+     */
+    private function nameKeys(array $ids): array
+    {
+        $keys = [];
+
+        foreach (DB::table('partners')->whereIn('id', $ids)->pluck('name') as $name) {
+            $key = $this->normalizeName($name);
+
+            if ($key !== '') {
+                $keys[$key] = true;
+            }
+        }
+
+        return array_keys($keys);
+    }
+
+    /**
+     * Partners of a company that share a name with another partner once the
+     * punctuation is taken out — SeniorERP keeps the same company under
+     * "SC ALFA SRL" and "S.C. ALFA S.R.L.", one of them without a CUI.
+     *
+     * A company here has hundreds of thousands of partners, so the rows are
+     * read as rows and only the names that actually repeat are kept: a name
+     * held by a single partner adds nothing to a CUI match, and keeping the
+     * other hundreds of thousands is what used to exhaust a sync run.
+     *
+     * @return array<string, list<int>>
+     */
+    private function duplicateNames(int $companyId): array
+    {
+        if (isset($this->duplicateNamesCache[$companyId])) {
+            return $this->duplicateNamesCache[$companyId];
+        }
+
+        /** @var array<string, int> $seen */
+        $seen = [];
+        /** @var array<string, list<int>> $duplicates */
+        $duplicates = [];
+
+        DB::table('partners')
             ->where('company_id', $companyId)
-            ->get(['id', 'name'])
-            ->map(fn ($p) => ['id' => $p->id, 'normName' => $this->normalizeName($p->name)])
-            ->all();
+            ->select(['id', 'name'])
+            ->orderBy('id')
+            ->cursor()
+            ->each(function (object $row) use (&$seen, &$duplicates): void {
+                $key = $this->normalizeName($row->name);
 
-        $names = [];
-        foreach ($partners as $p) {
-            if (in_array($p['id'], $cuiIds, true) && $p['normName'] !== '') {
-                $names[$p['normName']] = true;
-            }
-        }
+                if ($key === '') {
+                    return;
+                }
 
-        $ids = $cuiIds;
-        foreach ($partners as $p) {
-            if (isset($names[$p['normName']]) && ! in_array($p['id'], $ids, true)) {
-                $ids[] = $p['id'];
-            }
-        }
+                $id = (int) $row->id;
 
-        return $ids;
+                if (isset($duplicates[$key])) {
+                    $duplicates[$key][] = $id;
+                } elseif (isset($seen[$key])) {
+                    $duplicates[$key] = [$seen[$key], $id];
+                } else {
+                    $seen[$key] = $id;
+                }
+            });
+
+        return $this->duplicateNamesCache[$companyId] = $duplicates;
     }
 
     private function normalizeName(?string $name): string

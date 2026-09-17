@@ -6,6 +6,7 @@ use App\Models\EInvoice;
 use App\Models\Invoice;
 use App\Models\Partner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -116,4 +117,60 @@ it('does not match invoices from a different supplier', function () {
 
     expect((new MatchInvoiceToEInvoice)->find($eInvoice))->toBeNull();
     expect($supplierB->id)->not->toBe($supplierA->id);
+});
+
+it('reads partners as rows, never as models', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::factory()->for($company)->create([
+        'name' => 'BOOKINGPEDIA SRL',
+        'cui' => 'RO36359200',
+    ]);
+    Partner::factory()->count(20)->for($company)->create();
+    $invoice = Invoice::factory()
+        ->for($company)
+        ->for($partner)
+        ->create(['nr_doc' => 'EXP 56841', 'tip_doc' => 'FactFI']);
+
+    $eInvoice = makeMatcherEInvoice($company, [
+        'nr_doc_xml' => 'EXP56841',
+        'supplier_cui' => '36359200',
+    ]);
+
+    // A company's partners run to hundreds of thousands of rows; hydrating
+    // them is what used to exhaust the memory of a whole sync run.
+    $hydrated = 0;
+    Partner::retrieved(function () use (&$hydrated) {
+        $hydrated++;
+    });
+
+    expect((new MatchInvoiceToEInvoice)->find($eInvoice)?->id)->toBe($invoice->id)
+        ->and($hydrated)->toBe(0);
+});
+
+it('looks a supplier up once, however many of its e-invoices arrive', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::factory()->for($company)->create(['cui' => 'RO36359200']);
+
+    foreach (range(1, 4) as $i) {
+        Invoice::factory()->for($company)->for($partner)->create(['nr_doc' => 'F'.$i, 'tip_doc' => 'FactFI']);
+    }
+
+    $matcher = new MatchInvoiceToEInvoice;
+    $eInvoices = collect(range(1, 4))->map(fn (int $i) => makeMatcherEInvoice($company, [
+        'nr_doc_xml' => 'F'.$i,
+        'supplier_cui' => '36359200',
+    ]));
+
+    expect($matcher->find($eInvoices->first())?->nr_doc)->toBe('F1');
+
+    $partnerQueries = 0;
+    DB::listen(function ($query) use (&$partnerQueries) {
+        if (str_contains($query->sql, 'partners')) {
+            $partnerQueries++;
+        }
+    });
+
+    $eInvoices->skip(1)->each(fn (EInvoice $e) => $matcher->find($e));
+
+    expect($partnerQueries)->toBe(0);
 });

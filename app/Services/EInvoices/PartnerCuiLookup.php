@@ -2,7 +2,7 @@
 
 namespace App\Services\EInvoices;
 
-use App\Models\Partner;
+use Illuminate\Support\Facades\DB;
 
 class PartnerCuiLookup
 {
@@ -12,25 +12,34 @@ class PartnerCuiLookup
     /** @var array<string, list<int>> */
     private array $base = [];
 
+    /**
+     * A company here has hundreds of thousands of partners, so the index is
+     * built straight from the rows: hydrating them as models is what used to
+     * exhaust the memory of a sync run.
+     */
     public function __construct(int $companyId)
     {
-        $partners = Partner::query()
+        DB::table('partners')
             ->where('company_id', $companyId)
             ->whereNotNull('cui')
+            ->select(['id', 'cui'])
             ->orderBy('cui')
-            ->get(['id', 'cui']);
+            ->orderBy('id')
+            ->cursor()
+            ->each(function (object $row): void {
+                $id = (int) $row->id;
+                $cui = (string) $row->cui;
 
-        foreach ($partners as $partner) {
-            $exactKey = self::normalize($partner->cui);
-            if ($exactKey !== '') {
-                $this->exact[$exactKey] ??= $partner->id;
-            }
+                $exactKey = self::normalize($cui);
+                if ($exactKey !== '') {
+                    $this->exact[$exactKey] ??= $id;
+                }
 
-            $baseKey = self::normalizeBase($partner->cui);
-            if ($baseKey !== '') {
-                $this->base[$baseKey][] = $partner->id;
-            }
-        }
+                $baseKey = self::normalizeBase($cui);
+                if ($baseKey !== '') {
+                    $this->base[$baseKey][] = $id;
+                }
+            });
     }
 
     public function find(?string $cui): ?int

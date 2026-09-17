@@ -29,10 +29,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // exception has to say which request raised it and how much memory
         // that request had taken: a fatal out of memory leaves nothing else
         // to go on.
-        $exceptions->context(fn () => [
-            'url' => request()?->fullUrl(),
-            'method' => request()?->method(),
-            'memory_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
-            'memory_limit' => ini_get('memory_limit'),
-        ]);
+        $exceptions->context(function (): array {
+            // In console Laravel makes up a GET of APP_URL, which reads in the
+            // log exactly like somebody opening the home page; say which
+            // command it really was instead.
+            $console = app()->runningInConsole();
+            $argv = array_slice((array) ($_SERVER['argv'] ?? []), 1);
+
+            return [
+                'source' => $console
+                    ? trim('artisan '.implode(' ', array_map('strval', $argv)))
+                    : trim((string) request()?->method().' '.(string) request()?->fullUrl()),
+                'memory_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
+                'memory_limit' => ini_get('memory_limit'),
+            ];
+        });
     })->create();
