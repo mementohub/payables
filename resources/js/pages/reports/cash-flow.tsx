@@ -664,7 +664,11 @@ export default function CashFlowReport({
                     </TabsContent>
 
                     <TabsContent value="charter">
-                        <CharterPanel contracts={contracts} flights={flights} />
+                        <CharterPanel
+                            contracts={contracts}
+                            flights={flights}
+                            flightsLoading={flights === undefined}
+                        />
                     </TabsContent>
 
                     <TabsContent value="sources">

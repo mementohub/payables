@@ -325,6 +325,7 @@ export type CashFlowPageProps = {
     opex: OpexCategory[];
     connections: { key: string; label: string }[];
     contracts: Contract[];
-    flights: Flight[];
+    /** Deferred: undefined until Inertia has loaded the programme. */
+    flights?: Flight[];
     schedule: { nightly: string; timezone: string; weeks: number };
 };

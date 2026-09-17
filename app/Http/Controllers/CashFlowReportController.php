@@ -95,15 +95,46 @@ class CashFlowReportController extends Controller
                     'first_flight' => $contract->flights_min_flight_date ? substr((string) $contract->flights_min_flight_date, 0, 10) : null,
                     'last_flight' => $contract->flights_max_flight_date ? substr((string) $contract->flights_max_flight_date, 0, 10) : null,
                 ]),
-            'flights' => CharterFlight::query()
-                ->with('contract:id,name,season,status,days_before_flight')
-                ->orderBy('flight_date')
-                ->orderBy('id')
-                ->get()
-                ->map(fn (CharterFlight $flight) => [
+            // A season is a few thousand rotations, so the programme is loaded
+            // after the page rather than inside it, and streamed row by row.
+            'flights' => Inertia::defer(fn () => $this->flightRows()),
+            'schedule' => [
+                'nightly' => sprintf('%02d:%02d', (int) config('cashflow.nightly_hour', 4), (int) config('cashflow.nightly_minute', 30)),
+                'timezone' => (string) config('cashflow.timezone', 'Europe/Bucharest'),
+                'weeks' => (int) config('cashflow.weeks', 52),
+            ],
+        ]);
+    }
+
+    /**
+     * Every rotation with the dates its contract settles it on. The contracts
+     * are read once and attached to each row, so the rules see the whole
+     * contract without a query per rotation.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function flightRows(): array
+    {
+        $contracts = CharterContract::query()->get()->keyBy('id');
+        $rows = [];
+
+        CharterFlight::query()
+            ->orderBy('flight_date')
+            ->orderBy('id')
+            ->lazy(500)
+            ->each(function (CharterFlight $flight) use ($contracts, &$rows) {
+                $contract = $contracts->get($flight->charter_contract_id);
+
+                if ($contract === null) {
+                    return;
+                }
+
+                $flight->setRelation('contract', $contract);
+
+                $rows[] = [
                     'id' => $flight->id,
                     'charter_contract_id' => $flight->charter_contract_id,
-                    'season' => $flight->contract->season,
+                    'season' => $contract->season,
                     'operator' => $flight->operator,
                     'route' => $flight->route,
                     'flight_no' => $flight->flight_no,
@@ -115,14 +146,12 @@ class CashFlowReportController extends Controller
                     'pay_date' => $flight->pay_date?->toDateString(),
                     'taxes_pay_date' => $flight->taxes_pay_date?->toDateString(),
                     'payment_date' => $flight->paymentDate()->toDateString(),
-                    'taxes_payment_date' => $flight->taxesPaymentDate()->toDateString(),
-                ]),
-            'schedule' => [
-                'nightly' => sprintf('%02d:%02d', (int) config('cashflow.nightly_hour', 4), (int) config('cashflow.nightly_minute', 30)),
-                'timezone' => (string) config('cashflow.timezone', 'Europe/Bucharest'),
-                'weeks' => (int) config('cashflow.weeks', 52),
-            ],
-        ]);
+                    // Null when the contract settles the taxes with the rotation.
+                    'taxes_payment_date' => $flight->taxesPaymentDate()?->toDateString(),
+                ];
+            });
+
+        return $rows;
     }
 
     public function build(Request $request, ArtisanRunner $runner): RedirectResponse

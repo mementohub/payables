@@ -597,10 +597,13 @@ function FlightDialog({
 export default function CharterPanel({
     contracts,
     flights,
+    flightsLoading = false,
 }: {
     contracts: Contract[];
-    flights: Flight[];
+    flights?: Flight[];
+    flightsLoading?: boolean;
 }) {
+    const programme = useMemo(() => flights ?? [], [flights]);
     const [contractId, setContractId] = useState<number | null>(
         contracts[0]?.id ?? null,
     );
@@ -609,13 +612,13 @@ export default function CharterPanel({
 
     const visible = useMemo(
         () =>
-            flights.filter(
+            programme.filter(
                 (flight) =>
                     (contractId === null ||
                         flight.charter_contract_id === contractId) &&
                     (showPast || flight.flight_date >= today),
             ),
-        [flights, contractId, showPast, today],
+        [programme, contractId, showPast, today],
     );
 
     const byOperator = useMemo(() => {
@@ -1079,7 +1082,18 @@ export default function CharterPanel({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                                {visible.length === 0 && (
+                                {flightsLoading &&
+                                    Array.from({ length: 6 }).map((_, i) => (
+                                        <tr key={`skeleton-${i}`}>
+                                            <td
+                                                colSpan={11}
+                                                className="px-3 py-2"
+                                            >
+                                                <div className="h-4 animate-pulse rounded bg-muted" />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                {!flightsLoading && visible.length === 0 && (
                                     <tr>
                                         <td
                                             colSpan={11}

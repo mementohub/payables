@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\CashFlowSetting;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
@@ -7,6 +8,7 @@ use App\Models\CharterFlight;
 use App\Models\User;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Xlsx\XlsxWriter;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -62,12 +64,44 @@ test('the page shows the last snapshot, the parameters and the charter contracts
             ->where('contracts.0.name', 'CTR 317')
             ->where('contracts.0.flights_count', 1)
             ->where('contracts.0.flights_net', 1000)
-            ->has('flights', 1)
-            ->where('flights.0.operator', 'ANIMA WINGS')
-            ->where('flights.0.payment_date', '2026-10-05')
-            ->where('flights.0.taxes_payment_date', '2026-11-05')
             ->where('schedule.nightly', '04:30')
+            // The programme is deferred, so it is not on the first render.
+            ->missing('flights')
         );
+
+    // Inertia asks for it right after, and it carries the dates the contract settles on.
+    $this->actingAs($this->user)
+        ->get('/reports/cash-flow', [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/reports/cash-flow')),
+            'X-Inertia-Partial-Component' => 'reports/cash-flow',
+            'X-Inertia-Partial-Data' => 'flights',
+        ])
+        ->assertOk()
+        ->assertJsonPath('props.flights.0.operator', 'ANIMA WINGS')
+        ->assertJsonPath('props.flights.0.payment_date', '2026-10-05')
+        ->assertJsonPath('props.flights.0.taxes_payment_date', '2026-11-05')
+        ->assertJsonCount(1, 'props.flights');
+});
+
+test('a rotation whose contract settles the taxes with it carries no separate tax date', function () {
+    $contract = CharterContract::factory()->create([
+        'name' => 'CTR 1585', 'season' => 'S26',
+        'direction' => CharterContract::DIRECTION_IN,
+        'taxes_rule' => CharterContract::TAXES_WITH_ROTATION,
+    ]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100]);
+
+    $this->actingAs($this->user)
+        ->get('/reports/cash-flow', [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/reports/cash-flow')),
+            'X-Inertia-Partial-Component' => 'reports/cash-flow',
+            'X-Inertia-Partial-Data' => 'flights',
+        ])
+        ->assertOk()
+        ->assertJsonPath('props.flights.0.payment_date', '2026-10-05')
+        ->assertJsonPath('props.flights.0.taxes_payment_date', null);
 });
 
 test('the page works before the first snapshot', function () {

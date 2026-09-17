@@ -40,6 +40,9 @@ class ArtisanRunner
 
     private const LOG_LINES = 300;
 
+    /** How much of the end of a log file is ever read into memory. */
+    private const LOG_BYTES = 262144;
+
     public function __construct(private ?string $logDirectory = null) {}
 
     public function logPath(string $run): string
@@ -155,7 +158,7 @@ class ArtisanRunner
     {
         $state = (array) Cache::get($this->stateKey($run), []);
         $path = $this->logPath($run);
-        $log = File::exists($path) ? (string) File::get($path) : '';
+        $log = $this->readTail($path);
         $exit = preg_match('/'.preg_quote(self::SENTINEL, '/').'(\d+)\s*$/', $log, $matches) ? (int) $matches[1] : null;
         $startedAt = isset($state['started_at']) ? Carbon::parse($state['started_at']) : null;
         $stale = $startedAt !== null && $exit === null && $startedAt->lt(now()->subMinutes(self::STALE_MINUTES));
@@ -195,6 +198,39 @@ class ArtisanRunner
     private function stateKey(string $run): string
     {
         return "maintenance:{$this->command($run)}";
+    }
+
+    /**
+     * The end of the log file. A run that floods its output must not be able
+     * to pull its whole log into memory just because a page asks for its
+     * state, so only the last stretch of the file is read.
+     */
+    private function readTail(string $path): string
+    {
+        if (! File::exists($path)) {
+            return '';
+        }
+
+        $size = (int) File::size($path);
+
+        if ($size <= self::LOG_BYTES) {
+            return (string) File::get($path);
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return '';
+        }
+
+        fseek($handle, -self::LOG_BYTES, SEEK_END);
+        $text = (string) stream_get_contents($handle);
+        fclose($handle);
+
+        // The first line is probably cut in half; drop it.
+        $break = strpos($text, "\n");
+
+        return $break === false ? $text : substr($text, $break + 1);
     }
 
     private function tail(string $text): string
