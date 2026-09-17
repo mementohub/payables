@@ -23,6 +23,10 @@ export type LastYearRow = {
     ly_week: string;
     ly_in: number;
     ly_out: number;
+    ly_out_partener?: number;
+    ly_out_salarii?: number;
+    ly_out_alte?: number;
+    ly_in_alte?: number;
     ly_bal: number | null;
     ly_bal_open: number | null;
 };
@@ -48,11 +52,18 @@ export type ReportKpis = {
     scenario_bookings: number;
 };
 
+export type OpeningRow = {
+    key: string;
+    label: string;
+    values: Record<string, number>;
+};
+
 export type OpeningDetail = {
+    mode: 'auto' | 'manual';
     date: string | null;
     as_of: string;
-    components: Record<string, Record<string, number | string>>;
-    rolled: Record<string, number>;
+    currencies: string[];
+    rows: OpeningRow[];
     by_currency: Record<string, number>;
     total: number;
 };
@@ -191,6 +202,7 @@ export type Parameters = {
         charter_target_season: string | null;
     };
     opening: {
+        mode: 'auto' | 'manual';
         date: string | null;
         bank: Record<string, number>;
         cash: Record<string, number>;
@@ -224,6 +236,7 @@ export type Flight = {
     id: number;
     charter_contract_id: number;
     season: string;
+    operator: string | null;
     route: string;
     flight_no: string | null;
     flight_date: string;

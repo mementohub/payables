@@ -3,8 +3,9 @@
 namespace App\Services\CashFlow;
 
 /**
- * Which line of the report a booking's receivables belong to, from the
- * channel it was booked through, the products it holds and its destination.
+ * Which line of the report a booking's receivables belong to: the product
+ * type of its most expensive root item decides the segment, the channel it
+ * was booked through decides B2B / B2C (config/cashflow.php).
  */
 final class BookingSegments
 {
@@ -33,55 +34,32 @@ final class BookingSegments
     ];
 
     /**
-     * @param  array{channel: ?int, root_types: list<int>, continent: ?string}  $booking
+     * @param  array{segment_type?: ?int}  $booking
      */
     public static function of(array $booking): string
     {
-        $types = array_map('intval', $booking['root_types'] ?? []);
-        $group = fn (string $name) => array_map('intval', (array) config("cashflow.etrip.product_types.{$name}", []));
+        $type = isset($booking['segment_type']) ? (int) $booking['segment_type'] : null;
 
-        if ($booking['channel'] !== null && in_array((int) $booking['channel'], array_map('intval', (array) config('cashflow.etrip.sphinx_channels', [])), true)) {
-            return self::SPHINX;
+        if ($type === null) {
+            return self::OTHER;
         }
 
-        if ($types !== [] && array_intersect($types, $group('tour')) !== []) {
-            return self::TOURS;
-        }
-
-        if ($types !== [] && array_diff($types, $group('flight')) === []) {
-            return self::FLIGHTS;
-        }
-
-        $holiday = array_intersect($types, [...$group('package'), ...$group('hotel'), ...$group('charter')]) !== [];
-
-        if ($holiday && self::isExotic($booking['continent'] ?? null)) {
-            return self::EXOTIC;
-        }
-
-        if ($types !== [] && array_diff($types, $group('hotel')) === []) {
-            return self::HOTEL;
-        }
-
-        if ($holiday) {
-            return self::PACKAGES;
+        foreach ((array) config('cashflow.etrip.segments', []) as $segment => $types) {
+            if (array_key_exists($segment, self::LABELS) && in_array($type, array_map('intval', (array) $types), true)) {
+                return $segment;
+            }
         }
 
         return self::OTHER;
     }
 
-    public static function isExotic(?string $continent): bool
+    /**
+     * @param  array{channel?: ?int}  $booking
+     */
+    public static function channel(array $booking): string
     {
-        if ($continent === null || trim($continent) === '') {
-            return false;
-        }
+        $channel = isset($booking['channel']) ? (int) $booking['channel'] : null;
 
-        $home = array_map('mb_strtolower', (array) config('cashflow.etrip.home_continents', ['Europa']));
-
-        return ! in_array(mb_strtolower(trim($continent)), $home, true);
-    }
-
-    public static function channel(string $clientType): string
-    {
-        return in_array($clientType, ['trade', 'business'], true) ? 'B2B' : 'B2C';
+        return $channel !== null && in_array($channel, array_map('intval', (array) config('cashflow.etrip.b2b_channels', [])), true) ? 'B2B' : 'B2C';
     }
 }

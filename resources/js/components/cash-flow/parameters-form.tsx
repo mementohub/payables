@@ -67,6 +67,7 @@ export default function ParametersForm({
     const form = useForm<Parameters>({
         ...parameters,
         opening: {
+            mode: parameters.opening.mode ?? 'auto',
             date: parameters.opening.date ?? '',
             bank: { ...parameters.opening.bank },
             cash: { ...parameters.opening.cash },
@@ -94,16 +95,42 @@ export default function ParametersForm({
                     <CardHeader>
                         <CardTitle>Sold inițial de trezorerie</CardTitle>
                         <CardDescription>
-                            Soldurile din balanța OMC la o dată de referință (de
-                            regulă ultima închidere de lună). Aplicația le
-                            rulează automat cu documentele de bancă și casă
-                            înregistrate în OMC de la acea dată până azi.
+                            Automat: soldurile de sfârșit de lună din OMC
+                            (bănci, casierii, depozite 5081) rulate cu
+                            documentele de bancă și casă până azi. Manual:
+                            soldurile de mai jos la data lor, rulate la fel.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <Field
+                            id="opening-mode"
+                            label="Sursa soldului inițial"
+                            error={errors['opening.mode']}
+                        >
+                            <NativeSelect
+                                id="opening-mode"
+                                value={form.data.opening.mode}
+                                onChange={(e) =>
+                                    form.setData('opening', {
+                                        ...form.data.opening,
+                                        mode: e.target.value as
+                                            | 'auto'
+                                            | 'manual',
+                                    })
+                                }
+                            >
+                                <NativeSelectOption value="auto">
+                                    automat din OMC (ultima lună închisă +
+                                    documente până azi)
+                                </NativeSelectOption>
+                                <NativeSelectOption value="manual">
+                                    manual (soldurile de mai jos)
+                                </NativeSelectOption>
+                            </NativeSelect>
+                        </Field>
+                        <Field
                             id="opening-date"
-                            label="Data soldurilor"
+                            label="Data soldurilor (doar manual)"
                             error={errors['opening.date']}
                             hint="Ex. 2026-08-31. Fără dată, raportul pornește de la zero."
                         >

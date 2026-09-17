@@ -52,42 +52,37 @@ class EtripCashFlowReader
     }
 
     /**
-     * Confirmed bookings with an unpaid client balance, with the amounts
-     * scheduled in eTrip and what the report needs to classify them.
+     * Confirmed bookings with an unpaid client balance (departures within
+     * the configured window), with the amounts scheduled in eTrip, the
+     * product type of their most expensive root item and the channel.
      *
-     * @return list<array{id: int, currency: string, total_due: float, paid: float, balance_due_date: ?string, start_date: ?string, brand: ?int, channel: ?int, client_type: string, root_types: list<int>, continent: ?string, due_dates: list<array{date: string, amount: float}>}>
+     * @return list<array{id: int, currency: string, total_due: float, paid: float, balance_due_date: ?string, start_date: ?string, brand: ?int, channel: ?int, segment_type: ?int, due_dates: list<array{date: string, amount: float}>}>
      */
-    public function openBookings(string $name, CarbonInterface $since): array
+    public function openBookings(string $name, CarbonInterface $from, CarbonInterface $to, float $minBalance = 0.5): array
     {
         $rows = $this->connection($name)->select(<<<'SQL'
             with b as (
-                select b.id, b.currency, b.total_amount_due, b.paid_amount, b.balance_due_date, b.start_date,
-                       b.brand, b.booked_via, b.client, b.destination
+                select b.id, b.currency, b.total_amount_due, b.paid_amount, b.balance_due_date, b.start_date, b.brand, b.booked_via
                 from bookings.bookings b
                 where b.status = 'confirmed'
                   and b.start_date >= ?::timestamp
-                  and b.total_amount_due - b.paid_amount > 1
+                  and b.start_date < ?::timestamp
+                  and b.total_amount_due - b.paid_amount > ?
             )
             select b.id, b.currency, b.total_amount_due as total_due, b.paid_amount as paid,
                    b.balance_due_date::date as balance_due_date, b.start_date::date as start_date,
                    b.brand, b.booked_via as channel,
-                   case when exists (select 1 from clients.trade t where t.code = b.client) then 'trade'
-                        when exists (select 1 from clients.business bu where bu.code = b.client) then 'business'
-                        else 'direct' end as client_type,
-                   (select string_agg(distinct i.product_type::text, ',')
+                   (select i.product_type
                       from bookings.items i
-                     where i.booking = b.id and i.package is null and i.client_status = 'confirmed') as root_types,
-                   (select c.name
-                      from public.geography g
-                      join public.geography c on c.tree_level = 1 and c.minval <= g.minval and c.maxval >= g.maxval
-                     where g.id = b.destination
-                     limit 1) as continent,
+                     where i.booking = b.id and i.package is null and i.client_status = 'confirmed'
+                     order by (i.price).gross desc nulls last, i.id
+                     limit 1) as segment_type,
                    (select json_agg(json_build_object('date', dd.date, 'amount', dd.amount) order by dd.date)
                       from bookings.due_dates dd
                      where dd.booking = b.id) as due_dates
             from b
             order by b.id
-            SQL, [$since->toDateString()]);
+            SQL, [$from->toDateTimeString(), $to->toDateTimeString(), $minBalance]);
 
         return array_map(fn ($row) => [
             'id' => (int) $row->id,
@@ -98,11 +93,7 @@ class EtripCashFlowReader
             'start_date' => $row->start_date !== null ? (string) $row->start_date : null,
             'brand' => $row->brand !== null ? (int) $row->brand : null,
             'channel' => $row->channel !== null ? (int) $row->channel : null,
-            'client_type' => (string) $row->client_type,
-            'root_types' => $row->root_types !== null && $row->root_types !== ''
-                ? array_map('intval', explode(',', (string) $row->root_types))
-                : [],
-            'continent' => $row->continent !== null ? (string) $row->continent : null,
+            'segment_type' => $row->segment_type !== null ? (int) $row->segment_type : null,
             'due_dates' => array_map(fn (array $due) => [
                 'date' => (string) $due['date'],
                 'amount' => (float) $due['amount'],
@@ -112,9 +103,10 @@ class EtripCashFlowReader
 
     /**
      * Supplier cost of the confirmed services with check-in in the range,
-     * by the week the supplier is paid (check-in minus the given days),
-     * category and supplier currency. Packages (price only), charter seats
-     * (paid per contract) and line tickets (paid at order) are left out.
+     * net of what eTrip already recorded as paid, by the week the supplier
+     * is paid (check-in minus the given days), category and supplier
+     * currency. Charter seats (paid per contract) and line tickets (paid
+     * at order) are left out.
      *
      * @return list<array{week: string, category: string, currency: string, cost: float, items: int, bookings: int}>
      */
@@ -210,17 +202,16 @@ class EtripCashFlowReader
 
         $receipts = $connection->select(<<<'SQL'
             with b as (
-                select b.id, b.currency
+                select b.id
                 from bookings.bookings b
                 where b.ctime >= ?::timestamp and b.ctime < ?::timestamp and b.status = 'confirmed'
             )
             select (date_trunc('week', r.issue_date))::date as week,
-                   b.currency,
-                   sum(rb.booking_amount)::numeric(20,2) as amount
+                   r.currency,
+                   sum(rb.receipt_amount)::numeric(20,2) as amount
             from b
             join financials.receipt_bookings rb on rb.booking = b.id
             join financials.receipts r on r.id = rb.receipt
-            where r.status <> 'cancelled'
             group by 1, 2
             order by 1, 2
             SQL, $range);
@@ -287,7 +278,7 @@ class EtripCashFlowReader
 
     private function costExpression(): string
     {
-        return '(coalesce((i.cost).gross, 0) + coalesce((i.cost).tax, 0) - coalesce((i.cost).commission, 0))';
+        return '(coalesce((i.cost).gross, 0) + coalesce((i.cost).tax, 0) - coalesce((i.cost).commission, 0) - coalesce(i.supplier_paid_amount, 0))';
     }
 
     private function categoryCase(): string
@@ -307,11 +298,11 @@ class EtripCashFlowReader
 
     /**
      * Services paid to their supplier on the check-in rule: everything except
-     * package parents, charter seats and line tickets.
+     * charter seats and line tickets.
      */
     private function payableTypesClause(): string
     {
-        $excluded = array_filter([$this->idList('package'), $this->idList('charter'), $this->idList('flight')]);
+        $excluded = array_filter([$this->idList('charter'), $this->idList('flight')]);
 
         return $excluded === [] ? 'true' : sprintf('i.product_type not in (%s)', implode(', ', $excluded));
     }

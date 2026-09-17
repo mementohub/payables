@@ -28,6 +28,9 @@ class CashFlowReportBuilder
     /** @var array<string, float> */
     private array $fx = [];
 
+    /** Last closed month-end in OMC, when the position was read from it. */
+    private ?CarbonImmutable $anchor = null;
+
     /** @var list<array{key: string, label: string, status: string, message: ?string, ms: int, rows: int}> */
     private array $sources = [];
 
@@ -53,6 +56,7 @@ class CashFlowReportBuilder
         $this->sources = [];
         $this->lines = [];
         $this->detail = [];
+        $this->anchor = null;
 
         $snapshot = new CashFlowSnapshot([
             'built_at' => now(),
@@ -112,7 +116,7 @@ class CashFlowReportBuilder
             ?? ['receipts' => $this->grid->zeros(), 'costs' => $this->grid->zeros(), 'bookings' => 0];
 
         $actuals = $this->source('actuals', 'Fluxuri efective an anterior (OMC)', fn () => $this->actuals($opening['total']))
-            ?? ['lastyear' => [], 'in' => $this->grid->zeros(), 'out' => $this->grid->zeros()];
+            ?? ['lastyear' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
 
         return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals);
     }
@@ -204,32 +208,125 @@ class CashFlowReportBuilder
     }
 
     /**
-     * The cash position: the balances saved in the parameters at their date,
-     * rolled forward with every bank and cash document OMC has since then.
+     * The treasury position: by default the last closed month-end balances
+     * in OMC (bank accounts, cash desks, deposits on 5081) rolled forward
+     * with every bank and cash document up to today; or, when the
+     * parameters say so, the balances typed in at their date, rolled the
+     * same way.
      *
      * @return array<string, mixed>
      */
     private function opening(): array
     {
+        $mode = ($this->params['opening']['mode'] ?? 'auto') === 'manual' ? 'manual' : 'auto';
+
+        return $mode === 'manual' ? $this->manualOpening() : $this->omcOpening();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function omcOpening(): array
+    {
+        $anchor = $this->omc->monthEndAnchor($this->today);
+
+        if ($anchor === null) {
+            return [
+                ...$this->emptyOpening(),
+                'mode' => 'auto',
+                '_skipped' => true,
+                '_message' => 'OMC nu are solduri de sfârșit de lună (eu_banca_sold); introduceți soldurile manual în parametri.',
+            ];
+        }
+
+        $this->anchor = $anchor;
+        $position = $this->omc->openingPosition($anchor, $this->today);
+        $currencies = array_values(array_unique(['RON', 'EUR', 'USD', ...array_column($position, 'currency')]));
+        $rows = [];
+        $labels = [
+            'bank_open' => 'Conturi curente bănci la '.$anchor->format('d.m.Y'),
+            'bank_in' => 'Încasări prin bancă după '.$anchor->format('d.m.Y'),
+            'bank_out' => 'Plăți prin bancă după '.$anchor->format('d.m.Y'),
+            'bank_now' => 'Conturi curente bănci azi',
+            'cash_open' => 'Numerar în casierii la '.$anchor->format('d.m.Y'),
+            'cash_in' => 'Încasări în numerar',
+            'cash_out' => 'Plăți în numerar',
+            'cash_now' => 'Numerar în casierii azi',
+            'deposits_open' => 'Depozite bancare (5081) la '.$anchor->format('d.m.Y'),
+            'deposits_change' => 'Depozite plasate (+) / lichidate (−) după '.$anchor->format('d.m.Y'),
+            'deposits_now' => 'Depozite bancare azi',
+            'position' => 'Poziție de trezorerie azi',
+        ];
+
+        foreach ($labels as $key => $label) {
+            $rows[$key] = ['key' => $key, 'label' => $label, 'values' => array_fill_keys($currencies, 0.0)];
+        }
+
+        $byCurrency = array_fill_keys($currencies, 0.0);
+        $total = 0.0;
+
+        foreach ($position as $row) {
+            $currency = $row['currency'];
+            $bankNow = $row['bank_open'] + $row['bank_in'] - $row['bank_out'];
+            $cashNow = $row['cash_open'] + $row['cash_in'] - $row['cash_out'];
+            $depositsNow = $row['deposits_open'] + $row['deposits_change'];
+
+            foreach (['bank_open', 'bank_in', 'bank_out', 'cash_open', 'cash_in', 'cash_out', 'deposits_open', 'deposits_change'] as $key) {
+                $rows[$key]['values'][$currency] = round($row[$key], 2);
+            }
+
+            $rows['bank_now']['values'][$currency] = round($bankNow, 2);
+            $rows['cash_now']['values'][$currency] = round($cashNow, 2);
+            $rows['deposits_now']['values'][$currency] = round($depositsNow, 2);
+            $rows['position']['values'][$currency] = round($bankNow + $cashNow + $depositsNow, 2);
+            $byCurrency[$currency] = round($bankNow + $cashNow + $depositsNow, 2);
+            $total += $this->lei($bankNow + $cashNow + $depositsNow, $currency);
+        }
+
+        return [
+            'mode' => 'auto',
+            'date' => $anchor->toDateString(),
+            'as_of' => $this->today->toDateString(),
+            'currencies' => $currencies,
+            'rows' => array_values($rows),
+            'by_currency' => $byCurrency,
+            'total' => round($total, 2),
+            '_rows' => count($position),
+            '_message' => sprintf(
+                'Solduri OMC la %s (bănci, casierii, depozite 5081) rulate cu documentele de bancă și casă până la %s.',
+                $anchor->format('d.m.Y'),
+                $this->today->format('d.m.Y'),
+            ),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function manualOpening(): array
+    {
         $opening = $this->params['opening'] ?? [];
         $date = ! empty($opening['date']) ? CarbonImmutable::parse($opening['date'])->startOfDay() : null;
-
-        $components = [];
         $currencies = ['RON', 'EUR', 'USD'];
+        $labels = ['bank' => 'Conturi curente bănci', 'cash' => 'Numerar în casierii', 'deposits' => 'Depozite bancare / plasamente'];
+        $rows = [];
 
-        foreach (['bank' => 'Conturi curente bănci', 'cash' => 'Numerar în casierii', 'deposits' => 'Depozite bancare / plasamente'] as $key => $label) {
+        foreach ($labels as $key => $label) {
+            $rows[$key] = ['key' => $key, 'label' => $label.($date ? ' la '.$date->format('d.m.Y') : ''), 'values' => []];
+
             foreach ($currencies as $currency) {
-                $components[$key][$currency] = (float) ($opening[$key][$currency] ?? 0);
+                $rows[$key]['values'][$currency] = (float) ($opening[$key][$currency] ?? 0);
             }
-            $components[$key]['label'] = $label;
         }
 
         if ($date === null) {
             return [
                 ...$this->emptyOpening(),
-                'components' => $components,
+                'mode' => 'manual',
+                'currencies' => $currencies,
+                'rows' => array_values($rows),
                 '_skipped' => true,
-                '_message' => 'Introduceți soldul inițial (bănci, casierii, depozite) și data lui în parametri.',
+                '_message' => 'Introduceți soldul inițial (bănci, casierii, depozite) și data lui în parametri, sau treceți pe „automat din OMC”.',
             ];
         }
 
@@ -237,28 +334,37 @@ class CashFlowReportBuilder
         $flows = $this->omc->dailyFlows($date->addDay(), $this->today->addDay());
 
         foreach ($flows as $flow) {
+            if ($flow['group'] === OmcCashFlowReader::GROUP_INTERNAL) {
+                continue;
+            }
+
             $currency = in_array($flow['currency'], $currencies, true) ? $flow['currency'] : 'RON';
             $amount = $currency === $flow['currency'] ? $flow['amount'] : $flow['lei'];
             $rolled[$currency] += $flow['kind'] === 'in' ? $amount : -$amount;
         }
 
+        $rows['rolled'] = ['key' => 'rolled', 'label' => 'Mișcări OMC (bancă + casă) după '.$date->format('d.m.Y'), 'values' => array_map(fn (float $v) => round($v, 2), $rolled)];
+        $rows['position'] = ['key' => 'position', 'label' => 'Poziție de trezorerie azi', 'values' => []];
+        $byCurrency = [];
         $total = 0.0;
-        $byCurrency = array_fill_keys($currencies, 0.0);
 
         foreach ($currencies as $currency) {
-            $byCurrency[$currency] = $components['bank'][$currency] + $components['cash'][$currency] + $components['deposits'][$currency] + $rolled[$currency];
-            $total += $this->lei($byCurrency[$currency], $currency);
+            $now = $rows['bank']['values'][$currency] + $rows['cash']['values'][$currency] + $rows['deposits']['values'][$currency] + $rolled[$currency];
+            $rows['position']['values'][$currency] = round($now, 2);
+            $byCurrency[$currency] = round($now, 2);
+            $total += $this->lei($now, $currency);
         }
 
         return [
+            'mode' => 'manual',
             'date' => $date->toDateString(),
             'as_of' => $this->today->toDateString(),
-            'components' => $components,
-            'rolled' => array_map(fn (float $v) => round($v, 2), $rolled),
-            'by_currency' => array_map(fn (float $v) => round($v, 2), $byCurrency),
+            'currencies' => $currencies,
+            'rows' => array_values($rows),
+            'by_currency' => $byCurrency,
             'total' => round($total, 2),
             '_rows' => count($flows),
-            '_message' => sprintf('Solduri la %s rulate cu documentele de bancă/casă până la %s.', $date->format('d.m.Y'), $this->today->format('d.m.Y')),
+            '_message' => sprintf('Solduri introduse manual la %s, rulate cu documentele de bancă/casă OMC până la %s.', $date->format('d.m.Y'), $this->today->format('d.m.Y')),
         ];
     }
 
@@ -267,7 +373,7 @@ class CashFlowReportBuilder
      */
     private function emptyOpening(): array
     {
-        return ['date' => null, 'as_of' => $this->today->toDateString(), 'components' => [], 'rolled' => [], 'by_currency' => [], 'total' => 0.0];
+        return ['mode' => 'auto', 'date' => null, 'as_of' => $this->today->toDateString(), 'currencies' => ['RON', 'EUR', 'USD'], 'rows' => [], 'by_currency' => [], 'total' => 0.0];
     }
 
     /**
@@ -281,17 +387,20 @@ class CashFlowReportBuilder
         $beyond = [];
         $structure = [];
         $recentDays = (int) ($this->params['overdue']['recent_days'] ?? 60);
-        $fallbackDays = (int) ($this->params['payables']['days_before_checkin'] ?? 7);
+        $fallbackDays = (int) config('cashflow.etrip.receivables.fallback_days', 21);
+        $from = $this->today->subDays((int) config('cashflow.etrip.receivables.lookback_days', 365));
+        $to = $this->today->addDays((int) config('cashflow.etrip.receivables.lookahead_days', 400));
+        $minBalance = (float) config('cashflow.etrip.receivables.min_balance', 0.5);
         $bookings = 0;
         $tranches = 0;
 
         foreach ($this->connections() as $connection) {
-            $rows = $this->etrip->openBookings($connection, $this->today->subYear());
+            $rows = $this->etrip->openBookings($connection, $from, $to, $minBalance);
             $bookings += count($rows);
 
             foreach ($rows as $booking) {
                 $segment = BookingSegments::of($booking);
-                $channel = BookingSegments::channel($booking['client_type']);
+                $channel = BookingSegments::channel($booking);
 
                 foreach ($this->scheduler->tranches($booking, $fallbackDays) as $tranche) {
                     $tranches++;
@@ -545,42 +654,52 @@ class CashFlowReportBuilder
     }
 
     /**
+     * Monthly OPEX per category: supplier-invoice lines by expense account
+     * for the categories invoiced by suppliers, ledger postings paid from
+     * the bank or cash desk for salaries, taxes, fees and dividends. Both
+     * are 12-month averages of the last closed months.
+     *
      * @return array<string, mixed>
      */
     private function opex(): array
     {
         $months = max(1, (int) config('cashflow.omc.opex_months', 12));
-        $from = $this->today->startOfMonth()->subMonths($months);
-        $to = $this->today->startOfMonth();
+        $end = ($this->anchor ?? $this->today->startOfMonth()->subDay())->addDay();
+        $from = $end->subMonthsNoOverflow($months)->startOfMonth();
         $computed = [];
-        $message = null;
+        $messages = [];
+        $categories = (array) config('cashflow.opex');
 
-        try {
-            $byAccount = $this->omc->monthlyAverageByAccount($from, $to, $months);
+        foreach (['invoices' => 'monthlyAverageByAccount', 'ledger' => 'monthlyLedgerByAccount'] as $basis => $method) {
+            $wanted = array_filter($categories, fn (array $c) => ($c['basis'] ?? 'invoices') === $basis && $c['accounts'] !== []);
 
-            foreach ((array) config('cashflow.opex') as $category) {
-                if ($category['accounts'] === []) {
-                    continue;
-                }
-
-                $sum = 0.0;
-
-                foreach ($byAccount as $account => $monthly) {
-                    foreach ($category['accounts'] as $prefix) {
-                        if (str_starts_with($account, $prefix)) {
-                            $sum += $monthly;
-                            break;
-                        }
-                    }
-                }
-
-                $computed[$category['key']] = round($sum, 2);
+            if ($wanted === []) {
+                continue;
             }
 
-            $message = sprintf('Medii lunare din facturile furnizor OMC %s – %s.', $from->format('m.Y'), $to->subDay()->format('m.Y'));
-        } catch (Throwable $e) {
-            report($e);
-            $message = 'OMC indisponibil pentru medii ('.trim(($e->getPrevious() ?? $e)->getMessage()).'); se folosesc valorile din parametri.';
+            try {
+                $byAccount = $this->omc->{$method}($from, $end, $months);
+
+                foreach ($wanted as $category) {
+                    $sum = 0.0;
+
+                    foreach ($byAccount as $account => $monthly) {
+                        foreach ($category['accounts'] as $prefix) {
+                            if (str_starts_with((string) $account, $prefix)) {
+                                $sum += $monthly;
+                                break;
+                            }
+                        }
+                    }
+
+                    $computed[$category['key']] = round(($category['rule']['type'] ?? 'uniform') === 'quarterly' ? $sum * 3 : $sum, 2);
+                }
+
+                $messages[] = $basis === 'invoices' ? 'facturi furnizor' : 'registru jurnal';
+            } catch (Throwable $e) {
+                report($e);
+                $messages[] = sprintf('%s indisponibil (%s)', $basis === 'invoices' ? 'facturi furnizor' : 'registru jurnal', trim(($e->getPrevious() ?? $e)->getMessage()));
+            }
         }
 
         $catalogue = CashFlowParameters::opexCatalogue($this->params, $computed);
@@ -590,7 +709,12 @@ class CashFlowReportBuilder
             $lines[$category['key']] = $this->scheduleOpex((float) $category['monthly'], $category['rule']);
         }
 
-        return ['lines' => $lines, 'catalogue' => $catalogue, '_rows' => count($computed), '_message' => $message];
+        return [
+            'lines' => $lines,
+            'catalogue' => $catalogue,
+            '_rows' => count($computed),
+            '_message' => sprintf('Medii lunare OMC %s – %s din %s; valorile din parametri au prioritate.', $from->format('m.Y'), $end->subDay()->format('m.Y'), implode(' și ', $messages)),
+        ];
     }
 
     /**
@@ -685,69 +809,164 @@ class CashFlowReportBuilder
     }
 
     /**
-     * Last year's actual receipts and payments per week (OMC), and the cash
-     * position at the end of each of those weeks reconstructed backwards
-     * from today's position.
+     * Last year's actual receipts and payments per week (OMC, by class),
+     * and the treasury position at the end of each of those weeks: the
+     * closed month-end balances are the anchors, the weekly net flows are
+     * added in between and the residual to the next month-end (FX
+     * revaluation, interest, timing) is spread evenly.
      *
      * @return array<string, mixed>
      */
     private function actuals(float $openingTotal): array
     {
-        $from = $this->grid->lastYearMonday(0);
+        $from = $this->grid->lastYearMonday(0)->subMonth()->startOfMonth();
         $flows = $this->omc->dailyFlows($from, $this->today->addDay());
-        $daily = [];
+        $weekly = [];
 
         foreach ($flows as $flow) {
-            $daily[$flow['day']] ??= ['in' => 0.0, 'out' => 0.0];
-            $daily[$flow['day']][$flow['kind']] += $flow['lei'];
+            if ($flow['group'] === OmcCashFlowReader::GROUP_INTERNAL) {
+                continue;
+            }
+
+            $monday = CarbonImmutable::parse($flow['day'])->startOfWeek(CarbonInterface::MONDAY)->toDateString();
+            $weekly[$monday] ??= ['in' => 0.0, 'out' => 0.0, 'in_other' => 0.0, 'out_partner' => 0.0, 'out_salaries' => 0.0, 'out_other' => 0.0];
+            $weekly[$monday][$flow['kind']] += $flow['lei'];
+
+            if ($flow['kind'] === 'in' && $flow['group'] !== OmcCashFlowReader::GROUP_PARTNER) {
+                $weekly[$monday]['in_other'] += $flow['lei'];
+            } elseif ($flow['kind'] === 'out') {
+                $weekly[$monday][match ($flow['group']) {
+                    OmcCashFlowReader::GROUP_PARTNER => 'out_partner',
+                    OmcCashFlowReader::GROUP_SALARIES => 'out_salaries',
+                    default => 'out_other',
+                }] += $flow['lei'];
+            }
         }
 
-        // Net movement per day, walked backwards from today's position.
-        $balanceAfter = [];
-        $running = $openingTotal;
+        $anchors = [];
 
-        for ($day = $this->today; $day->gte($from); $day = $day->subDay()) {
-            $key = $day->toDateString();
-            $balanceAfter[$key] = $running;
-            $running -= ($daily[$key]['in'] ?? 0.0) - ($daily[$key]['out'] ?? 0.0);
+        try {
+            foreach ($this->omc->monthEndPositions($from, $this->today) as $position) {
+                $total = 0.0;
+
+                foreach (['bank', 'cash', 'deposits'] as $section) {
+                    foreach ($position[$section] as $currency => $amount) {
+                        $rate = $currency === 'RON' ? 1.0 : ($position['rates'][$currency] ?? $this->fx[$currency] ?? 1.0);
+                        $total += $amount * $rate;
+                    }
+                }
+
+                $anchors[$position['date']] = round($total, 2);
+            }
+        } catch (Throwable $e) {
+            report($e);
         }
+
+        if ($this->anchor !== null && ! isset($anchors[$this->anchor->toDateString()])) {
+            // No month-end table row for the anchor month: use today's position as the last anchor.
+            $anchors[$this->today->toDateString()] = $openingTotal;
+        }
+
+        ksort($anchors);
+        $net = fn (string $monday) => ($weekly[$monday]['in'] ?? 0.0) - ($weekly[$monday]['out'] ?? 0.0);
+
+        $balanceAt = function (CarbonImmutable $monday) use ($anchors, $net): ?float {
+            $weekEnd = $monday->addDays(6);
+            $previous = null;
+            $next = null;
+
+            foreach ($anchors as $date => $total) {
+                if ($date <= $weekEnd->toDateString()) {
+                    $previous = $date;
+                } elseif ($next === null) {
+                    $next = $date;
+                }
+            }
+
+            if ($previous === null) {
+                return null;
+            }
+
+            // Weeks whose end falls after the previous anchor (and up to the next one).
+            $span = [];
+            $cursor = CarbonImmutable::parse($previous)->subDays(6)->startOfWeek(CarbonInterface::MONDAY);
+            $limit = $next !== null ? CarbonImmutable::parse($next) : $monday;
+
+            while ($cursor->lte($limit)) {
+                $end = $cursor->addDays(6);
+
+                if ($end->toDateString() > $previous && ($next === null || $end->toDateString() <= $next)) {
+                    $span[] = $cursor->toDateString();
+                }
+
+                $cursor = $cursor->addWeek();
+            }
+
+            $cumulative = 0.0;
+            $total = 0.0;
+            $k = 0;
+
+            foreach ($span as $week) {
+                $total += $net($week);
+
+                if ($week <= $monday->toDateString()) {
+                    $cumulative += $net($week);
+                    $k++;
+                }
+            }
+
+            if ($next === null) {
+                return $anchors[$previous] + $cumulative;
+            }
+
+            $count = max(1, count($span));
+
+            return $anchors[$previous] + $cumulative + ($anchors[$next] - $anchors[$previous] - $total) * $k / $count;
+        };
 
         $in = $this->grid->zeros();
-        $out = $this->grid->zeros();
+        $outPartner = $this->grid->zeros();
+        $outSalaries = $this->grid->zeros();
+        $outOther = $this->grid->zeros();
         $lastyear = [];
 
         for ($i = 0; $i < $this->grid->weeks; $i++) {
             $monday = $this->grid->lastYearMonday($i);
-            $sunday = $monday->addDays(6);
-            $weekIn = 0.0;
-            $weekOut = 0.0;
-
-            for ($day = $monday; $day->lte($sunday); $day = $day->addDay()) {
-                $weekIn += $daily[$day->toDateString()]['in'] ?? 0.0;
-                $weekOut += $daily[$day->toDateString()]['out'] ?? 0.0;
-            }
-
-            $in[$i] = round($weekIn, 2);
-            $out[$i] = round($weekOut, 2);
-            $closing = $sunday->gte($this->today) ? null : ($balanceAfter[$sunday->toDateString()] ?? null);
-            $openingLy = $balanceAfter[$monday->subDay()->toDateString()] ?? null;
+            $key = $monday->toDateString();
+            $week = $weekly[$key] ?? ['in' => 0.0, 'out' => 0.0, 'in_other' => 0.0, 'out_partner' => 0.0, 'out_salaries' => 0.0, 'out_other' => 0.0];
+            $in[$i] = round($week['in'], 2);
+            $outPartner[$i] = round($week['out_partner'], 2);
+            $outSalaries[$i] = round($week['out_salaries'], 2);
+            $outOther[$i] = round($week['out_other'], 2);
+            $closing = $monday->addDays(6)->gte($this->today) ? null : $balanceAt($monday);
+            $opening = $balanceAt($monday->subWeek());
 
             $lastyear[] = [
                 'week' => $this->grid->monday($i)->toDateString(),
-                'ly_week' => $monday->toDateString(),
+                'ly_week' => $key,
                 'ly_in' => $in[$i],
-                'ly_out' => $out[$i],
+                'ly_out' => round($week['out'], 2),
+                'ly_out_partener' => $outPartner[$i],
+                'ly_out_salarii' => $outSalaries[$i],
+                'ly_out_alte' => $outOther[$i],
+                'ly_in_alte' => round($week['in_other'], 2),
                 'ly_bal' => $closing !== null ? round($closing, 2) : null,
-                'ly_bal_open' => $openingLy !== null ? round($openingLy, 2) : null,
+                'ly_bal_open' => $opening !== null ? round($opening, 2) : null,
             ];
         }
 
         return [
             'lastyear' => $lastyear,
             'in' => $in,
-            'out' => $out,
+            'out_partner' => $outPartner,
+            'out_salaries' => $outSalaries,
+            'out_other' => $outOther,
             '_rows' => count($flows),
-            '_message' => sprintf('Documente de bancă/casă OMC din %s; soldul anului anterior este reconstituit din soldul de azi (estimare).', $from->format('d.m.Y')),
+            '_message' => sprintf(
+                'Documente de bancă/casă OMC din %s (fără transferuri între conturi proprii, depozite și linii de credit); soldul anului anterior pornește din soldurile de sfârșit de lună (%d luni) cu fluxurile nete între ele.',
+                $from->format('d.m.Y'),
+                count($anchors),
+            ),
         ];
     }
 
@@ -840,9 +1059,11 @@ class CashFlowReportBuilder
             ? ($scenarioOn ? 'rezervări existente + vânzări noi (scenariu)' : 'rezervări existente')
             : 'doar scenariu vânzări noi', $coverage), kind: 'text');
 
-        $this->line('F1', 'Încasări clienți/parteneri efective (an anterior)', 'F', $actuals['in'], kind: 'reference', note: 'OMC: documente de încasare, aceeași săptămână a anului anterior');
-        $this->line('F2', 'Plăți efective – furnizori, salarii, taxe (an anterior)', 'F', $actuals['out'], kind: 'reference', note: 'OMC: documente de plată, aceeași săptămână a anului anterior');
-        $this->line('F3', 'Flux net efectiv (an anterior)', 'F', array_map(fn (float $in, float $out) => round($in - $out, 2), $actuals['in'], $actuals['out']), kind: 'reference');
+        $outSuppliers = array_map(fn (float $a, float $b) => round($a + $b, 2), $actuals['out_partner'], $actuals['out_other']);
+        $this->line('F1', 'Încasări clienți/parteneri efective (an anterior)', 'F', $actuals['in'], kind: 'reference', note: 'OMC: documente de încasare bancă + casă, aceeași săptămână a anului anterior');
+        $this->line('F2', 'Plăți furnizori și alte plăți efective (an anterior)', 'F', $outSuppliers, kind: 'reference', note: 'OMC: plăți către parteneri și alte plăți, fără transferuri interne');
+        $this->line('F3', 'Plăți salarii și taxe efective (an anterior)', 'F', $actuals['out_salaries'], kind: 'reference', note: 'OMC: plăți cu cont corespondent 421/425/43x/44x/457/462');
+        $this->line('F4', 'Flux net efectiv (an anterior)', 'F', array_map(fn (float $in, float $sup, float $sal) => round($in - $sup - $sal, 2), $actuals['in'], $outSuppliers, $actuals['out_salaries']), kind: 'reference');
 
         $minIndex = array_keys($closing, min($closing))[0] ?? 0;
         $first13 = fn (array $values) => round(array_sum(array_slice($values, 0, min(13, $weeks))), 2);

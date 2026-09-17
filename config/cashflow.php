@@ -34,35 +34,66 @@ return [
     'etrip' => [
         'connections' => ['etrip_chr'],
 
-        /** public.product_types ids, grouped the way the report pays them. */
+        /**
+         * public.product_types ids grouped the way the report pays them
+         * (bookings.items of the confirmed bookings).
+         */
         'product_types' => [
-            'package' => [21],
-            'hotel' => [7, 22, 157, 31, 266, 388, 32],
-            'transfer' => [5, 311, 20, 37],
-            'insurance' => [28],
-            'flight' => [26, 3],
+            'hotel' => [7, 22, 31, 157],
+            'transfer' => [5, 311, 37, 20, 41, 365, 378, 379],
+            'insurance' => [28, 304, 305, 306, 366, 384],
+            'flight' => [26, 3, 375],
             'charter' => [30],
-            'tour' => [39],
         ],
 
-        /** settings.distribution_channels ids of the Sphinx platform. */
-        'sphinx_channels' => [16, 49],
+        /**
+         * Receivable segments by the product type of the booking's most
+         * expensive root item (B1–B7).
+         */
+        'segments' => [
+            'pachete' => [21, 45],
+            'circuite' => [39, 196],
+            'exotic' => [31, 32],
+            'sphinx' => [157, 375, 388],
+            'cazare' => [7, 22],
+            'bilete' => [26, 3, 30],
+        ],
 
-        /** Continent (public.geography level 1) names that are not "exotic". */
-        'home_continents' => ['Europa', 'Europe'],
+        /** settings.distribution_channels ids that sell to agencies (B2B). */
+        'b2b_channels' => [2, 3, 6, 14, 49],
+
+        'receivables' => [
+            /** Bookings with departures this far back still carry receivables. */
+            'lookback_days' => 365,
+            /** … and this far ahead. */
+            'lookahead_days' => 400,
+            /** Balance due date when eTrip has none: departure minus these days. */
+            'fallback_days' => 21,
+            'min_balance' => 0.5,
+        ],
     ],
 
     /*
     | OMC: the accounting database, read through config/omc.php.
     */
     'omc' => [
-        'receipt_tip_doc' => ['OP_INC', 'Ch_INC', 'CardINC', 'Reg_INC', 'TichVac', 'Dob_INC'],
-        'payment_tip_doc' => ['OP_PL', 'Ch_PL', 'Reg_PL', 'Comis_B'],
-        /** Cash/bank moves between the company's own accounts, not flows. */
-        'internal_tip_doc' => ['DP_Casa', 'DI_Casa'],
+        /**
+         * Bank and cash documents are recognised by the tip_doc flags
+         * (incasare_b / plata_b / incasare_c / plata_c). Moves between the
+         * company's own accounts are not flows: cash deposited to the bank
+         * (FV_C / DP_Casa), deposits placed or withdrawn (counterpart 508x)
+         * and transfers (581); a credit line drawn or repaid (519x) is
+         * financing and only counts for the position.
+         */
+        'internal_tip_doc' => ['FV_C', 'FV_B', 'DP_Casa', 'DI_Casa'],
+        'internal_coresp' => ['5081', '5121', '5124', '5125', '581', '5311', '5314', '5191', '1621', '1622', '167', '5186'],
+        'salary_tax_coresp' => ['421', '425', '4315', '4316', '436', '444', '447', '4411', '4423', '446', '462', '457', '427', '426', '423'],
+        'deposit_account' => '5081',
         'supplier_tip_doc' => ['FactFI', 'FactFE'],
         /** Months of history the OPEX averages are taken from. */
         'opex_months' => 12,
+        /** Ledger credit accounts that mean "paid from the bank or the cash desk". */
+        'treasury_prefixes' => ['512', '531'],
     ],
 
     /*
@@ -73,19 +104,19 @@ return [
     | saved in the parameters.
     */
     'opex' => [
-        ['key' => 'salarii_nete', 'label' => 'Salarii nete (421)', 'rule' => ['type' => 'monthly', 'day' => 5], 'accounts' => [], 'default' => 574000, 'source' => 'OMC 421 → 5121, medie 12 luni; plătit ~5 ale lunii'],
-        ['key' => 'avans_salarii', 'label' => 'Avans salarii (425)', 'rule' => ['type' => 'monthly', 'day' => 20], 'accounts' => [], 'default' => 597000, 'source' => 'OMC 425 → 5121, medie 12 luni; plătit ~20 ale lunii'],
-        ['key' => 'contributii', 'label' => 'Contribuții și impozite salariale (431x, 436, 444, 447)', 'rule' => ['type' => 'monthly', 'day' => 25], 'accounts' => [], 'default' => 978000, 'source' => 'OMC, medie 12 luni; plătit 25 ale lunii'],
-        ['key' => 'impozit_profit', 'label' => 'Impozit pe profit (4411) – trimestrial', 'rule' => ['type' => 'quarterly', 'day' => 25, 'months' => [1, 4, 7, 10]], 'accounts' => [], 'default' => 1460000, 'source' => 'OMC 4411 ≈ 487k/lună ⇒ ~1,46M/trimestru; 25 ian/apr/iul/oct'],
-        ['key' => 'chirii', 'label' => 'Chirii, utilități și administrare sedii (612, 605, 626)', 'rule' => ['type' => 'uniform'], 'accounts' => ['612', '605', '626'], 'default' => 387000, 'source' => 'OMC FactFI conturi 612/605/626, medie lunară 12 luni'],
-        ['key' => 'marketing', 'label' => 'Marketing, media și producție publicitară (623)', 'rule' => ['type' => 'uniform'], 'accounts' => ['623'], 'default' => 466000, 'source' => 'OMC FactFI cont 623, medie lunară 12 luni'],
-        ['key' => 'servicii', 'label' => 'Servicii terți, IT, consultanță (628, 622, 621)', 'rule' => ['type' => 'uniform'], 'accounts' => ['628', '622', '621'], 'default' => 473000, 'source' => 'OMC FactFI conturi 628/622/621, medie lunară 12 luni'],
-        ['key' => 'consumabile', 'label' => 'Consumabile, auto, întreținere, deplasări (602-625)', 'rule' => ['type' => 'uniform'], 'accounts' => ['602', '604', '611', '613', '615', '624', '625'], 'default' => 286000, 'source' => 'OMC FactFI conturi 602/604/611/613/615/624/625'],
-        ['key' => 'alte_taxe', 'label' => 'Alte taxe și cheltuieli (635, 65x, 66x)', 'rule' => ['type' => 'uniform'], 'accounts' => ['635', '65', '66'], 'default' => 54000, 'source' => 'OMC FactFI conturi 635/65x/66x'],
-        ['key' => 'banci', 'label' => 'Comisioane bancare și diferențe de curs (627, 6651)', 'rule' => ['type' => 'uniform'], 'accounts' => [], 'default' => 261000, 'source' => 'OMC 627 + 6651 → bănci, medie 12 luni'],
-        ['key' => 'alte_admin', 'label' => 'Alte plăți administrative (462, avansuri decontare)', 'rule' => ['type' => 'uniform'], 'accounts' => [], 'default' => 300000, 'source' => 'Ipoteză prudentă (OMC 462 medie 589k/lună, în mare parte one-off)'],
-        ['key' => 'capex', 'label' => 'CAPEX (imobilizări)', 'rule' => ['type' => 'uniform'], 'accounts' => [], 'default' => 0, 'source' => 'De completat: OMC ~1,33M lei/lună în ultimele 12 luni (achiziții one-off)'],
-        ['key' => 'dividende', 'label' => 'Dividende', 'rule' => ['type' => 'uniform'], 'accounts' => [], 'default' => 0, 'source' => 'De completat: OMC 457 – 36M lei plătiți în ultimele 12 luni'],
+        ['key' => 'salarii_nete', 'label' => 'Salarii nete (421)', 'rule' => ['type' => 'monthly', 'day' => 5], 'basis' => 'ledger', 'accounts' => ['421'], 'default' => 574000, 'source' => 'OMC reg_jurnal 421 → 512x/531x, medie 12 luni închise; plătit ~5 ale lunii'],
+        ['key' => 'avans_salarii', 'label' => 'Avans salarii (425)', 'rule' => ['type' => 'monthly', 'day' => 20], 'basis' => 'ledger', 'accounts' => ['425'], 'default' => 597000, 'source' => 'OMC reg_jurnal 425 → 512x/531x, medie 12 luni închise; plătit ~20 ale lunii'],
+        ['key' => 'contributii', 'label' => 'Contribuții și impozite salariale (431x, 436, 444, 447)', 'rule' => ['type' => 'monthly', 'day' => 25], 'basis' => 'ledger', 'accounts' => ['431', '436', '444', '447'], 'default' => 978000, 'source' => 'OMC reg_jurnal 431x/436/444/447 → 512x, medie 12 luni închise; plătit 25 ale lunii'],
+        ['key' => 'impozit_profit', 'label' => 'Impozit pe profit (4411) – trimestrial', 'rule' => ['type' => 'quarterly', 'day' => 25, 'months' => [1, 4, 7, 10]], 'basis' => 'ledger', 'accounts' => ['4411', '441'], 'default' => 1460000, 'source' => 'OMC reg_jurnal 4411 → 512x, medie lunară × 3; 25 ian/apr/iul/oct'],
+        ['key' => 'chirii', 'label' => 'Chirii, utilități și administrare sedii (612, 605, 626)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['612', '605', '626'], 'default' => 387000, 'source' => 'OMC FactFI conturi 612/605/626, medie lunară 12 luni'],
+        ['key' => 'marketing', 'label' => 'Marketing, media și producție publicitară (623)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['623'], 'default' => 466000, 'source' => 'OMC FactFI cont 623, medie lunară 12 luni'],
+        ['key' => 'servicii', 'label' => 'Servicii terți, IT, consultanță (628, 622, 621)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['628', '622', '621'], 'default' => 473000, 'source' => 'OMC FactFI conturi 628/622/621, medie lunară 12 luni'],
+        ['key' => 'consumabile', 'label' => 'Consumabile, auto, întreținere, deplasări (602-625)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['602', '604', '611', '613', '615', '624', '625'], 'default' => 286000, 'source' => 'OMC FactFI conturi 602/604/611/613/615/624/625'],
+        ['key' => 'alte_taxe', 'label' => 'Alte taxe și cheltuieli (635, 65x, 66x)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['635', '65', '66'], 'default' => 54000, 'source' => 'OMC FactFI conturi 635/65x/66x'],
+        ['key' => 'banci', 'label' => 'Comisioane bancare și diferențe de curs (627, 6651)', 'rule' => ['type' => 'uniform'], 'basis' => 'ledger', 'accounts' => ['627', '6651'], 'default' => 261000, 'source' => 'OMC reg_jurnal 627 + 6651 → bănci, medie 12 luni închise'],
+        ['key' => 'alte_admin', 'label' => 'Alte plăți administrative (462, avansuri decontare)', 'rule' => ['type' => 'uniform'], 'basis' => 'ledger', 'accounts' => ['462'], 'default' => 300000, 'source' => 'OMC reg_jurnal 462 → 512x/531x, medie 12 luni închise (în mare parte one-off)'],
+        ['key' => 'capex', 'label' => 'CAPEX (imobilizări)', 'rule' => ['type' => 'uniform'], 'basis' => 'invoices', 'accounts' => ['2'], 'default' => 0, 'source' => 'OMC FactFI conturi 2xx, medie 12 luni (achiziții one-off)'],
+        ['key' => 'dividende', 'label' => 'Dividende', 'rule' => ['type' => 'uniform'], 'basis' => 'ledger', 'accounts' => ['457'], 'default' => 0, 'source' => 'OMC reg_jurnal 457 → 512x, medie 12 luni închise'],
     ],
 
 ];

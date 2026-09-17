@@ -84,6 +84,7 @@ class CharterFlightController extends Controller
     {
         return $request->validate([
             'charter_contract_id' => ['required', 'integer', Rule::exists('charter_contracts', 'id')],
+            'operator' => ['nullable', 'string', 'max:80'],
             'route' => ['required', 'string', 'max:60'],
             'flight_no' => ['nullable', 'string', 'max:60'],
             'flight_date' => ['required', 'date'],

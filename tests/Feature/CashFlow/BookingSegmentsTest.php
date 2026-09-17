@@ -2,21 +2,24 @@
 
 use App\Services\CashFlow\BookingSegments;
 
-test('bookings are classified by channel, products and destination', function (array $booking, string $segment) {
-    expect(BookingSegments::of($booking))->toBe($segment);
+test('the segment follows the product type of the most expensive root item', function (?int $type, string $segment) {
+    expect(BookingSegments::of(['segment_type' => $type]))->toBe($segment);
 })->with([
-    'sphinx channel' => [['channel' => 16, 'root_types' => [21], 'continent' => 'Europa'], 'sphinx'],
-    'circuit' => [['channel' => 1, 'root_types' => [39], 'continent' => 'Europa'], 'circuite'],
-    'line tickets only' => [['channel' => 1, 'root_types' => [26, 3], 'continent' => null], 'bilete'],
-    'package to Asia' => [['channel' => 1, 'root_types' => [21], 'continent' => 'Asia'], 'exotic'],
-    'hotel only' => [['channel' => 5, 'root_types' => [7], 'continent' => 'Europa'], 'cazare'],
-    'charter package' => [['channel' => 1, 'root_types' => [21, 5], 'continent' => 'Europa'], 'pachete'],
-    'transfer only' => [['channel' => 1, 'root_types' => [5], 'continent' => 'Europa'], 'altele'],
-    'nothing confirmed' => [['channel' => null, 'root_types' => [], 'continent' => null], 'altele'],
+    'package' => [21, 'pachete'],
+    'charter package' => [45, 'pachete'],
+    'circuit' => [39, 'circuite'],
+    'exotic' => [32, 'exotic'],
+    'sphinx' => [157, 'sphinx'],
+    'hotel' => [7, 'cazare'],
+    'line ticket' => [26, 'bilete'],
+    'charter seat' => [30, 'bilete'],
+    'transfer' => [5, 'altele'],
+    'nothing confirmed' => [null, 'altele'],
 ]);
 
-test('trade and business clients are B2B', function () {
-    expect(BookingSegments::channel('trade'))->toBe('B2B')
-        ->and(BookingSegments::channel('business'))->toBe('B2B')
-        ->and(BookingSegments::channel('direct'))->toBe('B2C');
+test('the channel follows the distribution channel of the booking', function () {
+    expect(BookingSegments::channel(['channel' => 2]))->toBe('B2B')
+        ->and(BookingSegments::channel(['channel' => 49]))->toBe('B2B')
+        ->and(BookingSegments::channel(['channel' => 5]))->toBe('B2C')
+        ->and(BookingSegments::channel(['channel' => null]))->toBe('B2C');
 });

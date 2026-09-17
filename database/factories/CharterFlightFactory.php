@@ -15,6 +15,7 @@ class CharterFlightFactory extends Factory
     {
         return [
             'charter_contract_id' => CharterContract::factory(),
+            'operator' => 'ANIMA WINGS',
             'route' => 'OTP AYT OTP',
             'flight_no' => 'A2 4238/4239',
             'flight_date' => '2026-10-15',

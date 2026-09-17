@@ -7,6 +7,7 @@ use App\Models\CharterFlight;
 use App\Services\CashFlow\CashFlowReportBuilder;
 use App\Services\CashFlow\EtripCashFlowReader;
 use App\Services\CashFlow\OmcCashFlowReader;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Mockery\MockInterface;
@@ -19,6 +20,7 @@ beforeEach(function () {
         'thresholds' => ['minimum' => 1000000, 'comfort' => 2000000],
         'scenario' => ['enabled' => true, 'factor' => 1, 'charter_factor' => 1, 'charter_base_season' => 'S26', 'charter_target_season' => 'S27'],
         'opening' => [
+            'mode' => 'manual',
             'date' => '2026-08-31',
             'bank' => ['RON' => 1000000, 'EUR' => 100000, 'USD' => 0],
             'cash' => ['RON' => 10000, 'EUR' => 0, 'USD' => 0],
@@ -30,10 +32,13 @@ beforeEach(function () {
 function omcFlows(): array
 {
     return [
-        ['day' => '2025-09-16', 'kind' => 'in', 'currency' => 'RON', 'amount' => 300000, 'lei' => 300000],
-        ['day' => '2025-09-18', 'kind' => 'out', 'currency' => 'RON', 'amount' => 120000, 'lei' => 120000],
-        ['day' => '2026-09-10', 'kind' => 'in', 'currency' => 'RON', 'amount' => 200000, 'lei' => 200000],
-        ['day' => '2026-09-11', 'kind' => 'out', 'currency' => 'EUR', 'amount' => 10000, 'lei' => 50000],
+        ['day' => '2025-09-16', 'kind' => 'in', 'group' => 'partner', 'currency' => 'RON', 'amount' => 300000, 'lei' => 300000],
+        ['day' => '2025-09-18', 'kind' => 'out', 'group' => 'partner', 'currency' => 'RON', 'amount' => 100000, 'lei' => 100000],
+        ['day' => '2025-09-18', 'kind' => 'out', 'group' => 'salaries', 'currency' => 'RON', 'amount' => 20000, 'lei' => 20000],
+        ['day' => '2025-09-18', 'kind' => 'out', 'group' => 'internal', 'currency' => 'RON', 'amount' => 999999, 'lei' => 999999],
+        ['day' => '2026-09-10', 'kind' => 'in', 'group' => 'partner', 'currency' => 'RON', 'amount' => 200000, 'lei' => 200000],
+        ['day' => '2026-09-11', 'kind' => 'out', 'group' => 'partner', 'currency' => 'EUR', 'amount' => 10000, 'lei' => 50000],
+        ['day' => '2026-09-12', 'kind' => 'out', 'group' => 'internal', 'currency' => 'RON', 'amount' => 300000, 'lei' => 300000],
     ];
 }
 
@@ -49,20 +54,31 @@ function mockOmc(): void
             ['due' => '2026-10-20', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000, 'invoices' => 1],
         ]);
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
+        $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
+        $mock->shouldReceive('monthEndAnchor')->andReturn(CarbonImmutable::parse('2026-08-31'));
+        $mock->shouldReceive('monthEndPositions')->andReturn([
+            ['date' => '2025-08-31', 'bank' => ['RON' => 1000000], 'cash' => ['RON' => 0], 'deposits' => ['RON' => 4000000], 'rates' => []],
+            ['date' => '2025-09-30', 'bank' => ['RON' => 1500000, 'EUR' => 10000], 'cash' => [], 'deposits' => ['RON' => 4000000], 'rates' => ['EUR' => 5.1]],
+            ['date' => '2026-08-31', 'bank' => ['RON' => 1000000, 'EUR' => 100000], 'cash' => ['RON' => 10000], 'deposits' => ['RON' => 5000000], 'rates' => ['EUR' => 5.05]],
+        ]);
+        $mock->shouldReceive('openingPosition')->andReturn([
+            ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
+            ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],
+        ]);
     });
 }
 
 function mockEtrip(bool $failBookings = false): void
 {
     test()->mock(EtripCashFlowReader::class, function (MockInterface $mock) use ($failBookings) {
-        $bookings = $mock->shouldReceive('openBookings')->with('etrip_chr', Mockery::type(CarbonInterface::class));
+        $bookings = $mock->shouldReceive('openBookings')->with('etrip_chr', Mockery::type(CarbonInterface::class), Mockery::type(CarbonInterface::class), 0.5);
 
         if ($failBookings) {
             $bookings->andThrow(new RuntimeException('connection refused'));
         } else {
             $bookings->andReturn([
-                ['id' => 1, 'currency' => 'EUR', 'total_due' => 1000, 'paid' => 300, 'balance_due_date' => '2026-10-05', 'start_date' => '2026-10-20', 'brand' => 1, 'channel' => 1, 'client_type' => 'direct', 'root_types' => [21], 'continent' => 'Europa', 'due_dates' => [['date' => '2026-09-01', 'amount' => 300], ['date' => '2026-09-25', 'amount' => 200]]],
-                ['id' => 2, 'currency' => 'RON', 'total_due' => 1000, 'paid' => 0, 'balance_due_date' => '2026-09-01', 'start_date' => '2026-09-30', 'brand' => 1, 'channel' => 16, 'client_type' => 'trade', 'root_types' => [7], 'continent' => 'Europa', 'due_dates' => []],
+                ['id' => 1, 'currency' => 'EUR', 'total_due' => 1000, 'paid' => 300, 'balance_due_date' => '2026-10-05', 'start_date' => '2026-10-20', 'brand' => 1, 'channel' => 5, 'segment_type' => 21, 'due_dates' => [['date' => '2026-09-01', 'amount' => 300], ['date' => '2026-09-25', 'amount' => 200]]],
+                ['id' => 2, 'currency' => 'RON', 'total_due' => 1000, 'paid' => 0, 'balance_due_date' => '2026-09-01', 'start_date' => '2026-09-30', 'brand' => 1, 'channel' => 2, 'segment_type' => 157, 'due_dates' => []],
             ]);
         }
 
@@ -144,13 +160,17 @@ test('the snapshot puts every source on its week in lei', function () {
     expect($opex['chirii']['monthly'])->toEqual(100000)
         ->and($opex['chirii']['computed'])->toEqual(100000)
         ->and($opex['servicii']['monthly'])->toEqual(20000)
-        ->and($opex['salarii_nete']['monthly'])->toEqual(574000);
+        ->and($opex['salarii_nete']['monthly'])->toEqual(500000)
+        ->and($opex['salarii_nete']['computed'])->toEqual(500000)
+        ->and($opex['impozit_profit']['computed'])->toEqual(300000)
+        ->and($opex['banci']['computed'])->toEqual(12000)
+        ->and($opex['avans_salarii']['monthly'])->toEqual(597000);
     $rent = collect($snapshot->payload['lines'])->firstWhere('key', 'chirii');
     $salaries = collect($snapshot->payload['lines'])->firstWhere('key', 'salarii_nete');
     expect(round($rent['values'][0], 2))->toEqual(round(100000 * 12 / 52, 2))
         ->and($salaries['values'][0])->toEqual(0)
-        ->and($salaries['values'][3])->toEqual(574000)
-        ->and($salaries['values'][7])->toEqual(574000);
+        ->and($salaries['values'][3])->toEqual(500000)
+        ->and($salaries['values'][7])->toEqual(500000);
 
     // Balances chain week after week and the year-earlier actuals sit on the same week.
     $net = lineValues($snapshot, 'E1');
@@ -159,9 +179,14 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($closing[1])->toBe(round($closing[0] + $net[1], 2))
         ->and(lineValues($snapshot, 'E5')[0])->toBe('OK')
         ->and(lineValues($snapshot, 'F1')[0])->toBe(300000.0)
-        ->and(lineValues($snapshot, 'F2')[0])->toBe(120000.0)
-        ->and($snapshot->payload['lastyear'][0])->toEqual(['week' => '2026-09-14', 'ly_week' => '2025-09-15', 'ly_in' => 300000, 'ly_out' => 120000, 'ly_bal' => $snapshot->payload['lastyear'][0]['ly_bal'], 'ly_bal_open' => $snapshot->payload['lastyear'][0]['ly_bal_open']])
-        ->and($snapshot->payload['lastyear'][0]['ly_bal'])->toBeNumeric()
+        ->and(lineValues($snapshot, 'F2')[0])->toBe(100000.0)
+        ->and(lineValues($snapshot, 'F3')[0])->toBe(20000.0)
+        ->and(lineValues($snapshot, 'F4')[0])->toBe(180000.0)
+        ->and($snapshot->payload['lastyear'][0])->toMatchArray(['week' => '2026-09-14', 'ly_week' => '2025-09-15', 'ly_in' => 300000, 'ly_out' => 120000, 'ly_out_partener' => 100000, 'ly_out_salarii' => 20000, 'ly_out_alte' => 0, 'ly_in_alte' => 0])
+        // Week 15–21.09.2025 sits between the 31.08 (5.0M) and 30.09 (5.551M) anchors: 5.0M + 180k net + share of the 371k residual.
+        ->and($snapshot->payload['lastyear'][0]['ly_bal'])->toBeGreaterThan(5000000)
+        ->and($snapshot->payload['lastyear'][0]['ly_bal'])->toBeLessThan(5551000)
+        ->and($snapshot->payload['lastyear'][0]['ly_bal_open'])->toBeGreaterThanOrEqual(5000000)
         ->and($snapshot->payload['charter'][0])->toMatchArray(['season' => 'S26', 'status' => 'signed', 'flights' => 1])
         ->and($snapshot->payload['charter'][0]['in_horizon'])->toEqual(1000);
 });
@@ -180,8 +205,32 @@ test('a source that fails leaves a partial snapshot with the others filled', fun
         ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['status'])->toBe('skipped');
 });
 
-test('without an opening date the balance starts at zero and says so', function () {
-    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
+test('by default the position comes from the OMC month-end balances rolled forward', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
+    mockOmc();
+    mockEtrip();
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $opening = $snapshot->payload['opening'];
+    $rows = collect($opening['rows'])->keyBy('key');
+
+    // RON: 1,000,000 + 200,000 − 300,000 banks, 10,000 + 5,000 cash, 5,000,000 + 300,000 deposits; EUR: 90,000 × 5.
+    expect($snapshot->status)->toBe('ok')
+        ->and($opening['mode'])->toBe('auto')
+        ->and($opening['date'])->toBe('2026-08-31')
+        ->and($opening['currencies'])->toBe(['RON', 'EUR', 'USD'])
+        ->and($rows['bank_now']['values']['RON'])->toEqual(900000)
+        ->and($rows['cash_now']['values']['RON'])->toEqual(15000)
+        ->and($rows['deposits_now']['values']['RON'])->toEqual(5300000)
+        ->and($rows['position']['values']['RON'])->toEqual(6215000)
+        ->and($rows['position']['values']['EUR'])->toEqual(90000)
+        ->and($opening['total'])->toEqual(6665000)
+        ->and(lineValues($snapshot, 'A')[0])->toBe(6665000.0)
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('31.08.2026');
+});
+
+test('without month-end balances in OMC and no manual date the balance starts at zero and says so', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'opening' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
     mockOmc();
     mockEtrip();
 

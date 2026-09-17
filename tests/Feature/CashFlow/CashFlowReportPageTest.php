@@ -52,6 +52,7 @@ test('the page shows the last snapshot, the parameters and the charter contracts
             ->where('snapshot.payload.kpis.opening', 5)
             ->where('run.running', false)
             ->where('parameters.fx.mode', 'auto')
+            ->where('parameters.opening.mode', 'auto')
             ->where('parameters.thresholds.minimum', 3000000)
             ->where('opex.4.key', 'chirii')
             ->where('opex.4.computed', 120000)
@@ -63,6 +64,7 @@ test('the page shows the last snapshot, the parameters and the charter contracts
             ->where('contracts.0.flights_count', 1)
             ->where('contracts.0.flights_net', 1000)
             ->has('flights', 1)
+            ->where('flights.0.operator', 'ANIMA WINGS')
             ->where('flights.0.payment_date', '2026-10-05')
             ->where('flights.0.taxes_payment_date', '2026-11-05')
             ->where('schedule.nightly', '04:30')
@@ -99,7 +101,7 @@ test('parameters are validated, saved and trigger a rebuild', function () {
         'overdue' => ['recent_days' => 60, 'recent_pct' => 80, 'recent_weeks' => 4, 'old_pct' => 0],
         'payables' => ['days_before_checkin' => 7, 'prepaid_pct' => 0, 'ticket_days' => 7, 'supplier_balance' => '', 'supplier_balance_weeks' => 2],
         'scenario' => ['enabled' => true, 'factor' => 0.95, 'charter_factor' => 1, 'charter_base_season' => 'S26', 'charter_target_season' => 'S27'],
-        'opening' => ['date' => '2026-08-31', 'bank' => ['RON' => 3572477, 'EUR' => 794405, 'USD' => 4861], 'cash' => ['RON' => 88516, 'EUR' => 66516, 'USD' => 572], 'deposits' => ['RON' => 130920000, 'EUR' => 357000, 'USD' => '']],
+        'opening' => ['mode' => 'manual', 'date' => '2026-08-31', 'bank' => ['RON' => 3572477, 'EUR' => 794405, 'USD' => 4861], 'cash' => ['RON' => 88516, 'EUR' => 66516, 'USD' => 572], 'deposits' => ['RON' => 130920000, 'EUR' => 357000, 'USD' => '']],
         'opex' => ['salarii_nete' => 574000, 'chirii' => '', 'capex' => 0],
     ];
 
@@ -117,14 +119,15 @@ test('parameters are validated, saved and trigger a rebuild', function () {
         ->and($saved['opex']['chirii'])->toBeNull()
         ->and($saved['opex']['salarii_nete'])->toEqual(574000)
         ->and($saved['opex']['capex'])->toEqual(0)
+        ->and($saved['opening']['mode'])->toBe('manual')
         ->and($saved['scenario']['charter_base_season'])->toBe('S26')
         ->and(cashFlowToast()['message'])->toContain('recalculează în fundal');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'artisan cashflow:build'));
 
     $this->actingAs($this->user)
-        ->put('/reports/cash-flow/parameters', [...$payload, 'fx' => ['mode' => 'auto', 'EUR' => 0, 'USD' => 4], 'etrip_connections' => ['nope']])
-        ->assertSessionHasErrors(['fx.EUR', 'etrip_connections.0']);
+        ->put('/reports/cash-flow/parameters', [...$payload, 'fx' => ['mode' => 'auto', 'EUR' => 0, 'USD' => 4], 'etrip_connections' => ['nope'], 'opening' => [...$payload['opening'], 'date' => '']])
+        ->assertSessionHasErrors(['fx.EUR', 'etrip_connections.0', 'opening.date']);
 });
 
 test('charter contracts and flights can be managed from the page', function () {
@@ -139,11 +142,12 @@ test('charter contracts and flights can be managed from the page', function () {
     expect($contract->currency)->toBe('EUR');
 
     $this->actingAs($this->user)
-        ->post('/reports/cash-flow/flights', ['charter_contract_id' => $contract->id, 'route' => 'OTP AYT OTP', 'flight_no' => 'A2 4238', 'flight_date' => '2026-10-15', 'seats' => 180, 'price_per_seat' => 161.58, 'net_value' => 29084.4, 'taxes' => 7300.8, 'pay_date' => null, 'taxes_pay_date' => null])
+        ->post('/reports/cash-flow/flights', ['charter_contract_id' => $contract->id, 'operator' => 'Anima Wings', 'route' => 'OTP AYT OTP', 'flight_no' => 'A2 4238', 'flight_date' => '2026-10-15', 'seats' => 180, 'price_per_seat' => 161.58, 'net_value' => 29084.4, 'taxes' => 7300.8, 'pay_date' => null, 'taxes_pay_date' => null])
         ->assertRedirect();
 
     $flight = CharterFlight::query()->sole();
-    expect($flight->paymentDate()->toDateString())->toBe('2026-10-05');
+    expect($flight->paymentDate()->toDateString())->toBe('2026-10-05')
+        ->and($flight->operator)->toBe('Anima Wings');
 
     $this->actingAs($this->user)
         ->put('/reports/cash-flow/flights/'.$flight->id, ['charter_contract_id' => $contract->id, 'route' => 'OTP AYT OTP', 'flight_no' => 'A2 4238', 'flight_date' => '2026-10-15', 'seats' => 180, 'price_per_seat' => 161.58, 'net_value' => 30000, 'taxes' => 7300.8, 'pay_date' => '2026-10-01', 'taxes_pay_date' => null])
@@ -218,4 +222,38 @@ test('a csv programme without seasons goes to the chosen contract', function () 
         ->and((float) $contract->flights()->first()->net_value)->toBe(29084.4)
         ->and((float) $contract->flights()->first()->taxes)->toBe(7300.8)
         ->and($contract->flights()->first()->flight_date->toDateString())->toBe('2026-10-15');
+});
+
+test('a contract annex is expanded into weekly rotations paid per the contract terms', function () {
+    $contract = CharterContract::factory()->create(['season' => 'S26', 'days_before_flight' => 10]);
+    $path = $this->dir.'/AA30.xlsx';
+    File::ensureDirectoryExists($this->dir);
+    XlsxWriter::write($path, ['Anexa AA30 - program S26', null, null, null, null, null, null, null, null, null, null], [
+        [null, null, null, null, null, null, null, null, null, null, null],
+        ['Companie Aeriana', 'Ruta Zbor', 'Nr. Zbor', 'Primul Zbor', 'Ultimul Zbor', 'Numar Total Zboruri', 'Zi de Operare', 'Numar locuri/ zbor', 'PRET / LOC /RT', 'Taxe RO', 'Taxe Destinatie'],
+        ['ANIMA WINGS', 'OTP AYT OTP', 'A2 4238/4239', new DateTimeImmutable('2026-10-06'), new DateTimeImmutable('2026-10-27'), 4, 'D2', 180, 161.58, 20.5, 20.06],
+        ['CORENDON', 'SBZ AYT SBZ', 'CAI9014/9013', new DateTimeImmutable('2026-10-05'), new DateTimeImmutable('2026-10-19'), 2, 'D1', 149, 185.28, 21.5, 0],
+        ['TOTAL', null, null, null, null, null, null, null, null, null, null],
+    ]);
+
+    $this->actingAs($this->user)
+        ->post('/reports/cash-flow/flights/import', [
+            'charter_contract_id' => $contract->id,
+            'file' => new UploadedFile($path, 'AA30.xlsx', null, null, true),
+            'replace' => true,
+        ])
+        ->assertRedirect();
+
+    $flights = $contract->flights()->orderBy('flight_date')->orderBy('id')->get();
+
+    expect(cashFlowToast()['type'])->toBe('success')
+        ->and($flights)->toHaveCount(7)
+        ->and($flights->where('operator', 'ANIMA WINGS')->pluck('flight_date')->map->toDateString()->all())->toBe(['2026-10-06', '2026-10-13', '2026-10-20', '2026-10-27'])
+        ->and((float) $flights->where('operator', 'ANIMA WINGS')->first()->net_value)->toBe(29084.4)
+        ->and((float) $flights->where('operator', 'ANIMA WINGS')->first()->taxes)->toBe(round(180 * 40.56, 2))
+        ->and($flights->where('operator', 'ANIMA WINGS')->first()->pay_date->toDateString())->toBe('2026-09-26')
+        ->and($flights->where('operator', 'ANIMA WINGS')->first()->taxes_pay_date->toDateString())->toBe('2026-11-05')
+        ->and($flights->where('operator', 'CORENDON')->count())->toBe(3)
+        // 2 rotations announced over 3 Mondays: the value per flight is scaled by 2/3 so the total matches the annex.
+        ->and(round((float) $flights->where('operator', 'CORENDON')->sum('net_value'), 2))->toBe(round(2 * 149 * 185.28, 2));
 });

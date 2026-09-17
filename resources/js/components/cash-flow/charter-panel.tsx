@@ -263,6 +263,15 @@ function FlightDialog({
                                     />
                                 </div>
                                 <div className="grid gap-1.5">
+                                    <Label htmlFor="f-operator">Operator</Label>
+                                    <Input
+                                        id="f-operator"
+                                        name="operator"
+                                        placeholder="ANIMA WINGS"
+                                    />
+                                    <InputError message={errors.operator} />
+                                </div>
+                                <div className="grid gap-1.5">
                                     <Label htmlFor="f-route">Rută</Label>
                                     <Input
                                         id="f-route"
@@ -403,6 +412,50 @@ export default function CharterPanel({
             ),
         [flights, contractId, showPast, today],
     );
+
+    const byOperator = useMemo(() => {
+        const groups = new Map<
+            string,
+            {
+                season: string;
+                operator: string;
+                flights: number;
+                net: number;
+                taxes: number;
+                first: string;
+                last: string;
+            }
+        >();
+
+        for (const flight of visible) {
+            const operator = flight.operator ?? '–';
+            const key = `${flight.season}|${operator}`;
+            const group = groups.get(key) ?? {
+                season: flight.season,
+                operator,
+                flights: 0,
+                net: 0,
+                taxes: 0,
+                first: flight.flight_date,
+                last: flight.flight_date,
+            };
+
+            group.flights += 1;
+            group.net += flight.net_value;
+            group.taxes += flight.taxes;
+            group.first =
+                group.first < flight.flight_date
+                    ? group.first
+                    : flight.flight_date;
+            group.last =
+                group.last > flight.flight_date
+                    ? group.last
+                    : flight.flight_date;
+            groups.set(key, group);
+        }
+
+        return Array.from(groups.values()).sort((a, b) => b.net - a.net);
+    }, [visible]);
 
     const totals = useMemo(
         () =>
@@ -592,11 +645,14 @@ export default function CharterPanel({
                         <CardTitle>Program de zbor</CardTitle>
                         <CardDescription>
                             Rotațiile contractului selectat. Importă anexa
-                            (.xlsx sau .csv cu coloanele Sezon, Status,
-                            Operator, Rută, Nr zbor, Data zbor, Locuri,
-                            Preț/loc, Valoare netă, Taxe, Data plată rotație,
-                            Data plată taxe); rândurile cu alt sezon merg în
-                            contractul acelui sezon.
+                            contractului așa cum vine de la Memento Air (foaia
+                            cu „Companie Aeriana, Ruta Zbor, Primul Zbor,
+                            Ultimul Zbor, Numar Total Zboruri, Zi de Operare,
+                            Numar locuri, PRET / LOC /RT, Taxe RO, Taxe
+                            Destinatie” – se desfășoară în rotații săptămânale)
+                            sau un fișier .xlsx/.csv cu o rotație pe rând;
+                            rândurile cu alt sezon merg în contractul acelui
+                            sezon.
                         </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -640,6 +696,54 @@ export default function CharterPanel({
                     </div>
                 </CardHeader>
                 <CardContent className="grid gap-4">
+                    {byOperator.length > 1 && (
+                        <div className="overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-left text-xs text-muted-foreground uppercase">
+                                    <tr>
+                                        <th className="px-3 py-2">Sezon</th>
+                                        <th className="px-3 py-2">Operator</th>
+                                        <th className="px-3 py-2 text-right">
+                                            Rotații
+                                        </th>
+                                        <th className="px-3 py-2 text-right">
+                                            Net
+                                        </th>
+                                        <th className="px-3 py-2 text-right">
+                                            Taxe est.
+                                        </th>
+                                        <th className="px-3 py-2">Perioadă</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                    {byOperator.map((group) => (
+                                        <tr
+                                            key={`${group.season}-${group.operator}`}
+                                        >
+                                            <td className="px-3 py-1.5 font-mono text-xs">
+                                                {group.season}
+                                            </td>
+                                            <td className="px-3 py-1.5">
+                                                {group.operator}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right tabular-nums">
+                                                {group.flights}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right whitespace-nowrap tabular-nums">
+                                                {fmtRon(group.net)}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right whitespace-nowrap tabular-nums">
+                                                {fmtRon(group.taxes)}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-xs whitespace-nowrap text-muted-foreground">
+                                                {group.first} → {group.last}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                     {contracts.length > 0 && (
                         <Form
                             {...CharterFlightController.import.form()}
@@ -730,6 +834,7 @@ export default function CharterPanel({
                             <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground uppercase backdrop-blur">
                                 <tr>
                                     <th className="px-3 py-2">Sezon</th>
+                                    <th className="px-3 py-2">Operator</th>
                                     <th className="px-3 py-2">Rută</th>
                                     <th className="px-3 py-2">Zbor</th>
                                     <th className="px-3 py-2">Data zbor</th>
@@ -751,7 +856,7 @@ export default function CharterPanel({
                                 {visible.length === 0 && (
                                     <tr>
                                         <td
-                                            colSpan={10}
+                                            colSpan={11}
                                             className="px-3 py-6 text-center text-muted-foreground"
                                         >
                                             Nicio rotație.
@@ -762,6 +867,9 @@ export default function CharterPanel({
                                     <tr key={flight.id}>
                                         <td className="px-3 py-1.5 font-mono text-xs">
                                             {flight.season}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-xs whitespace-nowrap">
+                                            {flight.operator ?? ''}
                                         </td>
                                         <td className="px-3 py-1.5 whitespace-nowrap">
                                             {flight.route}
@@ -824,7 +932,7 @@ export default function CharterPanel({
                             {visible.length > 0 && (
                                 <tfoot className="bg-muted/50 font-semibold">
                                     <tr>
-                                        <td className="px-3 py-2" colSpan={4}>
+                                        <td className="px-3 py-2" colSpan={5}>
                                             {visible.length} rotații
                                         </td>
                                         <td className="px-3 py-2 text-right tabular-nums">

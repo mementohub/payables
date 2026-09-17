@@ -42,6 +42,7 @@ class CashFlowParameters
                 'charter_target_season' => null,
             ],
             'opening' => [
+                'mode' => 'auto',
                 'date' => null,
                 'bank' => ['RON' => 0, 'EUR' => 0, 'USD' => 0],
                 'cash' => ['RON' => 0, 'EUR' => 0, 'USD' => 0],

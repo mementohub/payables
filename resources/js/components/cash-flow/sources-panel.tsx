@@ -105,90 +105,78 @@ export default function SourcesPanel({
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Sold inițial</CardTitle>
+                    <CardTitle>Poziția de trezorerie (sold inițial)</CardTitle>
                     <CardDescription>
                         {opening?.date
-                            ? `Solduri la ${opening.date}, rulate cu OMC până la ${opening.as_of}.`
-                            : 'Introdu soldurile și data lor în parametri.'}
+                            ? opening.mode === 'auto'
+                                ? `Solduri OMC la ${opening.date} (eu_banca_sold, casa_sold, conta_sold 5081), rulate cu documentele de bancă și casă până la ${opening.as_of}.`
+                                : `Solduri introduse manual la ${opening.date}, rulate cu OMC până la ${opening.as_of}.`
+                            : 'Nu există încă o poziție: OMC nu a răspuns sau lipsesc soldurile de sfârșit de lună.'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {opening?.date ? (
-                        <table className="w-full text-sm">
-                            <thead className="text-xs text-muted-foreground uppercase">
-                                <tr>
-                                    <th className="py-1 text-left">Element</th>
-                                    <th className="py-1 text-right">RON</th>
-                                    <th className="py-1 text-right">EUR</th>
-                                    <th className="py-1 text-right">USD</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-sidebar-border/70">
-                                {Object.entries(opening.components).map(
-                                    ([key, component]) => (
-                                        <tr key={key}>
-                                            <td className="py-1">
-                                                {String(component.label)}
+                    {opening && opening.rows.length > 0 ? (
+                        <div className="overflow-auto">
+                            <table className="w-full text-sm">
+                                <thead className="text-xs text-muted-foreground uppercase">
+                                    <tr>
+                                        <th className="py-1 text-left">
+                                            Element
+                                        </th>
+                                        {opening.currencies.map((currency) => (
+                                            <th
+                                                key={currency}
+                                                className="py-1 text-right"
+                                            >
+                                                {currency}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sidebar-border/70">
+                                    {opening.rows.map((row) => (
+                                        <tr
+                                            key={row.key}
+                                            className={
+                                                row.key.endsWith('_now') ||
+                                                row.key === 'position'
+                                                    ? 'font-semibold'
+                                                    : ''
+                                            }
+                                        >
+                                            <td className="py-1 pr-2">
+                                                {row.label}
                                             </td>
-                                            {['RON', 'EUR', 'USD'].map(
+                                            {opening.currencies.map(
                                                 (currency) => (
                                                     <td
                                                         key={currency}
-                                                        className="py-1 text-right tabular-nums"
+                                                        className="py-1 text-right whitespace-nowrap tabular-nums"
                                                     >
                                                         {fmtRon(
-                                                            Number(
-                                                                component[
-                                                                    currency
-                                                                ] ?? 0,
-                                                            ),
+                                                            row.values[
+                                                                currency
+                                                            ] ?? 0,
                                                         )}
                                                     </td>
                                                 ),
                                             )}
                                         </tr>
-                                    ),
-                                )}
-                                <tr>
-                                    <td className="py-1">
-                                        Mișcări OMC de la data soldurilor
-                                    </td>
-                                    {['RON', 'EUR', 'USD'].map((currency) => (
-                                        <td
-                                            key={currency}
-                                            className="py-1 text-right tabular-nums"
-                                        >
-                                            {fmtRon(
-                                                opening.rolled[currency] ?? 0,
-                                            )}
-                                        </td>
                                     ))}
-                                </tr>
-                                <tr className="font-semibold">
-                                    <td className="py-1">Poziție azi</td>
-                                    {['RON', 'EUR', 'USD'].map((currency) => (
-                                        <td
-                                            key={currency}
-                                            className="py-1 text-right tabular-nums"
-                                        >
-                                            {fmtRon(
-                                                opening.by_currency[currency] ??
-                                                    0,
-                                            )}
+                                    <tr className="font-semibold">
+                                        <td className="py-1 pr-2">
+                                            Total RON (la cursurile de mai jos)
                                         </td>
-                                    ))}
-                                </tr>
-                                <tr className="font-semibold">
-                                    <td className="py-1">Total RON</td>
-                                    <td
-                                        className="py-1 text-right tabular-nums"
-                                        colSpan={3}
-                                    >
-                                        {fmtRon(opening.total)}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                        <td
+                                            className="py-1 text-right tabular-nums"
+                                            colSpan={opening.currencies.length}
+                                        >
+                                            {fmtRon(opening.total)}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     ) : null}
                 </CardContent>
             </Card>
@@ -226,9 +214,13 @@ export default function SourcesPanel({
                         furnizor deschise din OMC pe scadență.
                     </p>
                     <p>
-                        <b className="text-foreground">OPEX.</b> Medii lunare
-                        din facturile furnizor OMC (12 luni) sau valorile din
-                        parametri, puse în săptămâna zilei de plată.
+                        <b className="text-foreground">OPEX.</b> Medii lunare pe
+                        ultimele 12 luni închise: facturile furnizor OMC pe
+                        conturi de cheltuieli (chirii, marketing, servicii…) și
+                        registrul jurnal pentru ce se plătește direct din bancă
+                        (salarii, contribuții, impozit, comisioane, dividende,
+                        CAPEX); valorile din parametri au prioritate. Fiecare
+                        sumă intră în săptămâna zilei de plată.
                     </p>
                     <p>
                         <b className="text-foreground">Scenariu.</b> Dosarele
