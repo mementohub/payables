@@ -675,6 +675,9 @@ class SyncService
 
         InvoicePayment::whereIn('invoice_id', array_values($lookup))->delete();
 
+        $now = Carbon::now();
+        $payload = [];
+
         $bankLineLookup = $this->buildBankStatementLineLookup($company, $rows);
 
         $count = 0;
@@ -693,7 +696,7 @@ class SyncService
             }
             $seen[$allocationKey] = true;
 
-            InvoicePayment::create([
+            $payload[] = [
                 'invoice_id' => $invoiceId,
                 'data_doc' => $row->data_doc_fin,
                 'tip_doc' => $row->tip_doc_fin,
@@ -703,8 +706,16 @@ class SyncService
                 'val_com' => $row->val_com ?? 0,
                 'moneda' => $row->fin_moneda,
                 'bank_statement_line_id' => $bankLineLookup[$paymentKey] ?? null,
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
             $count++;
+        }
+
+        // The rows above were just deleted, so they go back in bulk: a history
+        // slice carries a few thousand allocations.
+        foreach (array_chunk($payload, 500) as $chunk) {
+            InvoicePayment::query()->insert($chunk);
         }
 
         return $count;
@@ -858,26 +869,40 @@ class SyncService
 
         $synced = 0;
 
+        $now = Carbon::now();
+        $payload = [];
+
         foreach ($rows as $row) {
             $role = $roles[$row->partener];
             $prior = $existing->get($row->partener);
 
-            Partner::updateOrCreate(
-                ['company_id' => $company->id, 'name' => $row->partener],
-                [
-                    'cui' => $row->cod_cci,
-                    'reg_com' => $row->reg_comert_nr,
-                    'is_furnizor' => $role['furnizor'] || (bool) $prior?->is_furnizor,
-                    'is_client' => $role['client'] || (bool) $prior?->is_client,
-                    'is_vat_payer' => (bool) $row->da_nu_platitor_tva,
-                    'country' => $row->tara,
-                    'city' => $row->localit,
-                    'address' => $row->adresa,
-                    'phone' => $row->telefon,
-                    'email' => $row->email_adr,
-                ]
-            );
+            $payload[] = [
+                'company_id' => $company->id,
+                'name' => $row->partener,
+                'cui' => $row->cod_cci,
+                'reg_com' => $row->reg_comert_nr,
+                'is_furnizor' => $role['furnizor'] || (bool) $prior?->is_furnizor,
+                'is_client' => $role['client'] || (bool) $prior?->is_client,
+                'is_vat_payer' => (bool) $row->da_nu_platitor_tva,
+                'country' => $row->tara,
+                'city' => $row->localit,
+                'address' => $row->adresa,
+                'phone' => $row->telefon,
+                'email' => $row->email_adr,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
             $synced++;
+        }
+
+        // One statement per chunk instead of a read and a write per partner:
+        // a history slice carries a couple of thousand of them.
+        foreach (array_chunk($payload, 500) as $chunk) {
+            Partner::query()->upsert(
+                $chunk,
+                ['company_id', 'name'],
+                ['cui', 'reg_com', 'is_furnizor', 'is_client', 'is_vat_payer', 'country', 'city', 'address', 'phone', 'email', 'updated_at'],
+            );
         }
 
         return $synced;
