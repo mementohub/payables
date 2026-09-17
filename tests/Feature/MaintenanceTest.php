@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\User;
+use App\Services\Maintenance\ApplicationLog;
 use App\Services\Maintenance\ArtisanRunner;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -177,4 +178,36 @@ test('stopping a run that already ended keeps its real outcome', function () {
     $this->actingAs($this->user)->post('/maintenance/stop/sync')->assertRedirect();
 
     expect(app(ArtisanRunner::class)->status(ArtisanRunner::SYNC)['exit_code'])->toBe(0);
+});
+
+test('the page shows the end of the application log', function () {
+    File::ensureDirectoryExists($this->dir);
+    File::put($this->dir.'/laravel.log', implode("\n", [
+        '[2026-09-17 09:00:00] production.INFO: ceva banal',
+        '[2026-09-17 09:30:00] production.ERROR: Allowed memory size of 134217728 bytes exhausted',
+        'Stack trace:',
+        '#0 /var/www/app.php(12): boom()',
+    ]));
+
+    $log = (new ApplicationLog($this->dir))->tail();
+
+    expect($log['path'])->toBe('laravel.log')
+        ->and($log['entries'])->toHaveCount(2)
+        // Newest first, with the trace kept on the line that raised it.
+        ->and($log['entries'][0]['level'])->toBe('error')
+        ->and($log['entries'][0]['message'])->toBe('Allowed memory size of 134217728 bytes exhausted')
+        ->and($log['entries'][0]['body'])->toContain('#0 /var/www/app.php(12)')
+        ->and($log['entries'][1]['level'])->toBe('info');
+});
+
+test('a log too big to read is only read from the end', function () {
+    File::ensureDirectoryExists($this->dir);
+    $filler = str_repeat("[2026-09-17 08:00:00] production.INFO: vechi\n", 20000);
+    File::put($this->dir.'/laravel.log', $filler."[2026-09-17 09:30:00] production.ERROR: ultima\n");
+
+    $log = (new ApplicationLog($this->dir))->tail();
+
+    expect($log['size'])->toBeGreaterThan(262144)
+        ->and($log['entries'][0]['message'])->toBe('ultima')
+        ->and($log['entries'])->toHaveCount(25);
 });

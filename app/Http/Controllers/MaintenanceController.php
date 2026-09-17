@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Services\Maintenance\ApplicationLog;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Maintenance\AutoSync;
 use App\Services\SyncService;
@@ -23,7 +24,7 @@ class MaintenanceController extends Controller
     /** The scheduler is considered down after this long without a heartbeat. */
     public const HEARTBEAT_MINUTES = 3;
 
-    public function index(ArtisanRunner $runner, AutoSync $autoSync): Response
+    public function index(ArtisanRunner $runner, AutoSync $autoSync, ApplicationLog $log): Response
     {
         $beat = Cache::get('scheduler:heartbeat');
 
@@ -46,6 +47,7 @@ class MaintenanceController extends Controller
                 'from' => (string) config('sync.history_from', '2016-01-01'),
             ],
             'sync' => Cache::get('erp:sync:last_run'),
+            'appLog' => Inertia::defer(fn () => $log->tail()),
             'companies' => Company::query()->orderBy('name')->get()->map(fn (Company $company) => [
                 'id' => $company->id,
                 'name' => $company->name,

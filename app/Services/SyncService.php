@@ -1082,13 +1082,16 @@ class SyncService
         $now = now();
 
         foreach ($pozRows as $row) {
-            $key = $row->data_doc.'|'.$row->tip_doc.'|'.$row->nr_doc;
+            $key = Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc;
             $invoiceId = $rowsByKey[$key] ?? null;
             if ($invoiceId === null) {
                 continue;
             }
 
-            $inserts[] = [
+            // Two ERP documents can share one local invoice when the database
+            // cannot tell their keys apart; their lines would then collide on
+            // (invoice_id, scv), so the last one read wins.
+            $inserts[$invoiceId.'|'.$row->scv] = [
                 'invoice_id' => $invoiceId,
                 'scv' => $row->scv,
                 'articol' => $row->articol,
@@ -1102,7 +1105,7 @@ class SyncService
             ];
         }
 
-        foreach (array_chunk($inserts, 500) as $batch) {
+        foreach (array_chunk(array_values($inserts), 500) as $batch) {
             InvoiceDetail::insert($batch);
         }
 

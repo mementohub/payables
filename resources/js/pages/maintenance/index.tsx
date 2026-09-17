@@ -6,7 +6,7 @@ import {
     RefreshCw,
     Square,
 } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import SyncController from '@/actions/App/Http/Controllers/SyncController';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { index as maintenanceIndex } from '@/routes/maintenance';
 
 type RunStatus = {
@@ -53,6 +54,18 @@ type Props = {
         last_synced_at: string | null;
         history_until: string | null;
     }[];
+    /** Deferred: undefined until Inertia has loaded the log. */
+    appLog?: {
+        path: string | null;
+        size: number;
+        written_at: string | null;
+        entries: {
+            at: string | null;
+            level: string;
+            message: string;
+            body: string;
+        }[];
+    };
 };
 
 const OK = 'text-emerald-700 dark:text-emerald-500';
@@ -173,6 +186,7 @@ export default function MaintenanceIndex({
     history,
     sync,
     companies,
+    appLog,
 }: Props) {
     const polling = upgrade.running || syncRun.running;
 
@@ -477,8 +491,92 @@ export default function MaintenanceIndex({
                         </div>
                     </CardContent>
                 </Card>
+
+                <ApplicationLogCard log={appLog} />
             </div>
         </>
+    );
+}
+
+/**
+ * The end of the application log. When a page answers with a gateway error
+ * and nobody can open a shell on the server, this is where the reason is.
+ */
+function ApplicationLogCard({ log }: { log?: Props['appLog'] }) {
+    const [open, setOpen] = useState<number | null>(null);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Jurnal aplicație</CardTitle>
+                <CardDescription>
+                    Ultimele erori și avertismente scrise de aplicație
+                    {log?.path
+                        ? `, din ${log.path} (${(log.size / 1048576).toFixed(1)} MB, scris ${dateTime(log.written_at)})`
+                        : ''}
+                    . Cele mai recente primele; apasă o linie ca să vezi tot.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {log === undefined ? (
+                    <div className="space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="h-8 animate-pulse rounded bg-muted"
+                            />
+                        ))}
+                    </div>
+                ) : log.entries.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                        Nicio înregistrare.
+                    </p>
+                ) : (
+                    <div className="divide-y divide-sidebar-border/70 rounded-xl border border-sidebar-border/70 dark:divide-sidebar-border dark:border-sidebar-border">
+                        {log.entries.map((entry, index) => (
+                            <div key={index}>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setOpen(open === index ? null : index)
+                                    }
+                                    className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted/50"
+                                >
+                                    <span
+                                        className={cn(
+                                            'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+                                            entry.level === 'error' ||
+                                                entry.level === 'critical' ||
+                                                entry.level === 'emergency' ||
+                                                entry.level === 'alert'
+                                                ? 'bg-destructive/10 text-destructive'
+                                                : entry.level === 'warning'
+                                                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                                  : 'bg-muted text-muted-foreground',
+                                        )}
+                                    >
+                                        {entry.level}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-sm">
+                                            {entry.message}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {dateTime(entry.at)}
+                                        </span>
+                                    </span>
+                                </button>
+                                {open === index && (
+                                    <pre className="max-h-80 overflow-auto bg-muted/40 px-3 py-2 text-xs whitespace-pre-wrap">
+                                        {entry.body}
+                                    </pre>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 
