@@ -46,195 +46,120 @@ class OmcCashFlowReader
     }
 
     /**
-     * The day each section of the position starts from, always before
-     * today. Bank accounts: the daily balances of eu_banca_sold_zile when
-     * OMC keeps them and they agree with the month-end balances of
-     * eu_banca_sold (checked account by account on the month-ends both
-     * tables hold), otherwise the last month-end of eu_banca_sold; cash
-     * desks: the last day saved in casa_sold; deposits: the last month-end
-     * of conta_sold on 5081.
+     * The treasury position is always stated at the end of yesterday. OMC
+     * saves the bank, cash and 5081 balances only at a month-end closing, so
+     * each of the three starts from its own last closed balance on or before
+     * that day and is rolled with the documents in between. When OMC holds
+     * no closed balance at all before yesterday, the latest one it does hold
+     * is used instead, so the position shows the most recent figures rather
+     * than nothing.
      *
-     * @return array{bank: ?CarbonImmutable, bank_month_end: ?CarbonImmutable, bank_daily: bool, bank_note: string, cash: ?CarbonImmutable, deposits: ?CarbonImmutable}
+     * @return array{as_of: CarbonImmutable, bank: ?CarbonImmutable, cash: ?CarbonImmutable, deposits: ?CarbonImmutable, fallback: bool}
      */
     public function balanceAnchors(CarbonInterface $today): array
     {
-        $day = $today->toDateString();
+        $asOf = CarbonImmutable::instance($today)->subDay()->startOfDay();
+        $deposit = (string) config('cashflow.omc.deposit_account', '5081');
+        $day = $asOf->toDateString();
+
         $row = $this->omc->connection()->selectOne(<<<'SQL'
-            select (select max(s.data_sold) from eu_banca_sold s where s.data_sold < ?::date) as bank,
-                   (select max(s.data_sold) from casa_sold s where s.data_sold < ?::date) as cash,
-                   (select max(s.data_sold) from conta_sold s where s.conts = ? and s.data_sold < ?::date) as deposits
-            SQL, [$day, $day, (string) config('cashflow.omc.deposit_account', '5081'), $day]);
+            select (select max(s.data_sold) from eu_banca_sold s where s.data_sold <= ?::date) as bank,
+                   (select max(s.data_sold) from casa_sold s where s.data_sold <= ?::date) as cash,
+                   (select max(s.data_sold) from conta_sold s where s.conts = ? and s.data_sold <= ?::date) as deposits,
+                   (select max(s.data_sold) from eu_banca_sold s) as any_bank,
+                   (select max(s.data_sold) from casa_sold s) as any_cash,
+                   (select max(s.data_sold) from conta_sold s where s.conts = ?) as any_deposits
+            SQL, [$day, $day, $deposit, $day, $deposit]);
 
         $parse = fn ($value) => $value !== null ? CarbonImmutable::parse((string) $value) : null;
-        $monthEnd = $parse($row?->bank);
-        [$daily, $note] = $this->dailyBankAnchor($monthEnd, $today);
+        $fallback = $row?->bank === null && $row?->any_bank !== null;
 
         return [
-            'bank' => $daily ?? $monthEnd,
-            'bank_month_end' => $monthEnd,
-            'bank_daily' => $daily !== null,
-            'bank_note' => $note,
-            'cash' => $parse($row?->cash),
-            'deposits' => $parse($row?->deposits),
+            'as_of' => $fallback ? $parse($row->any_bank) : $asOf,
+            'bank' => $parse($row?->bank ?? $row?->any_bank),
+            'cash' => $parse($row?->cash ?? $row?->any_cash),
+            'deposits' => $parse($row?->deposits ?? $row?->any_deposits),
+            'fallback' => $fallback,
         ];
     }
 
     /**
-     * The last day before today in eu_banca_sold_zile, if the table is
-     * there, has days after the month-end and agrees with eu_banca_sold on
-     * the month-ends of the last six months, account by account (within
-     * one unit of currency). Anything else keeps the month-end balances
-     * and says why.
+     * The BNR rate of each currency on the given day, as OMC records it: the
+     * latest quote on or before that day. The treasury position is converted
+     * at these, because it states what the accounts held on a date.
      *
-     * @return array{0: ?CarbonImmutable, 1: string}
+     * @return array<string, float>
      */
-    private function dailyBankAnchor(?CarbonImmutable $monthEnd, CarbonInterface $today): array
+    public function ratesAt(CarbonInterface $at): array
     {
-        $since = ($monthEnd ?? CarbonImmutable::instance($today))->subMonths(6)->toDateString();
-        $until = ($monthEnd ?? CarbonImmutable::instance($today))->toDateString();
-
         try {
-            $row = $this->omc->connection()->selectOne(<<<'SQL'
-                with both_ as (
-                    select m.banca, m.cont_banca, m.data_sold,
-                           m.sold_banca_db - m.sold_banca_cr as monthly,
-                           coalesce(z.sold_final, z.sold_banca_db - z.sold_banca_cr) as daily
-                    from eu_banca_sold m
-                    join eu_banca_sold_zile z on z.banca = m.banca and z.cont_banca = m.cont_banca and z.data_sold = m.data_sold
-                    where m.data_sold > ?::date and m.data_sold <= ?::date
-                )
-                select (select max(z.data_sold) from eu_banca_sold_zile z where z.data_sold < ?::date) as last_day,
-                       (select count(*) from both_) as compared,
-                       (select count(*) from both_ where abs(daily - monthly) > 1) as mismatched
-                SQL, [$since, $until, $today->toDateString()]);
+            $rows = $this->omc->connection()->select(<<<'SQL'
+                select distinct on (c.moneda) c.moneda, c.curs_bnr
+                from curs c
+                where c.data_curs <= ?::date and c.curs_bnr > 0
+                order by c.moneda, c.data_curs desc
+                SQL, [$at->toDateString()]);
         } catch (Throwable $e) {
             report($e);
 
-            return [null, 'eu_banca_sold_zile nu poate fi citit'];
+            return [];
         }
 
-        $lastDay = $row?->last_day !== null ? CarbonImmutable::parse((string) $row->last_day) : null;
-        $compared = (int) ($row?->compared ?? 0);
-        $mismatched = (int) ($row?->mismatched ?? 0);
+        $rates = ['RON' => 1.0];
 
-        if ($lastDay === null) {
-            return [null, 'eu_banca_sold_zile nu are solduri zilnice'];
+        foreach ($rows as $row) {
+            $rates[self::currency((string) $row->moneda)] = (float) $row->curs_bnr;
         }
 
-        if ($monthEnd !== null && $lastDay->lte($monthEnd)) {
-            return [null, sprintf('eu_banca_sold_zile nu are zile după %s (ultima: %s)', $monthEnd->format('d.m.Y'), $lastDay->format('d.m.Y'))];
-        }
-
-        if ($monthEnd !== null && $compared === 0) {
-            return [null, 'eu_banca_sold_zile nu poate fi validat: nicio zi de sfârșit de lună comună cu eu_banca_sold'];
-        }
-
-        if ($mismatched > 0) {
-            return [null, sprintf('eu_banca_sold_zile diferă de soldurile lunare la %d din %d conturi-luni; se folosesc soldurile lunare', $mismatched, $compared)];
-        }
-
-        return [$lastDay, $monthEnd === null
-            ? sprintf('eu_banca_sold_zile folosit fără validare (eu_banca_sold este gol), ultima zi %s', $lastDay->format('d.m.Y'))
-            : sprintf('eu_banca_sold_zile validat (%d conturi-luni identice cu eu_banca_sold), ultima zi %s', $compared, $lastDay->format('d.m.Y'))];
+        return $rates;
     }
 
     /**
-     * Treasury position per currency. Bank accounts: the last saved balance
-     * of every account on or before the bank anchor (eu_banca_sold, and
-     * eu_banca_sold_zile when the anchors say so), brought to the anchor
-     * day with the documents in between, then the bank documents after the
-     * anchor up to and including $until; with daily balances, the
-     * difference to the month-end balances rolled to the same day is
-     * reported per currency as a check. Cash desks (casa_sold) and deposits
-     * (conta_sold on 5081) start from their own anchors the same way;
-     * deposit moves (counterpart 5081 on OP_PL / OP_INC) are reported apart.
-     * A section without an anchor opens at zero and is not rolled.
+     * Treasury position per currency at the end of the given day: the last
+     * closed balance of every bank account, cash desk and 5081 deposit
+     * account on or before its anchor, rolled with the bank and cash
+     * documents dated after that anchor up to and including $asOf. Deposit
+     * moves, the OP_PL and OP_INC documents whose counterpart is 5081, are
+     * reported apart so the deposits roll on their own.
      *
-     * @param  array{bank: ?CarbonInterface, bank_month_end?: ?CarbonInterface, bank_daily?: bool, cash: ?CarbonInterface, deposits: ?CarbonInterface}  $anchors
-     * @return list<array{currency: string, bank_open: float, bank_in: float, bank_out: float, bank_check: ?float, bank_check_accounts: int, cash_open: float, cash_in: float, cash_out: float, deposits_open: float, deposits_open_lei: float, deposits_change: float}>
+     * @param  array{bank: ?CarbonInterface, cash: ?CarbonInterface, deposits: ?CarbonInterface}  $anchors
+     * @return list<array{currency: string, bank_open: float, bank_in: float, bank_out: float, cash_open: float, cash_in: float, cash_out: float, deposits_open: float, deposits_open_lei: float, deposits_change: float}>
      */
-    public function openingPosition(array $anchors, CarbonInterface $until): array
+    public function openingPosition(array $anchors, CarbonInterface $asOf): array
     {
         $connection = $this->omc->connection();
         $deposit = (string) config('cashflow.omc.deposit_account', '5081');
-        $to = CarbonImmutable::instance($until)->addDay()->toDateString();
+        $to = CarbonImmutable::instance($asOf)->toDateString();
         $balancesAt = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? '1900-01-01';
+        // Without a closed balance there is nothing to roll from, so the
+        // section opens at zero and its documents are left out too.
         $movesAfter = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? $to;
-        $bank = $anchors['bank'] ?? null;
-        $daily = ($anchors['bank_daily'] ?? false) && $bank !== null;
-        $bankAt = $balancesAt($bank);
-        $docsFrom = $bank === null ? $to : $movesAfter($anchors['bank_month_end'] ?? $bank);
 
-        $dailyRows = $daily ? <<<'SQL'
-                union all
-                select z.banca, z.cont_banca, z.data_sold, coalesce(z.sold_final, z.sold_banca_db - z.sold_banca_cr) as s, 1 as daily
-                from eu_banca_sold_zile z
-                where z.data_sold <= ?::date
-            SQL : '';
-        $checkCte = $daily ? <<<'SQL'
-            monthly as (
-                select distinct on (s.banca, s.cont_banca) s.banca, s.cont_banca, s.data_sold, s.sold_banca_db - s.sold_banca_cr as s
+        $rows = $connection->select(<<<'SQL'
+            with acc as (
+                select banca, cont_banca, moneda from eu_banca where not coalesce(discontinued, false)
+            ),
+            s1 as (
+                select distinct on (s.banca, s.cont_banca) s.banca, s.cont_banca,
+                       coalesce(s.sold_banca_db, 0) - coalesce(s.sold_banca_cr, 0) as s
                 from eu_banca_sold s
                 where s.data_sold <= ?::date
                 order by s.banca, s.cont_banca, s.data_sold desc
             ),
-            rolled as (
-                select m.banca, m.cont_banca, m.s + coalesce(sum(x.inc - x.pl), 0) as s
-                from monthly m
-                left join docs x on x.banca = m.banca and x.cont_banca = m.cont_banca and x.data_doc > m.data_sold and x.data_doc <= ?::date
-                group by m.banca, m.cont_banca, m.s
-            ),
-            bank_check as (
-                select a.moneda, sum(s1.s - r.s) as diff, count(*) as accounts
-                from s1
-                join acc a on a.banca = s1.banca and a.cont_banca = s1.cont_banca
-                join rolled r on r.banca = s1.banca and r.cont_banca = s1.cont_banca
-                where s1.daily = 1
-                group by a.moneda
-            ),
-            SQL : '';
-        $checkColumns = $daily
-            ? 'coalesce(ck.diff, 0) as bank_check, coalesce(ck.accounts, 0) as bank_check_accounts,'
-            : 'null::float8 as bank_check, 0 as bank_check_accounts,';
-        $checkJoin = $daily ? 'left join bank_check ck on ck.moneda = cu.moneda' : '';
-
-        $sql = sprintf(<<<'SQL'
-            with acc as (
-                select banca, cont_banca, moneda from eu_banca where not coalesce(discontinued, false)
-            ),
-            saved as (
-                select s.banca, s.cont_banca, s.data_sold, s.sold_banca_db - s.sold_banca_cr as s, 0 as daily
-                from eu_banca_sold s
-                where s.data_sold <= ?::date
-                %1$s
-            ),
-            s1 as (
-                select distinct on (r.banca, r.cont_banca) r.banca, r.cont_banca, r.data_sold, r.s, r.daily
-                from saved r
-                order by r.banca, r.cont_banca, r.data_sold desc, r.daily desc
-            ),
-            docs as (
-                select d.banca_eu as banca, d.cont_banca_eu as cont_banca, d.data_doc,
-                       case when t.incasare_b then d.val_mon else 0 end as inc,
-                       case when t.plata_b then d.val_mon else 0 end as pl
+            mv as (
+                select d.banca_eu as banca, d.cont_banca_eu as cont_banca,
+                       sum(case when t.incasare_b then d.val_mon else 0 end) as inc,
+                       sum(case when t.plata_b then d.val_mon else 0 end) as pl
                 from doc d
                 join tip_doc t on t.tip_doc = d.tip_doc
-                where d.data_doc > ?::date and d.data_doc < ?::date
+                where d.data_doc > ?::date and d.data_doc <= ?::date
                   and (t.incasare_b or t.plata_b)
                   and d.data_anulare is null
-            ),
-            mv as (
-                select s1.banca, s1.cont_banca,
-                       sum(case when x.data_doc <= ?::date then x.inc - x.pl else 0 end) as catchup,
-                       sum(case when x.data_doc > ?::date then x.inc else 0 end) as inc,
-                       sum(case when x.data_doc > ?::date then x.pl else 0 end) as pl
-                from s1
-                join docs x on x.banca = s1.banca and x.cont_banca = s1.cont_banca and x.data_doc > s1.data_sold
                 group by 1, 2
             ),
             bank as (
                 select a.moneda,
-                       sum(coalesce(s1.s, 0) + coalesce(mv.catchup, 0)) as open_m,
+                       sum(coalesce(s1.s, 0)) as open_m,
                        sum(coalesce(mv.inc, 0)) as inc,
                        sum(coalesce(mv.pl, 0)) as pl
                 from acc a
@@ -242,9 +167,8 @@ class OmcCashFlowReader
                 left join mv on mv.banca = a.banca and mv.cont_banca = a.cont_banca
                 group by a.moneda
             ),
-            %2$s
             cash as (
-                select c.moneda, sum(cs.sold_casa_db) as casa_m
+                select c.moneda, sum(coalesce(cs.sold_casa_db, 0)) as casa_m
                 from (
                     select distinct on (s.casa, s.moneda) s.casa, s.moneda, s.sold_casa_db
                     from casa_sold s
@@ -260,7 +184,7 @@ class OmcCashFlowReader
                        sum(case when t.plata_c then d.val_mon else 0 end) as pl
                 from doc d
                 join tip_doc t on t.tip_doc = d.tip_doc
-                where d.data_doc > ?::date and d.data_doc < ?::date
+                where d.data_doc > ?::date and d.data_doc <= ?::date
                   and (t.incasare_c or t.plata_c)
                   and d.data_anulare is null
                 group by 1
@@ -269,7 +193,7 @@ class OmcCashFlowReader
                 select d.moneda,
                        sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as dep_net
                 from doc d
-                where d.data_doc > ?::date and d.data_doc < ?::date
+                where d.data_doc > ?::date and d.data_doc <= ?::date
                   and d.tip_doc in ('OP_PL', 'OP_INC')
                   and d.conts_direct_coresp = ?
                   and d.data_anulare is null
@@ -283,23 +207,16 @@ class OmcCashFlowReader
             )
             select cu.moneda,
                    coalesce(b.open_m, 0) as bank_open, coalesce(b.inc, 0) as bank_in, coalesce(b.pl, 0) as bank_out,
-                   %3$s
                    coalesce(c.casa_m, 0) as cash_open, coalesce(cm.inc, 0) as cash_in, coalesce(cm.pl, 0) as cash_out,
                    coalesce(dp.dep_net, 0) as deposits_change
             from currencies cu
             left join bank b on b.moneda = cu.moneda
-            %4$s
             left join cash c on c.moneda = cu.moneda
             left join cashmv cm on cm.moneda = cu.moneda
             left join dep dp on dp.moneda = cu.moneda
             order by 1
-            SQL, $dailyRows, $checkCte, $checkColumns, $checkJoin);
-
-        $rows = $connection->select($sql, [
-            $bankAt, ...($daily ? [$bankAt] : []),
-            $docsFrom, $to,
-            $bankAt, $bankAt, $bankAt,
-            ...($daily ? [$bankAt, $bankAt] : []),
+            SQL, [
+            $balancesAt($anchors['bank']), $movesAfter($anchors['bank']), $to,
             $balancesAt($anchors['cash']), $movesAfter($anchors['cash']), $to,
             $movesAfter($anchors['deposits']), $to, $deposit,
         ]);
@@ -327,8 +244,6 @@ class OmcCashFlowReader
                 'bank_open' => round((float) $row->bank_open, 2),
                 'bank_in' => round((float) $row->bank_in, 2),
                 'bank_out' => round((float) $row->bank_out, 2),
-                'bank_check' => $row->bank_check !== null ? round((float) $row->bank_check, 2) : null,
-                'bank_check_accounts' => (int) $row->bank_check_accounts,
                 'cash_open' => round((float) $row->cash_open, 2),
                 'cash_in' => round((float) $row->cash_in, 2),
                 'cash_out' => round((float) $row->cash_out, 2),
@@ -340,7 +255,7 @@ class OmcCashFlowReader
 
         foreach ($deposits as $row) {
             $currency = self::currency((string) $row->moneda);
-            $position[$currency] ??= ['currency' => $currency, 'bank_open' => 0.0, 'bank_in' => 0.0, 'bank_out' => 0.0, 'bank_check' => null, 'bank_check_accounts' => 0, 'cash_open' => 0.0, 'cash_in' => 0.0, 'cash_out' => 0.0, 'deposits_open' => 0.0, 'deposits_open_lei' => 0.0, 'deposits_change' => 0.0];
+            $position[$currency] ??= ['currency' => $currency, 'bank_open' => 0.0, 'bank_in' => 0.0, 'bank_out' => 0.0, 'cash_open' => 0.0, 'cash_in' => 0.0, 'cash_out' => 0.0, 'deposits_open' => 0.0, 'deposits_open_lei' => 0.0, 'deposits_change' => 0.0];
             $position[$currency]['deposits_open'] += round((float) $row->sold, 2);
             $position[$currency]['deposits_open_lei'] += round((float) $row->sold_lei, 2);
         }

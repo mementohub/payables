@@ -64,18 +64,19 @@ export type OpeningRow = {
 };
 
 export type OpeningDetail = {
+    /** The day the position is stated at: the end of yesterday. */
     date: string | null;
-    /** The day of the last saved balance each section starts from. */
-    anchors?: {
+    as_of: string;
+    /** The closed balance each section is rolled forward from. */
+    base?: {
         bank: string | null;
         cash: string | null;
         deposits: string | null;
     };
-    /** The OMC table each section starts from. */
-    sources?: { bank: string; cash: string; deposits: string };
-    /** What was found in the daily bank balances (eu_banca_sold_zile). */
-    notes?: { bank: string };
-    as_of: string;
+    /** True when OMC held no closed balance before yesterday. */
+    fallback?: boolean;
+    /** BNR rates OMC holds for that day. */
+    rates?: Record<string, number>;
     currencies: string[];
     rows: OpeningRow[];
     by_currency: Record<string, number>;

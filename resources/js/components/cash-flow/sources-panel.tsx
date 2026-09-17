@@ -108,7 +108,7 @@ export default function SourcesPanel({
                     <CardTitle>Poziția de trezorerie (sold inițial)</CardTitle>
                     <CardDescription>
                         {opening?.date
-                            ? `Solduri OMC: bănci la ${opening.anchors?.bank ?? opening.date} (${opening.sources?.bank ?? 'eu_banca_sold'}), casierii la ${opening.anchors?.cash ?? opening.date} (casa_sold), depozite 5081 la ${opening.anchors?.deposits ?? opening.date} (conta_sold), fiecare rulat cu documentele de bancă și casă de după acea zi până la ${opening.as_of}.${opening.notes?.bank ? ` ${opening.notes.bank.replace(/\.$/, '')}.` : ''}`
+                            ? `Poziția de trezorerie la ${opening.date}, sfârșitul zilei de ieri: soldurile contabile de bază (bănci ${opening.base?.bank ?? '–'}, casierii ${opening.base?.cash ?? '–'}, depozite 5081 ${opening.base?.deposits ?? '–'}) rulate cu documentele de bancă și casă până în acea zi inclusiv, la cursul BNR din OMC de la acea dată.${opening.fallback ? ' OMC nu are solduri înainte de ieri; s-a folosit cea mai recentă dată disponibilă.' : ''}`
                             : 'Nu există încă o poziție: OMC nu a răspuns sau lipsesc soldurile de sfârșit de lună.'}
                     </CardDescription>
                 </CardHeader>
@@ -163,7 +163,24 @@ export default function SourcesPanel({
                                     ))}
                                     <tr className="font-semibold">
                                         <td className="py-1 pr-2">
-                                            Total RON (la cursurile de mai jos)
+                                            Total RON
+                                            {opening.rates &&
+                                            Object.keys(opening.rates).length >
+                                                0
+                                                ? ` (BNR ${Object.entries(
+                                                      opening.rates,
+                                                  )
+                                                      .filter(
+                                                          ([currency]) =>
+                                                              currency !==
+                                                              'RON',
+                                                      )
+                                                      .map(
+                                                          ([currency, rate]) =>
+                                                              `${currency} ${rate}`,
+                                                      )
+                                                      .join(', ')})`
+                                                : ''}
                                         </td>
                                         <td
                                             className="py-1 text-right tabular-nums"
@@ -191,10 +208,12 @@ export default function SourcesPanel({
                         după sincronizarea OMC și la cerere.
                     </p>
                     <p>
-                        <b className="text-foreground">Sold inițial.</b>{' '}
-                        Soldurile de bănci, casierii și depozite introduse în
-                        parametri la data lor, rulate cu documentele de încasare
-                        și plată din OMC până azi.
+                        <b className="text-foreground">Sold inițial.</b> Poziția
+                        de trezorerie din OMC la sfârșitul zilei de ieri:
+                        ultimul sold contabil închis al băncilor, casieriilor și
+                        depozitelor 5081, rulat cu documentele de încasare și
+                        plată de după el, până ieri inclusiv, la cursul BNR al
+                        acelei zile.
                     </p>
                     <p>
                         <b className="text-foreground">Încasări.</b> Dosare

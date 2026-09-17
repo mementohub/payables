@@ -32,8 +32,18 @@ class CashFlowReportBuilder
     /** @var array<string, float> */
     private array $fx = [];
 
-    /** Last closed month-end in OMC, when the position was read from it. */
+    /** Last closed month-end in OMC: the window the OPEX averages cover. */
     private ?CarbonImmutable $anchor = null;
+
+    /** The day the treasury position is stated at, the end of yesterday. */
+    private ?CarbonImmutable $positionAsOf = null;
+
+    /**
+     * BNR rates OMC holds for that day, used to convert the position.
+     *
+     * @var array<string, float>
+     */
+    private array $positionRates = [];
 
     /** @var list<array{key: string, label: string, status: string, message: ?string, ms: int, rows: int}> */
     private array $sources = [];
@@ -61,6 +71,8 @@ class CashFlowReportBuilder
         $this->lines = [];
         $this->detail = [];
         $this->anchor = null;
+        $this->positionAsOf = null;
+        $this->positionRates = [];
 
         $snapshot = new CashFlowSnapshot([
             'built_at' => now(),
@@ -212,11 +224,11 @@ class CashFlowReportBuilder
     }
 
     /**
-     * The treasury position: the latest balances OMC saved before today
-     * (bank accounts from the daily balances when OMC keeps them and they
-     * check out against the month-end ones, cash desks and deposits on
-     * 5081 from their last saved day), each rolled forward with the bank
-     * and cash documents dated after its own balance day, up to today.
+     * The treasury position at the end of yesterday: the last closed balance
+     * of the bank accounts, cash desks and 5081 deposits, each rolled with
+     * the documents recorded after it, up to and including yesterday. The
+     * amounts are converted at the BNR rate OMC holds for that day, because
+     * the position states what the accounts held on a date.
      *
      * @return array<string, mixed>
      */
@@ -224,6 +236,8 @@ class CashFlowReportBuilder
     {
         $this->anchor = $this->omc->monthEndAnchor($this->today);
         $anchors = $this->omc->balanceAnchors($this->today);
+        $asOf = $anchors['as_of'];
+        $this->positionAsOf = $asOf;
 
         if ($anchors['bank'] === null && $anchors['cash'] === null && $anchors['deposits'] === null) {
             return [
@@ -233,25 +247,25 @@ class CashFlowReportBuilder
             ];
         }
 
-        $position = $this->omc->openingPosition($anchors, $this->today);
+        $position = $this->omc->openingPosition($anchors, $asOf);
+        $this->positionRates = $this->omc->ratesAt($asOf);
         $currencies = array_values(array_unique(['RON', 'EUR', 'USD', ...array_column($position, 'currency')]));
         $rows = [];
-        $daily = (bool) ($anchors['bank_daily'] ?? false);
-        $at = fn (string $section) => $anchors[$section]?->format('d.m.Y') ?? 'lipsă';
+        $day = $asOf->format('d.m.Y');
+        $base = fn (string $section) => $anchors[$section]?->format('d.m.Y') ?? 'lipsă';
         $labels = [
-            'bank_open' => 'Conturi curente bănci la '.$at('bank').($daily ? ' (solduri zilnice)' : ' (solduri de sfârșit de lună)'),
-            'bank_in' => 'Încasări prin bancă după '.$at('bank'),
-            'bank_out' => 'Plăți prin bancă după '.$at('bank'),
-            'bank_now' => 'Conturi curente bănci azi',
-            ...($daily ? ['bank_check' => 'Verificare: soldurile zilnice minus soldurile de sfârșit de lună rulate până la '.$at('bank')] : []),
-            'cash_open' => 'Numerar în casierii la '.$at('cash'),
-            'cash_in' => 'Încasări în numerar după '.$at('cash'),
-            'cash_out' => 'Plăți în numerar după '.$at('cash'),
-            'cash_now' => 'Numerar în casierii azi',
-            'deposits_open' => 'Depozite bancare (5081) la '.$at('deposits'),
-            'deposits_change' => 'Depozite plasate (+) / lichidate (−) după '.$at('deposits'),
-            'deposits_now' => 'Depozite bancare azi',
-            'position' => 'Poziție de trezorerie azi',
+            'bank_open' => 'Conturi curente bănci – sold contabil de bază ('.$base('bank').')',
+            'bank_in' => 'Încasări prin bancă până la '.$day,
+            'bank_out' => 'Plăți prin bancă până la '.$day,
+            'bank_now' => 'Conturi curente bănci la '.$day,
+            'cash_open' => 'Numerar în casierii – sold contabil de bază ('.$base('cash').')',
+            'cash_in' => 'Încasări în numerar până la '.$day,
+            'cash_out' => 'Plăți în numerar până la '.$day,
+            'cash_now' => 'Numerar în casierii la '.$day,
+            'deposits_open' => 'Depozite bancare (5081) – sold contabil de bază ('.$base('deposits').')',
+            'deposits_change' => 'Depozite plasate (+) / lichidate (−) până la '.$day,
+            'deposits_now' => 'Depozite bancare la '.$day,
+            'position' => 'Poziție de trezorerie la '.$day,
         ];
 
         foreach ($labels as $key => $label) {
@@ -271,40 +285,37 @@ class CashFlowReportBuilder
                 $rows[$key]['values'][$currency] = round($row[$key], 2);
             }
 
-            if ($daily) {
-                $rows['bank_check']['values'][$currency] = round((float) ($row['bank_check'] ?? 0), 2);
-            }
-
             $rows['bank_now']['values'][$currency] = round($bankNow, 2);
             $rows['cash_now']['values'][$currency] = round($cashNow, 2);
             $rows['deposits_now']['values'][$currency] = round($depositsNow, 2);
             $rows['position']['values'][$currency] = round($bankNow + $cashNow + $depositsNow, 2);
             $byCurrency[$currency] = round($bankNow + $cashNow + $depositsNow, 2);
-            $total += $this->lei($bankNow + $cashNow + $depositsNow, $currency);
+            $total += $this->positionLei($bankNow + $cashNow + $depositsNow, $currency);
         }
 
-        $sources = ['bank' => $daily ? 'eu_banca_sold_zile' : 'eu_banca_sold', 'cash' => 'casa_sold', 'deposits' => 'conta_sold'];
-        $note = trim((string) ($anchors['bank_note'] ?? ''));
+        $rates = array_intersect_key($this->positionRates, array_flip($currencies));
 
         return [
-            'date' => ($anchors['bank'] ?? $anchors['cash'] ?? $anchors['deposits'])->toDateString(),
-            'anchors' => ['bank' => $anchors['bank']?->toDateString(), 'cash' => $anchors['cash']?->toDateString(), 'deposits' => $anchors['deposits']?->toDateString()],
-            'sources' => $sources,
-            'notes' => ['bank' => $note],
-            'as_of' => $this->today->toDateString(),
+            'date' => $asOf->toDateString(),
+            'as_of' => $asOf->toDateString(),
+            'base' => ['bank' => $anchors['bank']?->toDateString(), 'cash' => $anchors['cash']?->toDateString(), 'deposits' => $anchors['deposits']?->toDateString()],
+            'fallback' => (bool) $anchors['fallback'],
+            'rates' => array_map(fn (float $rate) => round($rate, 4), $rates),
             'currencies' => $currencies,
             'rows' => array_values($rows),
             'by_currency' => $byCurrency,
             'total' => round($total, 2),
             '_rows' => count($position),
             '_message' => sprintf(
-                'Solduri OMC: bănci la %s (%s), casierii la %s (casa_sold), depozite 5081 la %s (conta_sold), fiecare rulat cu documentele de bancă și casă de după acea zi până la %s.%s',
-                $at('bank'),
-                $sources['bank'],
-                $at('cash'),
-                $at('deposits'),
-                $this->today->format('d.m.Y'),
-                $note !== '' ? ' '.rtrim($note, '.').'.' : '',
+                'Poziția de trezorerie la %s (%s): soldurile contabile de bază – bănci %s, casierii %s, depozite 5081 %s – rulate cu documentele de bancă și casă până la %s inclusiv%s.%s',
+                $day,
+                $anchors['fallback'] ? 'cea mai recentă dată cu solduri în OMC' : 'sfârșitul zilei de ieri',
+                $base('bank'),
+                $base('cash'),
+                $base('deposits'),
+                $day,
+                $rates !== [] ? ', la cursul BNR din OMC de la acea dată ('.implode(', ', array_map(fn ($c, $r) => $c.' '.number_format($r, 4, ',', '.'), array_keys($rates), $rates)).')' : '',
+                $anchors['fallback'] ? ' OMC nu are solduri înainte de ieri; s-a folosit cea mai recentă dată disponibilă.' : '',
             ),
         ];
     }
@@ -316,10 +327,10 @@ class CashFlowReportBuilder
     {
         return [
             'date' => null,
-            'anchors' => ['bank' => null, 'cash' => null, 'deposits' => null],
-            'sources' => ['bank' => 'eu_banca_sold', 'cash' => 'casa_sold', 'deposits' => 'conta_sold'],
-            'notes' => ['bank' => ''],
-            'as_of' => $this->today->toDateString(),
+            'as_of' => $this->today->subDay()->toDateString(),
+            'base' => ['bank' => null, 'cash' => null, 'deposits' => null],
+            'fallback' => false,
+            'rates' => [],
             'currencies' => ['RON', 'EUR', 'USD'],
             'rows' => [],
             'by_currency' => [],
@@ -1006,9 +1017,11 @@ class CashFlowReportBuilder
             report($e);
         }
 
+        $positionDay = ($this->positionAsOf ?? $this->today->subDay())->toDateString();
+
         if ($this->anchor !== null && ! isset($anchors[$this->anchor->toDateString()])) {
-            // No month-end table row for the anchor month: use today's position as the last anchor.
-            $anchors[$this->today->toDateString()] = $openingTotal;
+            // No month-end table row for the anchor month: use the position of yesterday as the last anchor.
+            $anchors[$positionDay] = $openingTotal;
         }
 
         ksort($anchors);
@@ -1156,7 +1169,7 @@ class CashFlowReportBuilder
         $weeks = $this->grid->weeks;
         $scenarioOn = (bool) ($this->params['scenario']['enabled'] ?? true);
 
-        $this->line('A', 'Sold inițial de trezorerie (bănci + casierii + depozite)', 'A', array_fill(0, $weeks, 0.0), kind: 'balance', note: 'S+1: ultimele solduri salvate în OMC, rulate cu documentele până azi; apoi soldul final al săptămânii anterioare');
+        $this->line('A', 'Sold inițial de trezorerie (bănci + casierii + depozite)', 'A', array_fill(0, $weeks, 0.0), kind: 'balance', note: 'S+1: poziția de trezorerie din OMC la sfârșitul zilei de ieri; apoi soldul final al săptămânii anterioare');
 
         $codes = ['pachete' => 'B1', 'circuite' => 'B2', 'exotic' => 'B3', 'sphinx' => 'B4', 'cazare' => 'B5', 'bilete' => 'B6', 'altele' => 'B7'];
 
@@ -1398,6 +1411,18 @@ class CashFlowReportBuilder
         $known = array_keys((array) config('etrip.connections', []));
 
         return array_values(array_filter((array) ($this->params['etrip_connections'] ?? []), fn ($name) => in_array($name, $known, true)));
+    }
+
+    /**
+     * A treasury amount in lei, at the BNR rate OMC holds for the day the
+     * position is stated at; the report's own rates cover what the day has
+     * no quote for.
+     */
+    private function positionLei(float $amount, string $currency): float
+    {
+        $currency = OmcCashFlowReader::currency($currency);
+
+        return $amount * (float) ($this->positionRates[$currency] ?? $this->fx[$currency] ?? 1.0);
     }
 
     private function lei(float $amount, string $currency): float
