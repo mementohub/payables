@@ -245,7 +245,7 @@ export default function CashFlowReport({
                     </Alert>
                 )}
 
-                <Tabs defaultValue={payload ? 'report' : 'parameters'}>
+                <Tabs defaultValue="report">
                     <TabsList>
                         <TabsTrigger value="report">Raport</TabsTrigger>
                         <TabsTrigger value="parameters">Parametri</TabsTrigger>
@@ -263,12 +263,23 @@ export default function CashFlowReport({
                     </TabsList>
 
                     <TabsContent value="report" className="grid gap-4">
-                        {!payload || !report ? (
+                        {snapshot === undefined ? (
+                            <Card>
+                                <CardContent className="space-y-3 py-6">
+                                    {Array.from({ length: 5 }).map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="h-8 animate-pulse rounded bg-muted"
+                                        />
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        ) : !payload || !report ? (
                             <Card>
                                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                                     {run.running
                                         ? 'Prima construire a raportului este în curs; pagina se actualizează singură.'
-                                        : 'Raportul nu a fost încă construit. Completează soldul inițial în Parametri și apasă „Recalculează”.'}
+                                        : 'Raportul nu a fost încă construit. Apasă „Recalculează”.'}
                                 </CardContent>
                             </Card>
                         ) : (

@@ -49,9 +49,8 @@ test('the page shows the last snapshot, the parameters and the charter contracts
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('reports/cash-flow')
-            ->where('snapshot.id', $latest->id)
-            ->where('snapshot.status', 'ok')
-            ->where('snapshot.payload.kpis.opening', 5)
+            // The report itself is deferred, so the page carries none of it.
+            ->missing('snapshot')
             ->where('run.running', false)
             ->where('parameters.fx.mode', 'auto')
             ->where('parameters.thresholds.minimum', 3000000)
@@ -68,6 +67,19 @@ test('the page shows the last snapshot, the parameters and the charter contracts
             // The programme is deferred, so it is not on the first render.
             ->missing('flights')
         );
+
+    // Inertia asks for the report next, with the payload the build wrote.
+    $this->actingAs($this->user)
+        ->get('/reports/cash-flow', [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/reports/cash-flow')),
+            'X-Inertia-Partial-Component' => 'reports/cash-flow',
+            'X-Inertia-Partial-Data' => 'snapshot',
+        ])
+        ->assertOk()
+        ->assertJsonPath('props.snapshot.id', $latest->id)
+        ->assertJsonPath('props.snapshot.status', 'ok')
+        ->assertJsonPath('props.snapshot.payload.kpis.opening', 5);
 
     // Inertia asks for it right after, and it carries the dates the contract settles on.
     $this->actingAs($this->user)
@@ -108,7 +120,7 @@ test('the page works before the first snapshot', function () {
     $this->actingAs($this->user)
         ->get('/reports/cash-flow')
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->where('snapshot', null)->has('contracts', 0));
+        ->assertInertia(fn ($page) => $page->missing('snapshot')->has('contracts', 0));
 });
 
 test('recalculating starts cashflow:build in the background', function () {

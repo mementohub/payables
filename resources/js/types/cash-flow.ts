@@ -318,7 +318,8 @@ export type Flight = {
 };
 
 export type CashFlowPageProps = {
-    snapshot: Snapshot | null;
+    /** Deferred: undefined until Inertia has loaded the report. */
+    snapshot?: Snapshot | null;
     run: RunStatus;
     lastRun: { at: string; status: string; id: number } | null;
     parameters: Parameters;

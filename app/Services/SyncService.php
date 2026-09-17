@@ -230,56 +230,61 @@ class SyncService
     public function refreshOpenInvoices(Company $company): int
     {
         $remote = $this->remote->connection($company);
+        $count = 0;
 
-        $open = Invoice::query()
+        // Ten years of history leave hundreds of thousands of open invoices,
+        // so they are walked in batches and each batch is finished before the
+        // next is read: nothing about this grows with the size of the table.
+        Invoice::query()
             ->where('company_id', $company->id)
             ->whereRaw(sprintf('val_mon - val_mon_paid - val_mon_storno > %.2F', 0.01))
-            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc', 'partener_type', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'data_scadenta']);
+            ->select(['id', 'data_doc', 'tip_doc', 'nr_doc', 'partener_type', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'data_scadenta'])
+            ->chunkById(200, function ($chunk) use ($company, $remote, &$count) {
+                $changed = collect();
+                $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
+                $bindings = $chunk
+                    ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
+                    ->all();
 
-        $changed = collect();
+                $rows = collect($remote->select(
+                    'select data_doc, tip_doc, nr_doc, val_mon, coalesce(val_mon_inc, 0) as val_mon_inc, coalesce(val_mon_pl, 0) as val_mon_pl,'
+                    .' coalesce(val_mon_dimin_negru, 0) as val_mon_dimin_negru, data_scadenta'
+                    ." from doc where (data_doc, tip_doc, nr_doc) in ({$placeholders})",
+                    $bindings,
+                ))->keyBy(fn ($row) => Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc);
 
-        foreach ($open->chunk(200) as $chunk) {
-            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
-            $bindings = $chunk
-                ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
-                ->all();
+                foreach ($chunk as $invoice) {
+                    $row = $rows->get($invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
 
-            $rows = collect($remote->select(
-                'select data_doc, tip_doc, nr_doc, val_mon, coalesce(val_mon_inc, 0) as val_mon_inc, coalesce(val_mon_pl, 0) as val_mon_pl,'
-                .' coalesce(val_mon_dimin_negru, 0) as val_mon_dimin_negru, data_scadenta'
-                ." from doc where (data_doc, tip_doc, nr_doc) in ({$placeholders})",
-                $bindings,
-            ))->keyBy(fn ($row) => Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc);
+                    if ($row === null) {
+                        continue;
+                    }
 
-            foreach ($chunk as $invoice) {
-                $row = $rows->get($invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
+                    $attributes = [
+                        'val_mon' => (float) $row->val_mon,
+                        'val_mon_paid' => $invoice->partener_type === 'furnizor' ? (float) $row->val_mon_pl : (float) $row->val_mon_inc,
+                        'val_mon_storno' => (float) $row->val_mon_dimin_negru,
+                        'data_scadenta' => $row->data_scadenta ? Carbon::parse((string) $row->data_scadenta)->toDateString() : null,
+                    ];
 
-                if ($row === null) {
-                    continue;
+                    $same = abs((float) $invoice->val_mon - $attributes['val_mon']) < 0.001
+                        && abs((float) $invoice->val_mon_paid - $attributes['val_mon_paid']) < 0.001
+                        && abs((float) $invoice->val_mon_storno - $attributes['val_mon_storno']) < 0.001
+                        && $invoice->data_scadenta?->toDateString() === $attributes['data_scadenta'];
+
+                    if (! $same) {
+                        $invoice->forceFill($attributes)->save();
+                        $changed->push($invoice);
+                    }
                 }
 
-                $attributes = [
-                    'val_mon' => (float) $row->val_mon,
-                    'val_mon_paid' => $invoice->partener_type === 'furnizor' ? (float) $row->val_mon_pl : (float) $row->val_mon_inc,
-                    'val_mon_storno' => (float) $row->val_mon_dimin_negru,
-                    'data_scadenta' => $row->data_scadenta ? Carbon::parse((string) $row->data_scadenta)->toDateString() : null,
-                ];
+                // The allocations of this batch are rewritten before the next one
+                // is read, so the batch can be released.
+                $this->syncPaymentsOfInvoices($company, $remote, $changed);
+                $count += $changed->count();
+            });
 
-                $same = abs((float) $invoice->val_mon - $attributes['val_mon']) < 0.001
-                    && abs((float) $invoice->val_mon_paid - $attributes['val_mon_paid']) < 0.001
-                    && abs((float) $invoice->val_mon_storno - $attributes['val_mon_storno']) < 0.001
-                    && $invoice->data_scadenta?->toDateString() === $attributes['data_scadenta'];
-
-                if (! $same) {
-                    $invoice->forceFill($attributes)->save();
-                    $changed->push($invoice);
-                }
-            }
-        }
-
-        $this->syncPaymentsOfInvoices($company, $remote, $changed);
-
-        return $changed->count();
+        return $count;
     }
 
     /**

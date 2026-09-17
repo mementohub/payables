@@ -25,5 +25,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Nobody can open a shell on the installation, so every logged
+        // exception has to say which request raised it and how much memory
+        // that request had taken: a fatal out of memory leaves nothing else
+        // to go on.
+        $exceptions->context(fn () => [
+            'url' => request()?->fullUrl(),
+            'method' => request()?->method(),
+            'memory_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
+            'memory_limit' => ini_get('memory_limit'),
+        ]);
     })->create();

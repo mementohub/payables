@@ -24,21 +24,14 @@ class CashFlowReportController extends Controller
 {
     public function index(ArtisanRunner $runner, CashFlowParameters $parameters): Response
     {
-        $snapshot = CashFlowSnapshot::latest();
         $params = $parameters->load();
-        $computed = collect($snapshot?->payload['opex'] ?? [])->pluck('computed', 'key')->filter(fn ($v) => $v !== null)->all();
+        $computed = $this->computedOpex();
 
         return Inertia::render('reports/cash-flow', [
-            'snapshot' => $snapshot ? [
-                'id' => $snapshot->id,
-                'built_at' => $snapshot->built_at->toIso8601String(),
-                'built_by' => $snapshot->built_by,
-                'status' => $snapshot->status,
-                'duration_ms' => $snapshot->duration_ms,
-                'error' => $snapshot->error,
-                'sources' => $snapshot->sources ?? [],
-                'payload' => $snapshot->payload,
-            ] : null,
+            // The payload is the whole 52-week report, so it is loaded after
+            // the page rather than inside it: the page itself must stay small
+            // however large a snapshot grows.
+            'snapshot' => Inertia::defer(fn () => $this->snapshotPayload()),
             'run' => $runner->status(ArtisanRunner::CASHFLOW),
             'lastRun' => Cache::get('cashflow:last_run'),
             'parameters' => $params,
@@ -104,6 +97,49 @@ class CashFlowReportController extends Controller
                 'weeks' => (int) config('cashflow.weeks', 52),
             ],
         ]);
+    }
+
+    /**
+     * The monthly averages the last build worked out, for the parameters
+     * form. Only that corner of the payload is read, so the page never
+     * decodes the whole report to show a handful of numbers.
+     *
+     * @return array<string, float>
+     */
+    private function computedOpex(): array
+    {
+        $query = CashFlowSnapshot::query()->orderByDesc('built_at')->orderByDesc('id');
+        $driver = $query->getConnection()->getDriverName();
+
+        $opex = in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)
+            ? json_decode((string) $query->selectRaw('json_extract(payload, ?) as opex', ['$.opex'])->value('opex'), true)
+            : CashFlowSnapshot::latest()?->payload['opex'] ?? null;
+
+        return collect(is_array($opex) ? $opex : [])
+            ->pluck('computed', 'key')
+            ->filter(fn ($value) => $value !== null)
+            ->all();
+    }
+
+    /**
+     * The last snapshot with its report payload.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function snapshotPayload(): ?array
+    {
+        $snapshot = CashFlowSnapshot::latest();
+
+        return $snapshot ? [
+            'id' => $snapshot->id,
+            'built_at' => $snapshot->built_at->toIso8601String(),
+            'built_by' => $snapshot->built_by,
+            'status' => $snapshot->status,
+            'duration_ms' => $snapshot->duration_ms,
+            'error' => $snapshot->error,
+            'sources' => $snapshot->sources ?? [],
+            'payload' => $snapshot->payload,
+        ] : null;
     }
 
     /**
