@@ -59,8 +59,12 @@ class ArtisanRunner
     public function start(string $run, array $arguments = [], ?string $startedBy = null): void
     {
         $php = (new PhpExecutableFinder)->find(false) ?: 'php';
+        $memory = trim((string) config('sync.run_memory_limit', ''));
         $artisan = implode(' ', [
             escapeshellarg($php),
+            // The server's CLI ini is not ours to edit, so the run asks for
+            // what it needs on its own command line.
+            ...($memory !== '' ? ['-d', escapeshellarg('memory_limit='.$memory)] : []),
             'artisan',
             $this->command($run),
             ...array_map('escapeshellarg', $arguments),

@@ -4,6 +4,7 @@ use App\Models\Company;
 use App\Models\User;
 use App\Services\Maintenance\ApplicationLog;
 use App\Services\Maintenance\ArtisanRunner;
+use App\Services\Maintenance\MemoryLimit;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -210,4 +211,54 @@ test('a log too big to read is only read from the end', function () {
     expect($log['size'])->toBeGreaterThan(262144)
         ->and($log['entries'][0]['message'])->toBe('ultima')
         ->and($log['entries'])->toHaveCount(25);
+});
+
+test('a background run asks PHP for the memory a decade of documents needs', function () {
+    Process::fake(['*' => Process::result('4242')]);
+    config(['sync.run_memory_limit' => '512M']);
+
+    $this->actingAs($this->user)->post('/maintenance/upgrade')->assertRedirect();
+
+    // The whole script is quoted again for `sh -c`, so look for the setting
+    // itself rather than for the quoting around it.
+    Process::assertRan(fn ($process) => str_contains($process->command, 'memory_limit=512M')
+        && str_contains($process->command, 'artisan app:upgrade'));
+});
+
+test('an empty memory limit leaves the server setting alone', function () {
+    Process::fake(['*' => Process::result('4242')]);
+    config(['sync.run_memory_limit' => '']);
+
+    $this->actingAs($this->user)->post('/maintenance/upgrade')->assertRedirect();
+
+    Process::assertRan(fn ($process) => ! str_contains($process->command, 'memory_limit'));
+});
+
+test('the application raises a server memory limit lower than its heaviest page needs', function () {
+    $limit = new MemoryLimit;
+    $server = ini_get('memory_limit');
+
+    try {
+        ini_set('memory_limit', '128M');
+        expect($limit->raiseTo('256M'))->toBe('256M');
+
+        // A more generous setting is never pulled back down.
+        expect($limit->raiseTo('64M'))->toBe('256M');
+
+        ini_set('memory_limit', '-1');
+        expect($limit->raiseTo('256M'))->toBe('-1');
+    } finally {
+        ini_set('memory_limit', $server);
+    }
+});
+
+test('ini sizes are read the way PHP writes them', function () {
+    $limit = new MemoryLimit;
+
+    expect($limit->bytes('256M'))->toBe(268435456)
+        ->and($limit->bytes('1G'))->toBe(1073741824)
+        ->and($limit->bytes('134217728'))->toBe(134217728)
+        ->and($limit->bytes('512k'))->toBe(524288)
+        ->and($limit->bytes('-1'))->toBe(-1)
+        ->and($limit->bytes(''))->toBe(0);
 });

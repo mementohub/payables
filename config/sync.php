@@ -24,6 +24,14 @@ return [
     */
     'auto_enabled' => (bool) env('SYNC_AUTO_ENABLED', true),
 
+    /*
+     * Memory the detached background runs ask PHP for. They walk a decade of
+     * ERP documents in batches, so they need more than a web request does,
+     * and the CLI ini of a managed server is not ours to edit. Empty leaves
+     * the server's own setting alone.
+     */
+    'run_memory_limit' => env('SYNC_RUN_MEMORY_LIMIT', '512M'),
+
     'auto_minutes' => (int) env('SYNC_AUTO_MINUTES', 10),
 
     /*

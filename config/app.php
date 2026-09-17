@@ -43,6 +43,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Memory Limit
+    |--------------------------------------------------------------------------
+    |
+    | The heaviest pages here walk a decade of ERP documents, and the servers
+    | this runs on are managed elsewhere, so the application raises PHP's own
+    | limit while booting when the pool gives it less than this. A larger
+    | setting already in force is left alone; an empty value disables it.
+    |
+    */
+
+    'memory_limit' => env('APP_MEMORY_LIMIT', '256M'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

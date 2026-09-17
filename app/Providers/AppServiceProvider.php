@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Maintenance\MemoryLimit;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        (new MemoryLimit)->raiseTo(config('app.memory_limit'));
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
