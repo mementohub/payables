@@ -402,7 +402,7 @@ export default function CashFlowReport({
                                     <Kpi
                                         label="Scenariu vânzări noi"
                                         value={`${fmtRon(payload.kpis.scenario_bookings)} dosare`}
-                                        hint={`anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
+                                        hint={`încasări ${fmtCompact(payload.kpis.scenario_receipts ?? 0)} RON pe segment (B10.1–B10.7); anul anterior × ${payload.params.scenario?.factor ?? 1}${scenarioOn ? '' : ' (exclus din totaluri)'}`}
                                     />
                                 </div>
 
@@ -548,6 +548,81 @@ export default function CashFlowReport({
                                                         count: row.items,
                                                     }),
                                                 )}
+                                                headers={[
+                                                    'Categorie',
+                                                    'Monedă',
+                                                ]}
+                                                countLabel="Servicii"
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                </div>
+
+                                <div className="grid gap-4 xl:grid-cols-2">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>
+                                                Încasări din vânzări noi
+                                                (scenariu)
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Pe segmentul dosarului și moneda
+                                                încasării: ce au încasat
+                                                dosarele create în aceleași
+                                                săptămâni ale anului anterior,
+                                                decalat 52 de săptămâni × factor
+                                                (liniile B10.1–B10.7).
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <StructureTable
+                                                rows={(
+                                                    payload.structure
+                                                        .new_sales_receipts ??
+                                                    []
+                                                ).map((row) => ({
+                                                    key: `${row.segment}-${row.currency}`,
+                                                    cells: [
+                                                        row.label,
+                                                        row.currency,
+                                                    ],
+                                                    amount: row.amount,
+                                                    lei: row.lei,
+                                                    count: row.receipts,
+                                                }))}
+                                                headers={['Segment', 'Monedă']}
+                                                countLabel="Încasări"
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>
+                                                Plăți furnizori pentru vânzări
+                                                noi (scenariu)
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Pe categorie și moneda
+                                                furnizorului, din aceleași
+                                                dosare ale anului anterior, fără
+                                                charter (linia C11).
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <StructureTable
+                                                rows={(
+                                                    payload.structure
+                                                        .new_sales_costs ?? []
+                                                ).map((row) => ({
+                                                    key: `${row.category}-${row.currency}`,
+                                                    cells: [
+                                                        row.label,
+                                                        row.currency,
+                                                    ],
+                                                    amount: row.amount,
+                                                    lei: row.lei,
+                                                    count: row.items,
+                                                }))}
                                                 headers={[
                                                     'Categorie',
                                                     'Monedă',

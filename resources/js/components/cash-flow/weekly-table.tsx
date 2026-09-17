@@ -123,6 +123,7 @@ export default function WeeklyTable({
                                 const dim = line.scenario && !scenarioOn;
                                 const total =
                                     line.kind === 'value' ||
+                                    line.kind === 'subtotal' ||
                                     line.kind === 'total' ||
                                     line.kind === 'reference'
                                         ? line.values
@@ -140,6 +141,8 @@ export default function WeeklyTable({
                                             'border-t border-sidebar-border/50',
                                             line.kind === 'total' &&
                                                 'bg-muted/30 font-semibold',
+                                            line.kind === 'subtotal' &&
+                                                'font-medium',
                                             line.kind === 'balance' &&
                                                 'font-semibold',
                                             dim &&
@@ -151,6 +154,7 @@ export default function WeeklyTable({
                                                 'sticky left-0 z-10 bg-background px-3 py-1.5',
                                                 line.kind === 'total' &&
                                                     'bg-muted/30',
+                                                line.parent && 'pl-8',
                                             )}
                                             title={line.note ?? undefined}
                                         >
@@ -192,7 +196,10 @@ export default function WeeklyTable({
                                                 >
                                                     {typeof value === 'number'
                                                         ? value === 0 &&
-                                                          line.kind === 'value'
+                                                          (line.kind ===
+                                                              'value' ||
+                                                              line.kind ===
+                                                                  'subtotal')
                                                             ? '·'
                                                             : fmtRon(value)
                                                         : value}

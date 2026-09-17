@@ -6,6 +6,7 @@ use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Throwable;
 
 /**
@@ -116,7 +117,7 @@ class CashFlowReportBuilder
             ?? ['lines' => [], 'catalogue' => CashFlowParameters::opexCatalogue($this->params)];
 
         $scenario = $this->source('new_sales', 'Vânzări noi (curba anului anterior, eTrip)', fn () => $this->newSales())
-            ?? ['receipts' => $this->grid->zeros(), 'costs' => $this->grid->zeros(), 'bookings' => 0];
+            ?? ['receipts' => array_fill_keys(array_keys(BookingSegments::LABELS), $this->grid->zeros()), 'costs' => $this->grid->zeros(), 'bookings' => 0];
 
         $actuals = $this->source('actuals', 'Fluxuri efective an anterior (OMC)', fn () => $this->actuals($opening['total']))
             ?? ['lastyear' => [], 'recent' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
@@ -441,10 +442,8 @@ class CashFlowReportBuilder
         $summary = [];
 
         $contracts = CharterContract::query()->with(['flights' => fn ($q) => $q->orderBy('flight_date')])->orderBy('season')->orderBy('name')->get();
-        $baseSeason = $this->params['scenario']['charter_base_season'] ?? null;
         $factor = (float) ($this->params['scenario']['charter_factor'] ?? 1);
-        $targetSeason = $this->params['scenario']['charter_target_season'] ?? null;
-        $targetContracted = $targetSeason !== null && $contracts->contains(fn (CharterContract $c) => $c->season === $targetSeason);
+        [$estimates, $contracted] = $this->charterEstimates($contracts);
         $flights = 0;
 
         foreach ($contracts as $contract) {
@@ -472,7 +471,7 @@ class CashFlowReportBuilder
                     $row['taxes'] += (float) $flight->taxes;
                 }
 
-                if ($baseSeason !== null && $contract->season === $baseSeason && ! $targetContracted && $factor > 0) {
+                if ($factor > 0 && array_key_exists($contract->season, $estimates)) {
                     $shifted = $payDate->copy()->addDays(364);
 
                     if ($shifted->gte($this->today)) {
@@ -502,10 +501,16 @@ class CashFlowReportBuilder
 
         $message = sprintf('%d contracte, %d rotații.', $contracts->count(), $flights);
 
-        if ($baseSeason === null) {
-            $message .= ' Sezonul următor nu este estimat (alegeți sezonul de bază în parametri).';
-        } elseif ($targetContracted) {
-            $message .= " Sezonul {$targetSeason} este contractat; estimarea nu se mai aplică.";
+        foreach ($estimates as $base => $target) {
+            $message .= sprintf(' Sezonul %s este estimat din programul %s decalat 364 de zile × %.2f.', $target ?? 'următor', $base, $factor);
+        }
+
+        foreach ($contracted as $base => $target) {
+            $message .= sprintf(' Sezonul %s este contractat; programul %s nu se mai decalează.', $target, $base);
+        }
+
+        if ($estimates === [] && $contracted === []) {
+            $message .= ' Niciun sezon următor de estimat: nu există contracte semnate.';
         }
 
         return [
@@ -515,11 +520,65 @@ class CashFlowReportBuilder
             'taxes' => $taxes,
             'estimate' => $estimate,
             'estimate_taxes' => $estimateTaxes,
+            'estimates' => $estimates,
             'contracts' => $summary,
             '_rows' => $flights,
             '_message' => $message,
             '_skipped' => $contracts->isEmpty(),
         ];
+    }
+
+    /**
+     * Which seasons the next-season estimate (C12/C13) is built from: the
+     * base season chosen in the parameters or, by default, every signed
+     * season whose next edition has no contract yet.
+     *
+     * @param  Collection<int, CharterContract>  $contracts
+     * @return array{0: array<string, ?string>, 1: array<string, string>} the estimated base => target seasons, and the base => target pairs already contracted
+     */
+    private function charterEstimates(Collection $contracts): array
+    {
+        $seasons = $contracts->pluck('season')->unique();
+        $paramBase = trim((string) ($this->params['scenario']['charter_base_season'] ?? ''));
+        $paramTarget = trim((string) ($this->params['scenario']['charter_target_season'] ?? ''));
+        $bases = [];
+
+        if ($paramBase !== '') {
+            $bases[$paramBase] = $paramTarget !== '' ? $paramTarget : self::nextSeason($paramBase);
+        } else {
+            foreach ($contracts->where('status', CharterContract::STATUS_SIGNED)->pluck('season')->unique() as $season) {
+                $bases[$season] = self::nextSeason($season);
+            }
+        }
+
+        $estimates = [];
+        $contracted = [];
+
+        foreach ($bases as $base => $target) {
+            if ($target !== null && $seasons->contains($target)) {
+                $contracted[$base] = $target;
+            } else {
+                $estimates[$base] = $target;
+            }
+        }
+
+        return [$estimates, $contracted];
+    }
+
+    /**
+     * The next edition of a season label: S26 → S27, W26-27 → W27-28.
+     */
+    public static function nextSeason(string $season): ?string
+    {
+        $next = preg_replace_callback(
+            '/\d+/',
+            fn (array $match) => str_pad((string) ((int) $match[0] + 1), strlen($match[0]), '0', STR_PAD_LEFT),
+            trim($season),
+            -1,
+            $count,
+        );
+
+        return $count > 0 && $next !== null ? $next : null;
     }
 
     /**
@@ -676,15 +735,19 @@ class CashFlowReportBuilder
     }
 
     /**
+     * The new-sales scenario: what the bookings created in the same weeks
+     * of last year collected (by the segment of the booking) and cost (by
+     * category), shifted 52 weeks ahead and scaled by the factor.
+     *
      * @return array<string, mixed>
      */
     private function newSales(): array
     {
-        $receipts = $this->grid->zeros();
+        $receipts = array_fill_keys(array_keys(BookingSegments::LABELS), $this->grid->zeros());
         $costs = $this->grid->zeros();
 
         if (! ($this->params['scenario']['enabled'] ?? true)) {
-            return ['receipts' => $receipts, 'costs' => $costs, 'bookings' => 0, '_skipped' => true, '_message' => 'Scenariul este dezactivat în parametri.'];
+            return ['receipts' => $receipts, 'costs' => $costs, 'bookings' => 0, 'receipts_structure' => [], 'structure' => [], '_skipped' => true, '_message' => 'Scenariul este dezactivat în parametri.'];
         }
 
         $factor = max(0.0, (float) ($this->params['scenario']['factor'] ?? 1));
@@ -692,6 +755,7 @@ class CashFlowReportBuilder
         $from = $this->grid->lastYearMonday(0);
         $to = $this->grid->end()->subWeeks(52);
         $bookings = 0;
+        $receiptsStructure = [];
         $structure = [];
 
         foreach ($this->connections() as $connection) {
@@ -699,14 +763,23 @@ class CashFlowReportBuilder
             $bookings += $curve['bookings'];
 
             foreach ($curve['receipts'] as $row) {
-                $this->grid->add($receipts, CarbonImmutable::parse($row['week'])->addWeeks(52), $this->lei($row['amount'], $row['currency']) * $factor);
+                $segment = BookingSegments::of($row);
+                $lei = $this->lei($row['amount'], $row['currency']) * $factor;
+
+                if ($this->grid->add($receipts[$segment], CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
+                    $key = "{$segment}|{$row['currency']}";
+                    $receiptsStructure[$key] ??= ['segment' => $segment, 'label' => BookingSegments::LABELS[$segment], 'currency' => $row['currency'], 'amount' => 0.0, 'lei' => 0.0, 'receipts' => 0];
+                    $receiptsStructure[$key]['amount'] = round($receiptsStructure[$key]['amount'] + $row['amount'] * $factor, 2);
+                    $receiptsStructure[$key]['lei'] = round($receiptsStructure[$key]['lei'] + $lei, 2);
+                    $receiptsStructure[$key]['receipts'] += (int) ($row['receipts'] ?? 0);
+                }
             }
 
             foreach ($curve['costs'] as $row) {
                 $lei = $this->lei($row['cost'], $row['currency']) * $factor;
 
                 if ($this->grid->add($costs, CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
-                    $this->collect($structure, $row['category'], $row['currency'], $row['cost'] * $factor, $lei);
+                    $this->collect($structure, $row['category'], $row['currency'], $row['cost'] * $factor, $lei, (int) ($row['items'] ?? 0));
                 }
             }
 
@@ -714,7 +787,7 @@ class CashFlowReportBuilder
                 $lei = $this->lei($row['cost'], $row['currency']) * $factor;
 
                 if ($this->grid->add($costs, CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
-                    $this->collect($structure, 'flight', $row['currency'], $row['cost'] * $factor, $lei);
+                    $this->collect($structure, 'flight', $row['currency'], $row['cost'] * $factor, $lei, (int) ($row['items'] ?? 0));
                 }
             }
         }
@@ -723,9 +796,10 @@ class CashFlowReportBuilder
             'receipts' => $receipts,
             'costs' => $costs,
             'bookings' => $bookings,
+            'receipts_structure' => array_values($receiptsStructure),
             'structure' => array_values($structure),
             '_rows' => $bookings,
-            '_message' => sprintf('%d dosare create între %s și %s, decalate 52 de săptămâni × %.2f.', $bookings, $from->format('d.m.Y'), $to->subDay()->format('d.m.Y'), $factor),
+            '_message' => sprintf('%d dosare create între %s și %s, decalate 52 de săptămâni × %.2f; încasările pe segmentul dosarului, costurile pe categorie.', $bookings, $from->format('d.m.Y'), $to->subDay()->format('d.m.Y'), $factor),
         ];
     }
 
@@ -945,8 +1019,16 @@ class CashFlowReportBuilder
         $recoveryOld = $this->recovery($receivables['overdue_old'] ?? [], (float) ($this->params['overdue']['old_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B8', sprintf('Recuperare solduri restante ≤ %d zile (scadență depășită)', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recovery, note: sprintf('%s%% din restanțe, egal pe %d săptămâni', $this->params['overdue']['recent_pct'] ?? 0, $this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B9', sprintf('Recuperare solduri restante > %d zile', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recoveryOld, note: sprintf('%s%% din restanțele vechi', $this->params['overdue']['old_pct'] ?? 0));
-        $this->line('B10', 'Încasări din vânzări noi (scenariu: curba anului anterior × factor)', 'B', $scenario['receipts'], scenario: true, note: 'eTrip: încasările dosarelor create în aceeași săptămână a anului anterior');
-        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'], $scenarioOn ? ['B10'] : []), kind: 'total');
+        $newSales = [];
+
+        foreach (array_keys($codes) as $index => $segment) {
+            $code = 'B10.'.($index + 1);
+            $newSales[] = $code;
+            $this->line($code, 'Vânzări noi – '.BookingSegments::LABELS[$segment], 'B', $scenario['receipts'][$segment] ?? $this->grid->zeros(), scenario: true, note: 'eTrip: încasările dosarelor din acest segment create în aceeași săptămână a anului anterior, × factor', parent: 'B10');
+        }
+
+        $this->line('B10', 'Încasări din vânzări noi – total (scenariu: curba anului anterior × factor)', 'B', $this->sum($newSales), kind: 'subtotal', scenario: true, note: 'suma liniilor B10.1–B10.7; intră în total doar cu scenariul pornit');
+        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'], $scenarioOn ? $newSales : []), kind: 'total');
 
         $this->line('C1', 'Plăți cazare (hoteluri) – rezervări existente', 'C', $payables['lines']['hotel'], note: 'eTrip: cost furnizor net, plată cu N zile înainte de check-in');
         $this->line('C2', 'Plăți transferuri, excursii, autocar, servicii la sol', 'C', $payables['lines']['transfer']);
@@ -959,8 +1041,11 @@ class CashFlowReportBuilder
         $this->line('C9', 'Charter – taxe aeroport (reconciliere lunară, estimare)', 'C', $charter['taxes']);
         $this->line('C10', 'Furnizori – sold neachitat la data raportului (facturi scadente)', 'C', $suppliers['line'], note: $suppliers['mode'] === 'manual' ? 'parametri' : 'OMC: facturi furnizor deschise, pe scadență');
         $this->line('C11', 'Plăți furnizori pentru vânzări noi – cazare, servicii, bilete (scenariu)', 'C', $scenario['costs'], scenario: true);
-        $this->line('C12', 'Charter sezon următor estimat – rotații (program decalat un an × factor)', 'C', $charter['estimate'], scenario: true);
-        $this->line('C13', 'Charter sezon următor estimat – taxe aeroport', 'C', $charter['estimate_taxes'], scenario: true);
+        $estimates = (array) ($charter['estimates'] ?? []);
+        $estimated = count($estimates) === 1 && current($estimates) !== null ? 'Charter '.current($estimates).' estimat' : 'Charter sezon următor estimat';
+        $estimatedFrom = $estimates === [] ? 'program decalat un an × factor' : 'programul '.implode(', ', array_keys($estimates)).' decalat un an × factor';
+        $this->line('C12', $estimated.' – rotații ('.$estimatedFrom.')', 'C', $charter['estimate'], scenario: true, note: 'sezonul de bază din parametri sau, implicit, fiecare sezon semnat al cărui sezon următor nu este contractat');
+        $this->line('C13', $estimated.' – taxe aeroport', 'C', $charter['estimate_taxes'], scenario: true);
         $this->line('C', 'TOTAL PLĂȚI DIRECTE DE PRODUS', 'C', $this->sum(['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10'], $scenarioOn ? ['C11', 'C12', 'C13'] : []), kind: 'total');
 
         $opexCodes = [];
@@ -1032,6 +1117,7 @@ class CashFlowReportBuilder
             'suppliers_open' => $suppliers['total'] ?? 0.0,
             'bookings' => $receivables['bookings'] ?? 0,
             'scenario_bookings' => $scenario['bookings'] ?? 0,
+            'scenario_receipts' => round(array_sum($this->values('B10')), 2),
         ];
 
         return [
@@ -1050,7 +1136,8 @@ class CashFlowReportBuilder
             'structure' => [
                 'receivables' => $receivables['structure'] ?? [],
                 'payables' => $payables['structure'] ?? [],
-                'new_sales' => $scenario['structure'] ?? [],
+                'new_sales_receipts' => $scenario['receipts_structure'] ?? [],
+                'new_sales_costs' => $scenario['structure'] ?? [],
                 'suppliers_open' => ['total' => $suppliers['total'] ?? 0.0, 'overdue' => $suppliers['overdue'] ?? 0.0, 'by_currency' => $suppliers['by_currency'] ?? [], 'mode' => $suppliers['mode'] ?? 'none'],
             ],
             'charter' => $charter['contracts'] ?? [],
@@ -1101,20 +1188,21 @@ class CashFlowReportBuilder
     /**
      * @param  list<float|string>  $values
      */
-    private function line(string $code, string $label, string $section, array $values, string $kind = 'value', bool $scenario = false, ?string $note = null, ?string $key = null): void
+    private function line(string $code, string $label, string $section, array $values, string $kind = 'value', bool $scenario = false, ?string $note = null, ?string $key = null, ?string $parent = null): void
     {
         $numeric = $kind !== 'text';
 
         $this->lines[] = [
             'code' => $code,
             'key' => $key,
+            'parent' => $parent,
             'label' => $label,
             'section' => $section,
             'kind' => $kind,
             'scenario' => $scenario,
             'note' => $note,
             'values' => $numeric ? array_map(fn ($v) => round((float) $v, 2), $values) : array_values($values),
-            'total' => $numeric && in_array($kind, ['value', 'total', 'reference'], true) ? round(array_sum(array_map('floatval', $values)), 2) : null,
+            'total' => $numeric && in_array($kind, ['value', 'subtotal', 'total', 'reference'], true) ? round(array_sum(array_map('floatval', $values)), 2) : null,
         ];
     }
 

@@ -499,7 +499,7 @@ export default function ParametersForm({
                         <Field
                             id="sc-base"
                             label="Sezon charter de bază"
-                            hint="Programul acestui sezon, decalat un an, estimează sezonul următor."
+                            hint="Programul acestui sezon, decalat un an, estimează sezonul următor. Gol: fiecare sezon semnat estimează sezonul lui următor (S26 → S27) până la contractare."
                             error={errors['scenario.charter_base_season']}
                         >
                             <NativeSelect
@@ -516,7 +516,7 @@ export default function ParametersForm({
                                 }
                             >
                                 <NativeSelectOption value="">
-                                    – fără estimare –
+                                    – automat: toate sezoanele semnate –
                                 </NativeSelectOption>
                                 {seasons.map((season) => (
                                     <NativeSelectOption
@@ -531,7 +531,7 @@ export default function ParametersForm({
                         <Field
                             id="sc-target"
                             label="Sezonul estimat (etichetă)"
-                            hint="Când există un contract pe acest sezon, estimarea se oprește."
+                            hint="Când există un contract pe acest sezon, estimarea se oprește. Gol: sezonul următor celui de bază (S26 → S27)."
                             error={errors['scenario.charter_target_season']}
                         >
                             <Input

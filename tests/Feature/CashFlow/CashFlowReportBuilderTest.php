@@ -82,8 +82,12 @@ function mockEtrip(bool $failBookings = false): void
             ['week' => '2026-09-14', 'currency' => 'RON', 'cost' => 700, 'items' => 1],
         ]);
         $mock->shouldReceive('bookingCurve')->andReturn([
-            'receipts' => [['week' => '2025-09-15', 'currency' => 'RON', 'amount' => 10000]],
-            'costs' => [['week' => '2025-09-22', 'category' => 'hotel', 'currency' => 'EUR', 'cost' => 100]],
+            'receipts' => [
+                ['week' => '2025-09-15', 'segment_type' => 21, 'currency' => 'RON', 'amount' => 10000, 'receipts' => 3],
+                ['week' => '2025-09-15', 'segment_type' => 157, 'currency' => 'EUR', 'amount' => 400, 'receipts' => 1],
+                ['week' => '2025-09-22', 'segment_type' => null, 'currency' => 'RON', 'amount' => 500, 'receipts' => 1],
+            ],
+            'costs' => [['week' => '2025-09-22', 'category' => 'hotel', 'currency' => 'EUR', 'cost' => 100, 'items' => 2]],
             'tickets' => [],
             'bookings' => 5,
         ]);
@@ -132,8 +136,21 @@ test('the snapshot puts every source on its week in lei', function () {
     expect($b1[1])->toBe(1000.0)->and($b1[3])->toBe(2500.0)->and(array_sum($b1))->toBe(3500.0)
         ->and(array_sum(lineValues($snapshot, 'B4')))->toBe(0.0)
         ->and(array_slice(lineValues($snapshot, 'B8'), 0, 5))->toBe([200.0, 200.0, 200.0, 200.0, 0.0])
-        ->and(lineValues($snapshot, 'B10')[0])->toBe(10000.0)
         ->and($snapshot->payload['kpis']['overdue_recent'])->toEqual(['RON' => 1000]);
+
+    // New sales per segment: last year's receipts of the package (RON), Sphinx (EUR × 5) and unsegmented bookings, 52 weeks later; B10 subtotals them.
+    $lines = collect($snapshot->payload['lines'])->keyBy('code');
+    expect(lineValues($snapshot, 'B10.1')[0])->toBe(10000.0)
+        ->and(lineValues($snapshot, 'B10.4')[0])->toBe(2000.0)
+        ->and(lineValues($snapshot, 'B10.7')[1])->toBe(500.0)
+        ->and(array_slice(lineValues($snapshot, 'B10'), 0, 2))->toBe([12000.0, 500.0])
+        ->and($lines['B10'])->toMatchArray(['kind' => 'subtotal', 'scenario' => true, 'total' => 12500])
+        ->and($lines['B10.1'])->toMatchArray(['parent' => 'B10', 'scenario' => true, 'label' => 'Vânzări noi – Pachete charter/sejur'])
+        ->and(lineValues($snapshot, 'B')[1])->toBe(1700.0)
+        ->and($snapshot->payload['kpis']['scenario_receipts'])->toEqual(12500)
+        ->and($snapshot->payload['structure']['new_sales_receipts'])->toContainEqual(['segment' => 'pachete', 'label' => 'Pachete charter/sejur', 'currency' => 'RON', 'amount' => 10000, 'lei' => 10000, 'receipts' => 3])
+        ->and($snapshot->payload['structure']['new_sales_receipts'])->toContainEqual(['segment' => 'sphinx', 'label' => 'Sphinx', 'currency' => 'EUR', 'amount' => 400, 'lei' => 2000, 'receipts' => 1])
+        ->and($snapshot->payload['structure']['new_sales_costs'])->toContainEqual(['category' => 'hotel', 'label' => 'Cazare', 'currency' => 'EUR', 'amount' => 100, 'lei' => 500, 'items' => 2]);
 
     // Payables from eTrip, charter contracts, open supplier invoices and the scenario.
     expect(lineValues($snapshot, 'C1')[2])->toBe(5000.0)
@@ -189,6 +206,46 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['charter'][0])->toMatchArray(['season' => 'S26', 'status' => 'signed', 'flights' => 1])
         ->and($snapshot->payload['charter'][0]['in_horizon'])->toEqual(1000);
 });
+
+test('without a base season every signed season estimates its next edition until that one is contracted', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => [
+        'fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5],
+        'scenario' => ['enabled' => true, 'factor' => 1, 'charter_factor' => 1, 'charter_base_season' => null, 'charter_target_season' => null],
+    ]]);
+    mockOmc();
+    mockEtrip();
+
+    // Flown and paid in spring 2026 (pay 22.03.2026, taxes 05.05.2026): only its S27 echo, 364 days later, is ahead.
+    $signed = CharterContract::factory()->create(['season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
+    CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-04-01', 'net_value' => 1000, 'taxes' => 100]);
+    CharterContract::factory()->draft()->create();
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $lines = collect($snapshot->payload['lines'])->keyBy('code');
+
+    expect(array_sum(lineValues($snapshot, 'C6')))->toBe(0.0)
+        ->and(lineValues($snapshot, 'C12')[26])->toBe(5000.0)
+        ->and(lineValues($snapshot, 'C13')[33])->toBe(500.0)
+        ->and($lines['C12']['label'])->toBe('Charter S27 estimat – rotații (programul S26 decalat un an × factor)')
+        ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['message'])->toContain('Sezonul S27 este estimat din programul S26');
+
+    // Once S27 has a contract of its own, the echo stops.
+    CharterContract::factory()->create(['season' => 'S27', 'name' => 'CTR S27']);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+
+    expect(array_sum(lineValues($snapshot, 'C12')))->toBe(0.0)
+        ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['message'])->toContain('Sezonul S27 este contractat');
+});
+
+test('a season label rolls to its next edition', function (string $season, ?string $next) {
+    expect(CashFlowReportBuilder::nextSeason($season))->toBe($next);
+})->with([
+    ['S26', 'S27'],
+    ['W26-27', 'W27-28'],
+    ['S2026', 'S2027'],
+    ['vara', null],
+]);
 
 test('a source that fails leaves a partial snapshot with the others filled', function () {
     mockOmc();

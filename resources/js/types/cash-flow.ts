@@ -1,5 +1,6 @@
 export type LineKind =
     | 'value'
+    | 'subtotal'
     | 'total'
     | 'balance'
     | 'threshold'
@@ -9,6 +10,8 @@ export type LineKind =
 export type ReportLine = {
     code: string;
     key: string | null;
+    /** The subtotal line this one belongs to (e.g. B10 for B10.1). */
+    parent?: string | null;
     label: string;
     section: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
     kind: LineKind;
@@ -50,6 +53,7 @@ export type ReportKpis = {
     suppliers_open: number;
     bookings: number;
     scenario_bookings: number;
+    scenario_receipts?: number;
 };
 
 export type OpeningRow = {
@@ -85,6 +89,15 @@ export type PayableStructureRow = {
     amount: number;
     lei: number;
     items: number;
+};
+
+export type NewSalesReceiptRow = {
+    segment: string;
+    label: string;
+    currency: string;
+    amount: number;
+    lei: number;
+    receipts: number;
 };
 
 export type OpexCategory = {
@@ -131,7 +144,8 @@ export type ReportPayload = {
     structure: {
         receivables: ReceivableStructureRow[];
         payables: PayableStructureRow[];
-        new_sales: PayableStructureRow[];
+        new_sales_receipts?: NewSalesReceiptRow[];
+        new_sales_costs?: PayableStructureRow[];
         suppliers_open: {
             total: number;
             overdue: number;

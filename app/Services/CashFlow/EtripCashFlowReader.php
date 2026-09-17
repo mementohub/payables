@@ -180,12 +180,14 @@ class EtripCashFlowReader
 
     /**
      * What the bookings created in a past period collected and cost, week by
-     * week: the booking curve the new-sales scenario is built from.
+     * week: the booking curve the new-sales scenario is built from. Receipts
+     * carry the segment of their booking (the product type of its most
+     * expensive root item, as in openBookings()), costs their category.
      *
      * @return array{
-     *   receipts: list<array{week: string, currency: string, amount: float}>,
-     *   costs: list<array{week: string, category: string, currency: string, cost: float}>,
-     *   tickets: list<array{week: string, currency: string, cost: float}>,
+     *   receipts: list<array{week: string, segment_type: ?int, currency: string, amount: float, receipts: int}>,
+     *   costs: list<array{week: string, category: string, currency: string, cost: float, items: int}>,
+     *   tickets: list<array{week: string, currency: string, cost: float, items: int}>,
      *   bookings: int
      * }
      */
@@ -205,15 +207,25 @@ class EtripCashFlowReader
                 select b.id
                 from bookings.bookings b
                 where b.ctime >= ?::timestamp and b.ctime < ?::timestamp and b.status = 'confirmed'
+            ),
+            s as (
+                select distinct on (i.booking) i.booking, i.product_type
+                from bookings.items i
+                join b on b.id = i.booking
+                where i.package is null and i.client_status = 'confirmed'
+                order by i.booking, (i.price).gross desc nulls last, i.id
             )
             select (date_trunc('week', r.issue_date))::date as week,
+                   s.product_type as segment_type,
                    r.currency,
-                   sum(rb.receipt_amount)::numeric(20,2) as amount
+                   sum(rb.receipt_amount)::numeric(20,2) as amount,
+                   count(*) as receipts
             from b
+            left join s on s.booking = b.id
             join financials.receipt_bookings rb on rb.booking = b.id
             join financials.receipts r on r.id = rb.receipt
-            group by 1, 2
-            order by 1, 2
+            group by 1, 2, 3
+            order by 1, 2, 3
             SQL, $range);
 
         $costs = $connection->select(sprintf(<<<'SQL'
@@ -225,7 +237,8 @@ class EtripCashFlowReader
             select (date_trunc('week', i.start_date - interval '%1$d days'))::date as week,
                    %2$s as category,
                    i.supplier_currency as currency,
-                   sum(%3$s)::numeric(20,2) as cost
+                   sum(%3$s)::numeric(20,2) as cost,
+                   count(*) as items
             from b
             join bookings.items i on i.booking = b.id
             where i.client_status = 'confirmed'
@@ -244,7 +257,8 @@ class EtripCashFlowReader
             )
             select (date_trunc('week', i.ctime))::date as week,
                    i.supplier_currency as currency,
-                   sum(%1$s)::numeric(20,2) as cost
+                   sum(%1$s)::numeric(20,2) as cost,
+                   count(*) as items
             from b
             join bookings.items i on i.booking = b.id
             where i.client_status = 'confirmed'
@@ -258,19 +272,23 @@ class EtripCashFlowReader
         return [
             'receipts' => array_map(fn ($row) => [
                 'week' => (string) $row->week,
+                'segment_type' => $row->segment_type !== null ? (int) $row->segment_type : null,
                 'currency' => strtoupper((string) $row->currency),
                 'amount' => (float) $row->amount,
+                'receipts' => (int) $row->receipts,
             ], $receipts),
             'costs' => array_map(fn ($row) => [
                 'week' => (string) $row->week,
                 'category' => (string) $row->category,
                 'currency' => strtoupper((string) ($row->currency ?? 'RON')),
                 'cost' => (float) $row->cost,
+                'items' => (int) $row->items,
             ], $costs),
             'tickets' => array_map(fn ($row) => [
                 'week' => (string) $row->week,
                 'currency' => strtoupper((string) ($row->currency ?? 'RON')),
                 'cost' => (float) $row->cost,
+                'items' => (int) $row->items,
             ], $tickets),
             'bookings' => (int) ($count->bookings ?? 0),
         ];
