@@ -1,4 +1,11 @@
-import type { ReportLine, ReportPayload } from '@/types/cash-flow';
+import type {
+    CashFlowOverride,
+    ReportLine,
+    ReportPayload,
+} from '@/types/cash-flow';
+
+/** A cell set by hand, with what the automation had worked out for it. */
+export type OverriddenCell = CashFlowOverride & { auto: number };
 
 export type DerivedReport = {
     weeks: string[];
@@ -12,7 +19,24 @@ export type DerivedReport = {
     comfort: number;
     signal: string[];
     lines: ReportLine[];
+    /** Cells set by hand, by line code and week index. */
+    overridden: Record<string, Record<number, OverriddenCell>>;
 };
+
+const EDITABLE_SECTIONS: ReportLine['section'][] = ['B', 'C', 'D'];
+
+/** Receipts, product payments and OPEX lines can be set by hand. */
+export function isEditable(line: ReportLine): boolean {
+    return line.kind === 'value' && EDITABLE_SECTIONS.includes(line.section);
+}
+
+/**
+ * What an override is stored against: the OPEX category for D lines, whose
+ * codes follow the catalogue order, the line code for everything else.
+ */
+export function overrideLine(line: ReportLine): string {
+    return line.section === 'D' && line.key ? line.key : line.code;
+}
 
 const nums = (line: ReportLine | undefined, weeks: number): number[] =>
     line
@@ -27,17 +51,75 @@ export function lineByCode(
 }
 
 /**
- * Recomputes the totals, the net flow and the balance chain from the
- * component lines, with or without the scenario lines, so the toggles on
- * the page never wait for the server.
+ * Lays the values set by hand over the automated ones, then recomputes the
+ * subtotals, the totals, the net flow and the balance chain from the
+ * component lines, with or without the scenario lines, so the toggles and
+ * the edits on the page never wait for the server.
  */
 export function deriveReport(
-    payload: ReportPayload,
+    source: ReportPayload,
     scenarioOn: boolean,
+    overrides: CashFlowOverride[] = [],
 ): DerivedReport {
-    const weeks = payload.weeks;
+    const weeks = source.weeks;
     const count = weeks.length;
     const zero = () => new Array<number>(count).fill(0);
+    const column = new Map(weeks.map((week, index) => [week, index]));
+    const byLine = new Map<string, CashFlowOverride[]>();
+
+    overrides.forEach((override) => {
+        byLine.set(override.line, [
+            ...(byLine.get(override.line) ?? []),
+            override,
+        ]);
+    });
+
+    const overridden: DerivedReport['overridden'] = {};
+    const edited = source.lines.map((line) => {
+        const own = isEditable(line) ? byLine.get(overrideLine(line)) : null;
+
+        if (!own) {
+            return line;
+        }
+
+        const values = [...line.values];
+
+        own.forEach((override) => {
+            const index = column.get(override.week);
+
+            if (index === undefined) {
+                return;
+            }
+
+            overridden[line.code] ??= {};
+            overridden[line.code][index] = {
+                ...override,
+                auto: Number(line.values[index] ?? 0),
+            };
+            values[index] = Number(override.amount);
+        });
+
+        return { ...line, values };
+    });
+    const subtotals = Object.fromEntries(
+        edited
+            .filter((line) => line.kind === 'subtotal')
+            .map((parent) => [
+                parent.code,
+                edited
+                    .filter(
+                        (line) =>
+                            line.parent === parent.code &&
+                            line.kind === 'value',
+                    )
+                    .reduce((acc, line) => {
+                        nums(line, count).forEach((v, i) => (acc[i] += v));
+
+                        return acc;
+                    }, zero()),
+            ]),
+    );
+    const payload = { ...source, lines: edited };
     const include = (line: ReportLine) =>
         line.kind === 'value' && (scenarioOn || !line.scenario);
 
@@ -74,6 +156,7 @@ export function deriveReport(
     );
 
     const replace: Record<string, number[] | string[]> = {
+        ...subtotals,
         A: opening,
         B: inflows,
         C: outflows,
@@ -90,7 +173,7 @@ export function deriveReport(
                   ...line,
                   values: replace[line.code],
                   total:
-                      line.kind === 'total'
+                      line.kind === 'total' || line.kind === 'subtotal'
                           ? (replace[line.code] as number[]).reduce(
                                 (a, b) => a + b,
                                 0,
@@ -112,7 +195,34 @@ export function deriveReport(
         comfort,
         signal,
         lines,
+        overridden,
     };
+}
+
+/**
+ * Reads an amount as typed on the page: 1.234.567,89 (Romanian), 1234567.89
+ * or 1 234 567; a single dot before three digits groups thousands, as in
+ * Romanian. Empty means back to the automated value; undefined is unreadable.
+ */
+export function parseAmount(text: string): number | null | undefined {
+    let clean = text.replace(/[\s\u00a0]/g, '').replace(/lei|ron/gi, '');
+
+    if (clean === '') {
+        return null;
+    }
+
+    if (clean.includes(',')) {
+        clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (
+        (clean.match(/\./g) ?? []).length > 1 ||
+        /^-?\d{1,3}\.\d{3}$/.test(clean)
+    ) {
+        clean = clean.replace(/\./g, '');
+    }
+
+    const value = Number(clean);
+
+    return Number.isFinite(value) ? value : undefined;
 }
 
 export type MonthGroup = { key: string; label: string; indexes: number[] };

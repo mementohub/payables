@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CashFlowSnapshot;
 use App\Models\Invoice;
+use App\Services\CashFlow\CashFlowOverrides;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,7 +31,7 @@ class DashboardController extends Controller
     /** What the ERP settled on the document. */
     private const SETTLED = '(val_mon_paid + val_mon_storno)';
 
-    public function index(Request $request): Response
+    public function index(Request $request, CashFlowOverrides $overrides): Response
     {
         $from = $this->parseDate($request->string('from')->toString());
         $to = $this->parseDate($request->string('to')->toString());
@@ -43,7 +44,7 @@ class DashboardController extends Controller
             'paymentBreakdown' => Inertia::defer(fn () => $this->paymentBreakdown($from, $to)),
             'agingBuckets' => Inertia::defer(fn () => $this->agingBuckets($from, $to)),
             'topOverdueSuppliers' => Inertia::defer(fn () => $this->topOverdueSuppliers($from, $to)),
-            'cashflow' => Inertia::defer(fn () => $this->weeklyCashflow()),
+            'cashflow' => Inertia::defer(fn () => $this->weeklyCashflow($overrides)),
         ]);
     }
 
@@ -176,11 +177,11 @@ class DashboardController extends Controller
      * them (receipts, payments and the treasury position at the end of the
      * week) and the coming weeks as the latest WCFR 52 Weeks snapshot
      * forecasts them (total inflows, product payments + OPEX, closing
-     * balance).
+     * balance), with the values set by hand on the report in place.
      *
      * @return array{built_at: ?string, points: list<array{week: string, kind: string, incoming: float, outgoing: float, balance: ?float}>}
      */
-    private function weeklyCashflow(): array
+    private function weeklyCashflow(CashFlowOverrides $overrides): array
     {
         $snapshot = CashFlowSnapshot::latest();
         $payload = $snapshot?->payload;
@@ -200,6 +201,8 @@ class DashboardController extends Controller
                 'balance' => isset($week['balance']) ? round((float) $week['balance'], 2) : null,
             ];
         }
+
+        $payload = $overrides->apply($payload, $overrides->from((string) $payload['weeks'][0]));
 
         $lines = collect($payload['lines'] ?? [])->keyBy('code');
         $inflows = $lines->get('B')['values'] ?? [];

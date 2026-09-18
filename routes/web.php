@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankStatementController;
+use App\Http\Controllers\CashFlowOverrideController;
 use App\Http\Controllers\CashFlowReportController;
 use App\Http\Controllers\CharterContractController;
 use App\Http\Controllers\CharterFlightController;
@@ -94,6 +95,8 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/cash-flow', [CashFlowReportController::class, 'index'])->name('reports.cash-flow.index');
     Route::post('reports/cash-flow/build', [CashFlowReportController::class, 'build'])->name('reports.cash-flow.build');
     Route::put('reports/cash-flow/parameters', [CashFlowReportController::class, 'parameters'])->name('reports.cash-flow.parameters');
+    Route::put('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'update'])->name('reports.cash-flow.overrides.update');
+    Route::delete('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'destroy'])->name('reports.cash-flow.overrides.destroy');
     Route::post('reports/cash-flow/contracts', [CharterContractController::class, 'store'])->name('reports.cash-flow.contracts.store');
     Route::put('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'update'])->name('reports.cash-flow.contracts.update');
     Route::delete('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'destroy'])->name('reports.cash-flow.contracts.destroy');

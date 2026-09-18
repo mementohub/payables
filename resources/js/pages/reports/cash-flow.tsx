@@ -1,6 +1,8 @@
 import { Form, Head, router } from '@inertiajs/react';
-import { RefreshCw, Square } from 'lucide-react';
+import { RefreshCw, RotateCcw, Square } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import CashFlowOverrideController from '@/actions/App/Http/Controllers/CashFlowOverrideController';
 import CashFlowReportController from '@/actions/App/Http/Controllers/CashFlowReportController';
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import BalanceChart from '@/components/cash-flow/balance-chart';
@@ -10,6 +12,7 @@ import {
     deriveReport,
     fmtCompact,
     fmtRon,
+    overrideLine,
     weekLabel,
 } from '@/components/cash-flow/report-math';
 import SourcesPanel from '@/components/cash-flow/sources-panel';
@@ -21,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
+    CardAction,
     CardContent,
     CardDescription,
     CardHeader,
@@ -32,7 +36,12 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
-import type { CashFlowPageProps, CharterSummary } from '@/types/cash-flow';
+import type {
+    CashFlowOverride,
+    CashFlowPageProps,
+    CharterSummary,
+    ReportLine,
+} from '@/types/cash-flow';
 
 const STATUS_LABEL: Record<string, string> = {
     ok: 'complet',
@@ -87,6 +96,7 @@ function amounts(map: Record<string, number>): string {
 
 export default function CashFlowReport({
     snapshot,
+    overrides: savedOverrides,
     run,
     parameters,
     opex,
@@ -119,10 +129,85 @@ export default function CashFlowReport({
         return () => window.clearInterval(timer);
     }, [run.running]);
 
+    // Edits show at once; the server's list replaces them when it answers.
+    const [overrides, setOverrides] =
+        useState<CashFlowOverride[]>(savedOverrides);
+    const [answered, setAnswered] = useState(savedOverrides);
+
+    if (answered !== savedOverrides) {
+        setAnswered(savedOverrides);
+        setOverrides(savedOverrides);
+    }
+
+    const saveOverride = (
+        line: ReportLine,
+        week: string,
+        amount: number | null,
+    ) => {
+        const target = overrideLine(line);
+
+        setOverrides((current) => [
+            ...current.filter(
+                (item) => !(item.line === target && item.week === week),
+            ),
+            ...(amount === null
+                ? []
+                : [
+                      {
+                          line: target,
+                          week,
+                          amount,
+                          note: null,
+                          updated_by: null,
+                          updated_at: new Date().toISOString(),
+                      },
+                  ]),
+        ]);
+
+        router.put(
+            CashFlowOverrideController.update.url(),
+            { line: target, week, amount },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                only: ['overrides', 'flash'],
+                onError: (errors) => {
+                    setOverrides(savedOverrides);
+                    toast.error(
+                        Object.values(errors)[0] ??
+                            'Valoarea nu a putut fi salvată.',
+                    );
+                },
+            },
+        );
+    };
+
+    const resetOverrides = () => {
+        if (
+            !window.confirm(
+                'Toate valorile setate manual revin la calculul automat. Continuați?',
+            )
+        ) {
+            return;
+        }
+
+        router.delete(CashFlowOverrideController.destroy.url(), {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['overrides', 'flash'],
+        });
+    };
+
     const report = useMemo(
-        () => (payload ? deriveReport(payload, scenarioOn) : null),
-        [payload, scenarioOn],
+        () => (payload ? deriveReport(payload, scenarioOn, overrides) : null),
+        [payload, scenarioOn, overrides],
     );
+    const manualCount = report
+        ? Object.values(report.overridden).reduce(
+              (count, cells) => count + Object.keys(cells).length,
+              0,
+          )
+        : 0;
 
     const seasons = useMemo(
         () => Array.from(new Set(contracts.map((c) => c.season))).sort(),
@@ -499,8 +584,31 @@ export default function CashFlowReport({
                                                     : ' pe săptămâni.'}{' '}
                                                 Liniile marcate „scenariu” intră
                                                 în totaluri doar cu scenariul
-                                                pornit.
+                                                pornit.{' '}
+                                                {monthly
+                                                    ? 'Valorile se corectează manual în vederea pe săptămâni.'
+                                                    : 'Click pe o valoare din încasări (B), plăți (C) sau OPEX (D) pentru a o seta manual; câmpul gol revine la calculul automat.'}
                                             </CardDescription>
+                                            {manualCount > 0 && (
+                                                <CardAction className="flex items-center gap-2">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="border-amber-500/60 text-amber-700 dark:text-amber-300"
+                                                    >
+                                                        {manualCount === 1
+                                                            ? '1 valoare setată manual'
+                                                            : `${manualCount} valori setate manual`}
+                                                    </Badge>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={resetOverrides}
+                                                    >
+                                                        <RotateCcw />
+                                                        Revino la automat
+                                                    </Button>
+                                                </CardAction>
+                                            )}
                                         </CardHeader>
                                         <CardContent>
                                             <WeeklyTable
@@ -508,6 +616,7 @@ export default function CashFlowReport({
                                                 horizon={span}
                                                 monthly={monthly}
                                                 scenarioOn={scenarioOn}
+                                                onOverride={saveOverride}
                                             />
                                         </CardContent>
                                     </Card>

@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
 use App\Models\CharterFlight;
+use App\Services\CashFlow\CashFlowOverrides;
 use App\Services\CashFlow\CashFlowParameters;
+use App\Services\CashFlow\WeekGrid;
 use App\Services\Maintenance\ArtisanRunner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +24,7 @@ use Throwable;
  */
 class CashFlowReportController extends Controller
 {
-    public function index(ArtisanRunner $runner, CashFlowParameters $parameters): Response
+    public function index(ArtisanRunner $runner, CashFlowParameters $parameters, CashFlowOverrides $overrides): Response
     {
         $params = $parameters->load();
         $computed = $this->computedOpex();
@@ -32,6 +34,9 @@ class CashFlowReportController extends Controller
             // the page rather than inside it: the page itself must stay small
             // however large a snapshot grows.
             'snapshot' => Inertia::defer(fn () => $this->snapshotPayload()),
+            // Kept apart from the snapshot and laid over it on the page, so an
+            // edit reloads a handful of rows instead of the whole report.
+            'overrides' => $overrides->from(WeekGrid::fromToday()->start->toDateString()),
             'run' => $runner->status(ArtisanRunner::CASHFLOW),
             'lastRun' => Cache::get('cashflow:last_run'),
             'parameters' => $params,

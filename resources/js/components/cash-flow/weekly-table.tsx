@@ -1,8 +1,14 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { ReportLine } from '@/types/cash-flow';
-import { fmtRon, monthGroups, weekLabel } from './report-math';
-import type { DerivedReport } from './report-math';
+import {
+    fmtRon,
+    isEditable,
+    monthGroups,
+    parseAmount,
+    weekLabel,
+} from './report-math';
+import type { DerivedReport, OverriddenCell } from './report-math';
 
 const SECTION_TITLES: Record<ReportLine['section'], string> = {
     A: 'A. Sold inițial de trezorerie',
@@ -45,21 +51,121 @@ function signalClass(value: number | string): string {
     return '';
 }
 
+function overrideTitle(cells: OverriddenCell[]): string {
+    return cells
+        .map((cell) =>
+            [
+                `${weekLabel(cell.week, true)}: ${fmtRon(cell.amount)} setat manual`,
+                `calcul automat ${fmtRon(cell.auto)}`,
+                cell.updated_by ? `de ${cell.updated_by}` : null,
+                cell.updated_at
+                    ? new Date(cell.updated_at).toLocaleDateString('ro-RO')
+                    : null,
+            ]
+                .filter(Boolean)
+                .join(' · '),
+        )
+        .join('\n');
+}
+
+/**
+ * The amount being typed into one cell: Enter or leaving the cell saves it,
+ * Escape gives up, an empty box goes back to the automated value.
+ */
+function CellInput({
+    initial,
+    auto,
+    onSave,
+    onCancel,
+}: {
+    initial: number;
+    auto: number | null;
+    onSave: (amount: number | null) => void;
+    onCancel: () => void;
+}) {
+    const [text, setText] = useState(String(Math.round(initial * 100) / 100));
+    const amount = parseAmount(text);
+    const done = useRef(false);
+
+    const commit = () => {
+        if (done.current) {
+            return;
+        }
+
+        done.current = true;
+
+        const unchanged =
+            amount === undefined ||
+            amount === initial ||
+            (amount === null && auto === null);
+
+        if (unchanged) {
+            onCancel();
+
+            return;
+        }
+
+        onSave(amount === null || amount === auto ? null : amount);
+    };
+
+    return (
+        <input
+            autoFocus
+            inputMode="decimal"
+            aria-label="Valoare manuală (gol = calcul automat)"
+            className={cn(
+                'w-28 rounded border bg-background px-1 py-0.5 text-right text-xs tabular-nums outline-none focus:ring-2 focus:ring-ring',
+                amount === undefined && 'border-destructive',
+            )}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onFocus={(event) => event.target.select()}
+            onBlur={commit}
+            onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commit();
+                }
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    done.current = true;
+                    onCancel();
+                }
+            }}
+        />
+    );
+}
+
 /**
  * The full report grid: every line on its section, one column per week or
- * per month. Scenario lines fade out when the scenario is off.
+ * per month. Scenario lines fade out when the scenario is off. In the weekly
+ * view a receipt, product payment or OPEX cell can be set by hand; the cells
+ * set that way are marked, in either view.
  */
 export default function WeeklyTable({
     report,
     horizon,
     monthly,
     scenarioOn,
+    onOverride,
 }: {
     report: DerivedReport;
     horizon: number;
     monthly: boolean;
     scenarioOn: boolean;
+    /** Absent keeps the grid read-only. */
+    onOverride?: (
+        line: ReportLine,
+        week: string,
+        amount: number | null,
+    ) => void;
 }) {
+    const [editing, setEditing] = useState<{
+        code: string;
+        index: number;
+    } | null>(null);
+
     const columns = useMemo<Column[]>(() => {
         const weeks = report.weeks.slice(0, horizon);
 
@@ -178,6 +284,28 @@ export default function WeeklyTable({
                                                 line,
                                                 column,
                                             );
+                                            const manual = column.indexes
+                                                .map(
+                                                    (i) =>
+                                                        report.overridden[
+                                                            line.code
+                                                        ]?.[i],
+                                                )
+                                                .filter(
+                                                    (
+                                                        cell,
+                                                    ): cell is OverriddenCell =>
+                                                        cell !== undefined,
+                                                );
+                                            const index = column.indexes[0];
+                                            const editable =
+                                                !monthly &&
+                                                onOverride !== undefined &&
+                                                isEditable(line);
+                                            const isEditing =
+                                                editable &&
+                                                editing?.code === line.code &&
+                                                editing.index === index;
 
                                             return (
                                                 <td
@@ -192,17 +320,86 @@ export default function WeeklyTable({
                                                             signalClass(value),
                                                         line.kind === 'text' &&
                                                             'text-[10px] font-normal',
+                                                        manual.length > 0 &&
+                                                            'bg-amber-100/70 font-medium text-amber-900 no-underline dark:bg-amber-500/15 dark:text-amber-200',
+                                                        editable &&
+                                                            !isEditing &&
+                                                            'cursor-text hover:bg-muted hover:ring-1 hover:ring-sidebar-border hover:ring-inset',
+                                                        isEditing && 'py-0.5',
                                                     )}
+                                                    title={
+                                                        manual.length > 0
+                                                            ? overrideTitle(
+                                                                  manual,
+                                                              )
+                                                            : editable
+                                                              ? 'Click pentru a seta valoarea manual'
+                                                              : undefined
+                                                    }
+                                                    onClick={
+                                                        editable && !isEditing
+                                                            ? () =>
+                                                                  setEditing({
+                                                                      code: line.code,
+                                                                      index,
+                                                                  })
+                                                            : undefined
+                                                    }
                                                 >
-                                                    {typeof value === 'number'
-                                                        ? value === 0 &&
-                                                          (line.kind ===
-                                                              'value' ||
-                                                              line.kind ===
-                                                                  'subtotal')
-                                                            ? '·'
-                                                            : fmtRon(value)
-                                                        : value}
+                                                    {isEditing ? (
+                                                        <CellInput
+                                                            initial={Number(
+                                                                value,
+                                                            )}
+                                                            auto={
+                                                                manual[0]
+                                                                    ?.auto ??
+                                                                null
+                                                            }
+                                                            onCancel={() =>
+                                                                setEditing(null)
+                                                            }
+                                                            onSave={(
+                                                                amount,
+                                                            ) => {
+                                                                setEditing(
+                                                                    null,
+                                                                );
+                                                                onOverride?.(
+                                                                    line,
+                                                                    report
+                                                                        .weeks[
+                                                                        index
+                                                                    ],
+                                                                    amount,
+                                                                );
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            {manual.length >
+                                                                0 && (
+                                                                <span
+                                                                    aria-label="setat manual"
+                                                                    className="mr-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
+                                                                />
+                                                            )}
+                                                            {typeof value ===
+                                                            'number'
+                                                                ? value === 0 &&
+                                                                  manual.length ===
+                                                                      0 &&
+                                                                  (line.kind ===
+                                                                      'value' ||
+                                                                      line.kind ===
+                                                                          'subtotal')
+                                                                    ? '·'
+                                                                    : fmtRon(
+                                                                          value,
+                                                                      )
+                                                                : value}
+                                                        </>
+                                                    )}
                                                 </td>
                                             );
                                         })}

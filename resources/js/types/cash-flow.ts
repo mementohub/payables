@@ -323,9 +323,24 @@ export type Flight = {
     taxes_payment_date: string;
 };
 
+/**
+ * A value set by hand on one report line for one week. `line` is the OPEX
+ * category key for D lines, the line code for B and C lines.
+ */
+export type CashFlowOverride = {
+    line: string;
+    week: string;
+    amount: number;
+    note: string | null;
+    updated_by: string | null;
+    updated_at: string | null;
+};
+
 export type CashFlowPageProps = {
     /** Deferred: undefined until Inertia has loaded the report. */
     snapshot?: Snapshot | null;
+    /** Manual values laid over the snapshot, from this week on. */
+    overrides: CashFlowOverride[];
     run: RunStatus;
     lastRun: { at: string; status: string; id: number } | null;
     parameters: Parameters;
