@@ -7,7 +7,6 @@ import CashFlowReportController from '@/actions/App/Http/Controllers/CashFlowRep
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import BalanceChart from '@/components/cash-flow/balance-chart';
 import CharterPanel from '@/components/cash-flow/charter-panel';
-import HistoryTable from '@/components/cash-flow/history-table';
 import ParametersForm from '@/components/cash-flow/parameters-form';
 import {
     deriveReport,
@@ -113,6 +112,7 @@ export default function CashFlowReport({
     );
     const [compare, setCompare] = useState(false);
     const [monthly, setMonthly] = useState(false);
+    const [pastWeeks, setPastWeeks] = useState<4 | 13 | 52>(4);
 
     useEffect(() => {
         if (!run.running) {
@@ -335,9 +335,6 @@ export default function CashFlowReport({
                 <Tabs defaultValue="report">
                     <TabsList>
                         <TabsTrigger value="report">Raport</TabsTrigger>
-                        <TabsTrigger value="history">
-                            Istoric efectiv
-                        </TabsTrigger>
                         <TabsTrigger value="parameters">Parametri</TabsTrigger>
                         <TabsTrigger value="charter">
                             Charter
@@ -584,8 +581,10 @@ export default function CashFlowReport({
                                                 Toate liniile raportului, în
                                                 RON,
                                                 {monthly
-                                                    ? ' grupate pe luni.'
-                                                    : ' pe săptămâni.'}{' '}
+                                                    ? ' grupate pe luni:'
+                                                    : ' pe săptămâni:'}{' '}
+                                                întâi fluxul efectiv din OMC
+                                                (până ieri), apoi prognoza.
                                                 Liniile marcate „scenariu” intră
                                                 în totaluri doar cu scenariul
                                                 pornit.{' '}
@@ -614,9 +613,49 @@ export default function CashFlowReport({
                                                 </CardAction>
                                             )}
                                         </CardHeader>
-                                        <CardContent>
+                                        <CardContent className="grid gap-3">
+                                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                                <span className="text-muted-foreground">
+                                                    Efectiv
+                                                </span>
+                                                <ToggleGroup
+                                                    type="single"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    value={String(pastWeeks)}
+                                                    onValueChange={(value) =>
+                                                        value &&
+                                                        setPastWeeks(
+                                                            Number(value) as
+                                                                | 4
+                                                                | 13
+                                                                | 52,
+                                                        )
+                                                    }
+                                                >
+                                                    <ToggleGroupItem value="4">
+                                                        4 săpt.
+                                                    </ToggleGroupItem>
+                                                    <ToggleGroupItem value="13">
+                                                        13 săpt.
+                                                    </ToggleGroupItem>
+                                                    <ToggleGroupItem value="52">
+                                                        52 săpt.
+                                                    </ToggleGroupItem>
+                                                </ToggleGroup>
+                                                {!payload.past && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        Fluxul efectiv apare
+                                                        după următoarea
+                                                        recalculare a
+                                                        raportului.
+                                                    </span>
+                                                )}
+                                            </div>
                                             <WeeklyTable
                                                 report={report}
+                                                past={payload.past ?? null}
+                                                pastWeeks={pastWeeks}
                                                 horizon={span}
                                                 monthly={monthly}
                                                 scenarioOn={scenarioOn}
@@ -799,30 +838,6 @@ export default function CashFlowReport({
                                         </CardContent>
                                     </Card>
                                 </>
-                            )}
-                        </StoredReportBoundary>
-                    </TabsContent>
-
-                    <TabsContent value="history">
-                        <StoredReportBoundary builtAt={snapshot?.built_at}>
-                            {snapshot === undefined ? (
-                                <Card>
-                                    <CardContent className="h-64 animate-pulse rounded-xl bg-muted/40" />
-                                </Card>
-                            ) : payload?.history?.length ? (
-                                <HistoryTable history={payload.history} />
-                            ) : (
-                                <Alert>
-                                    <AlertTitle>
-                                        Istoricul nu este încă în raport
-                                    </AlertTitle>
-                                    <AlertDescription>
-                                        Istoricul efectiv se calculează la
-                                        următoarea construire a raportului
-                                        (noaptea, la {schedule.nightly}) sau la
-                                        „Recalculează”.
-                                    </AlertDescription>
-                                </Alert>
                             )}
                         </StoredReportBoundary>
                     </TabsContent>

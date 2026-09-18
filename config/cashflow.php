@@ -97,6 +97,18 @@ return [
     ],
 
     /*
+    | Actual cash flow on the report's lines (ActualCashFlowClassifier).
+    | `partner_lines` sends every payment to an OMC partner to one line,
+    | ahead of the other rules: group companies whose payments mix several
+    | kinds of service.
+    */
+    'actuals' => [
+        'partner_lines' => [
+            'MEMENTO INTERNATIONAL SRL' => 'C1',
+        ],
+    ],
+
+    /*
     | OPEX categories: monthly amount (RON) and the day it leaves the bank.
     | `accounts` are the synthetic account prefixes of the supplier-invoice
     | lines in OMC the 12-month average is computed from; categories without

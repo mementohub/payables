@@ -34,21 +34,15 @@ export type LastYearRow = {
     ly_bal_open: number | null;
 };
 
-/** One past week as OMC recorded it, in lei; the current week is partial. */
-export type HistoryRow = {
-    week: string;
-    partial: boolean;
-    opening: number | null;
-    in_partner: number;
-    in_other: number;
-    in: number;
-    out_partner: number;
-    out_salaries: number;
-    out_other: number;
-    out: number;
-    net: number;
-    adjustment: number | null;
-    closing: number | null;
+/**
+ * The past weeks on the report's own lines, as OMC recorded them (receipts
+ * split by eTrip segment, payments by partner and account), the current
+ * week last and partial (up to yesterday). Lines with nothing recorded are
+ * left out.
+ */
+export type PastWeeks = {
+    weeks: string[];
+    lines: Record<string, (number | string | null)[]>;
 };
 
 export type ReportKpis = {
@@ -192,8 +186,8 @@ export type ReportPayload = {
     lines: ReportLine[];
     coverage: ('existing' | 'scenario')[];
     lastyear: LastYearRow[];
-    /** Absent in a snapshot built before the history was kept. */
-    history?: HistoryRow[];
+    /** Absent in a snapshot built before the past weeks were kept. */
+    past?: PastWeeks | null;
     kpis: ReportKpis;
     opening: OpeningDetail;
     structure: {

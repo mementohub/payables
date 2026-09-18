@@ -60,6 +60,18 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null): void
             ['date' => '2025-09-30', 'bank' => ['RON' => 1500000, 'EUR' => 10000], 'cash' => [], 'deposits' => ['RON' => 4000000], 'rates' => ['EUR' => 5.1]],
             ['date' => '2026-08-31', 'bank' => ['RON' => 1000000, 'EUR' => 100000], 'cash' => ['RON' => 10000], 'deposits' => ['RON' => 5000000], 'rates' => ['EUR' => 5.05]],
         ]);
+        // The same non-internal documents as omcFlows(), per week, partner and counterpart account.
+        $mock->shouldReceive('weeklyFlowsByPartner')->andReturn([
+            ['week' => '2025-09-15', 'kind' => 'in', 'partner' => 'Client Unu SRL', 'coresp' => '4111', 'lei' => 300000],
+            ['week' => '2025-09-15', 'kind' => 'out', 'partner' => 'Hotel Parad S.R.L.', 'coresp' => '401', 'lei' => 100000],
+            ['week' => '2025-09-15', 'kind' => 'out', 'partner' => null, 'coresp' => '421', 'lei' => 20000],
+            ['week' => '2026-09-07', 'kind' => 'in', 'partner' => 'Client Unu SRL', 'coresp' => '4111', 'lei' => 150000],
+            ['week' => '2026-09-07', 'kind' => 'in', 'partner' => 'ANIMA WINGS AVIATION SA', 'coresp' => '4111', 'lei' => 50000],
+            ['week' => '2026-09-07', 'kind' => 'out', 'partner' => 'MEMENTO INTERNATIONAL SRL', 'coresp' => '401', 'lei' => 30000],
+            ['week' => '2026-09-07', 'kind' => 'out', 'partner' => 'Agentia Media SRL', 'coresp' => '401', 'lei' => 15000],
+            ['week' => '2026-09-07', 'kind' => 'out', 'partner' => 'Cineva Necunoscut SRL', 'coresp' => '401', 'lei' => 5000],
+        ]);
+        $mock->shouldReceive('partnerMainAccounts')->andReturn(['Agentia Media SRL' => '6231']);
         $mock->shouldReceive('openingPosition')->with(Mockery::type('array'), Mockery::type(CarbonInterface::class))->andReturn([
             ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
             ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],
@@ -87,6 +99,13 @@ function mockEtrip(bool $failBookings = false): void
         $mock->shouldReceive('ticketsOrdered')->andReturn([
             ['week' => '2026-09-14', 'currency' => 'RON', 'cost' => 700, 'items' => 1],
         ]);
+        $mock->shouldReceive('receiptsByWeek')->andReturnUsing(fn (string $name) => $name === 'etrip_chr' ? [
+            ['week' => '2025-09-15', 'segment_type' => 21, 'lei' => 250000, 'receipts' => 3],
+            ['week' => '2026-09-07', 'segment_type' => 39, 'lei' => 120000, 'receipts' => 2],
+        ] : []);
+        $mock->shouldReceive('supplierCategories')->andReturnUsing(fn (string $name) => $name === 'etrip_chr' ? [
+            ['code' => 'HPARAD', 'name' => 'Hotel Parad', 'vat_no' => null, 'category' => 'hotel'],
+        ] : []);
         $mock->shouldReceive('bookingCurve')->andReturn([
             'receipts' => [
                 ['week' => '2025-09-15', 'segment_type' => 21, 'currency' => 'RON', 'amount' => 10000, 'receipts' => 3],
@@ -129,7 +148,7 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['fx'])->toEqual(['RON' => 1, 'EUR' => 5, 'USD' => 4.5])
         ->and(collect($snapshot->sources)->pluck('status', 'key')->all())->toBe([
             'fx' => 'ok', 'opening' => 'ok', 'receivables' => 'ok', 'payables' => 'ok', 'charter' => 'ok',
-            'suppliers_open' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok',
+            'suppliers_open' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok', 'actual_lines' => 'ok',
         ]);
 
     // Opening: OMC month-end position at 31.08 rolled with September's documents (see mockOmc()).
@@ -218,29 +237,47 @@ test('the snapshot puts every source on its week in lei', function () {
         ->toHaveKeys(['rotation', 'taxes', 'deposit', 'fx']);
 });
 
-test('the actual history lists the past 52 weeks and the current one, split by class and reconciled to the balance', function () {
+test('the past weeks sit on the report lines, add up to OMC and chain into the forecast balance', function () {
     mockOmc();
     mockEtrip();
+    CharterContract::factory()->create(['counterparty' => 'Anima Wings Aviation S.A.', 'direction' => 'in']);
 
-    $history = app(CashFlowReportBuilder::class)->build()->payload['history'];
-    $byWeek = collect($history)->keyBy('week');
+    $past = app(CashFlowReportBuilder::class)->build()->payload['past'];
+    $column = array_flip($past['weeks']);
+    $at = fn (string $code, string $week) => $past['lines'][$code][$column[$week]];
 
-    expect($history)->toHaveCount(53)
-        ->and($history[0]['week'])->toBe('2025-09-15')
-        ->and($history[52])->toMatchArray(['week' => '2026-09-14', 'partial' => true, 'in' => 0, 'out' => 0, 'closing' => 6665000])
-        // Internal moves stay out; partner and salary payments keep their class.
-        ->and($byWeek['2025-09-15'])->toMatchArray(['partial' => false, 'in_partner' => 300000, 'in_other' => 0, 'in' => 300000, 'out_partner' => 100000, 'out_salaries' => 20000, 'out_other' => 0, 'out' => 120000, 'net' => 180000])
-        ->and($byWeek['2026-09-07'])->toMatchArray(['in' => 200000, 'out' => 50000, 'net' => 150000])
+    expect($past['weeks'])->toHaveCount(53)
+        ->and($past['weeks'][0])->toBe('2025-09-15')
+        ->and($past['weeks'][52])->toBe('2026-09-14')
+        // Receipts: eTrip by segment, the charter counterparty on B10, the rest of OMC on BX.
+        ->and($at('B1', '2025-09-15'))->toEqual(250000)
+        ->and($at('BX', '2025-09-15'))->toEqual(50000)
+        ->and($at('B2', '2026-09-07'))->toEqual(120000)
+        ->and($at('B10', '2026-09-07'))->toEqual(50000)
+        ->and($at('BX', '2026-09-07'))->toEqual(30000)
+        ->and($at('B', '2026-09-07'))->toEqual(200000)
+        // Payments: eTrip hotel supplier and the configured group company on C1, salaries by
+        // their account on the OPEX line, a marketing supplier by its invoices, the rest on CX.
+        ->and($at('C1', '2025-09-15'))->toEqual(100000)
+        ->and($at('D1', '2025-09-15'))->toEqual(20000)
+        ->and($at('C1', '2026-09-07'))->toEqual(30000)
+        ->and($at('D6', '2026-09-07'))->toEqual(15000)
+        ->and($at('CX', '2026-09-07'))->toEqual(5000)
+        ->and($at('E1', '2025-09-15'))->toEqual(180000)
+        ->and($at('E1', '2026-09-07'))->toEqual(150000)
         // After the last month-end (31.08: 1M + 100k EUR × 5.05 + 10k + 5M) every week walks on
         // with its own net flow, the current one included, not a week late.
-        ->and($byWeek['2026-08-31']['closing'])->toEqual(6515000)
-        ->and($byWeek['2026-09-07']['closing'])->toEqual(6665000);
+        ->and($at('E2', '2026-08-31'))->toEqual(6515000)
+        ->and($at('E2', '2026-09-07'))->toEqual(6665000)
+        // The current week ends where the forecast starts: the position at the end of yesterday.
+        ->and($at('E2', '2026-09-14'))->toEqual(6665000)
+        ->and($at('E6', '2026-09-14'))->toBe('efectiv');
 
     // Each week opens on the last one's close, and what the documents do not
     // explain shows as the adjustment.
-    foreach (array_slice($history, 1, null, true) as $i => $week) {
-        expect($week['opening'])->toEqual($history[$i - 1]['closing'])
-            ->and(round($week['opening'] + $week['net'] + $week['adjustment'], 2))->toEqual($week['closing']);
+    foreach (array_slice($past['weeks'], 1, null, true) as $i => $week) {
+        expect($past['lines']['A'][$i])->toEqual($past['lines']['E2'][$i - 1])
+            ->and(round($past['lines']['A'][$i] + $past['lines']['E1'][$i] + $past['lines']['EA'][$i], 2))->toEqual($past['lines']['E2'][$i]);
     }
 });
 

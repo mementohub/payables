@@ -312,6 +312,82 @@ class OmcCashFlowReader
     }
 
     /**
+     * Bank and cash documents per week, partner and counterpart account (in
+     * lei), without the moves between the company's own accounts: what the
+     * actual cash flow is classified line by line from.
+     *
+     * @return list<array{week: string, kind: string, partner: ?string, coresp: string, lei: float}>
+     */
+    public function weeklyFlowsByPartner(CarbonInterface $from, CarbonInterface $to): array
+    {
+        $internalTypes = (array) config('cashflow.omc.internal_tip_doc', []);
+        $internal = (array) config('cashflow.omc.internal_coresp', []);
+
+        $rows = $this->omc->connection()->select(sprintf(<<<'SQL'
+            select (date_trunc('week', d.data_doc))::date as week,
+                   case when t.incasare_b or t.incasare_c then 'in' else 'out' end as kind,
+                   d.partener as partner,
+                   coalesce(trim(d.conts_direct_coresp), '') as coresp,
+                   sum(case when d.moneda = 'Lei' then d.val_mon else d.val_mon * coalesce(nullif(d.curs, 0), 1) end)::numeric(20,2) as lei
+            from doc d
+            join tip_doc t on t.tip_doc = d.tip_doc
+            where d.data_doc >= ?::date
+              and d.data_doc < ?::date
+              and (t.incasare_b or t.plata_b or t.incasare_c or t.plata_c)
+              and d.data_anulare is null
+              and not coalesce(%1$s, false)
+            group by 1, 2, 3, 4
+            SQL, $this->groupCondition($internalTypes, $internal)),
+            [$from->toDateString(), $to->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'week' => (string) $row->week,
+            'kind' => (string) $row->kind,
+            'partner' => $row->partner !== null ? (string) $row->partner : null,
+            'coresp' => (string) $row->coresp,
+            'lei' => (float) $row->lei,
+        ], $rows);
+    }
+
+    /**
+     * The account each supplier's invoices mostly go to (by value), e.g.
+     * 471 for tourism services, 623 for marketing, 612 for rent.
+     *
+     * @return array<string, string>
+     */
+    public function partnerMainAccounts(CarbonInterface $from, CarbonInterface $to): array
+    {
+        $types = (array) config('cashflow.omc.supplier_tip_doc', ['FactFI', 'FactFE']);
+
+        $rows = $this->omc->connection()->select(sprintf(<<<'SQL'
+            with acc as (
+                select d.partener, trim(dp.conts) as conts, sum(abs(dp.cant * dp.pret)) as value
+                from doc d
+                join doc_poz dp on (dp.data_doc, dp.tip_doc, dp.nr_doc) = (d.data_doc, d.tip_doc, d.nr_doc)
+                where d.tip_doc in (%1$s)
+                  and d.data_doc >= ?::date
+                  and d.data_doc < ?::date
+                  and d.data_anulare is null
+                  and d.partener is not null
+                  and dp.conts is not null
+                group by 1, 2
+            )
+            select distinct on (partener) partener, conts
+            from acc
+            order by partener, value desc
+            SQL, $this->quoted($types)),
+            [$from->toDateString(), $to->toDateString()]);
+
+        $accounts = [];
+
+        foreach ($rows as $row) {
+            $accounts[(string) $row->partener] = (string) $row->conts;
+        }
+
+        return $accounts;
+    }
+
+    /**
      * The treasury position at every closed month-end in the range: bank
      * accounts, cash desks and deposits per currency, with the BNR rate of
      * that day when OMC has it.

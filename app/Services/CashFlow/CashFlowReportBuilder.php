@@ -25,6 +25,9 @@ class CashFlowReportBuilder
     /** Past weeks the actual cash-flow history covers. */
     public const HISTORY_WEEKS = 52;
 
+    /** Booking segment → receipts line. */
+    public const SEGMENT_LINES = ['pachete' => 'B1', 'circuite' => 'B2', 'exotic' => 'B3', 'sphinx' => 'B4', 'cazare' => 'B5', 'bilete' => 'B6', 'altele' => 'B7'];
+
     private WeekGrid $grid;
 
     private CarbonImmutable $today;
@@ -62,6 +65,7 @@ class CashFlowReportBuilder
         private OmcCashFlowReader $omc,
         private CashFlowParameters $parameters,
         private ReceivablesScheduler $scheduler,
+        private ActualCashFlowClassifier $classifier,
     ) {}
 
     public function build(?string $builtBy = null, ?CarbonInterface $today = null): CashFlowSnapshot
@@ -137,7 +141,15 @@ class CashFlowReportBuilder
         $actuals = $this->source('actuals', 'Fluxuri efective an anterior (OMC)', fn () => $this->actuals($opening['total']))
             ?? ['lastyear' => [], 'recent' => [], 'history' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
 
-        return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals);
+        $classified = $this->source('actual_lines', 'Flux efectiv pe liniile raportului (OMC + eTrip)', fn () => $this->classifier->classify(
+            array_map(fn (int $i) => $this->grid->start->subWeeks($i)->toDateString(), range(self::HISTORY_WEEKS, 0)),
+            $this->today,
+            $this->connections(),
+            $opex['catalogue'],
+            self::SEGMENT_LINES,
+        )) ?? ['lines' => [], 'classified' => []];
+
+        return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals, $classified);
     }
 
     /**
@@ -1003,17 +1015,13 @@ class CashFlowReportBuilder
     private function actuals(float $openingTotal): array
     {
         $from = $this->grid->lastYearMonday(0)->subMonth()->startOfMonth();
-        $flows = $this->omc->dailyFlows($from, $this->today->addDay());
+        // Up to the end of yesterday: the position the forecast starts from.
+        $flows = $this->omc->dailyFlows($from, $this->today);
         $weekly = [];
-        $todayNet = 0.0;
 
         foreach ($flows as $flow) {
             if ($flow['group'] === OmcCashFlowReader::GROUP_INTERNAL) {
                 continue;
-            }
-
-            if ($flow['day'] === $this->today->toDateString()) {
-                $todayNet += $flow['kind'] === 'in' ? $flow['lei'] : -$flow['lei'];
             }
 
             $monday = CarbonImmutable::parse($flow['day'])->startOfWeek(CarbonInterface::MONDAY)->toDateString();
@@ -1139,7 +1147,7 @@ class CashFlowReportBuilder
             $running -= $net($key);
         }
 
-        $history = $this->history($weekly, $balanceAt, $openingTotal + $todayNet);
+        $history = $this->history($weekly, $balanceAt, $openingTotal);
 
         $in = $this->grid->zeros();
         $outPartner = $this->grid->zeros();
@@ -1193,7 +1201,7 @@ class CashFlowReportBuilder
 
     /**
      * The actual cash flow of the past weeks as OMC recorded it, oldest
-     * first, the current week last (partial: what OMC holds so far). Receipts and
+     * first, the current week last (partial: up to yesterday). Receipts and
      * payments are split by class, internal moves left out. The closing
      * balance is the position walked from the closed month-ends; whatever
      * the documents do not explain (FX revaluation, interest, timing) shows
@@ -1216,7 +1224,7 @@ class CashFlowReportBuilder
             $inOther = (float) ($week['in_other'] ?? 0.0);
             $out = (float) ($week['out'] ?? 0.0);
             $net = round($in, 2) - round($out, 2);
-            // The current week closes on the end of yesterday plus today's documents.
+            // The current week closes on today's position, the end of yesterday.
             $closing = $i === 0 ? $currentPosition : $balanceAt($monday);
             $closing = $closing !== null ? round($closing, 2) : null;
 
@@ -1243,6 +1251,73 @@ class CashFlowReportBuilder
     }
 
     /**
+     * The past weeks on the report's own lines: the classified actual flows,
+     * their totals, and the balance chain of the history (opening, the
+     * adjustment to OMC's month-end positions, closing). Only lines with
+     * something in them are kept; the page reads a missing one as zero.
+     *
+     * @param  list<array<string, mixed>>  $history
+     * @param  array<string, list<float>>  $classified  by line code or OPEX key
+     * @return array{weeks: list<string>, lines: array<string, list<float|string>>}|null
+     */
+    private function past(array $history, array $classified, float $minimum, float $comfort): ?array
+    {
+        if ($history === []) {
+            return null;
+        }
+
+        $count = count($history);
+        $zeros = array_fill(0, $count, 0.0);
+        $lines = [];
+        $totals = ['B' => $zeros, 'C' => $zeros, 'D' => $zeros];
+
+        foreach ($this->lines as $line) {
+            if ($line['kind'] !== 'value' || ! isset($totals[$line['section']])) {
+                continue;
+            }
+
+            $values = $classified[$line['section'] === 'D' && $line['key'] ? $line['key'] : $line['code']] ?? null;
+
+            if ($values === null || count($values) !== $count) {
+                continue;
+            }
+
+            $lines[$line['code']] = $values;
+
+            foreach ($values as $i => $value) {
+                $totals[$line['section']][$i] += $value;
+            }
+        }
+
+        $round = fn (array $values) => array_map(fn (float $v) => round($v, 2), $values);
+        $closing = array_map(fn (array $week) => $week['closing'] !== null ? (float) $week['closing'] : null, $history);
+        $net = $round(array_map(fn (float $b, float $c, float $d) => $b - $c - $d, $totals['B'], $totals['C'], $totals['D']));
+        // From the line totals rather than the history's own net: the two OMC
+        // reads round at different groupings, and the chain must add up here.
+        $adjustment = array_map(fn (array $week, float $flow) => $week['opening'] !== null && $week['closing'] !== null
+            ? round((float) $week['closing'] - (float) $week['opening'] - $flow, 2)
+            : null, $history, $net);
+
+        return [
+            'weeks' => array_column($history, 'week'),
+            'lines' => [
+                ...$lines,
+                'A' => array_map(fn (array $week) => $week['opening'], $history),
+                'B' => $round($totals['B']),
+                'C' => $round($totals['C']),
+                'D' => $round($totals['D']),
+                'E1' => $net,
+                'EA' => $adjustment,
+                'E2' => $closing,
+                'E3' => array_fill(0, $count, $minimum),
+                'E4' => array_map(fn (?float $v) => $v !== null ? round($v - $minimum, 2) : null, $closing),
+                'E5' => array_map(fn (?float $v) => $v === null ? '' : ($v < $minimum ? 'DEFICIT' : ($v < $comfort ? 'ATENȚIE' : 'OK')), $closing),
+                'E6' => array_fill(0, $count, 'efectiv'),
+            ],
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $opening
      * @param  array<string, mixed>  $receivables
      * @param  array<string, mixed>  $payables
@@ -1251,16 +1326,17 @@ class CashFlowReportBuilder
      * @param  array<string, mixed>  $opex
      * @param  array<string, mixed>  $scenario
      * @param  array<string, mixed>  $actuals
+     * @param  array{lines: array<string, list<float>>, classified: array<string, float>}  $classified
      * @return array<string, mixed>
      */
-    private function assemble(array $opening, array $receivables, array $payables, array $charter, array $suppliers, array $opex, array $scenario, array $actuals): array
+    private function assemble(array $opening, array $receivables, array $payables, array $charter, array $suppliers, array $opex, array $scenario, array $actuals, array $classified): array
     {
         $weeks = $this->grid->weeks;
         $scenarioOn = (bool) ($this->params['scenario']['enabled'] ?? true);
 
         $this->line('A', 'Sold inițial de trezorerie (bănci + casierii + depozite)', 'A', array_fill(0, $weeks, 0.0), kind: 'balance', note: 'S+1: poziția de trezorerie din OMC la sfârșitul zilei de ieri; apoi soldul final al săptămânii anterioare');
 
-        $codes = ['pachete' => 'B1', 'circuite' => 'B2', 'exotic' => 'B3', 'sphinx' => 'B4', 'cazare' => 'B5', 'bilete' => 'B6', 'altele' => 'B7'];
+        $codes = self::SEGMENT_LINES;
 
         foreach ($codes as $segment => $code) {
             $this->line($code, 'Încasări '.BookingSegments::LABELS[$segment].' – avansuri și solduri conform scadențarului eTrip', 'B', $receivables['lines'][$segment] ?? $this->grid->zeros(), note: 'eTrip: dosare confirmate, scadențe viitoare minus încasat');
@@ -1271,6 +1347,7 @@ class CashFlowReportBuilder
         $this->line('B8', sprintf('Recuperare solduri restante ≤ %d zile (scadență depășită)', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recovery, note: sprintf('%s%% din restanțe, egal pe %d săptămâni', $this->params['overdue']['recent_pct'] ?? 0, $this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B9', sprintf('Recuperare solduri restante > %d zile', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recoveryOld, note: sprintf('%s%% din restanțele vechi', $this->params['overdue']['old_pct'] ?? 0));
         $this->line('B10', 'Încasări din vânzarea de locuri charter (contracte hard block)', 'B', $charter['incoming'], note: 'contracte charter în care CHR vinde locuri; rotația, taxele și depozitul pe termenii contractului');
+        $this->line('BX', 'Alte încasări (fără încasare eTrip pe dosar) – doar efectiv', 'B', $this->grid->zeros(), note: 'în trecut: încasările OMC peste cele din eTrip și din charter (nealocate pe dosar, decalaje de înregistrare); în prognoză nu se estimează');
 
         $newSales = [];
 
@@ -1293,6 +1370,7 @@ class CashFlowReportBuilder
         $this->line('C8', 'Charter – depozite contracte', 'C', $charter['deposit'], note: 'depozitul fiecărui contract neachitat, la scadența lui');
         $this->line('C9', 'Charter – taxe aeroport', 'C', $charter['taxes'], note: 'pe regula fiecărui contract: reconciliere lunară în prima săptămână a lunii următoare, la N zile după zbor sau în avans; taxele plătite odată cu rotația sunt deja în C6/C7');
         $this->line('C10', 'Furnizori – sold neachitat la data raportului (facturi scadente)', 'C', $suppliers['line'], note: $suppliers['mode'] === 'manual' ? 'parametri' : 'OMC: facturi furnizor deschise, pe scadență');
+        $this->line('CX', 'Alte plăți (restituiri clienți, avansuri, OP-uri încă necompletate) – doar efectiv', 'C', $this->grid->zeros(), note: 'în trecut: plățile OMC care nu se potrivesc pe nicio altă linie; în prognoză nu se estimează');
         $this->line('C11', 'Plăți furnizori pentru vânzări noi – cazare, servicii, bilete (scenariu)', 'C', $scenario['costs'], scenario: true);
         $estimates = (array) ($charter['estimates'] ?? []);
         $estimated = count($estimates) === 1 && current($estimates) !== null ? 'Charter '.current($estimates).' estimat' : 'Charter sezon următor estimat';
@@ -1331,6 +1409,7 @@ class CashFlowReportBuilder
         $comfort = (float) ($this->params['thresholds']['comfort'] ?? 0);
 
         $this->line('E1', 'FLUX NET OPERAȚIONAL (B − C − D)', 'E', $net, kind: 'total');
+        $this->line('EA', 'Ajustări sold (curs valutar, dobânzi, finanțare) – doar efectiv', 'E', $this->grid->zeros(), kind: 'total', note: 'în trecut: diferența până la soldurile OMC; sold inițial + flux net + ajustări = sold final');
         $this->line('E2', 'SOLD FINAL DE TREZORERIE', 'E', $closing, kind: 'balance');
         $this->line('E3', 'Prag minim de siguranță', 'E', array_fill(0, $weeks, $minimum), kind: 'threshold');
         $this->line('E4', 'Marja peste pragul minim (deficit dacă este negativ)', 'E', array_map(fn (float $v) => round($v - $minimum, 2), $closing), kind: 'total');
@@ -1385,7 +1464,7 @@ class CashFlowReportBuilder
             'coverage' => $coverage,
             'lastyear' => $actuals['lastyear'],
             'recent' => $actuals['recent'],
-            'history' => $actuals['history'] ?? [],
+            'past' => $this->past($actuals['history'] ?? [], $classified['lines'] ?? [], $minimum, $comfort),
             'kpis' => $kpis,
             'opening' => $opening,
             'structure' => [

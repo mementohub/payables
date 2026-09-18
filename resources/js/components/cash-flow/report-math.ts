@@ -25,9 +25,19 @@ export type DerivedReport = {
 
 const EDITABLE_SECTIONS: ReportLine['section'][] = ['B', 'C', 'D'];
 
+/**
+ * Lines that only exist in the actual flows: what OMC holds beyond the
+ * classified receipts and payments, and the adjustment to its balances.
+ */
+export const PAST_ONLY = new Set(['BX', 'CX', 'EA']);
+
 /** Receipts, product payments and OPEX lines can be set by hand. */
 export function isEditable(line: ReportLine): boolean {
-    return line.kind === 'value' && EDITABLE_SECTIONS.includes(line.section);
+    return (
+        line.kind === 'value' &&
+        EDITABLE_SECTIONS.includes(line.section) &&
+        !PAST_ONLY.has(line.code)
+    );
 }
 
 /**

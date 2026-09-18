@@ -1,10 +1,11 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { ReportLine } from '@/types/cash-flow';
+import type { PastWeeks, ReportLine } from '@/types/cash-flow';
 import {
     fmtRon,
     isEditable,
     monthGroups,
+    PAST_ONLY,
     parseAmount,
     weekLabel,
 } from './report-math';
@@ -19,24 +20,81 @@ const SECTION_TITLES: Record<ReportLine['section'], string> = {
     F: 'F. Referință: fluxuri efective anul anterior (OMC)',
 };
 
-type Column = { key: string; label: string; indexes: number[] };
+type Column = {
+    key: string;
+    label: string;
+    /** past: actual flows from OMC; future: the forecast. */
+    kind: 'past' | 'future';
+    indexes: number[];
+    partial?: boolean;
+};
 
-function cellValue(line: ReportLine, column: Column): number | string {
-    if (line.kind === 'text') {
-        return String(line.values[column.indexes[column.indexes.length - 1]]);
+type Cell = number | string | null;
+
+/**
+ * One line's value over a column: flows add up, the opening balance is the
+ * first week's, the closing balance, the threshold and the signal the last
+ * week's. A past line with nothing recorded reads as zero.
+ */
+function cellValue(
+    line: ReportLine,
+    column: Column,
+    past: PastWeeks | null,
+): Cell {
+    if (column.kind === 'future' && PAST_ONLY.has(line.code)) {
+        return null;
     }
 
-    const values = column.indexes.map((i) => Number(line.values[i] ?? 0));
+    const source =
+        column.kind === 'past' ? past?.lines[line.code] : line.values;
+    const at = (i: number): Cell => source?.[i] ?? null;
+    const last = column.indexes[column.indexes.length - 1];
+
+    if (line.kind === 'text') {
+        return String(at(last) ?? '');
+    }
 
     if (line.kind === 'balance') {
-        return line.code === 'A' ? values[0] : values[values.length - 1];
+        const value = line.code === 'A' ? at(column.indexes[0]) : at(last);
+
+        return value === null ? null : Number(value);
     }
 
     if (line.kind === 'threshold') {
-        return values[0];
+        const value = at(column.indexes[0]);
+
+        return value === null ? null : Number(value);
     }
 
-    return values.reduce((a, b) => a + b, 0);
+    if (column.kind === 'past' && source === undefined) {
+        return line.kind === 'reference' ? null : 0;
+    }
+
+    return column.indexes.reduce((sum, i) => sum + Number(at(i) ?? 0), 0);
+}
+
+function sumOver(
+    line: ReportLine,
+    columns: Column[],
+    past: PastWeeks | null,
+): number | null {
+    if (!['value', 'subtotal', 'total', 'reference'].includes(line.kind)) {
+        return null;
+    }
+
+    let total = 0;
+    let any = false;
+
+    columns.forEach((column) => {
+        const value = cellValue(line, column, past);
+
+        if (typeof value === 'number') {
+            total += value;
+            any = true;
+        }
+    });
+
+    return any ? total : null;
 }
 
 function signalClass(value: number | string): string {
@@ -138,19 +196,25 @@ function CellInput({
 }
 
 /**
- * The full report grid: every line on its section, one column per week or
- * per month. Scenario lines fade out when the scenario is off. In the weekly
- * view a receipt, product payment or OPEX cell can be set by hand; the cells
- * set that way are marked, in either view.
+ * The report on one timeline: the past weeks as OMC recorded them, then the
+ * forecast, every line on its section. Scenario lines fade out when the
+ * scenario is off. In the weekly view a forecast receipt, product payment or
+ * OPEX cell can be set by hand; the cells set that way are marked.
  */
 export default function WeeklyTable({
     report,
+    past,
+    pastWeeks,
     horizon,
     monthly,
     scenarioOn,
     onOverride,
 }: {
     report: DerivedReport;
+    /** Actual flows on the report's lines; null in an older snapshot. */
+    past: PastWeeks | null;
+    /** Full past weeks to show before the current one. */
+    pastWeeks: number;
     horizon: number;
     monthly: boolean;
     scenarioOn: boolean;
@@ -165,24 +229,83 @@ export default function WeeklyTable({
         code: string;
         index: number;
     } | null>(null);
+    const scroller = useRef<HTMLDivElement>(null);
+    const firstFuture = useRef<HTMLTableCellElement>(null);
 
-    const columns = useMemo<Column[]>(() => {
+    const pastColumns = useMemo<Column[]>(() => {
+        if (!past) {
+            return [];
+        }
+
+        const count = past.weeks.length;
+        const from = Math.max(0, count - (pastWeeks + 1));
+        const indexes = past.weeks.map((_, i) => i).slice(from);
+
+        if (monthly) {
+            return monthGroups(indexes.map((i) => past.weeks[i])).map(
+                (group) => ({
+                    key: `past-${group.key}`,
+                    label: group.indexes.some((j) => indexes[j] === count - 1)
+                        ? `${group.label} până ieri`
+                        : group.label,
+                    kind: 'past' as const,
+                    indexes: group.indexes.map((j) => indexes[j]),
+                    partial: group.indexes.some(
+                        (j) => indexes[j] === count - 1,
+                    ),
+                }),
+            );
+        }
+
+        return indexes.map((i) => ({
+            key: `past-${past.weeks[i]}`,
+            label:
+                i === count - 1
+                    ? `${weekLabel(past.weeks[i])} până ieri`
+                    : weekLabel(past.weeks[i], true),
+            kind: 'past' as const,
+            indexes: [i],
+            partial: i === count - 1,
+        }));
+    }, [past, pastWeeks, monthly]);
+
+    const futureColumns = useMemo<Column[]>(() => {
         const weeks = report.weeks.slice(0, horizon);
 
         if (monthly) {
             return monthGroups(weeks).map((group) => ({
                 key: group.key,
                 label: group.label,
+                kind: 'future' as const,
                 indexes: group.indexes,
             }));
         }
 
         return weeks.map((week, i) => ({
             key: week,
-            label: `S+${i + 1} ${weekLabel(week)}`,
+            label: `S+${i + 1} ${weekLabel(week)}${i === 0 && past ? ' rest' : ''}`,
+            kind: 'future' as const,
             indexes: [i],
         }));
-    }, [report.weeks, horizon, monthly]);
+    }, [report.weeks, horizon, monthly, past]);
+
+    const columns = useMemo(
+        () => [...pastColumns, ...futureColumns],
+        [pastColumns, futureColumns],
+    );
+
+    // Open on today: the last past weeks, then the forecast.
+    useEffect(() => {
+        const element = scroller.current;
+        const boundary = firstFuture.current;
+
+        if (element && boundary) {
+            element.scrollLeft = Math.max(
+                0,
+                boundary.offsetLeft - element.clientWidth / 2,
+            );
+        }
+    }, [pastColumns.length]);
 
     const sections = useMemo(() => {
         const order: ReportLine['section'][] = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -193,21 +316,67 @@ export default function WeeklyTable({
         }));
     }, [report.lines]);
 
+    const edge = (column: Column) =>
+        column.kind === 'future' &&
+        column === futureColumns[0] &&
+        pastColumns.length > 0 &&
+        'border-l-2 border-l-primary/40';
+
     return (
-        <div className="max-h-[70vh] overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+        <div
+            ref={scroller}
+            className="max-h-[70vh] overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border"
+        >
             <table className="min-w-max text-xs">
                 <thead className="sticky top-0 z-20 bg-muted text-muted-foreground uppercase">
+                    {pastColumns.length > 0 && (
+                        <tr className="text-[10px] tracking-wide">
+                            <th
+                                className="sticky left-0 z-30 bg-muted"
+                                colSpan={1}
+                            />
+                            <th className="bg-muted" colSpan={2} />
+                            <th
+                                className="bg-sky-100/70 px-2 py-1 text-left text-sky-900 dark:bg-sky-500/15 dark:text-sky-200"
+                                colSpan={pastColumns.length}
+                            >
+                                Efectiv (OMC, până ieri)
+                            </th>
+                            <th
+                                className="border-l-2 border-l-primary/40 bg-muted px-2 py-1 text-left"
+                                colSpan={futureColumns.length}
+                            >
+                                Prognoză
+                            </th>
+                        </tr>
+                    )}
                     <tr>
                         <th className="sticky left-0 z-30 min-w-[320px] bg-muted px-3 py-2 text-left">
                             Linie
                         </th>
-                        <th className="bg-muted px-2 py-2 text-right">
-                            Total {horizon} săpt.
+                        <th className="bg-muted px-2 py-2 text-right whitespace-nowrap">
+                            {pastColumns.length > 0
+                                ? `Efectiv ${pastWeeks} săpt.`
+                                : ''}
+                        </th>
+                        <th className="bg-muted px-2 py-2 text-right whitespace-nowrap">
+                            Prognoză {horizon} săpt.
                         </th>
                         {columns.map((column) => (
                             <th
                                 key={column.key}
-                                className="bg-muted px-2 py-2 text-right whitespace-nowrap"
+                                ref={
+                                    column === futureColumns[0]
+                                        ? firstFuture
+                                        : undefined
+                                }
+                                className={cn(
+                                    'bg-muted px-2 py-2 text-right whitespace-nowrap',
+                                    column.kind === 'past' &&
+                                        'bg-sky-50 dark:bg-sky-500/10',
+                                    column.partial && 'italic',
+                                    edge(column),
+                                )}
                             >
                                 {column.label}
                             </th>
@@ -220,25 +389,26 @@ export default function WeeklyTable({
                             <tr className="bg-muted/60">
                                 <td
                                     className="sticky left-0 z-10 bg-muted/60 px-3 py-1.5 font-semibold backdrop-blur"
-                                    colSpan={columns.length + 2}
+                                    colSpan={columns.length + 3}
                                 >
                                     {SECTION_TITLES[section]}
                                 </td>
                             </tr>
                             {lines.map((line) => {
                                 const dim = line.scenario && !scenarioOn;
-                                const total =
-                                    line.kind === 'value' ||
-                                    line.kind === 'subtotal' ||
-                                    line.kind === 'total' ||
-                                    line.kind === 'reference'
-                                        ? line.values
-                                              .slice(0, horizon)
-                                              .reduce<number>(
-                                                  (a, b) => a + Number(b),
-                                                  0,
-                                              )
-                                        : null;
+                                // The past total leaves out the current, partial week.
+                                const pastTotal = sumOver(
+                                    line,
+                                    pastColumns.filter(
+                                        (column) => !column.partial,
+                                    ),
+                                    past,
+                                );
+                                const futureTotal = sumOver(
+                                    line,
+                                    futureColumns,
+                                    past,
+                                );
 
                                 return (
                                     <tr
@@ -251,8 +421,6 @@ export default function WeeklyTable({
                                                 'font-medium',
                                             line.kind === 'balance' &&
                                                 'font-semibold',
-                                            dim &&
-                                                'text-muted-foreground/60 line-through decoration-muted-foreground/40',
                                         )}
                                     >
                                         <td
@@ -261,6 +429,8 @@ export default function WeeklyTable({
                                                 line.kind === 'total' &&
                                                     'bg-muted/30',
                                                 line.parent && 'pl-8',
+                                                dim &&
+                                                    'text-muted-foreground/60 line-through decoration-muted-foreground/40',
                                             )}
                                             title={line.note ?? undefined}
                                         >
@@ -274,31 +444,61 @@ export default function WeeklyTable({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums">
-                                            {total !== null
-                                                ? fmtRon(total)
+                                        <td
+                                            className={cn(
+                                                'bg-sky-50/40 px-2 py-1.5 text-right tabular-nums dark:bg-sky-500/5',
+                                                pastTotal !== null &&
+                                                    pastTotal < 0 &&
+                                                    'text-destructive',
+                                            )}
+                                        >
+                                            {pastTotal !== null &&
+                                            pastColumns.length > 0 &&
+                                            line.section !== 'F'
+                                                ? fmtRon(pastTotal)
+                                                : ''}
+                                        </td>
+                                        <td
+                                            className={cn(
+                                                'px-2 py-1.5 text-right tabular-nums',
+                                                dim &&
+                                                    'text-muted-foreground/60 line-through decoration-muted-foreground/40',
+                                            )}
+                                        >
+                                            {futureTotal !== null
+                                                ? fmtRon(futureTotal)
                                                 : ''}
                                         </td>
                                         {columns.map((column) => {
-                                            const value = cellValue(
-                                                line,
-                                                column,
-                                            );
-                                            const manual = column.indexes
-                                                .map(
-                                                    (i) =>
-                                                        report.overridden[
-                                                            line.code
-                                                        ]?.[i],
-                                                )
-                                                .filter(
-                                                    (
-                                                        cell,
-                                                    ): cell is OverriddenCell =>
-                                                        cell !== undefined,
-                                                );
+                                            const isPast =
+                                                column.kind === 'past';
+                                            const value =
+                                                isPast && line.section === 'F'
+                                                    ? null
+                                                    : cellValue(
+                                                          line,
+                                                          column,
+                                                          past,
+                                                      );
+                                            const manual = isPast
+                                                ? []
+                                                : column.indexes
+                                                      .map(
+                                                          (i) =>
+                                                              report.overridden[
+                                                                  line.code
+                                                              ]?.[i],
+                                                      )
+                                                      .filter(
+                                                          (
+                                                              cell,
+                                                          ): cell is OverriddenCell =>
+                                                              cell !==
+                                                              undefined,
+                                                      );
                                             const index = column.indexes[0];
                                             const editable =
+                                                !isPast &&
                                                 !monthly &&
                                                 onOverride !== undefined &&
                                                 isEditable(line);
@@ -312,14 +512,24 @@ export default function WeeklyTable({
                                                     key={column.key}
                                                     className={cn(
                                                         'px-2 py-1.5 text-right whitespace-nowrap tabular-nums',
+                                                        isPast &&
+                                                            'bg-sky-50/40 dark:bg-sky-500/5',
+                                                        column.partial &&
+                                                            'italic',
+                                                        edge(column),
                                                         typeof value ===
                                                             'number' &&
                                                             value < 0 &&
                                                             'text-destructive',
                                                         line.kind === 'text' &&
+                                                            typeof value ===
+                                                                'string' &&
                                                             signalClass(value),
                                                         line.kind === 'text' &&
                                                             'text-[10px] font-normal',
+                                                        !isPast &&
+                                                            dim &&
+                                                            'text-muted-foreground/60 line-through decoration-muted-foreground/40',
                                                         manual.length > 0 &&
                                                             'bg-amber-100/70 font-medium text-amber-900 no-underline dark:bg-amber-500/15 dark:text-amber-200',
                                                         editable &&
@@ -384,20 +594,23 @@ export default function WeeklyTable({
                                                                     className="mr-1 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
                                                                 />
                                                             )}
-                                                            {typeof value ===
-                                                            'number'
-                                                                ? value === 0 &&
-                                                                  manual.length ===
-                                                                      0 &&
-                                                                  (line.kind ===
-                                                                      'value' ||
-                                                                      line.kind ===
-                                                                          'subtotal')
-                                                                    ? '·'
-                                                                    : fmtRon(
-                                                                          value,
-                                                                      )
-                                                                : value}
+                                                            {value === null
+                                                                ? ''
+                                                                : typeof value ===
+                                                                    'number'
+                                                                  ? value ===
+                                                                        0 &&
+                                                                    manual.length ===
+                                                                        0 &&
+                                                                    (line.kind ===
+                                                                        'value' ||
+                                                                        line.kind ===
+                                                                            'subtotal')
+                                                                      ? '·'
+                                                                      : fmtRon(
+                                                                            value,
+                                                                        )
+                                                                  : value}
                                                         </>
                                                     )}
                                                 </td>

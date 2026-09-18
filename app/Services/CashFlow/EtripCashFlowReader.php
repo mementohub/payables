@@ -294,16 +294,88 @@ class EtripCashFlowReader
         ];
     }
 
+    /**
+     * Receipts actually issued per week, in lei at the receipt's own rate,
+     * by the segment of the booking they were allocated to (the product
+     * type of its most expensive root item, as in openBookings()).
+     *
+     * @return list<array{week: string, segment_type: ?int, lei: float, receipts: int}>
+     */
+    public function receiptsByWeek(string $name, CarbonInterface $from, CarbonInterface $to): array
+    {
+        $rows = $this->connection($name)->select(<<<'SQL'
+            with rc as (
+                select (date_trunc('week', r.issue_date))::date as week,
+                       rb.booking,
+                       rb.receipt_amount * coalesce(nullif(r.exchange_rate, 0), 1) as lei
+                from financials.receipts r
+                join financials.receipt_bookings rb on rb.receipt = r.id
+                where r.issue_date >= ?::date and r.issue_date < ?::date
+            ),
+            s as (
+                select distinct on (i.booking) i.booking, i.product_type
+                from bookings.items i
+                where i.booking in (select booking from rc) and i.package is null
+                order by i.booking, (i.client_status = 'confirmed') desc, (i.price).gross desc nulls last, i.id
+            )
+            select rc.week, s.product_type as segment_type, sum(rc.lei)::numeric(20,2) as lei, count(*) as receipts
+            from rc
+            left join s on s.booking = rc.booking
+            group by 1, 2
+            order by 1, 2
+            SQL, [$from->toDateString(), $to->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'week' => (string) $row->week,
+            'segment_type' => $row->segment_type !== null ? (int) $row->segment_type : null,
+            'lei' => (float) $row->lei,
+            'receipts' => (int) $row->receipts,
+        ], $rows);
+    }
+
+    /**
+     * What each supplier mostly sells, by the cost of its services that
+     * started since the given day: hotel, transfer, insurance, flight,
+     * charter or other.
+     *
+     * @return list<array{code: string, name: string, vat_no: ?string, category: string}>
+     */
+    public function supplierCategories(string $name, CarbonInterface $since): array
+    {
+        $rows = $this->connection($name)->select(sprintf(<<<'SQL'
+            with c as (
+                select i.supplier as code, %1$s as category, sum(abs(coalesce((i.cost).gross, 0))) as cost
+                from bookings.items i
+                where i.supplier is not null and i.start_date >= ?::date and i.supplier_status <> 'cancelled'
+                group by 1, 2
+            )
+            select distinct on (c.code) c.code, s.name, s.vat_no, c.category
+            from c
+            join suppliers.suppliers s on s.code = c.code
+            order by c.code, c.cost desc
+            SQL, $this->categoryCase(['charter', 'hotel', 'transfer', 'insurance', 'flight'])), [$since->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'code' => (string) $row->code,
+            'name' => (string) $row->name,
+            'vat_no' => $row->vat_no !== null ? (string) $row->vat_no : null,
+            'category' => (string) $row->category,
+        ], $rows);
+    }
+
     private function costExpression(): string
     {
         return '(coalesce((i.cost).gross, 0) + coalesce((i.cost).tax, 0) - coalesce((i.cost).commission, 0) - coalesce(i.supplier_paid_amount, 0))';
     }
 
-    private function categoryCase(): string
+    /**
+     * @param  list<string>  $categories
+     */
+    private function categoryCase(array $categories = ['hotel', 'transfer', 'insurance', 'flight']): string
     {
         $cases = [];
 
-        foreach (['hotel', 'transfer', 'insurance', 'flight'] as $category) {
+        foreach ($categories as $category) {
             $ids = $this->idList($category);
 
             if ($ids !== '') {
