@@ -5,6 +5,7 @@ import {
     Check,
     CheckCheck,
     CircleAlert,
+    Forward,
     MessageSquare,
     MoreHorizontal,
     RotateCcw,
@@ -13,6 +14,7 @@ import {
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import ApprovalController from '@/actions/App/Http/Controllers/Approvals/ApprovalController';
+import DepartmentSelect from '@/components/department-select';
 import DepartmentShares from '@/components/department-shares';
 import {
     FilterField,
@@ -66,12 +68,17 @@ import { formatDate, formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { index as approvalsIndex } from '@/routes/approvals';
 import { show as invoicesShow } from '@/routes/invoices';
-import type { ApprovalsPageProps, WorkflowInvoice } from '@/types/approvals';
+import type {
+    ApprovalsPageProps,
+    DepartmentRef,
+    WorkflowInvoice,
+} from '@/types/approvals';
 
 type Tab = ApprovalsPageProps['tab'];
 type Filters = ApprovalsPageProps['filters'];
 type Department = ApprovalsPageProps['departments'][number];
-type Decision = 'approved' | 'disputed' | 'postponed';
+/** `redirected`: the department hands its share to another department. */
+type Decision = 'approved' | 'disputed' | 'postponed' | 'redirected';
 type Errors = Record<string, string>;
 
 type Query = Filters & { tab: Tab };
@@ -92,6 +99,7 @@ type DecisionValues = {
     comment: string;
     until: string;
     departmentId: number | null;
+    toDepartmentId: number | null;
 };
 
 /** YYYY-MM-DD in the browser's time zone, `offsetDays` from today. */
@@ -165,6 +173,12 @@ function dialogCopy(request: DecisionRequest): {
                 description: `Alegeți data până la care se amână plata pentru ${subject}.`,
                 submit: 'Amână',
             };
+        case 'redirected':
+            return {
+                title: 'Redirecționează la alt departament',
+                description: `Partea departamentului dumneavoastră din ${subject} merge la departamentul ales, care o va aproba. Spuneți de ce nu vă aparține.`,
+                submit: 'Redirecționează',
+            };
     }
 }
 
@@ -172,6 +186,7 @@ export default function ApprovalsIndex({
     tab,
     rows,
     departments,
+    all_departments: allDepartments,
     counts,
     filters,
     can,
@@ -410,6 +425,29 @@ export default function ApprovalsIndex({
             return;
         }
 
+        if (
+            request.decision === 'redirected' &&
+            values.departmentId !== null &&
+            values.toDepartmentId !== null
+        ) {
+            const pendingIds = idsPendingAt(
+                request.invoices,
+                values.departmentId,
+            );
+
+            post(ApprovalController.redirect().url, {
+                invoice_ids:
+                    pendingIds.length > 0
+                        ? pendingIds
+                        : request.invoices.map((invoice) => invoice.id),
+                department_id: values.departmentId,
+                to_department_id: values.toDepartmentId,
+                comment,
+            });
+
+            return;
+        }
+
         if (values.departmentId !== null) {
             decideForDepartment(
                 request.invoices,
@@ -507,6 +545,15 @@ export default function ApprovalsIndex({
                 >
                     <CalendarClock className="size-4" /> Amână
                 </Button>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={processing}
+                    onClick={() => bulkDecide('redirected')}
+                >
+                    <Forward className="size-4" /> Redirecționează
+                </Button>
             </>
         );
 
@@ -593,6 +640,18 @@ export default function ApprovalsIndex({
                         >
                             <CalendarClock /> Amână
                         </DropdownMenuItem>
+                        {tab === 'mine' && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onSelect={() =>
+                                        openRowDialog(invoice, 'redirected')
+                                    }
+                                >
+                                    <Forward /> Nu e al nostru: redirecționează
+                                </DropdownMenuItem>
+                            </>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -969,6 +1028,7 @@ export default function ApprovalsIndex({
                         <DecisionForm
                             key={dialogKey}
                             request={request}
+                            allDepartments={allDepartments}
                             processing={processing}
                             errors={errors}
                             onCancel={() => setRequest(null)}
@@ -983,12 +1043,14 @@ export default function ApprovalsIndex({
 
 function DecisionForm({
     request,
+    allDepartments,
     processing,
     errors,
     onCancel,
     onSubmit,
 }: {
     request: DecisionRequest;
+    allDepartments: DepartmentRef[];
     processing: boolean;
     errors: Errors;
     onCancel: () => void;
@@ -999,11 +1061,13 @@ function DecisionForm({
     const [departmentId, setDepartmentId] = useState<number | null>(
         request.kind === 'department' ? request.departmentId : null,
     );
+    const [toDepartmentId, setToDepartmentId] = useState<number | null>(null);
 
     const copy = dialogCopy(request);
     const decision = request.kind === 'reopen' ? null : request.decision;
     const tomorrow = localIsoDate(1);
-    const needsComment = decision === 'disputed';
+    const redirecting = decision === 'redirected';
+    const needsComment = decision === 'disputed' || redirecting;
     const needsDate = decision === 'postponed';
     const invoices = request.kind === 'reopen' ? [] : request.invoices;
     const departmentOptions =
@@ -1016,7 +1080,12 @@ function DecisionForm({
     const otherErrors = [
         ...new Set(
             Object.entries(errors)
-                .filter(([key]) => key !== 'comment' && key !== 'until')
+                .filter(
+                    ([key]) =>
+                        key !== 'comment' &&
+                        key !== 'until' &&
+                        key !== 'to_department_id',
+                )
                 .map(([, message]) => message),
         ),
     ];
@@ -1025,13 +1094,19 @@ function DecisionForm({
         !processing &&
         (!needsComment || comment.trim() !== '') &&
         (!needsDate || until >= tomorrow) &&
-        (request.kind !== 'department' || departmentId !== null);
+        (request.kind !== 'department' || departmentId !== null) &&
+        (!redirecting || toDepartmentId !== null);
 
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
         if (canSubmit) {
-            onSubmit({ comment: comment.trim(), until, departmentId });
+            onSubmit({
+                comment: comment.trim(),
+                until,
+                departmentId,
+                toDepartmentId,
+            });
         }
     };
 
@@ -1103,6 +1178,23 @@ function DecisionForm({
                 </div>
             )}
 
+            {redirecting && (
+                <div className="grid gap-2">
+                    <Label>Către departamentul</Label>
+                    <DepartmentSelect
+                        departments={allDepartments}
+                        exclude={departmentId !== null ? [departmentId] : []}
+                        value={
+                            toDepartmentId !== null
+                                ? String(toDepartmentId)
+                                : ''
+                        }
+                        onChange={(value) => setToDepartmentId(Number(value))}
+                    />
+                    <InputError message={errors.to_department_id} />
+                </div>
+            )}
+
             {needsDate && (
                 <div className="grid gap-2">
                     <Label htmlFor="decision-until">Amână până la</Label>
@@ -1121,9 +1213,11 @@ function DecisionForm({
 
             <div className="grid gap-2">
                 <Label htmlFor="decision-comment">
-                    {needsComment
-                        ? 'Motivul contestării'
-                        : 'Comentariu (opțional)'}
+                    {redirecting
+                        ? 'De ce nu este a departamentului dumneavoastră'
+                        : needsComment
+                          ? 'Motivul contestării'
+                          : 'Comentariu (opțional)'}
                 </Label>
                 <Textarea
                     id="decision-comment"

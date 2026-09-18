@@ -6,14 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AssignmentRule;
 use App\Models\Department;
 use App\Models\Invoice;
-use App\Models\InvoiceDetail;
-use App\Models\InvoiceLineDepartment;
 use App\Models\User;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Routing\DepartmentAssigner;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,17 +28,13 @@ class RoutingController extends Controller
 {
     public function index(Request $request, ArtisanRunner $runner): Response
     {
-        $tab = in_array($request->string('tab')->toString(), ['queue', 'rules', 'accuracy'], true) ? $request->string('tab')->toString() : 'queue';
-        $search = trim($request->string('search')->toString());
+        $tab = $request->string('tab')->toString() === 'accuracy' ? 'accuracy' : 'rules';
 
         return Inertia::render('routing/index', [
             'tab' => $tab,
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
-            'queue' => $tab === 'queue' ? $this->queue($search) : null,
             'rules' => $tab === 'rules' ? $this->rules() : null,
             'accuracy' => $tab === 'accuracy' ? $this->accuracy() : null,
-            'counts' => ['queue' => $this->queueQuery()->count()],
-            'filters' => ['search' => $search],
             'run' => $runner->status(ArtisanRunner::ROUTING),
             'can' => ['edit' => $request->user()->hasRole(User::ROLE_FINANCE)],
         ]);
@@ -74,6 +66,43 @@ class RoutingController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Factura {$invoice->nr_doc} merge la {$department->name}."]);
+
+        return back();
+    }
+
+    /**
+     * Send several invoices to one department at once (Facturi → Primite).
+     */
+    public function assignMany(Request $request, DepartmentAssigner $assigner): RedirectResponse
+    {
+        $this->authorizeFinance($request->user());
+
+        $validated = $request->validate([
+            'invoice_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'invoice_ids.*' => ['integer'],
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
+            'remember' => ['nullable', 'boolean'],
+        ]);
+
+        $department = Department::query()->findOrFail($validated['department_id']);
+        $invoices = Invoice::query()->whereKey($validated['invoice_ids'])->with('partner:id,name')->get();
+
+        DB::transaction(function () use ($invoices, $department, $request, $assigner, $validated) {
+            foreach ($invoices as $invoice) {
+                $assigner->assignManually($invoice, $department, $request->user()->id);
+
+                if (($validated['remember'] ?? false) && $invoice->partner !== null) {
+                    AssignmentRule::query()->updateOrCreate(
+                        ['kind' => 'partner', 'pattern' => $invoice->partner->name],
+                        ['department_id' => $department->id, 'created_by_id' => $request->user()->id, 'note' => 'din Facturi primite'],
+                    );
+                }
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $invoices->count() === 1
+            ? "Factura {$invoices->first()->nr_doc} merge la {$department->name}."
+            : "{$invoices->count()} facturi merg la {$department->name}."]);
 
         return back();
     }
@@ -125,58 +154,6 @@ class RoutingController extends Controller
         }
 
         return back();
-    }
-
-    /**
-     * @return Builder<Invoice>
-     */
-    private function queueQuery(): Builder
-    {
-        return Invoice::query()
-            ->where('partener_type', 'furnizor')
-            ->whereNull('omc_removed_at')
-            ->where('val_mon', '>', 0)
-            ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
-            ->whereIn('assignment_state', ['unassigned', 'partial']);
-    }
-
-    /**
-     * @return LengthAwarePaginator<int, array<string, mixed>>
-     */
-    private function queue(string $search)
-    {
-        return $this->queueQuery()
-            ->with('partner:id,name')
-            ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('nr_doc', 'like', "%{$search}%")->orWhereHas('partner', fn (Builder $p) => $p->where('name', 'like', "%{$search}%"))))
-            ->orderByRaw('data_scadenta is null, data_scadenta')
-            ->paginate(25)
-            ->withQueryString()
-            ->through(function (Invoice $invoice) {
-                $routing = InvoiceLineDepartment::query()->where('invoice_id', $invoice->id)->with('department:id,name')->get()->keyBy('scv');
-
-                return [
-                    'id' => $invoice->id,
-                    'nr_doc' => $invoice->nr_doc,
-                    'data_doc' => $invoice->data_doc?->toDateString(),
-                    'data_scadenta' => $invoice->data_scadenta?->toDateString(),
-                    'partner' => $invoice->partner?->name,
-                    'moneda' => $invoice->moneda,
-                    'outstanding' => $invoice->outstandingAmount(),
-                    'office' => $invoice->office,
-                    'lines' => InvoiceDetail::query()->where('invoice_id', $invoice->id)->orderBy('scv')->get()->map(fn (InvoiceDetail $line) => [
-                        'scv' => $line->scv,
-                        'articol' => $line->articol,
-                        'detaliu' => $line->detaliu_articol,
-                        'account' => $line->account,
-                        'loc' => $line->loc,
-                        'com_int' => $line->com_int,
-                        'amount' => round((float) $line->cant * (float) $line->pret, 2),
-                        'department' => $routing->get($line->scv)?->department?->name,
-                        'rule' => $routing->get($line->scv)?->rule,
-                        'detail' => $routing->get($line->scv)?->detail,
-                    ])->all(),
-                ];
-            });
     }
 
     /**

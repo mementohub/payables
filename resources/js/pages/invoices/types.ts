@@ -109,6 +109,7 @@ export type IndexFilters = {
     data_scadenta_to: string | null;
     approval: string | null;
     department_id: number | null;
+    partner_id: number | null;
 };
 
 export type CurrentUser = {
@@ -126,7 +127,8 @@ export type IndexProps = {
     companies: { id: number; name: string; last_synced_at?: string | null }[];
     syncRunning: boolean;
     currentUser: CurrentUser;
-    departments: { id: number; name: string }[];
+    departments: DepartmentRef[];
+    selectedPartner: { id: number; name: string; cui: string | null } | null;
 };
 
 export type Detail = {

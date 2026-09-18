@@ -60,6 +60,8 @@ export type ApprovalsPageProps = {
     tab: 'mine' | 'final' | 'blocked';
     rows: Paginated<WorkflowInvoice>;
     departments: { id: number; name: string; pending: number }[];
+    /** Every active department: where a share can be redirected. */
+    all_departments: DepartmentRef[];
     counts: { mine: number; final: number; blocked: number };
     filters: {
         department: number | null;
@@ -149,31 +151,6 @@ export type RoutingRule = {
     created_by: string | null;
 };
 
-export type RoutingQueueLine = {
-    scv: number;
-    articol: string;
-    detaliu: string | null;
-    account: string | null;
-    loc: string | null;
-    com_int: string | null;
-    amount: number;
-    department: string | null;
-    rule: string | null;
-    detail: string | null;
-};
-
-export type RoutingQueueInvoice = {
-    id: number;
-    nr_doc: string;
-    data_doc: string | null;
-    data_scadenta: string | null;
-    partner: string | null;
-    moneda: string | null;
-    outstanding: number;
-    office: string | null;
-    lines: RoutingQueueLine[];
-};
-
 export type RoutingAccuracy = {
     since: string;
     by_rule: { rule: string; lines: number; amount: number }[];
@@ -184,13 +161,10 @@ export type RoutingAccuracy = {
 };
 
 export type RoutingPageProps = {
-    tab: 'queue' | 'rules' | 'accuracy';
+    tab: 'rules' | 'accuracy';
     departments: DepartmentRef[];
-    queue: Paginated<RoutingQueueInvoice> | null;
     rules: RoutingRule[] | null;
     accuracy: RoutingAccuracy | null;
-    counts: { queue: number };
-    filters: { search: string };
     run: { running: boolean; started_at: string | null; log: string };
     can: { edit: boolean };
 };

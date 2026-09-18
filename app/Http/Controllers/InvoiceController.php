@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceLineDepartment;
+use App\Models\Partner;
 use App\Models\PaymentRequest;
 use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
@@ -68,7 +69,8 @@ class InvoiceController extends Controller
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,
             'currentUser' => $this->currentUserContext($request),
-            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
+            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
+            'selectedPartner' => $filters['partner_id'] ? Partner::query()->whereKey($filters['partner_id'])->first(['id', 'name', 'cui']) : null,
         ]);
     }
 

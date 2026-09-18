@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 class InvoiceListQuery
 {
     /**
-     * @return array{search: ?string, company_id: ?int, payment: ?string, data_doc_from: ?string, data_doc_to: ?string, data_scadenta_from: ?string, data_scadenta_to: ?string, approval: ?string, department_id: ?int}
+     * @return array{search: ?string, company_id: ?int, payment: ?string, data_doc_from: ?string, data_doc_to: ?string, data_scadenta_from: ?string, data_scadenta_to: ?string, approval: ?string, department_id: ?int, partner_id: ?int}
      */
     public static function parseFilters(Request $request): array
     {
@@ -27,6 +27,7 @@ class InvoiceListQuery
             'data_scadenta_to' => $request->string('data_scadenta_to')->toString() ?: null,
             'approval' => $request->string('approval')->toString() ?: null,
             'department_id' => $request->integer('department_id') ?: null,
+            'partner_id' => $request->integer('partner_id') ?: null,
         ];
     }
 
@@ -44,6 +45,7 @@ class InvoiceListQuery
             ->paymentStatus($filters['payment'])
             ->approvalStatus($filters['approval'])
             ->inDepartment($filters['department_id'])
+            ->when($filters['partner_id'], fn ($q, $id) => $q->where('partner_id', $id))
             ->search($filters['search']);
     }
 }

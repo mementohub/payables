@@ -1,20 +1,17 @@
-import { Head, Link, router, usePoll } from '@inertiajs/react';
-import { Loader2, Pencil, Plus, RefreshCw, Trash2, Undo2 } from 'lucide-react';
+import { Head, router, usePoll } from '@inertiajs/react';
+import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import RoutingController from '@/actions/App/Http/Controllers/Approvals/RoutingController';
-import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
     CardContent,
     CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -46,15 +43,12 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { formatDate, formatMoney } from '@/lib/money';
-import { show as invoiceShow } from '@/routes/invoices';
 import { index as routingIndex } from '@/routes/routing';
 import type {
     DepartmentGroup,
     DepartmentRef,
     RoutingAccuracy,
     RoutingPageProps,
-    RoutingQueueInvoice,
-    RoutingQueueLine,
     RoutingRule,
 } from '@/types/approvals';
 
@@ -185,11 +179,8 @@ function formatCount(value: number): string {
 export default function RoutingIndex({
     tab,
     departments,
-    queue,
     rules,
     accuracy,
-    counts,
-    filters,
     run,
     can,
 }: RoutingPageProps) {
@@ -207,14 +198,14 @@ export default function RoutingIndex({
 
     return (
         <>
-            <Head title="Rutare" />
+            <Head title="Reguli de rutare" />
             {run.running && <RunPoller />}
 
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="max-w-3xl">
                         <h1 className="text-2xl font-semibold">
-                            Rutare pe departamente
+                            Reguli de rutare
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             Fiecare linie a unei facturi de furnizor primește un
@@ -224,8 +215,8 @@ export default function RoutingIndex({
                             pe linie, biroul OMC, regula pentru furnizor,
                             istoricul furnizorului și, la urmă, regula pentru
                             contul contabil. Liniile pe care nu le prinde nicio
-                            regulă așteaptă aici ca Financiar să le trimită unde
-                            trebuie.
+                            regulă apar în Facturi primite cu starea „De rutat”,
+                            de unde Financiar le trimite unde trebuie.
                         </p>
                     </div>
                     {can.edit && (
@@ -261,27 +252,11 @@ export default function RoutingIndex({
 
                 <Tabs value={tab} onValueChange={changeTab}>
                     <TabsList>
-                        <TabsTrigger value="queue">
-                            De rutat
-                            {counts.queue > 0 && (
-                                <Badge variant="secondary" className="ml-1">
-                                    {formatCount(counts.queue)}
-                                </Badge>
-                            )}
-                        </TabsTrigger>
                         <TabsTrigger value="rules">Reguli</TabsTrigger>
                         <TabsTrigger value="accuracy">Acuratețe</TabsTrigger>
                     </TabsList>
                 </Tabs>
 
-                {tab === 'queue' && queue && (
-                    <QueueTab
-                        queue={queue}
-                        departments={departments}
-                        search={filters.search}
-                        canEdit={can.edit}
-                    />
-                )}
                 {tab === 'rules' && rules && (
                     <RulesTab
                         rules={rules}
@@ -355,350 +330,6 @@ function FieldError({ message }: { message?: string }) {
 
 /* ------------------------------------------------------------------ */
 /* De rutat                                                            */
-/* ------------------------------------------------------------------ */
-
-function QueueTab({
-    queue,
-    departments,
-    search: initialSearch,
-    canEdit,
-}: {
-    queue: NonNullable<RoutingPageProps['queue']>;
-    departments: DepartmentRef[];
-    search: string;
-    canEdit: boolean;
-}) {
-    const [search, setSearch] = useState(initialSearch);
-
-    const submitSearch = (event: FormEvent) => {
-        event.preventDefault();
-        router.get(
-            routingIndex().url,
-            { tab: 'queue', search: search.trim() || undefined },
-            { preserveState: true, preserveScroll: true, replace: true },
-        );
-    };
-
-    return (
-        <div className="flex flex-col gap-4">
-            <form
-                className="flex flex-wrap items-center gap-2"
-                onSubmit={submitSearch}
-            >
-                <Input
-                    className="max-w-xs"
-                    placeholder="Caută furnizor sau număr de factură…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
-                <Button type="submit" variant="secondary">
-                    Caută
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                    {formatCount(queue.total)}{' '}
-                    {queue.total === 1 ? 'factură' : 'facturi'} de rutat, cele
-                    mai apropiate de scadență primele.
-                </span>
-            </form>
-
-            {queue.data.length === 0 ? (
-                <Card>
-                    <CardContent className="py-10 text-center text-muted-foreground">
-                        {initialSearch
-                            ? 'Nicio factură de rutat nu se potrivește căutării.'
-                            : 'Toate facturile deschise au departament.'}
-                    </CardContent>
-                </Card>
-            ) : (
-                queue.data.map((invoice) => (
-                    <QueueInvoiceCard
-                        key={invoice.id}
-                        invoice={invoice}
-                        departments={departments}
-                        canEdit={canEdit}
-                    />
-                ))
-            )}
-
-            <div className="flex justify-center">
-                <Pagination links={queue.links} />
-            </div>
-        </div>
-    );
-}
-
-function lineReason(line: RoutingQueueLine): string {
-    if (line.detail) {
-        return line.detail;
-    }
-
-    if (!line.rule || line.rule === 'none') {
-        return 'Nicio regulă';
-    }
-
-    return RULE_LABELS[line.rule] ?? line.rule;
-}
-
-function QueueInvoiceCard({
-    invoice,
-    departments,
-    canEdit,
-}: {
-    invoice: RoutingQueueInvoice;
-    departments: DepartmentRef[];
-    canEdit: boolean;
-}) {
-    const [selected, setSelected] = useState<number[]>([]);
-    const [departmentId, setDepartmentId] = useState('');
-    const [remember, setRemember] = useState(false);
-    const [processing, setProcessing] = useState(false);
-    const [errors, setErrors] = useState<FormErrors>({});
-
-    const lineIds = invoice.lines.map((line) => line.scv);
-    const allSelected =
-        lineIds.length > 0 && selected.length === lineIds.length;
-    const hasManualLines = invoice.lines.some((line) => line.rule === 'manual');
-
-    const toggleLine = (scv: number, checked: boolean) => {
-        setSelected((current) =>
-            checked ? [...current, scv] : current.filter((s) => s !== scv),
-        );
-    };
-
-    const toggleAll = (checked: boolean) => {
-        setSelected(checked ? lineIds : []);
-    };
-
-    const assign = () => {
-        router.post(
-            RoutingController.assign(invoice.id),
-            {
-                department_id: Number(departmentId),
-                ...(selected.length > 0 ? { scvs: selected } : {}),
-                remember,
-            },
-            {
-                preserveScroll: true,
-                onStart: () => setProcessing(true),
-                onFinish: () => setProcessing(false),
-                onSuccess: () => {
-                    setErrors({});
-                    setSelected([]);
-                    setRemember(false);
-                },
-                onError: (errs) => setErrors(errs),
-            },
-        );
-    };
-
-    const release = () => {
-        router.post(
-            RoutingController.release(invoice.id),
-            {},
-            {
-                preserveScroll: true,
-                onStart: () => setProcessing(true),
-                onFinish: () => setProcessing(false),
-                onError: (errs) => setErrors(errs),
-            },
-        );
-    };
-
-    return (
-        <Card className="gap-4">
-            <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                        <CardTitle className="text-base">
-                            {invoice.partner ?? 'Furnizor necunoscut'}
-                        </CardTitle>
-                        <CardDescription className="flex flex-wrap gap-x-4 gap-y-1">
-                            <Link
-                                href={invoiceShow(invoice.id)}
-                                className="font-medium text-foreground underline-offset-4 hover:underline"
-                            >
-                                {invoice.nr_doc}
-                            </Link>
-                            <span>Data: {formatDate(invoice.data_doc)}</span>
-                            <span>
-                                Scadență: {formatDate(invoice.data_scadenta)}
-                            </span>
-                            {invoice.office && (
-                                <span>Birou: {invoice.office}</span>
-                            )}
-                        </CardDescription>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-xs text-muted-foreground">
-                            De plată
-                        </div>
-                        <div className="font-semibold tabular-nums">
-                            {formatMoney(invoice.outstanding, invoice.moneda)}
-                        </div>
-                    </div>
-                </div>
-            </CardHeader>
-
-            <CardContent>
-                <div className="overflow-x-auto rounded-lg border border-sidebar-border/70 dark:border-sidebar-border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                {canEdit && (
-                                    <TableHead className="w-8">
-                                        <Checkbox
-                                            aria-label="Toate liniile"
-                                            checked={
-                                                allSelected
-                                                    ? true
-                                                    : selected.length > 0
-                                                      ? 'indeterminate'
-                                                      : false
-                                            }
-                                            onCheckedChange={(checked) =>
-                                                toggleAll(checked === true)
-                                            }
-                                        />
-                                    </TableHead>
-                                )}
-                                <TableHead>Articol</TableHead>
-                                <TableHead>Cont</TableHead>
-                                <TableHead>Loc</TableHead>
-                                <TableHead>Referință</TableHead>
-                                <TableHead className="text-right">
-                                    Sumă
-                                </TableHead>
-                                <TableHead>Departament</TableHead>
-                                <TableHead>Motiv</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {invoice.lines.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={canEdit ? 8 : 7}
-                                        className="text-center text-muted-foreground"
-                                    >
-                                        Factura nu are linii importate.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {invoice.lines.map((line) => (
-                                <TableRow key={line.scv}>
-                                    {canEdit && (
-                                        <TableCell>
-                                            <Checkbox
-                                                aria-label={`Linia ${line.scv}`}
-                                                checked={selected.includes(
-                                                    line.scv,
-                                                )}
-                                                onCheckedChange={(checked) =>
-                                                    toggleLine(
-                                                        line.scv,
-                                                        checked === true,
-                                                    )
-                                                }
-                                            />
-                                        </TableCell>
-                                    )}
-                                    <TableCell className="max-w-[280px] whitespace-normal">
-                                        <div>{line.articol}</div>
-                                        {line.detaliu && (
-                                            <div className="text-xs text-muted-foreground">
-                                                {line.detaliu}
-                                            </div>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="font-mono text-xs">
-                                        {line.account ?? '—'}
-                                    </TableCell>
-                                    <TableCell>{line.loc ?? '—'}</TableCell>
-                                    <TableCell className="font-mono text-xs">
-                                        {line.com_int ?? '—'}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {formatMoney(
-                                            line.amount,
-                                            invoice.moneda,
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {line.department ?? (
-                                            <span className="text-muted-foreground">
-                                                —
-                                            </span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="max-w-[260px] text-xs whitespace-normal text-muted-foreground">
-                                        {lineReason(line)}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            </CardContent>
-
-            {canEdit && (
-                <CardFooter className="flex flex-col items-stretch gap-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <DepartmentSelect
-                            departments={departments}
-                            value={departmentId}
-                            onChange={setDepartmentId}
-                        />
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                id={`remember-${invoice.id}`}
-                                checked={remember}
-                                disabled={!invoice.partner}
-                                onCheckedChange={(checked) =>
-                                    setRemember(checked === true)
-                                }
-                            />
-                            <Label
-                                htmlFor={`remember-${invoice.id}`}
-                                className="font-normal"
-                            >
-                                Trimite mereu acest furnizor aici
-                            </Label>
-                        </div>
-                        <div className="ml-auto flex gap-2">
-                            {hasManualLines && (
-                                <Button
-                                    variant="outline"
-                                    onClick={release}
-                                    disabled={processing}
-                                    title="Liniile rutate manual se întorc la reguli"
-                                >
-                                    <Undo2 className="size-4" />
-                                    Eliberează
-                                </Button>
-                            )}
-                            <Button
-                                onClick={assign}
-                                disabled={processing || departmentId === ''}
-                            >
-                                {processing && (
-                                    <Loader2 className="size-4 animate-spin" />
-                                )}
-                                {selected.length === 0
-                                    ? 'Rutează factura'
-                                    : `Rutează ${selected.length} ${selected.length === 1 ? 'linie' : 'linii'}`}
-                            </Button>
-                        </div>
-                    </div>
-                    <FieldError message={errors.department_id} />
-                    <FieldError message={errors.scvs} />
-                    <FieldError message={errors.remember} />
-                </CardFooter>
-            )}
-        </Card>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/* Reguli                                                              */
 /* ------------------------------------------------------------------ */
 
 function RulesTab({
@@ -1263,9 +894,7 @@ function AccuracyTab({ accuracy }: { accuracy: RoutingAccuracy }) {
 
 RoutingIndex.layout = (page: React.ReactNode) => (
     <AppLayout
-        breadcrumbs={[
-            { title: 'Rutare pe departamente', href: routingIndex() },
-        ]}
+        breadcrumbs={[{ title: 'Reguli de rutare', href: routingIndex() }]}
     >
         {page}
     </AppLayout>

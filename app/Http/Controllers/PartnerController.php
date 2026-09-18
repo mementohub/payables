@@ -10,6 +10,7 @@ use App\Models\Partner;
 use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
 use App\Services\SyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,26 @@ class PartnerController extends Controller
     public function furnizori(Request $request): Response
     {
         return $this->list($request, 'furnizori');
+    }
+
+    /**
+     * Suppliers matching a name or CUI, for the supplier filters: the most
+     * recently invoiced first.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $term = trim($request->string('q')->toString());
+
+        return response()->json([
+            'suppliers' => Partner::query()
+                ->furnizori()
+                ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('cui', 'like', "%{$term}%")))
+                ->withMax('invoices', 'data_doc')
+                ->orderByDesc('invoices_max_data_doc')
+                ->limit(30)
+                ->get(['id', 'name', 'cui'])
+                ->map(fn (Partner $partner) => ['id' => $partner->id, 'name' => $partner->name, 'cui' => $partner->cui, 'last_invoice' => $partner->invoices_max_data_doc ? substr((string) $partner->invoices_max_data_doc, 0, 10) : null]),
+        ]);
     }
 
     public function show(Request $request, Partner $partner): Response

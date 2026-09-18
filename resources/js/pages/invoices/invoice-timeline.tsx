@@ -6,6 +6,7 @@ import {
     CircleDollarSign,
     ClipboardCheck,
     Clock,
+    Forward,
     Landmark,
     ListMinus,
     ListPlus,
@@ -49,6 +50,11 @@ const looks: Record<string, Look> = {
         label: 'Amânat',
         accent: slate,
         icon: <Clock className={icon} />,
+    },
+    department_redirected: {
+        label: 'Redirecționată',
+        accent: violet,
+        icon: <Forward className={icon} />,
     },
     final_approved: {
         label: 'Aprobare finală',
@@ -135,6 +141,11 @@ function describe(event: TimelineEvent): string {
             return `a contestat${part}`;
         case 'department_postponed':
             return `a amânat${part}${until ? ` până la ${formatDate(until)}` : ''}`;
+        case 'department_redirected': {
+            const to = event.payload?.to as string | undefined;
+
+            return `a trimis${part} la ${to ?? 'alt departament'}`;
+        }
         case 'final_approved':
             return via
                 ? `a aprobat final, prin rulajul ${via}`

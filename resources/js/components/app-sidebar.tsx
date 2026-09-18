@@ -57,7 +57,7 @@ import { index as usersIndex } from '@/routes/users';
 import type { Auth } from '@/types/auth';
 import type { NavItemOrGroup } from '@/types/navigation';
 
-const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
+const mainNavItems = (pending: number): NavItemOrGroup[] => [
     {
         title: 'Panou principal',
         href: dashboard(),
@@ -74,15 +74,6 @@ const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
         href: paymentRunsIndex(),
         icon: Banknote,
     },
-    ...(roles.includes('finance') || roles.includes('admin')
-        ? [
-              {
-                  title: 'Rutare pe departamente',
-                  href: routingIndex(),
-                  icon: Route,
-              },
-          ]
-        : []),
     {
         title: 'Facturi',
         icon: FileText,
@@ -153,7 +144,23 @@ const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
     },
 ];
 
-const settingsNavItems: NavItemOrGroup[] = [
+/** Settings: all of them for an admin, the routing rules for Finance. */
+const settingsNavItems = (roles: string[]): NavItemOrGroup[] => {
+    const isAdmin = roles.includes('admin');
+    const rules: NavItemOrGroup = {
+        title: 'Reguli de rutare',
+        href: routingIndex(),
+        icon: Route,
+    };
+
+    if (isAdmin) {
+        return [rules, ...adminNavItems];
+    }
+
+    return roles.includes('finance') ? [rules] : [];
+};
+
+const adminNavItems: NavItemOrGroup[] = [
     {
         title: 'Companii',
         href: companiesIndex(),
@@ -199,15 +206,10 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain
-                    items={mainNavItems(
-                        auth.pending ?? 0,
-                        auth.user?.roles ?? [],
-                    )}
-                />
-                {auth.user?.roles?.includes('admin') && (
+                <NavMain items={mainNavItems(auth.pending ?? 0)} />
+                {settingsNavItems(auth.user?.roles ?? []).length > 0 && (
                     <NavMain
-                        items={settingsNavItems}
+                        items={settingsNavItems(auth.user?.roles ?? [])}
                         label="Setări"
                         className="mt-auto"
                     />

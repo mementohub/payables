@@ -9,6 +9,7 @@ use App\Models\InvoiceDepartmentApproval;
 use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Approvals\InvoiceWorkflow;
+use App\Services\Routing\DepartmentAssigner;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +61,8 @@ class ApprovalController extends Controller
                 'name' => $department->name,
                 'pending' => $this->payable($this->mineQuery([$department->id], $department->id))->count(),
             ])->values(),
+            // Where a share that landed on the wrong department can be sent.
+            'all_departments' => Department::query()->whereNotNull('code')->where('is_active', true)->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
             'counts' => [
                 'mine' => $departments->isEmpty() ? 0 : $this->payable($this->mineQuery($departments->pluck('id')->all(), null))->count(),
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? $this->payable($this->finalQuery(false))->count() : 0,
@@ -117,6 +120,36 @@ class ApprovalController extends Controller
         DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decideFinal($invoice, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until)));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $this->message($validated['decision'], $invoices->count(), null)]);
+
+        return back();
+    }
+
+    /**
+     * A department sends invoices that landed on it by mistake to the
+     * department they belong to.
+     */
+    public function redirect(Request $request, DepartmentAssigner $assigner): RedirectResponse
+    {
+        $validated = $request->validate([
+            'invoice_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'invoice_ids.*' => ['integer'],
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
+            'to_department_id' => ['required', 'integer', 'exists:departments,id', 'different:department_id'],
+            'comment' => ['required', 'string', 'min:3', 'max:2000'],
+        ], [
+            'to_department_id.different' => 'Alegeți alt departament decât cel de la care trimiteți.',
+            'comment.required' => 'Spuneți de ce nu este factura departamentului dumneavoastră.',
+        ]);
+
+        $from = Department::query()->findOrFail($validated['department_id']);
+        $to = Department::query()->findOrFail($validated['to_department_id']);
+        $invoices = Invoice::query()->whereKey($validated['invoice_ids'])->get();
+
+        DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $assigner->redirect($invoice, $from, $to, $request->user(), $validated['comment'])));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $invoices->count() === 1
+            ? "Factura a fost trimisă la {$to->name}."
+            : "{$invoices->count()} facturi au fost trimise la {$to->name}."]);
 
         return back();
     }

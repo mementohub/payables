@@ -6,6 +6,7 @@ import {
     Download,
     MessageSquare,
     RefreshCw,
+    Route,
     ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -23,6 +24,8 @@ import {
 import { BtLogo } from '@/components/icons/bt-logo';
 import Pagination from '@/components/pagination';
 import PaymentStatusBadge from '@/components/payment-status-badge';
+import RouteInvoicesDialog from '@/components/route-invoices-dialog';
+import SupplierPicker from '@/components/supplier-picker';
 import {
     SelectionBar,
     downloadXlsxFromForm,
@@ -268,8 +271,16 @@ export default function InvoicesIndex({
     syncRunning,
     currentUser,
     departments,
+    selectedPartner,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
+    const [routing, setRouting] = useState<{
+        ids: number[];
+        title: string;
+    } | null>(null);
+    const canRoute =
+        currentUser.roles.includes('finance') ||
+        currentUser.roles.includes('admin');
     const label = scope === 'emise' ? 'Facturi emise' : 'Facturi primite';
     const baseUrl =
         scope === 'emise' ? facturiPrimite().url : facturiPrimite().url;
@@ -292,6 +303,7 @@ export default function InvoicesIndex({
                 data_scadenta_to: merged.data_scadenta_to ?? undefined,
                 approval: merged.approval ?? undefined,
                 department_id: merged.department_id ?? undefined,
+                partner_id: merged.partner_id ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -306,7 +318,7 @@ export default function InvoicesIndex({
         to: filters.data_scadenta_to,
     };
     const isPrimite = scope === 'primite';
-    const columnCount = (isPrimite ? 9 : 7) + 1;
+    const columnCount = (isPrimite ? 10 : 7) + 1;
     const [exporting, setExporting] = useState(false);
     const [btDialogOpen, setBtDialogOpen] = useState(false);
     const selection = useTableSelection(invoices.data, invoices.total);
@@ -336,6 +348,7 @@ export default function InvoicesIndex({
         data_scadenta_to: filters.data_scadenta_to,
         approval: filters.approval,
         department_id: filters.department_id,
+        partner_id: filters.partner_id,
     };
 
     const btRequest = useMemo<BtPrepareRequest>(
@@ -464,6 +477,23 @@ export default function InvoicesIndex({
                     {isPrimite && (
                         <>
                             <FilterField
+                                label="Furnizor"
+                                active={!!filters.partner_id}
+                                onClear={() =>
+                                    applyFilter({ partner_id: null })
+                                }
+                            >
+                                <SupplierPicker
+                                    value={selectedPartner}
+                                    onChange={(supplier) =>
+                                        applyFilter({
+                                            partner_id: supplier?.id ?? null,
+                                        })
+                                    }
+                                    className="min-h-11 sm:w-[260px]"
+                                />
+                            </FilterField>
+                            <FilterField
                                 label="Aprobare"
                                 active={!!filters.approval}
                                 onClear={() => applyFilter({ approval: null })}
@@ -585,6 +615,24 @@ export default function InvoicesIndex({
                                     <Download className="size-4" />
                                     Export XLSX
                                 </DropdownMenuItem>
+                                {isPrimite && canRoute && (
+                                    <DropdownMenuItem
+                                        disabled={
+                                            selection.selectAllAcrossPages
+                                        }
+                                        onSelect={() =>
+                                            setRouting({
+                                                ids: Array.from(
+                                                    selection.selected,
+                                                ),
+                                                title: `Rutează ${selection.selectionCount} facturi`,
+                                            })
+                                        }
+                                    >
+                                        <Route className="size-4" />
+                                        Rutează la un departament
+                                    </DropdownMenuItem>
+                                )}
                                 {isPrimite && (
                                     <>
                                         <DropdownMenuSeparator />
@@ -603,6 +651,16 @@ export default function InvoicesIndex({
                         </DropdownMenu>
                     }
                 />
+
+                {routing && (
+                    <RouteInvoicesDialog
+                        invoiceIds={routing.ids}
+                        departments={departments}
+                        title={routing.title}
+                        onClose={() => setRouting(null)}
+                        onDone={() => selection.clear()}
+                    />
+                )}
 
                 <BtPaymentDialog
                     open={btDialogOpen}
@@ -633,7 +691,10 @@ export default function InvoicesIndex({
                                 <th className="px-4 py-3 text-right">Total</th>
                                 <th className="px-4 py-3">Plată</th>
                                 {isPrimite && (
-                                    <th className="px-4 py-3">Bun de plată</th>
+                                    <th className="px-4 py-3">Departament</th>
+                                )}
+                                {isPrimite && (
+                                    <th className="px-4 py-3">Aprobare</th>
                                 )}
                                 {isPrimite && (
                                     <th className="px-4 py-3">Acțiune</th>
@@ -742,6 +803,24 @@ export default function InvoicesIndex({
                                     </td>
                                     {isPrimite && (
                                         <td className="px-4 py-3">
+                                            <DepartmentCell
+                                                invoice={invoice}
+                                                onRoute={
+                                                    canRoute
+                                                        ? () =>
+                                                              setRouting({
+                                                                  ids: [
+                                                                      invoice.id,
+                                                                  ],
+                                                                  title: `Rutează factura ${invoice.nr_doc}`,
+                                                              })
+                                                        : undefined
+                                                }
+                                            />
+                                        </td>
+                                    )}
+                                    {isPrimite && (
+                                        <td className="px-4 py-3">
                                             <WorkflowCell invoice={invoice} />
                                         </td>
                                     )}
@@ -799,7 +878,7 @@ function WorkflowCell({ invoice }: { invoice: InvoiceRow }) {
     }
 
     return (
-        <div className="flex flex-col items-start gap-1.5">
+        <div className="flex flex-col items-start gap-1">
             <WorkflowStatusBadge status={workflow.approval_status} />
             {workflow.approval_status === 'postponed' &&
                 workflow.postponed_until && (
@@ -807,10 +886,55 @@ function WorkflowCell({ invoice }: { invoice: InvoiceRow }) {
                         până la {formatDate(workflow.postponed_until)}
                     </span>
                 )}
-            <DepartmentShares
-                shares={workflow.departments}
-                currency={invoice.moneda}
-            />
+        </div>
+    );
+}
+
+/**
+ * The departments that own the invoice, with their decisions, and (for
+ * Finance) the way to send it elsewhere.
+ */
+function DepartmentCell({
+    invoice,
+    onRoute,
+}: {
+    invoice: InvoiceRow;
+    onRoute?: () => void;
+}) {
+    const workflow = invoice.workflow;
+    const unrouted =
+        !workflow ||
+        workflow.departments.length === 0 ||
+        workflow.assignment_state !== 'assigned';
+
+    return (
+        <div className="flex flex-col items-start gap-1.5">
+            {workflow && workflow.departments.length > 0 ? (
+                <DepartmentShares
+                    shares={workflow.departments}
+                    currency={invoice.moneda}
+                />
+            ) : workflow?.department ? (
+                <span className="text-xs font-medium">
+                    {workflow.department.name}
+                </span>
+            ) : (
+                <span className="text-xs text-violet-700 dark:text-violet-300">
+                    Fără departament
+                </span>
+            )}
+            {onRoute && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant={unrouted ? 'outline' : 'ghost'}
+                    className="h-7 px-2 text-xs"
+                    onClick={onRoute}
+                >
+                    <Route className="size-3.5" />
+                    Rutează
+                </Button>
+            )}
         </div>
     );
 }
@@ -911,6 +1035,9 @@ function InvoiceMobileCard({
                             Aprobare
                         </div>
                         <WorkflowCell invoice={invoice} />
+                        <div className="mt-2">
+                            <DepartmentCell invoice={invoice} />
+                        </div>
                     </div>
                     <ApproveActions
                         invoice={invoice}

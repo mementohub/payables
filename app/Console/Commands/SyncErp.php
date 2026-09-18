@@ -22,10 +22,10 @@ class SyncErp extends Command
      * them on one company delete and rewrite the same payment rows, so the
      * second one lands on keys the first has just written.
      */
-    private const RUNNING_KEY = 'erp:sync:running';
+    public const RUNNING_KEY = 'erp:sync:running';
 
     /** A run without a sign of life for this long counts as gone. */
-    private const RUNNING_TTL = 900;
+    public const RUNNING_TTL = 900;
 
     public function handle(SyncService $sync, DepartmentAssigner $assigner): int
     {

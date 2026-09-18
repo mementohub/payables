@@ -1,8 +1,17 @@
 import { router } from '@inertiajs/react';
-import { Ban, Check, Clock, RotateCcw, Route, ShieldCheck } from 'lucide-react';
+import {
+    Ban,
+    Check,
+    Clock,
+    Forward,
+    RotateCcw,
+    Route,
+    ShieldCheck,
+} from 'lucide-react';
 import { useState } from 'react';
 import ApprovalController from '@/actions/App/Http/Controllers/Approvals/ApprovalController';
 import RoutingController from '@/actions/App/Http/Controllers/Approvals/RoutingController';
+import DepartmentSelect from '@/components/department-select';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -97,6 +106,11 @@ export function InvoiceWorkflowCard({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
     const [routeTo, setRouteTo] = useState('');
+    const [redirectFrom, setRedirectFrom] = useState<{
+        id: number;
+        name: string;
+    } | null>(null);
+    const [redirectTo, setRedirectTo] = useState('');
 
     const roles = currentUser.roles;
     const isAdmin = roles.includes('admin');
@@ -267,6 +281,22 @@ export function InvoiceWorkflowCard({
                                             >
                                                 <Clock />
                                                 Amână
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setRedirectFrom({
+                                                        id: share.id,
+                                                        name: share.name ?? '',
+                                                    });
+                                                    setRedirectTo('');
+                                                    setComment('');
+                                                    setErrors({});
+                                                }}
+                                            >
+                                                <Forward />
+                                                Nu e al nostru
                                             </Button>
                                         </div>
                                     )}
@@ -554,6 +584,86 @@ export function InvoiceWorkflowCard({
                             {pending?.decision === 'disputed'
                                 ? 'Contestă'
                                 : 'Amână'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={redirectFrom !== null}
+                onOpenChange={(value) => !value && setRedirectFrom(null)}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            Redirecționează partea {redirectFrom?.name}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Liniile facturii rutate la {redirectFrom?.name} merg
+                            la departamentul ales, care le va aproba.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-3">
+                        <div className="grid gap-1.5">
+                            <Label>Către departamentul</Label>
+                            <DepartmentSelect
+                                departments={departments}
+                                exclude={redirectFrom ? [redirectFrom.id] : []}
+                                value={redirectTo}
+                                onChange={setRedirectTo}
+                            />
+                            {errors.to_department_id && (
+                                <p className="text-xs text-red-600">
+                                    {errors.to_department_id}
+                                </p>
+                            )}
+                        </div>
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="redirect-comment">
+                                De ce nu este a departamentului
+                            </Label>
+                            <Textarea
+                                id="redirect-comment"
+                                rows={3}
+                                maxLength={2000}
+                                value={comment}
+                                onChange={(e) => setComment(e.target.value)}
+                            />
+                            {errors.comment && (
+                                <p className="text-xs text-red-600">
+                                    {errors.comment}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="ghost"
+                            onClick={() => setRedirectFrom(null)}
+                        >
+                            Renunță
+                        </Button>
+                        <Button
+                            disabled={
+                                processing ||
+                                redirectTo === '' ||
+                                comment.trim().length < 3
+                            }
+                            onClick={() =>
+                                redirectFrom &&
+                                post(
+                                    ApprovalController.redirect().url,
+                                    {
+                                        invoice_ids: [invoiceId],
+                                        department_id: redirectFrom.id,
+                                        to_department_id: Number(redirectTo),
+                                        comment,
+                                    },
+                                    () => setRedirectFrom(null),
+                                )
+                            }
+                        >
+                            Redirecționează
                         </Button>
                     </DialogFooter>
                 </DialogContent>

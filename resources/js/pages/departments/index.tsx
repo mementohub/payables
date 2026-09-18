@@ -1,5 +1,5 @@
-import { Head, router, useForm } from '@inertiajs/react';
-import { Pencil, Plus, UserMinus } from 'lucide-react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Pencil, Plus, Route, UserMinus } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import DepartmentController from '@/actions/App/Http/Controllers/DepartmentController';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import { index as departmentsIndex } from '@/routes/departments';
+import { index as routingIndex } from '@/routes/routing';
 import type { DepartmentGroup } from '@/types/approvals';
 import type { Department, Props, UserOption } from './types';
 
@@ -82,10 +83,18 @@ export default function DepartmentsIndex({ departments, users }: Props) {
                             decide Top Management.
                         </p>
                     </div>
-                    <Button onClick={() => setEditing('new')}>
-                        <Plus />
-                        Departament nou
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="outline" asChild>
+                            <Link href={routingIndex()}>
+                                <Route />
+                                Reguli de rutare
+                            </Link>
+                        </Button>
+                        <Button onClick={() => setEditing('new')}>
+                            <Plus />
+                            Departament nou
+                        </Button>
+                    </div>
                 </div>
 
                 {groups.map((group) => (

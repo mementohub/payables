@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
     Route::post('approvals/decide', [ApprovalController::class, 'decide'])->name('approvals.decide');
     Route::post('approvals/final', [ApprovalController::class, 'decideFinal'])->name('approvals.final');
     Route::post('approvals/invoices/{invoice}/reopen', [ApprovalController::class, 'reopen'])->name('approvals.reopen');
+    Route::post('approvals/redirect', [ApprovalController::class, 'redirect'])->name('approvals.redirect');
 
     Route::get('payment-runs', [PaymentRunController::class, 'index'])->name('payment-runs.index');
     Route::post('payment-runs', [PaymentRunController::class, 'store'])->name('payment-runs.store');
@@ -76,6 +77,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('routing', [RoutingController::class, 'index'])->name('routing.index');
     Route::post('routing/invoices/{invoice}/assign', [RoutingController::class, 'assign'])->name('routing.assign');
+    Route::post('routing/assign', [RoutingController::class, 'assignMany'])->name('routing.assign-many');
     Route::post('routing/invoices/{invoice}/release', [RoutingController::class, 'release'])->name('routing.release');
     Route::post('routing/rules', [RoutingController::class, 'storeRule'])->name('routing.rules.store');
     Route::put('routing/rules/{rule}', [RoutingController::class, 'updateRule'])->name('routing.rules.update');
@@ -86,6 +88,7 @@ Route::middleware('auth')->group(function () {
     Route::get('bank-statements/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
 
     Route::get('suppliers', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
+    Route::get('suppliers/search', [PartnerController::class, 'search'])->name('partners.search');
     Route::get('suppliers/{partner}', [PartnerController::class, 'show'])->name('partners.show');
     Route::get('suppliers/{partner}/payment-check', [PartnerController::class, 'paymentCheck'])->name('partners.payment-check');
     Route::post('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'link'])->name('partners.etrip-supplier.link');

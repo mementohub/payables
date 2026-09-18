@@ -106,19 +106,72 @@ test('a payment run is created, shown with its cash position, approved and marke
     expect($run->fresh()->status)->toBe('exported');
 });
 
-test('Finance routes a stuck invoice by hand and can make it the rule for the supplier', function () {
+test('Finance finds the invoices without a department in Facturi primite and routes them from there', function () {
     $stuck = pagesRoutedInvoice($this->company, reference: '');
+    $other = pagesRoutedInvoice($this->company);
 
-    $this->actingAs($this->boss)->get('/routing')
-        ->assertInertia(fn ($page) => $page->component('routing/index')->where('counts.queue', 1)->where('queue.data.0.id', $stuck->id)->where('queue.data.0.lines.0.rule', 'none'));
+    $this->actingAs($this->boss)->get('/invoices/received?approval=routing')
+        ->assertInertia(fn ($page) => $page->has('invoices.data', 1)->where('invoices.data.0.id', $stuck->id)->where('invoices.data.0.workflow.approval_status', 'routing'));
 
-    $this->actingAs($this->head)->post("/routing/invoices/{$stuck->id}/assign", ['department_id' => $this->departments['administration']->id])->assertForbidden();
-    $this->actingAs($this->boss)->post("/routing/invoices/{$stuck->id}/assign", ['department_id' => $this->departments['administration']->id, 'remember' => true])->assertRedirect();
+    $this->actingAs($this->head)->post('/routing/assign', ['invoice_ids' => [$stuck->id], 'department_id' => $this->departments['administration']->id])->assertForbidden();
+    $this->actingAs($this->boss)->post('/routing/assign', ['invoice_ids' => [$stuck->id, $other->id], 'department_id' => $this->departments['administration']->id, 'remember' => true])->assertRedirect();
 
     expect($stuck->fresh()->assignment_state)->toBe('assigned')
+        ->and($stuck->fresh()->department_id)->toBe($this->departments['administration']->id)
+        ->and($other->fresh()->department_id)->toBe($this->departments['administration']->id)
         ->and($stuck->fresh()->approval_status)->toBe('department')
         ->and(AssignmentRule::query()->where('kind', 'partner')->where('pattern', $stuck->partner->name)->value('department_id'))->toBe($this->departments['administration']->id);
 
-    // A broken pattern is refused.
+    // A broken pattern is refused on the rules page.
     $this->actingAs($this->boss)->post('/routing/rules', ['kind' => 'loc', 'pattern' => '~(unclosed', 'department_id' => $this->departments['marketing']->id])->assertSessionHasErrors('pattern');
+});
+
+test('Facturi primite filters by supplier, found by name or CUI', function () {
+    $wanted = pagesRoutedInvoice($this->company);
+    pagesRoutedInvoice($this->company);
+    $wanted->partner->update(['name' => 'HOTEL PARADIS SRL', 'cui' => 'RO123456']);
+
+    $this->actingAs($this->head)->getJson('/suppliers/search?q=paradis')
+        ->assertOk()
+        ->assertJsonPath('suppliers.0.id', $wanted->partner_id)
+        ->assertJsonCount(1, 'suppliers');
+    $this->actingAs($this->head)->getJson('/suppliers/search?q=RO1234')->assertJsonPath('suppliers.0.name', 'HOTEL PARADIS SRL');
+
+    $this->actingAs($this->head)->get("/invoices/received?partner_id={$wanted->partner_id}")
+        ->assertInertia(fn ($page) => $page->has('invoices.data', 1)->where('invoices.data.0.id', $wanted->id)->where('selectedPartner.name', 'HOTEL PARADIS SRL'));
+});
+
+test('a department sends a share that is not its own to the right department, which then approves it', function () {
+    $invoice = pagesRoutedInvoice($this->company);
+    $senior = User::factory()->create();
+    $senior->departments()->attach($this->departments['senior_voyage']);
+
+    $this->actingAs($senior)->post('/approvals/redirect', [
+        'invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id,
+        'to_department_id' => $this->departments['senior_voyage']->id, 'comment' => 'Nu e al meu',
+    ])->assertForbidden();
+
+    $this->actingAs($this->head)->post('/approvals/redirect', [
+        'invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id,
+        'to_department_id' => $this->departments['charters']->id, 'comment' => 'x',
+    ])->assertSessionHasErrors(['to_department_id', 'comment']);
+
+    $this->actingAs($this->head)->post('/approvals/redirect', [
+        'invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id,
+        'to_department_id' => $this->departments['senior_voyage']->id, 'comment' => 'Grup Senior Voyage, nu charter',
+    ])->assertRedirect();
+
+    $invoice->refresh();
+    $event = $invoice->events()->where('type', 'department_redirected')->sole();
+
+    expect($invoice->departmentApprovals()->pluck('status', 'department_id')->all())->toBe([$this->departments['senior_voyage']->id => 'pending'])
+        ->and($invoice->department_id)->toBe($this->departments['senior_voyage']->id)
+        ->and($invoice->approval_status)->toBe('department')
+        ->and($event->body)->toBe('Grup Senior Voyage, nu charter')
+        ->and($event->payload['to'])->toBe('Senior Voyage');
+
+    // Now it is Senior Voyage's to approve, and the rules leave it there.
+    $this->actingAs($senior)->get('/approvals')->assertInertia(fn ($page) => $page->where('counts.mine', 1));
+    app(DepartmentAssigner::class)->assign(collect([$invoice]));
+    expect($invoice->fresh()->department_id)->toBe($this->departments['senior_voyage']->id);
 });
