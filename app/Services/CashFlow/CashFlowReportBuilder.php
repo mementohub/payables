@@ -1014,7 +1014,9 @@ class CashFlowReportBuilder
      */
     private function actuals(float $openingTotal): array
     {
-        $from = $this->grid->lastYearMonday(0)->subMonth()->startOfMonth();
+        // Two years back: last year's weeks for the forecast, and the year
+        // before for the past weeks the report shows as actuals.
+        $from = $this->grid->lastYearMonday(0)->subWeeks(self::HISTORY_WEEKS)->subMonth()->startOfMonth();
         // Up to the end of yesterday: the position the forecast starts from.
         $flows = $this->omc->dailyFlows($from, $this->today);
         $weekly = [];
@@ -1149,6 +1151,25 @@ class CashFlowReportBuilder
 
         $history = $this->history($weekly, $balanceAt, $openingTotal);
 
+        // The same week a year before each full past week, for the year-on-year
+        // comparison of the actuals.
+        $historyLastYear = array_map(function (array $row) use ($weekly, $balanceAt) {
+            if ($row['partial']) {
+                return null;
+            }
+
+            $monday = CarbonImmutable::parse($row['week'])->subWeeks(52);
+            $week = $weekly[$monday->toDateString()] ?? ['in' => 0.0, 'out' => 0.0];
+            $closing = $balanceAt($monday);
+
+            return [
+                'ly_week' => $monday->toDateString(),
+                'ly_in' => round((float) $week['in'], 2),
+                'ly_out' => round((float) $week['out'], 2),
+                'ly_bal' => $closing !== null ? round($closing, 2) : null,
+            ];
+        }, $history);
+
         $in = $this->grid->zeros();
         $outPartner = $this->grid->zeros();
         $outSalaries = $this->grid->zeros();
@@ -1184,6 +1205,7 @@ class CashFlowReportBuilder
             'lastyear' => $lastyear,
             'recent' => $recent,
             'history' => $history,
+            'history_lastyear' => $historyLastYear,
             'in' => $in,
             'out_partner' => $outPartner,
             'out_salaries' => $outSalaries,
@@ -1258,9 +1280,10 @@ class CashFlowReportBuilder
      *
      * @param  list<array<string, mixed>>  $history
      * @param  array<string, list<float>>  $classified  by line code or OPEX key
-     * @return array{weeks: list<string>, lines: array<string, list<float|string>>}|null
+     * @param  list<array{ly_week: string, ly_in: float, ly_out: float, ly_bal: ?float}|null>  $lastYear
+     * @return array{weeks: list<string>, lastyear: list<array<string, mixed>|null>, lines: array<string, list<float|string>>}|null
      */
-    private function past(array $history, array $classified, float $minimum, float $comfort): ?array
+    private function past(array $history, array $classified, float $minimum, float $comfort, array $lastYear = []): ?array
     {
         if ($history === []) {
             return null;
@@ -1300,6 +1323,8 @@ class CashFlowReportBuilder
 
         return [
             'weeks' => array_column($history, 'week'),
+            // Per past week: the same week a year before (null for the current, partial one).
+            'lastyear' => array_values($lastYear),
             'lines' => [
                 ...$lines,
                 'A' => array_map(fn (array $week) => $week['opening'], $history),
@@ -1464,7 +1489,7 @@ class CashFlowReportBuilder
             'coverage' => $coverage,
             'lastyear' => $actuals['lastyear'],
             'recent' => $actuals['recent'],
-            'past' => $this->past($actuals['history'] ?? [], $classified['lines'] ?? [], $minimum, $comfort),
+            'past' => $this->past($actuals['history'] ?? [], $classified['lines'] ?? [], $minimum, $comfort, $actuals['history_lastyear'] ?? []),
             'kpis' => $kpis,
             'opening' => $opening,
             'structure' => [

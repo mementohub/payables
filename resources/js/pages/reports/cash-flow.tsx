@@ -552,13 +552,18 @@ export default function CashFlowReport({
                                                     săptămână cu săptămână
                                                 </CardTitle>
                                                 <CardDescription>
-                                                    An curent = prognoza acestui
-                                                    raport; an anterior =
+                                                    Întâi săptămânile trecute
+                                                    (câte arată comutatorul
+                                                    „Efectiv” din situația
+                                                    fluxurilor), efectiv față de
+                                                    efectiv; apoi prognoza
+                                                    acestui raport față de
                                                     încasările și plățile
                                                     efective din OMC în aceeași
-                                                    săptămână, cu soldul
-                                                    reconstituit din soldul de
-                                                    azi (estimare).
+                                                    săptămână a anului anterior,
+                                                    cu soldul reconstituit din
+                                                    soldurile de sfârșit de lună
+                                                    (estimare).
                                                 </CardDescription>
                                             </CardHeader>
                                             <CardContent>
@@ -566,6 +571,8 @@ export default function CashFlowReport({
                                                     report={report}
                                                     lastyear={payload.lastyear}
                                                     horizon={span}
+                                                    past={payload.past ?? null}
+                                                    pastWeeks={pastWeeks}
                                                 />
                                             </CardContent>
                                         </Card>

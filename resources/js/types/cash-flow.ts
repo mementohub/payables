@@ -42,6 +42,13 @@ export type LastYearRow = {
  */
 export type PastWeeks = {
     weeks: string[];
+    /** Per past week the same week a year before; null for the current, partial one. Absent in older snapshots. */
+    lastyear?: ({
+        ly_week: string;
+        ly_in: number;
+        ly_out: number;
+        ly_bal: number | null;
+    } | null)[];
     lines: Record<string, (number | string | null)[]>;
 };
 

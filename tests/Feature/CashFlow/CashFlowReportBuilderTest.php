@@ -271,7 +271,12 @@ test('the past weeks sit on the report lines, add up to OMC and chain into the f
         ->and($at('E2', '2026-09-07'))->toEqual(6665000)
         // The current week ends where the forecast starts: the position at the end of yesterday.
         ->and($at('E2', '2026-09-14'))->toEqual(6665000)
-        ->and($at('E6', '2026-09-14'))->toBe('efectiv');
+        ->and($at('E6', '2026-09-14'))->toBe('efectiv')
+        // Each full past week carries the same week a year before; the current one does not.
+        ->and($past['lastyear'])->toHaveCount(53)
+        ->and($past['lastyear'][52])->toBeNull()
+        ->and($past['lastyear'][51])->toMatchArray(['ly_week' => '2025-09-08', 'ly_in' => 0, 'ly_out' => 0])
+        ->and($past['lastyear'][51]['ly_bal'])->not->toBeNull();
 
     // Each week opens on the last one's close, and what the documents do not
     // explain shows as the adjustment.
