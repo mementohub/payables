@@ -117,6 +117,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('reports/cash-flow', [CashFlowReportController::class, 'index'])->name('reports.cash-flow.index');
     Route::post('reports/cash-flow/build', [CashFlowReportController::class, 'build'])->name('reports.cash-flow.build');
+    Route::get('reports/cash-flow/drilldown', [CashFlowReportController::class, 'drilldown'])->name('reports.cash-flow.drilldown');
     Route::put('reports/cash-flow/parameters', [CashFlowReportController::class, 'parameters'])->name('reports.cash-flow.parameters');
     Route::put('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'update'])->name('reports.cash-flow.overrides.update');
     Route::delete('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'destroy'])->name('reports.cash-flow.overrides.destroy');

@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
 use App\Models\CharterFlight;
+use App\Models\Invoice;
 use App\Services\CashFlow\CashFlowOverrides;
 use App\Services\CashFlow\CashFlowParameters;
 use App\Services\CashFlow\WeekGrid;
 use App\Services\Maintenance\ArtisanRunner;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -193,6 +196,84 @@ class CashFlowReportController extends Controller
             });
 
         return $rows;
+    }
+
+    /**
+     * The invoices behind one week of line C10 (supplier invoices still open
+     * in OMC): the overdue ones, each with the share of it the report puts
+     * in that week, and the ones falling due in it. Read from the mirror now,
+     * so it may differ a little from the report built earlier.
+     */
+    public function drilldown(Request $request, CashFlowParameters $parameters): JsonResponse
+    {
+        $validated = $request->validate([
+            'line' => ['required', Rule::in(['C10'])],
+            'week' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $timezone = (string) config('cashflow.timezone', 'Europe/Bucharest');
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+        $grid = WeekGrid::fromToday($today);
+        $index = $grid->index(CarbonImmutable::parse($validated['week'], $timezone));
+        abort_if($index === null, 422, 'Săptămâna nu este în orizontul raportului.');
+
+        $params = $parameters->load();
+        $spread = max(1, (int) ($params['payables']['supplier_balance_weeks'] ?? 2));
+        $monday = $grid->monday($index);
+        $weekStart = $index === 0 ? $today : $monday;
+        $weekEnd = $monday->addDays(6);
+        $due = 'coalesce(data_scadenta, data_doc)';
+
+        $invoices = Invoice::query()
+            ->where('partener_type', 'furnizor')
+            ->whereNull('omc_removed_at')
+            ->where('data_doc', '>=', $today->subYears(max(1, (int) config('omc.open_window_years', 2)))->toDateString())
+            ->where('val_mon', '>', 0)
+            ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
+            ->where(fn ($q) => $q
+                ->when($index < $spread, fn ($w) => $w->orWhereRaw("{$due} < ?", [$today->toDateString()]))
+                ->orWhereRaw("{$due} between ? and ?", [$weekStart->toDateString(), $weekEnd->toDateString()]))
+            ->with(['partner:id,name', 'department:id,name'])
+            ->get();
+
+        $rows = $invoices->map(function (Invoice $invoice) use ($today, $spread, $timezone) {
+            // The due date is a calendar day: read it in the report's timezone.
+            $dueDate = CarbonImmutable::parse(($invoice->data_scadenta ?? $invoice->data_doc)->toDateString(), $timezone);
+            $overdue = $dueDate->lt($today);
+            $open = $invoice->outstandingAmount();
+            $rate = $invoice->moneda === 'Lei' || $invoice->moneda === null ? 1.0 : (float) ($invoice->curs ?: 1);
+
+            return [
+                'id' => $invoice->id,
+                'partner' => $invoice->partner?->name,
+                'nr_doc' => $invoice->nr_doc,
+                'data_doc' => $invoice->data_doc?->toDateString(),
+                'due' => $dueDate->toDateString(),
+                'days_overdue' => $overdue ? (int) $dueDate->diffInDays($today) : 0,
+                'kind' => $overdue ? 'overdue' : 'due',
+                'currency' => $invoice->moneda,
+                'open' => $open,
+                'open_lei' => round($open * $rate, 2),
+                // What of it the report counts in this week.
+                'week_lei' => round($open * $rate / ($overdue ? $spread : 1), 2),
+                'department' => $invoice->department?->name,
+                'approval_status' => $invoice->approval_status,
+            ];
+        })->sortBy([['kind', 'desc'], ['week_lei', 'desc']])->values();
+
+        return response()->json([
+            'line' => $validated['line'],
+            'week' => $monday->toDateString(),
+            'week_label' => sprintf('S+%d (%s – %s)', $index + 1, $weekStart->format('d.m'), $weekEnd->format('d.m.Y')),
+            'spread_weeks' => $spread,
+            'overdue_in_week' => $index < $spread,
+            'rows' => $rows,
+            'totals' => [
+                'overdue' => round($rows->where('kind', 'overdue')->sum('week_lei'), 2),
+                'due' => round($rows->where('kind', 'due')->sum('week_lei'), 2),
+                'week' => round($rows->sum('week_lei'), 2),
+            ],
+        ]);
     }
 
     public function build(Request $request, ArtisanRunner $runner): RedirectResponse

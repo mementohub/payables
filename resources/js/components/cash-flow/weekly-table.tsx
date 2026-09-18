@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { PastWeeks, ReportLine } from '@/types/cash-flow';
@@ -19,6 +20,9 @@ const SECTION_TITLES: Record<ReportLine['section'], string> = {
     E: 'E. Rezultat și semnal',
     F: 'F. Referință: fluxuri efective anul anterior (OMC)',
 };
+
+/** Lines whose forecast cells open the documents behind them. */
+const DRILLABLE = new Set(['C10']);
 
 type Column = {
     key: string;
@@ -209,6 +213,7 @@ export default function WeeklyTable({
     monthly,
     scenarioOn,
     onOverride,
+    onDrill,
 }: {
     report: DerivedReport;
     /** Actual flows on the report's lines; null in an older snapshot. */
@@ -224,6 +229,8 @@ export default function WeeklyTable({
         week: string,
         amount: number | null,
     ) => void;
+    /** Opens the documents behind a forecast cell, for the lines that have them. */
+    onDrill?: (line: ReportLine, week: string, value: number) => void;
 }) {
     const [editing, setEditing] = useState<{
         code: string;
@@ -511,7 +518,7 @@ export default function WeeklyTable({
                                                 <td
                                                     key={column.key}
                                                     className={cn(
-                                                        'px-2 py-1.5 text-right whitespace-nowrap tabular-nums',
+                                                        'group px-2 py-1.5 text-right whitespace-nowrap tabular-nums',
                                                         isPast &&
                                                             'bg-sky-50/40 dark:bg-sky-500/5',
                                                         column.partial &&
@@ -587,6 +594,37 @@ export default function WeeklyTable({
                                                         />
                                                     ) : (
                                                         <>
+                                                            {onDrill &&
+                                                                !isPast &&
+                                                                !monthly &&
+                                                                DRILLABLE.has(
+                                                                    line.code,
+                                                                ) &&
+                                                                typeof value ===
+                                                                    'number' &&
+                                                                value !== 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        title="Vezi facturile"
+                                                                        aria-label="Vezi facturile"
+                                                                        className="mr-1 inline-flex align-middle text-muted-foreground opacity-40 group-hover:opacity-100 hover:text-foreground"
+                                                                        onClick={(
+                                                                            event,
+                                                                        ) => {
+                                                                            event.stopPropagation();
+                                                                            onDrill(
+                                                                                line,
+                                                                                report
+                                                                                    .weeks[
+                                                                                    index
+                                                                                ],
+                                                                                value,
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        <Search className="size-3" />
+                                                                    </button>
+                                                                )}
                                                             {manual.length >
                                                                 0 && (
                                                                 <span

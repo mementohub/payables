@@ -7,6 +7,8 @@ import CashFlowReportController from '@/actions/App/Http/Controllers/CashFlowRep
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import BalanceChart from '@/components/cash-flow/balance-chart';
 import CharterPanel from '@/components/cash-flow/charter-panel';
+import DrilldownSheet from '@/components/cash-flow/drilldown-sheet';
+import type { DrillTarget } from '@/components/cash-flow/drilldown-sheet';
 import ParametersForm from '@/components/cash-flow/parameters-form';
 import {
     deriveReport,
@@ -113,6 +115,9 @@ export default function CashFlowReport({
     const [compare, setCompare] = useState(false);
     const [monthly, setMonthly] = useState(false);
     const [pastWeeks, setPastWeeks] = useState<4 | 13 | 52>(4);
+    const [drill, setDrill] = useState<
+        (DrillTarget & { value: number }) | null
+    >(null);
 
     useEffect(() => {
         if (!run.running) {
@@ -667,6 +672,21 @@ export default function CashFlowReport({
                                                 monthly={monthly}
                                                 scenarioOn={scenarioOn}
                                                 onOverride={saveOverride}
+                                                onDrill={(line, week, value) =>
+                                                    setDrill({
+                                                        line: line.code,
+                                                        label: line.label,
+                                                        week,
+                                                        value,
+                                                    })
+                                                }
+                                            />
+                                            <DrilldownSheet
+                                                target={drill}
+                                                reportValue={
+                                                    drill?.value ?? null
+                                                }
+                                                onClose={() => setDrill(null)}
                                             />
                                         </CardContent>
                                     </Card>
