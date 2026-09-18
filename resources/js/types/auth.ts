@@ -6,6 +6,7 @@ export type User = {
     email_verified_at: string | null;
     two_factor_enabled?: boolean;
     is_ordonator: boolean;
+    roles: string[];
     created_at: string;
     updated_at: string;
     [key: string]: unknown;
@@ -13,6 +14,8 @@ export type User = {
 
 export type Auth = {
     user: User;
+    /** Invoices waiting for the user's decision. */
+    pending?: number;
 };
 
 export type TwoFactorSetupData = {

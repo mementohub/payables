@@ -2,7 +2,6 @@
 
 namespace App\Services\PaymentRequests;
 
-use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceEvent;
 use App\Models\PaymentRequest;
@@ -175,6 +174,6 @@ class PaymentRequestService
 
     private function isPlatiMember(User $user): bool
     {
-        return $user->departments()->where('type', Department::TYPE_PLATI)->exists();
+        return $user->hasRole(User::ROLE_TREASURY);
     }
 }

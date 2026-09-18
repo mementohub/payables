@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Services\RemoteConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Throwable;
 
 class EInvoice extends Model
 {
@@ -47,6 +49,30 @@ class EInvoice extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    /**
+     * The UBL message. Only its totals and seller are kept here; the XML
+     * itself stays in OMC and is read when a page opens it.
+     */
+    public function xml(): ?string
+    {
+        if ($this->msg_xml !== null) {
+            return $this->msg_xml;
+        }
+
+        try {
+            $xml = app(RemoteConnection::class)->connection($this->company)
+                ->table('view_anaf_e_fact_furn_msg')
+                ->where('msg_id', $this->msg_id)
+                ->value('msg_xml');
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        return $xml !== null ? (string) $xml : null;
     }
 
     public function scopePending(Builder $query): Builder

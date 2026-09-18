@@ -39,7 +39,7 @@ it('prepares only fully approved invoices and includes default supplier IBAN', f
     ]);
 
     $approved = Invoice::factory()->for($company)->for($partner)->create([
-        'is_fully_approved' => true,
+        'approval_status' => 'approved',
         'val_mon' => 1190,
         'val_mon_tva' => 190,
         'val_mon_paid' => 0,
@@ -47,7 +47,7 @@ it('prepares only fully approved invoices and includes default supplier IBAN', f
     ]);
 
     $unapproved = Invoice::factory()->for($company)->for($partner)->create([
-        'is_fully_approved' => false,
+        'approval_status' => 'final',
     ]);
 
     $this->actingAs($user)

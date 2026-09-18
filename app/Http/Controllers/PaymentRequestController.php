@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\PaymentRequest;
 use App\Models\PaymentRequestEvent;
+use App\Models\User;
 use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\PaymentRequests\PaymentRequestService;
 use Illuminate\Http\RedirectResponse;
@@ -115,7 +115,7 @@ class PaymentRequestController extends Controller
             'categories' => CheckinCostCheckService::CATEGORY_LABELS,
             'currentUser' => [
                 'id' => $user?->id,
-                'is_plati' => $user ? $user->departments()->where('type', Department::TYPE_PLATI)->exists() : false,
+                'is_plati' => $user?->hasRole(User::ROLE_TREASURY) ?? false,
             ],
         ]);
     }
@@ -256,8 +256,8 @@ class PaymentRequestController extends Controller
             'val_mon' => (float) $invoice->val_mon,
             'rest' => $invoice->outstandingAmount(),
             'payment_status' => $invoice->payment_status,
-            'is_fully_approved' => (bool) $invoice->is_fully_approved,
-            'responsabili_approved' => $invoice->responsabili_approved_at !== null,
+            'is_fully_approved' => $invoice->approval_status === 'approved',
+            'responsabili_approved' => in_array($invoice->approval_status, ['final', 'approved'], true),
         ];
     }
 }

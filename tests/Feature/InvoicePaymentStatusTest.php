@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Company;
-use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
@@ -79,9 +78,7 @@ test('an invoice the ERP already settled is paid however it was marked by hand',
 });
 
 test('the payments department marks a payment the ERP does not have yet, and can hand the invoice back to the ERP', function () {
-    $plati = Department::create(['name' => 'Plăți', 'type' => Department::TYPE_PLATI]);
-    $user = User::factory()->create();
-    $plati->members()->attach($user->id);
+    $user = User::factory()->withRoles('treasury')->create();
 
     $invoice = furnizorInvoice();
 

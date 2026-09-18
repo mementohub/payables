@@ -10,9 +10,9 @@ use App\Models\Partner;
 use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
 use App\Services\SyncService;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,21 +25,13 @@ class PartnerController extends Controller
         return $this->list($request, 'furnizori');
     }
 
-    public function clienti(Request $request): Response
-    {
-        return $this->list($request, 'clienti');
-    }
-
     public function show(Request $request, Partner $partner): Response
     {
         $partner->load([
             'company:id,name,etrip_connection',
             'etripSupplier:id,partner_id,etrip_connection,code,name,currency,match_source',
             'bankAccounts:id,partner_id,bank,iban,currency,is_default,is_discontinued',
-            'responsabilDepartments:id,name,type',
         ]);
-
-        $assignedDeptIds = $partner->responsabilDepartments->pluck('id');
 
         $defaultRole = $partner->is_furnizor ? 'furnizor' : 'client';
         $role = $request->string('role')->toString() ?: $defaultRole;
@@ -122,11 +114,7 @@ class PartnerController extends Controller
                         'is_default' => $account->is_default,
                         'is_discontinued' => $account->is_discontinued,
                     ]),
-                'responsabil_departments' => $partner->responsabilDepartments->map(fn (Department $dept) => [
-                    'id' => $dept->id,
-                    'name' => $dept->name,
-                    'type' => $dept->type,
-                ])->values(),
+                'departments' => $this->routedDepartments([$partner->id])[$partner->id] ?? [],
                 'etrip_enabled' => (array) config('etrip.connections') !== [],
                 'etrip_bases' => collect((array) config('etrip.connections'))->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
                 'etrip_supplier' => $partner->etripSupplier ? [
@@ -147,17 +135,6 @@ class PartnerController extends Controller
                 'payment' => $invoicePayment ?: null,
             ],
             'availableTipDocs' => $availableTipDocs,
-            'availableDepartments' => $partner->is_furnizor
-                ? Department::responsabili()
-                    ->whereNotIn('id', $assignedDeptIds)
-                    ->orderBy('name')
-                    ->get(['id', 'name', 'type'])
-                    ->map(fn (Department $dept) => [
-                        'id' => $dept->id,
-                        'name' => $dept->name,
-                        'type' => $dept->type,
-                    ])
-                : [],
             'role' => $role,
             'statsFurnizor' => $statsFurnizor,
             'statsClient' => $statsClient,
@@ -320,33 +297,25 @@ class PartnerController extends Controller
         return $months;
     }
 
-    public function attachResponsabilDepartment(Request $request, Partner $partner): RedirectResponse
+    /**
+     * The departments each supplier's invoices of the last twelve months were
+     * routed to, largest first.
+     *
+     * @param  list<int>  $partnerIds
+     * @return array<int, list<array{id: int, name: string, invoices: int}>>
+     */
+    private function routedDepartments(array $partnerIds): array
     {
-        abort_unless($partner->is_furnizor, 404);
-
-        $validated = $request->validate([
-            'department_id' => ['required', 'integer', 'exists:departments,id'],
-        ]);
-
-        $department = Department::findOrFail($validated['department_id']);
-        abort_unless($department->type === Department::TYPE_RESPONSABIL, 422, 'Doar departamentele de responsabili pot fi atribuite.');
-
-        $partner->departments()->syncWithoutDetaching([$department->id]);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament atribuit.']);
-
-        return back();
-    }
-
-    public function detachResponsabilDepartment(Partner $partner, Department $department): RedirectResponse
-    {
-        abort_unless($partner->is_furnizor, 404);
-
-        $partner->departments()->detach($department->id);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament eliminat.']);
-
-        return back();
+        return Invoice::query()
+            ->join('departments', 'departments.id', '=', 'invoices.department_id')
+            ->whereIn('invoices.partner_id', $partnerIds ?: [0])
+            ->where('invoices.data_doc', '>=', now()->subYear()->toDateString())
+            ->groupBy('invoices.partner_id', 'departments.id', 'departments.name')
+            ->orderByDesc(DB::raw('count(*)'))
+            ->get(['invoices.partner_id', 'departments.id', 'departments.name', DB::raw('count(*) as invoices')])
+            ->groupBy('partner_id')
+            ->map(fn ($rows) => $rows->map(fn ($row) => ['id' => (int) $row->id, 'name' => $row->name, 'invoices' => (int) $row->invoices])->values()->all())
+            ->all();
     }
 
     private function list(Request $request, string $scope): Response
@@ -364,7 +333,6 @@ class PartnerController extends Controller
 
         $partners = Partner::query()
             ->with(['company:id,name'])
-            ->when($scope === 'furnizori', fn ($q) => $q->with('responsabilDepartments:id,name,type'))
             ->withCount('invoices')
             ->when($scope === 'furnizori', fn ($q) => $q->furnizori())
             ->when($scope === 'clienti', fn ($q) => $q->clienti())
@@ -372,8 +340,8 @@ class PartnerController extends Controller
             ->when(
                 $scope === 'furnizori' && ! empty($departmentIds),
                 fn ($q) => $q->whereHas(
-                    'responsabilDepartments',
-                    fn ($d) => $d->whereIn('departments.id', $departmentIds),
+                    'invoices',
+                    fn ($i) => $i->whereIn('department_id', $departmentIds),
                 ),
             )
             ->when($search, function ($q, $term) {
@@ -398,13 +366,10 @@ class PartnerController extends Controller
                 'is_client' => $partner->is_client,
                 'invoices_count' => $partner->invoices_count,
                 'company' => ['id' => $partner->company->id, 'name' => $partner->company->name],
-                'responsabil_departments' => $scope === 'furnizori'
-                    ? $partner->responsabilDepartments->map(fn (Department $dept) => [
-                        'id' => $dept->id,
-                        'name' => $dept->name,
-                    ])->values()
-                    : [],
             ]);
+
+        $routed = $scope === 'furnizori' ? $this->routedDepartments($partners->getCollection()->pluck('id')->all()) : [];
+        $partners->through(fn (array $row) => [...$row, 'departments' => $routed[$row['id']] ?? []]);
 
         $companies = Company::orderBy('name')->get(['id', 'name']);
         $activeCompany = $companyId
@@ -424,7 +389,7 @@ class PartnerController extends Controller
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,
             'availableDepartments' => $scope === 'furnizori'
-                ? Department::responsabili()->orderBy('name')->get(['id', 'name'])
+                ? Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name'])
                 : [],
         ]);
     }

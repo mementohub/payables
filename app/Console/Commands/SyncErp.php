@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Company;
+use App\Services\Routing\DepartmentAssigner;
 use App\Services\SyncService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -26,7 +27,7 @@ class SyncErp extends Command
     /** A run without a sign of life for this long counts as gone. */
     private const RUNNING_TTL = 900;
 
-    public function handle(SyncService $sync): int
+    public function handle(SyncService $sync, DepartmentAssigner $assigner): int
     {
         $startedAt = Carbon::now()->toIso8601String();
 
@@ -40,7 +41,25 @@ class SyncErp extends Command
         }
 
         try {
-            return $this->pull($sync, $startedAt);
+            $status = $this->pull($sync, $startedAt);
+
+            // New and changed invoices go to their departments straight away.
+            if (! $this->option('history')) {
+                try {
+                    // Each batch says the run is still alive: routing a backlog
+                    // takes longer than the lock's lifetime.
+                    $routed = $assigner->assignPending(progress: function (string $line) use ($startedAt): void {
+                        Cache::put(self::RUNNING_KEY, $startedAt, self::RUNNING_TTL);
+                        $this->line("  Rutare: {$line}");
+                    });
+                    $this->line(sprintf('  Rutare: %d facturi, %d linii fără departament.', $routed['invoices'], $routed['unassigned']));
+                } catch (Throwable $e) {
+                    report($e);
+                    $this->components->warn('Rutarea pe departamente nu a rulat: '.trim($e->getMessage()));
+                }
+            }
+
+            return $status;
         } finally {
             Cache::forget(self::RUNNING_KEY);
         }

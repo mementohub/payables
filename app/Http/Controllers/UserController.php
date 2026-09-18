@@ -24,6 +24,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'initials' => $this->initials($user->name),
                 'departments_count' => $user->departments_count,
+                'roles' => array_values((array) ($user->roles ?? [])),
                 'created_at' => $user->created_at?->toDateTimeString(),
             ]);
 
@@ -78,13 +79,24 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'roles' => array_values((array) ($user->roles ?? [])),
+                'departments' => $user->departments()->orderBy('name')->pluck('name')->all(),
             ],
         ]);
     }
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $user->update($request->validated());
+        $validated = $request->validated();
+        $validated['roles'] = array_values(array_unique((array) ($validated['roles'] ?? [])));
+
+        // Nobody takes the last admin role away, their own included.
+        if (! in_array(User::ROLE_ADMIN, $validated['roles'], true) && $user->isAdmin()
+            && User::query()->whereJsonContains('roles', User::ROLE_ADMIN)->count() <= 1) {
+            $validated['roles'][] = User::ROLE_ADMIN;
+        }
+
+        $user->update($validated);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Utilizator actualizat.']);
 

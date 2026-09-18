@@ -23,7 +23,7 @@ test('guests are redirected to the login page', function () {
 });
 
 test('authenticated users can view the database status page', function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->withRoles('admin')->create());
 
     $this->get('/database-status')
         ->assertOk()

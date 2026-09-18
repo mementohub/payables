@@ -6,64 +6,55 @@ use App\Models\Department;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DepartmentController extends Controller
 {
-    public function index(Request $request): Response
+    /**
+     * The departments invoices are routed to, by group, with the people who
+     * approve for each.
+     */
+    public function index(): Response
     {
-        $search = $request->string('search')->toString();
-        $type = $request->string('type')->toString();
-
-        $departments = Department::query()
-            ->with('members:id,name,email')
-            ->when(in_array($type, Department::TYPES, true), fn ($q) => $q->where('type', $type))
-            ->when($search, function ($q, $term) {
-                $q->where(function ($q) use ($term) {
-                    $q->where('name', 'like', "%{$term}%")
-                        ->orWhereHas('members', function ($q) use ($term) {
-                            $q->where('users.name', 'like', "%{$term}%")
-                                ->orWhere('users.email', 'like', "%{$term}%");
-                        });
-                });
-            })
-            ->orderBy('type')
-            ->orderBy('name')
-            ->paginate(25)
-            ->withQueryString()
-            ->through(fn (Department $dept) => [
-                'id' => $dept->id,
-                'name' => $dept->name,
-                'type' => $dept->type,
-                'members' => $dept->members->map(fn (User $user) => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                ])->values(),
-            ]);
-
         return Inertia::render('departments/index', [
-            'departments' => $departments,
-            'users' => User::query()
+            'departments' => Department::query()
+                ->whereNotNull('code')
+                ->with('members:id,name,email')
+                ->withCount(['approvals as pending_count' => fn ($q) => $q->where('status', 'pending')])
+                ->orderBy('sort')
                 ->orderBy('name')
-                ->get(['id', 'name', 'email']),
-            'filters' => [
-                'search' => $search ?: null,
-                'type' => in_array($type, Department::TYPES, true) ? $type : null,
-            ],
+                ->get()
+                ->map(fn (Department $department) => [
+                    'id' => $department->id,
+                    'code' => $department->code,
+                    'name' => $department->name,
+                    'group' => $department->group,
+                    'parent_id' => $department->parent_id,
+                    'is_active' => $department->is_active,
+                    'pending_count' => (int) $department->pending_count,
+                    'members' => $department->members->map(fn (User $user) => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                    ])->values(),
+                ]),
+            'users' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'type' => ['required', Rule::in(Department::TYPES)],
-        ]);
+        $validated = $this->validated($request);
+        $code = Str::slug($validated['name'], '_');
 
-        Department::create($validated);
+        Department::query()->create([
+            ...$validated,
+            'code' => Department::query()->where('code', $code)->exists() ? $code.'_'.Str::lower(Str::random(4)) : $code,
+            'sort' => (int) Department::query()->max('sort') + 1,
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament creat.']);
 
@@ -72,16 +63,23 @@ class DepartmentController extends Controller
 
     public function update(Request $request, Department $department): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
-            'type' => ['required', Rule::in(Department::TYPES)],
-        ]);
-
-        $department->update($validated);
+        $department->update([...$this->validated($request, $department), 'is_active' => $request->boolean('is_active', true)]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Departament actualizat.']);
 
         return back();
+    }
+
+    /**
+     * @return array{name: string, group: string, parent_id: ?int}
+     */
+    private function validated(Request $request, ?Department $department = null): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'group' => ['required', Rule::in(Department::GROUPS)],
+            'parent_id' => ['nullable', 'integer', Rule::exists('departments', 'id'), Rule::notIn(array_filter([$department?->id]))],
+        ]);
     }
 
     public function destroy(Department $department): RedirectResponse

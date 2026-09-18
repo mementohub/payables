@@ -48,21 +48,25 @@ class MatchInvoiceToEInvoice
             ->where('company_id', $eInvoice->company_id)
             ->whereIn('partner_id', $partnerIds)
             ->whereIn('tip_doc', SyncService::FURNIZOR_DOC_TYPES)
-            ->whereRaw(
-                "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(nr_doc, '-', ''), ' ', ''), '_', ''), '.', ''), '/', '')) = ?",
-                [$normalized],
-            )
+            ->where('nr_doc_key', $normalized)
             ->orderByDesc('data_doc')
             ->first();
     }
 
     public function normalize(?string $value): string
     {
-        if ($value === null) {
-            return '';
-        }
+        return self::key($value) ?? '';
+    }
 
-        return strtoupper(preg_replace('/[^A-Z0-9]/i', '', trim($value)) ?? '');
+    /**
+     * An invoice number reduced to its letters and digits, upper case: what
+     * an e-invoice number and an OMC number are compared on.
+     */
+    public static function key(?string $value): ?string
+    {
+        $key = strtoupper(preg_replace('/[^A-Z0-9]/i', '', trim((string) $value)) ?? '');
+
+        return $key === '' ? null : mb_substr($key, 0, 60);
     }
 
     /**

@@ -23,7 +23,8 @@ export type PartnerListItem = {
     is_client: boolean;
     invoices_count: number;
     company: { id: number; name: string };
-    responsabil_departments: ResponsabilDepartmentRef[];
+    /** Where the supplier's invoices of the last twelve months were routed. */
+    departments: ResponsabilDepartmentRef[];
 };
 
 export type IndexProps = {
@@ -73,7 +74,8 @@ export type PartnerDetail = {
     is_client: boolean;
     company: { id: number; name: string };
     bank_accounts: BankAccount[];
-    responsabil_departments: ResponsabilDepartmentDetail[];
+    /** Where the supplier's invoices of the last twelve months were routed. */
+    departments: { id: number; name: string; invoices: number }[];
 };
 
 export type InvoiceRow = {

@@ -59,7 +59,9 @@ export function InvoicePaymentCard({
     updatedAt: string | null;
     currentUser: CurrentUser;
 }) {
-    const canEdit = currentUser.plati_department_ids.length > 0;
+    const canEdit =
+        currentUser.roles.includes('treasury') ||
+        currentUser.roles.includes('admin');
     const overridden = status !== erpStatus;
 
     const updatedLabel = updatedAt

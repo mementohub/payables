@@ -2,10 +2,9 @@
 
 namespace App\Services\Invoices;
 
-use App\Models\Department;
 use App\Models\Invoice;
-use App\Models\InvoiceApproval;
 use App\Models\InvoiceEvent;
+use App\Services\Approvals\ApprovalPresenter;
 use App\Services\SyncService;
 
 class InvoicePresenter
@@ -41,7 +40,7 @@ class InvoicePresenter
         ];
 
         if ($scope === 'primite') {
-            $row['approval'] = $this->approvalPayload($invoice);
+            $row['workflow'] = $this->workflowPayload($invoice);
         }
 
         return $row;
@@ -418,54 +417,23 @@ class InvoicePresenter
     }
 
     /**
+     * Where the invoice stands in the approval flow, for the list and the
+     * invoice page.
+     *
      * @return array<string, mixed>
      */
-    public function approvalPayload(Invoice $invoice): array
+    public function workflowPayload(Invoice $invoice): array
     {
-        $responsabilDepts = $invoice->partner?->responsabilDepartments ?? collect();
-
-        $activeApprovals = $invoice->approvals->whereNull('revoked_at');
-
-        $responsabilApprovalsByDept = $activeApprovals
-            ->where('role', InvoiceApproval::ROLE_RESPONSABIL)
-            ->keyBy('department_id');
-
-        $responsabilSteps = $responsabilDepts->map(function (Department $dept) use ($responsabilApprovalsByDept) {
-            $approval = $responsabilApprovalsByDept->get($dept->id);
-
-            return [
-                'approval_id' => $approval?->id,
-                'department_id' => $dept->id,
-                'department_name' => $dept->name,
-                'approved' => (bool) $approval,
-                'approved_by' => $approval?->user ? [
-                    'id' => $approval->user->id,
-                    'name' => $approval->user->name,
-                ] : null,
-                'approved_at' => $approval?->approved_at?->toIso8601String(),
-            ];
-        })->values();
-
-        $ordonatorApproval = $activeApprovals->firstWhere('role', InvoiceApproval::ROLE_ORDONATOR);
-        $needsApproval = $responsabilDepts->isNotEmpty();
+        $summary = app(ApprovalPresenter::class)->invoice($invoice);
 
         return [
-            'needs_approval' => $needsApproval,
-            'stage' => $this->stage($invoice, $needsApproval),
-            'responsabili_approved_at' => $invoice->responsabili_approved_at?->toIso8601String(),
-            'is_fully_approved' => (bool) $invoice->is_fully_approved,
-            'fully_approved_at' => $invoice->fully_approved_at?->toIso8601String(),
-            'responsabil_steps' => $responsabilSteps,
-            'ordonator' => $ordonatorApproval ? [
-                'approval_id' => $ordonatorApproval->id,
-                'department_id' => $ordonatorApproval->department_id,
-                'department_name' => $ordonatorApproval->department?->name,
-                'approved_by' => $ordonatorApproval->user ? [
-                    'id' => $ordonatorApproval->user->id,
-                    'name' => $ordonatorApproval->user->name,
-                ] : null,
-                'approved_at' => $ordonatorApproval->approved_at?->toIso8601String(),
-            ] : null,
+            'approval_status' => $summary['approval_status'],
+            'approval_track' => $summary['approval_track'],
+            'postponed_until' => $summary['postponed_until'],
+            'assignment_state' => $summary['assignment_state'],
+            'department' => $summary['department'],
+            'departments' => $summary['departments'],
+            'final' => $summary['final'],
         ];
     }
 
@@ -498,21 +466,15 @@ class InvoicePresenter
 
     public function exportApprovalLabel(Invoice $invoice): string
     {
-        $responsabilDepts = $invoice->partner?->responsabilDepartments ?? collect();
-
-        if ($responsabilDepts->isEmpty()) {
-            return 'Fără departament';
-        }
-
-        if ($invoice->is_fully_approved) {
-            return 'Bun de plată';
-        }
-
-        if ($invoice->responsabili_approved_at !== null) {
-            return 'Așteaptă ordonator';
-        }
-
-        return 'Așteaptă responsabil';
+        return match ($invoice->approval_status) {
+            'routing' => 'De rutat',
+            'department' => 'La departamente',
+            'final' => 'La Top Management',
+            'approved' => 'Bun de plată',
+            'disputed' => 'Contestată',
+            'postponed' => 'Amânată'.($invoice->postponed_until ? ' până la '.$invoice->postponed_until->format('d.m.Y') : ''),
+            default => '—',
+        };
     }
 
     public function paymentStatusLabel(string $status): string
@@ -523,22 +485,5 @@ class InvoicePresenter
             'partial' => 'Parțial',
             default => $status,
         };
-    }
-
-    private function stage(Invoice $invoice, bool $needsApproval): string
-    {
-        if (! $needsApproval) {
-            return 'na';
-        }
-
-        if ($invoice->is_fully_approved) {
-            return 'ok';
-        }
-
-        if ($invoice->responsabili_approved_at !== null) {
-            return 'responsabili_ok';
-        }
-
-        return 'pending';
     }
 }

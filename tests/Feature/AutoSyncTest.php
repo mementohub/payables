@@ -12,7 +12,7 @@ beforeEach(function () {
     Cache::flush();
     Process::fake();
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('admin')->create();
     $this->dir = sys_get_temp_dir().'/payables-auto-'.uniqid();
     $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
     Cache::forever('erp:sync:nightly', '2026-09-16');
@@ -67,7 +67,7 @@ test('once a day from the configured hour the full window is pulled instead', fu
 
     $this->actingAs($this->user)->get('/companies')->assertOk();
 
-    Process::assertRan(fn ($process) => str_contains($process->command, '--days=45'));
+    Process::assertRan(fn ($process) => str_contains($process->command, '--days=400'));
     expect(Cache::get('erp:sync:nightly'))->toBe('2026-09-16');
 });
 
@@ -102,12 +102,12 @@ test('the daily pass waits for the configured hour in Bucharest time', function 
     $this->actingAs($this->user)->get('/companies')->assertOk();
     Process::assertNothingRan();
 
-    // 01:30 UTC is 04:30 in Bucharest: the 45-day pass runs once
+    // 01:30 UTC is 04:30 in Bucharest: the 400-day pass runs once
     Cache::forget('erp:sync:auto:checked');
     Carbon::setTestNow('2026-09-16 01:30:00');
     Cache::forever('erp:sync:last_run', ['at' => '2026-09-16T01:25:00+00:00', 'ok' => true, 'summary' => '']);
     $this->actingAs($this->user)->get('/companies')->assertOk();
-    Process::assertRan(fn ($process) => str_contains($process->command, '--days=45'));
+    Process::assertRan(fn ($process) => str_contains($process->command, '--days=400'));
     expect(Cache::get('erp:sync:nightly'))->toBe('2026-09-16');
 });
 

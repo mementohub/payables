@@ -55,8 +55,9 @@ class EInvoiceController extends Controller
             'activeCompany' => $activeCompany
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,
-            'availableDepartments' => Department::responsabili()
-                ->orderBy('name')
+            'availableDepartments' => Department::query()
+                ->whereNotNull('code')
+                ->orderBy('sort')
                 ->get(['id', 'name']),
         ]);
     }
@@ -119,8 +120,8 @@ class EInvoiceController extends Controller
             ->with([
                 'company:id,name',
                 'partner:id,name,cui',
-                'partner.responsabilDepartments:id,name,type',
-                'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda',
+                'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda,department_id',
+                'invoice.department:id,name',
             ])
             ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
             ->when($status === 'pending', fn ($q) => $q->whereNull('data_ins_omc'))
@@ -133,8 +134,8 @@ class EInvoiceController extends Controller
             ->when(
                 ! empty($departmentIds),
                 fn ($q) => $q->whereHas(
-                    'partner.responsabilDepartments',
-                    fn ($d) => $d->whereIn('departments.id', $departmentIds),
+                    'invoice',
+                    fn ($i) => $i->whereIn('department_id', $departmentIds),
                 ),
             )
             ->when($search, function ($q, $term) {
@@ -194,8 +195,8 @@ class EInvoiceController extends Controller
         $eInvoice->load([
             'company:id,name',
             'partner:id,name,cui',
-            'partner.responsabilDepartments:id,name,type',
-            'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda',
+            'invoice:id,data_doc,tip_doc,nr_doc,val_mon,val_mon_tva,moneda,department_id',
+            'invoice.department:id,name',
         ]);
 
         return [
@@ -247,7 +248,7 @@ class EInvoiceController extends Controller
 
     public function parsed(EInvoice $eInvoice): array
     {
-        $payload = $this->xmlParser->parse($eInvoice->msg_xml);
+        $payload = $this->xmlParser->parse($eInvoice->xml());
 
         return ['parsed' => $payload['parsed'], 'error' => $payload['error']];
     }
@@ -300,11 +301,9 @@ class EInvoiceController extends Controller
                 'name' => $row->partner->name,
                 'cui' => $row->partner->cui,
             ] : null,
-            'responsabil_departments' => $row->partner
-                ? $row->partner->responsabilDepartments->map(fn (Department $d) => [
-                    'id' => $d->id,
-                    'name' => $d->name,
-                ])->values()
+            // The department the matched invoice was routed to.
+            'responsabil_departments' => $row->invoice?->department
+                ? [['id' => $row->invoice->department->id, 'name' => $row->invoice->department->name]]
                 : [],
             'invoice' => $row->invoice ? [
                 'id' => $row->invoice->id,
@@ -329,7 +328,7 @@ class EInvoiceController extends Controller
         return [
             ...$this->transformForList($row),
             'msg_detalii' => $row->msg_detalii,
-            'msg_xml' => $row->msg_xml,
+            'msg_xml' => $row->xml(),
         ];
     }
 

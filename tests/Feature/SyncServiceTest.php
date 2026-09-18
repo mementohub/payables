@@ -31,15 +31,16 @@ function fakeErp(): void
         $table->date('data_doc');
         $table->string('tip_doc');
         $table->string('nr_doc');
-        foreach (['partener', 'moneda', 'emitent', 'com_int', 'tip_doc_baza', 'nr_doc_baza', 'banca_eu', 'cont_banca_eu', 'cine_preda', 'cine_primeste', 'obs_txt'] as $column) {
+        foreach (['partener', 'moneda', 'emitent', 'com_int', 'eu_punct_lucru', 'tip_doc_baza', 'nr_doc_baza', 'banca_eu', 'cont_banca_eu', 'cine_preda', 'cine_primeste', 'obs_txt'] as $column) {
             $table->string($column)->nullable();
         }
-        foreach (['curs', 'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl', 'val_mon_dimin_negru'] as $column) {
+        foreach (['curs', 'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl', 'val_mon_dimin_negru', 'val_mon_dimin_rosu'] as $column) {
             $table->float($column)->nullable();
         }
         foreach (['data_scadenta', 'data_inchidere', 'data_doc_baza', 'data_contab', 'data_anulare'] as $column) {
             $table->date($column)->nullable();
         }
+        $table->dateTime('ultima_modif_data')->nullable();
     });
 
     $schema->create('doc_poz', function (Blueprint $table) {
@@ -53,6 +54,9 @@ function fakeErp(): void
         $table->string('um')->nullable();
         $table->float('pret')->nullable();
         $table->float('proc_tva')->nullable();
+        foreach (['conts', 'conta', 'loc', 'com_int', 'nr_obiect', 'furnizor'] as $column) {
+            $table->string($column)->nullable();
+        }
     });
 
     $schema->create('doc_fin', function (Blueprint $table) {
@@ -176,8 +180,9 @@ test('the recent sync also refreshes older invoices that are still open', functi
 
     $old = Invoice::where('nr_doc', 'OLD')->first();
 
+    // Re-read: OLD, settled in OMC since, and NEW, open in OMC.
     expect($result['invoices'])->toBe(1)
-        ->and($result['refreshed'])->toBe(1)
+        ->and($result['refreshed'])->toBe(2)
         ->and((float) $old->val_mon_paid)->toBe(400.0)
         ->and((float) $old->val_mon_storno)->toBe(600.0)
         ->and($old->outstandingAmount())->toBe(0.0)
@@ -198,7 +203,7 @@ test('a window is pulled in slices, with a progress line per slice', function ()
     });
 
     expect($result['invoices'])->toBe(4)
-        ->and($result['refreshed'])->toBe(0)
+        ->and($result['refreshed'])->toBe(4)
         ->and($lines)->toHaveCount(3)
         ->and($lines[0])->toStartWith('2026-09-10 → 2026-09-12: 2 facturi')
         ->and($lines[2])->toStartWith('2026-09-16 → 2026-09-16: 1 facturi')
@@ -207,7 +212,7 @@ test('a window is pulled in slices, with a progress line per slice', function ()
 
 test('the history pull starts at the configured date, resumes where it stopped and can be restarted', function () {
     config()->set('sync.history_from', '2026-09-01');
-    config()->set('sync.history_slice_days', 7);
+    config()->set('sync.slice_days', 7);
     erpDoc(['data_doc' => '2026-09-02', 'nr_doc' => 'H1']);
     erpDoc(['data_doc' => '2026-09-10', 'nr_doc' => 'H2']);
 
@@ -241,28 +246,104 @@ test('two documents whose number differs only in case are mirrored as the two in
     $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
 
     expect($result['invoices'])->toBe(2)
-        ->and($result['key_collisions'])->toBe(0)
         ->and(Invoice::where('company_id', $this->company->id)->orderBy('nr_doc')->pluck('nr_doc')->all())
         ->toBe(['GR/16/INV1', 'GR/16/Inv1']);
 });
 
-test('a document key the local database cannot tell apart updates the row that holds it instead of stopping the run', function () {
-    // What MySQL does on utf8mb4_unicode_ci: the two numbers below are one key.
-    DB::statement('drop index invoices_doc_unique');
-    DB::statement('create unique index invoices_doc_unique on invoices (company_id, data_doc, tip_doc, nr_doc collate nocase)');
-
-    erpDoc(['nr_doc' => 'GR/16/Inv1', 'val_mon' => 1000]);
-    erpDoc(['nr_doc' => 'GR/16/INV1', 'val_mon' => 2000]);
+test('numbers that differ only by a trailing space, one key to the local collation, become one invoice', function () {
+    erpDoc(['nr_doc' => '16', 'val_mon' => 1000]);
+    erpDoc(['nr_doc' => '16 ', 'val_mon' => 2000]);
     erpDoc(['nr_doc' => 'VDF9', 'val_mon' => 300]);
 
-    $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+    app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
 
-    // The run finishes, the later document wins the key it collides on, and
-    // the documents after it are still pulled.
-    expect($result['key_collisions'])->toBe(1)
-        ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(2)
-        ->and((float) Invoice::where('nr_doc', 'GR/16/Inv1')->first()->val_mon)->toBe(2000.0)
+    expect(Invoice::where('company_id', $this->company->id)->count())->toBe(2)
+        ->and((float) Invoice::where('nr_doc', 'like', '16%')->sole()->val_mon)->toBe(2000.0)
         ->and(Invoice::where('nr_doc', 'VDF9')->exists())->toBeTrue();
+});
+
+test('every document of a window is read however many pages it takes, with the lines routing needs', function () {
+    config()->set('sync.page_size', 2);
+
+    foreach (range(1, 5) as $i) {
+        erpDoc(['nr_doc' => "P{$i}", 'eu_punct_lucru' => 'SEDIUL CENTRAL', 'ultima_modif_data' => '2026-09-15 08:00:00']);
+        DB::connection('omc')->table('doc_poz')->insert([
+            'data_doc' => '2026-09-14', 'tip_doc' => 'FactFI', 'nr_doc' => "P{$i}", 'scv' => 1, 'articol' => 'HOT_EU', 'cant' => 1, 'pret' => 100,
+            'conts' => '471', 'conta' => '.', 'loc' => $i === 1 ? 'MARK' : '-', 'com_int' => '1234567.', 'nr_obiect' => null, 'furnizor' => 'Hotel Parad',
+        ]);
+    }
+
+    $result = app(SyncService::class)->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+    $line = Invoice::where('nr_doc', 'P1')->first()->details()->sole();
+
+    expect($result['invoices'])->toBe(5)
+        ->and($result['details'])->toBe(5)
+        ->and(Invoice::where('company_id', $this->company->id)->count())->toBe(5)
+        ->and(Invoice::where('nr_doc', 'P1')->first()->office)->toBe('SEDIUL CENTRAL')
+        ->and($line->only(['account', 'analytic', 'loc', 'com_int', 'furnizor']))->toBe(['account' => '471', 'analytic' => '.', 'loc' => 'MARK', 'com_int' => '1234567.', 'furnizor' => 'Hotel Parad'])
+        // OMC's "-" placeholder is no cost centre.
+        ->and(Invoice::where('nr_doc', 'P2')->first()->details()->sole()->loc)->toBeNull();
+});
+
+test('a document OMC deletes or cancels is marked as removed, and cleared if it comes back', function () {
+    erpDoc(['nr_doc' => 'GONE']);
+    erpDoc(['nr_doc' => 'CANCEL']);
+    erpDoc(['nr_doc' => 'STAYS']);
+    $sync = app(SyncService::class);
+    $sync->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    DB::connection('omc')->table('doc')->where('nr_doc', 'GONE')->delete();
+    DB::connection('omc')->table('doc')->where('nr_doc', 'CANCEL')->update(['data_anulare' => '2026-09-15']);
+    $result = $sync->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    expect($result['removed'])->toBe(2)
+        ->and(Invoice::where('nr_doc', 'GONE')->first()->omc_removed_at)->not->toBeNull()
+        ->and(Invoice::where('nr_doc', 'CANCEL')->first()->omc_removed_at)->not->toBeNull()
+        ->and(Invoice::where('nr_doc', 'STAYS')->first()->omc_removed_at)->toBeNull();
+
+    erpDoc(['nr_doc' => 'GONE']);
+    $sync->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    expect(Invoice::where('nr_doc', 'GONE')->first()->omc_removed_at)->toBeNull();
+});
+
+test('a credit note used up against an invoice is settled, not open', function () {
+    erpDoc(['nr_doc' => 'C 1', 'val_mon' => -122.97, 'val_mon_dimin_rosu' => 122.97]);
+    erpDoc(['nr_doc' => 'C 2', 'val_mon' => -50]);
+
+    $sync = app(SyncService::class);
+    $sync->sync($this->company, Carbon::parse('2026-09-14'), Carbon::parse('2026-09-14'));
+
+    expect(Invoice::where('nr_doc', 'C 1')->first()->outstandingAmount())->toBe(0.0)
+        ->and(Invoice::where('nr_doc', 'C 1')->first()->paymentStatus())->toBe('paid')
+        ->and(Invoice::where('nr_doc', 'C 2')->first()->paymentStatus())->toBe('unpaid')
+        ->and(Invoice::where('nr_doc', 'C 2')->first()->outstandingAmount())->toBe(-50.0)
+        // Only the credit note still to be used is in OMC's open list.
+        ->and($sync->refreshOpenInvoices($this->company))->toBe(1);
+});
+
+test('the open invoices are taken from OMC, whatever their date, and the ones settled since are brought up to date', function () {
+    // Open in OMC, dated months ago and never pulled here.
+    erpDoc(['data_doc' => '2026-02-03', 'nr_doc' => 'LATE', 'val_mon' => 700]);
+    // Pulled while open, paid since.
+    erpDoc(['data_doc' => '2026-08-05', 'nr_doc' => 'A', 'val_mon' => 1000]);
+    // Pulled while open, still open.
+    erpDoc(['data_doc' => '2026-08-06', 'nr_doc' => 'B', 'val_mon' => 500]);
+    $sync = app(SyncService::class);
+    $sync->sync($this->company, Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31'));
+
+    DB::connection('omc')->table('doc')->where('nr_doc', 'A')->update(['val_mon_pl' => 1000, 'data_scadenta' => '2026-09-04']);
+    DB::connection('omc')->table('doc_fin')->insert(['data_doc_fin' => '2026-09-15', 'tip_doc_fin' => 'OP_PL', 'nr_doc_fin' => 'BTRL1', 'data_doc_com' => '2026-08-05', 'tip_doc_com' => 'FactFI', 'nr_doc_com' => 'A', 'data_repartizare' => '2026-09-15', 'val_fin' => 1000, 'val_com' => 1000]);
+
+    $refreshed = $sync->refreshOpenInvoices($this->company);
+    $paid = Invoice::where('nr_doc', 'A')->first();
+
+    expect($refreshed)->toBe(3)
+        ->and(Invoice::where('nr_doc', 'LATE')->exists())->toBeTrue()
+        ->and((float) $paid->val_mon_paid)->toBe(1000.0)
+        ->and($paid->data_scadenta?->toDateString())->toBe('2026-09-04')
+        ->and($paid->payments()->sole()->nr_doc)->toBe('BTRL1')
+        ->and((float) Invoice::where('nr_doc', 'B')->first()->val_mon_paid)->toBe(0.0);
 });
 
 test('an allocation the ERP hands over twice is stored once, not thrown', function () {

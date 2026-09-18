@@ -7,7 +7,7 @@ use App\Services\Omc\OmcReader;
 use App\Services\RemoteConnection;
 
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('admin')->create();
 });
 
 /**

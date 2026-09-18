@@ -5,36 +5,29 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class UserSeeder extends Seeder
 {
+    /**
+     * The administrators of a fresh install. They sign in with Microsoft;
+     * the password is random (reset it from the login page if needed).
+     */
     public function run(): void
     {
-        $users = [
-            ['name' => 'Andrei Ciungulete', 'email' => 'andrei.ciungulete@andali.ro', 'password' => '564Wk7nW7gGy'],
-            ['name' => 'Bogdan Cismariu', 'email' => 'bogdan.cismariu@mementogroup.com', 'password' => '564Wk7nW7gGy'],
-            ['name' => 'Turism Intern', 'email' => 'turism-intern@example.test', 'password' => '##turism-intern##'],
-            ['name' => 'Sediul Central', 'email' => 'sediul-central@example.test', 'password' => '##sediul-central##'],
-            ['name' => 'Ticketing', 'email' => 'ticketing@example.test', 'password' => '##ticketing##'],
-            ['name' => 'Bookings', 'email' => 'bookings@example.test', 'password' => '##bookings##'],
-            ['name' => 'Ordonator', 'email' => 'ordonator@example.test', 'password' => '##ordonator##'],
-            ['name' => 'Plati', 'email' => 'plati@example.test', 'password' => '##plati##'],
-        ];
-
-        foreach ($users as $user) {
-            User::updateOrCreate(
+        foreach ([
+            ['name' => 'Andrei Ciungulete', 'email' => 'andrei.ciungulete@andali.ro'],
+            ['name' => 'Bogdan Cismariu', 'email' => 'bogdan.cismariu@mementogroup.com'],
+        ] as $user) {
+            User::query()->updateOrCreate(
                 ['email' => $user['email']],
                 [
                     'name' => $user['name'],
-                    'password' => $this->password($user['password']),
+                    'password' => Hash::make(app()->isLocal() ? 'password' : Str::random(32)),
                     'email_verified_at' => now(),
+                    'roles' => [User::ROLE_ADMIN],
                 ],
             );
         }
-    }
-
-    private function password(string $password): string
-    {
-        return Hash::make(app()->isLocal() ? 'password' : $password);
     }
 }

@@ -17,23 +17,49 @@ use App\Models\PartnerBankAccount;
 use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\EInvoices\PartnerCuiLookup;
 use Illuminate\Database\ConnectionInterface;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 
+/**
+ * The supplier side of OMC, mirrored for the payment workflow: supplier
+ * invoices with their lines (account, analytic, cost centre, booking
+ * reference), the payments and credit notes that settle them, the
+ * suppliers and their bank accounts, bank statements and e-invoices.
+ *
+ * Documents are read in pages of the `doc` primary key (keyset, never
+ * LIMIT/OFFSET, so nothing is skipped between pages) and written in bulk.
+ * A window is re-read whole, so documents entered late or edited later are
+ * picked up, and a document OMC no longer holds (deleted or cancelled) is
+ * marked as removed.
+ */
 class SyncService
 {
     public const array FURNIZOR_DOC_TYPES = ['FactFI', 'FactFE'];
 
+    /** Client documents: no longer mirrored, so any lookup of them finds none. */
     public const array CLIENT_DOC_TYPES = ['FactCI', 'FactCE', 'FactINT'];
 
-    /**
-     * Documents whose key the local database refused as a duplicate of one it
-     * compares as equal, although the ERP keeps them apart.
-     */
-    private int $keyCollisions = 0;
+    /** Key tuples per `IN (...)` lookup. */
+    private const int KEYS = 200;
+
+    private const array DOC_COLUMNS = [
+        'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'curs',
+        'val_mon', 'val_mon_tva', 'val_mon_pl', 'val_mon_dimin_negru', 'val_mon_dimin_rosu',
+        'data_scadenta', 'data_inchidere', 'emitent', 'com_int', 'eu_punct_lucru',
+        'data_doc_baza', 'tip_doc_baza', 'nr_doc_baza', 'data_anulare', 'ultima_modif_data',
+    ];
+
+    private const array LINE_COLUMNS = [
+        'data_doc', 'tip_doc', 'nr_doc', 'scv', 'articol', 'detaliu_articol', 'cant', 'um', 'pret', 'proc_tva',
+        'conts', 'conta', 'loc', 'com_int', 'nr_obiect', 'furnizor',
+    ];
+
+    private const array INCOMING_TYPES = [
+        'OP_INC', 'Ch_INC', 'Reg_INC', 'CardINC', 'CredINC', 'BO_INC', 'CEC_INC', 'Cmb_INC',
+        'DI_Casa', 'DIV_INC', 'Dob_INC', 'FV_B', 'OCV_INC', 'OVV_INC', 'DocCred',
+        'B_Cadou', 'B_CasaF', 'B_Masa', 'BonMasa', 'BordMgz', 'CCredit', 'CEC_N_C',
+    ];
 
     public function __construct(
         private readonly RemoteConnection $remote,
@@ -42,75 +68,35 @@ class SyncService
     ) {}
 
     /**
-     * @return array{partners: int, invoices: int, details: int, bank_accounts: int, company_bank_accounts: int, payments: int, statements: int, e_invoices: int, key_collisions: int}
+     * Mirror one window of dates: every supplier invoice dated in it (lines,
+     * payments, supplier), then the bank statements and e-invoices of the
+     * same days.
+     *
+     * With `$invoicesOnly` the bank statements and e-invoices are left out,
+     * for the history pass: the nightly window keeps those current.
+     *
+     * @return array{partners: int, invoices: int, details: int, payments: int, removed: int, statements: int, e_invoices: int}
      */
-    public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null): array
+    public function sync(Company $company, ?Carbon $from = null, ?Carbon $to = null, bool $invoicesOnly = false): array
     {
-        $this->keyCollisions = 0;
-        $remote = $this->remote->connection($company);
-
-        try {
-            $remote->getPdo();
-        } catch (\Throwable $e) {
-            throw new \RuntimeException("Cannot reach remote database for company {$company->getKey()}: {$e->getMessage()}", 0, $e);
-        }
-
-        $tipDocs = [...self::FURNIZOR_DOC_TYPES, ...self::CLIENT_DOC_TYPES];
-
+        $remote = $this->connect($company);
         $to ??= Carbon::now()->endOfDay();
-        $from ??= $to->copy()->subDays(max(1, (int) config('sync.window_days', 45)) - 1)->startOfDay();
+        $from ??= $to->copy()->subDays(max(1, (int) config('sync.window_days', 400)) - 1)->startOfDay();
 
-        $partnerDocRows = $remote->table('doc')
-            ->select('partener', 'tip_doc')
-            ->whereIn('tip_doc', $tipDocs)
-            ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
-            ->whereNotNull('partener')
-            ->distinct()
-            ->get();
-
-        $partnerRoles = [];
-        foreach ($partnerDocRows as $row) {
-            $isFurnizor = in_array($row->tip_doc, self::FURNIZOR_DOC_TYPES, true);
-            $partnerRoles[$row->partener] ??= ['furnizor' => false, 'client' => false];
-            $partnerRoles[$row->partener][$isFurnizor ? 'furnizor' : 'client'] = true;
-        }
-
-        $partnersCount = $this->syncPartners($company, $remote, $partnerRoles);
-        [$invoicesCount, $detailsCount] = $this->syncInvoices($company, $remote, $from, $to, $tipDocs);
-
-        $furnizorNames = array_keys(array_filter($partnerRoles, fn ($r) => $r['furnizor']));
-        $bankAccountsCount = $this->syncBankAccounts($company, $remote, $furnizorNames);
-
-        $companyBankAccountsCount = $this->syncCompanyBankAccounts($company, $remote);
-
-        $paymentsCount = $this->syncInvoicePayments($company, $remote, $from, $to, $tipDocs);
-
-        $statementsCount = $this->syncBankStatements($company, $remote, $from, $to);
-
-        $eInvoicesCount = $this->syncEInvoices($company, $remote, $from, $to);
-
-        $this->resolveCrossCompanyLinks($company, $from, $to);
+        $counts = $this->syncInvoiceRange($company, $remote, $from, $to);
+        $counts['statements'] = $invoicesOnly ? 0 : $this->syncBankStatements($company, $remote, $from, $to);
+        $counts['e_invoices'] = $invoicesOnly ? 0 : $this->syncEInvoices($company, $remote, $from, $to);
 
         $company->forceFill(['last_synced_at' => now()])->save();
 
-        return [
-            'partners' => $partnersCount,
-            'invoices' => $invoicesCount,
-            'details' => $detailsCount,
-            'bank_accounts' => $bankAccountsCount,
-            'company_bank_accounts' => $companyBankAccountsCount,
-            'payments' => $paymentsCount,
-            'statements' => $statementsCount,
-            'e_invoices' => $eInvoicesCount,
-            'key_collisions' => $this->keyCollisions,
-        ];
+        return $counts;
     }
 
     /**
-     * Pull the last few days of documents, then re-read every invoice still
-     * open locally from the ERP, so payments allocated today to older
-     * invoices show up without re-syncing months.
+     * The last few days, then every invoice open in OMC or locally, so a
+     * payment made today against an old invoice shows at once.
      *
+     * @param  callable(string): void|null  $progress
      * @return array<string, int>
      */
     public function syncRecent(Company $company, ?int $days = null, ?callable $progress = null): array
@@ -122,50 +108,23 @@ class SyncService
     }
 
     /**
-     * Pull a window in slices of a few days (each slice is one pass with
-     * small lookups; `$progress` gets a line per slice), then refresh the
-     * invoices still open.
+     * A window in slices (a month by default), then the open invoices.
      *
      * @param  callable(string): void|null  $progress
      * @return array<string, int>
      */
     public function syncWindow(Company $company, Carbon $from, Carbon $to, ?callable $progress = null): array
     {
-        $sliceDays = max(1, (int) config('sync.slice_days', 3));
-        $to = $to->copy()->endOfDay();
-        $totals = [];
-
-        for ($start = $from->copy()->startOfDay(); $start->lte($to); $start = $start->copy()->addDays($sliceDays)) {
-            $end = $start->copy()->addDays($sliceDays - 1)->endOfDay();
-            $end = $end->gt($to) ? $to->copy() : $end;
-
-            $result = $this->sync($company, $start, $end);
-
-            foreach ($result as $key => $count) {
-                $totals[$key] = ($totals[$key] ?? 0) + $count;
-            }
-
-            if ($progress !== null) {
-                $progress(sprintf(
-                    '%s → %s: %d facturi, %d plăți, %d parteneri, %d extrase, %d eFacturi',
-                    $start->toDateString(),
-                    $end->toDateString(),
-                    $result['invoices'],
-                    $result['payments'],
-                    $result['partners'],
-                    $result['statements'],
-                    $result['e_invoices'],
-                ));
-            }
-        }
+        $totals = $this->walk($company, $from->copy()->startOfDay(), $to->copy()->endOfDay(), $progress);
+        $this->syncCompanyBankAccounts($company, $this->connect($company));
 
         return [...$totals, 'refreshed' => $this->refreshOpenInvoices($company)];
     }
 
     /**
-     * Pull every document from `sync.history_from` (or where a previous run
-     * stopped) up to today, remembering the last finished slice so a stopped
-     * run continues instead of starting over.
+     * Every supplier invoice from `sync.history_from` (or where a previous
+     * run stopped) up to today, remembering the last finished slice so a
+     * stopped run continues instead of starting over.
      *
      * @param  callable(string): void|null  $progress
      * @return array<string, int|string>
@@ -182,25 +141,9 @@ class SyncService
         $from = $restartFrom?->copy()->startOfDay()
             ?? ($cursor ? Carbon::parse((string) $cursor)->addDay()->startOfDay() : Carbon::parse((string) config('sync.history_from', '2016-01-01'))->startOfDay());
         $to = Carbon::now()->endOfDay();
-        $sliceDays = max(1, (int) config('sync.history_slice_days', 7));
-        $totals = [];
 
-        for ($start = $from->copy(); $start->lte($to); $start = $start->copy()->addDays($sliceDays)) {
-            $end = $start->copy()->addDays($sliceDays - 1)->endOfDay();
-            $end = $end->gt($to) ? $to->copy() : $end;
-
-            $result = $this->sync($company, $start, $end);
-
-            foreach ($result as $name => $count) {
-                $totals[$name] = ($totals[$name] ?? 0) + $count;
-            }
-
-            Cache::forever($key, $end->toDateString());
-
-            if ($progress !== null) {
-                $progress(sprintf('%s → %s: %d facturi, %d plăți, %d parteneri', $start->toDateString(), $end->toDateString(), $result['invoices'], $result['payments'], $result['partners']));
-            }
-        }
+        $totals = $this->walk($company, $from, $to, $progress, fn (Carbon $end) => Cache::forever($key, $end->toDateString()), invoicesOnly: true);
+        $this->syncCompanyBankAccounts($company, $this->connect($company));
 
         return [...$totals, 'refreshed' => $this->refreshOpenInvoices($company), 'from' => $from->toDateString(), 'to' => $to->toDateString()];
     }
@@ -215,520 +158,337 @@ class SyncService
         return $cursor ? (string) $cursor : null;
     }
 
-    private static function historyKey(Company $company): string
-    {
-        return "erp:sync:history:{$company->id}";
-    }
-
     /**
-     * Refresh value, payments, credit notes and due date of the invoices still
-     * open locally from their current state in the ERP, and re-pull the
-     * payment allocations of those that changed. Documents are looked up by
-     * their full key, which is the `doc` primary key. The payment status set
-     * by hand is left alone.
+     * Bring every open supplier invoice up to date: those OMC holds as open
+     * (unpaid, partly paid or not yet offset) and those still open locally,
+     * which OMC may have settled or removed since. Returns how many were
+     * re-read.
      */
     public function refreshOpenInvoices(Company $company): int
     {
-        $remote = $this->remote->connection($company);
-        $count = 0;
+        $remote = $this->connect($company);
+        $since = Carbon::now()->subYears(max(1, (int) config('omc.open_window_years', 2)))->startOfYear()->toDateString();
 
-        // Ten years of history leave hundreds of thousands of open invoices,
-        // so they are walked in batches and each batch is finished before the
-        // next is read: nothing about this grows with the size of the table.
-        Invoice::query()
-            ->where('company_id', $company->id)
-            ->whereRaw(sprintf('val_mon - val_mon_paid - val_mon_storno > %.2F', 0.01))
-            ->select(['id', 'data_doc', 'tip_doc', 'nr_doc', 'partener_type', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'data_scadenta'])
-            ->chunkById(200, function ($chunk) use ($company, $remote, &$count) {
-                $changed = collect();
-                $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
-                $bindings = $chunk
-                    ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
-                    ->all();
+        $open = $remote->table('doc')
+            ->select(self::DOC_COLUMNS)
+            ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+            ->whereNull('data_anulare')
+            ->where('data_doc', '>=', $since)
+            ->whereRaw('abs(coalesce(val_mon, 0) - coalesce(val_mon_pl, 0) - coalesce(val_mon_dimin_negru, 0) + coalesce(val_mon_dimin_rosu, 0)) > 0.01')
+            ->get();
 
-                $rows = collect($remote->select(
-                    'select data_doc, tip_doc, nr_doc, val_mon, coalesce(val_mon_inc, 0) as val_mon_inc, coalesce(val_mon_pl, 0) as val_mon_pl,'
-                    .' coalesce(val_mon_dimin_negru, 0) as val_mon_dimin_negru, data_scadenta'
-                    ." from doc where (data_doc, tip_doc, nr_doc) in ({$placeholders})",
-                    $bindings,
-                ))->keyBy(fn ($row) => Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc);
-
-                foreach ($chunk as $invoice) {
-                    $row = $rows->get($invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
-
-                    if ($row === null) {
-                        continue;
-                    }
-
-                    $attributes = [
-                        'val_mon' => (float) $row->val_mon,
-                        'val_mon_paid' => $invoice->partener_type === 'furnizor' ? (float) $row->val_mon_pl : (float) $row->val_mon_inc,
-                        'val_mon_storno' => (float) $row->val_mon_dimin_negru,
-                        'data_scadenta' => $row->data_scadenta ? Carbon::parse((string) $row->data_scadenta)->toDateString() : null,
-                    ];
-
-                    $same = abs((float) $invoice->val_mon - $attributes['val_mon']) < 0.001
-                        && abs((float) $invoice->val_mon_paid - $attributes['val_mon_paid']) < 0.001
-                        && abs((float) $invoice->val_mon_storno - $attributes['val_mon_storno']) < 0.001
-                        && $invoice->data_scadenta?->toDateString() === $attributes['data_scadenta'];
-
-                    if (! $same) {
-                        $invoice->forceFill($attributes)->save();
-                        $changed->push($invoice);
-                    }
-                }
-
-                // The allocations of this batch are rewritten before the next one
-                // is read, so the batch can be released.
-                $this->syncPaymentsOfInvoices($company, $remote, $changed);
-                $count += $changed->count();
-            });
-
-        return $count;
-    }
-
-    /**
-     * Link FactFI invoices in `$company` to the matching emitted invoice in another
-     * synced company, when the supplier on the FactFI is itself a synced company
-     * (matched by CUI). Sets `source_company_id` and `source_invoice_id`.
-     */
-    private function resolveCrossCompanyLinks(Company $company, Carbon $from, Carbon $to): void
-    {
-        $companyByCui = Company::query()
-            ->where('id', '!=', $company->id)
-            ->whereNotNull('cui')
-            ->where('cui', '!=', '')
-            ->get(['id', 'cui'])
-            ->mapWithKeys(fn (Company $c) => [$this->normalizeCui($c->cui) => $c->id]);
-
-        if ($companyByCui->isEmpty()) {
-            return;
+        foreach ($open->chunk($this->page()) as $chunk) {
+            $this->store($company, $remote, $chunk->values());
         }
 
-        Invoice::query()
+        $openKeys = $open->mapWithKeys(fn (object $row) => [self::key($row->data_doc, $row->tip_doc, $row->nr_doc) => true])->all();
+
+        // Open here but not in OMC's list: paid, offset or gone since.
+        $stale = Invoice::query()
             ->where('company_id', $company->id)
             ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
-            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
-            ->whereHas('partner', fn ($q) => $q->whereNotNull('cui')->where('cui', '!=', ''))
-            ->with('partner:id,cui')
-            ->lazy(500)
-            ->each(function (Invoice $invoice) use ($companyByCui) {
-                $partnerCui = $invoice->partner?->cui;
-                $sourceCompanyId = $partnerCui
-                    ? ($companyByCui[$this->normalizeCui($partnerCui)] ?? null)
-                    : null;
+            ->whereNull('omc_removed_at')
+            ->whereRaw('abs(val_mon - val_mon_paid - val_mon_storno) > 0.01')
+            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+            ->reject(fn (Invoice $invoice) => isset($openKeys[self::key($invoice->data_doc, $invoice->tip_doc, $invoice->nr_doc)]));
 
-                $sourceInvoiceId = $sourceCompanyId
-                    ? Invoice::query()
-                        ->where('company_id', $sourceCompanyId)
-                        ->whereIn('tip_doc', self::CLIENT_DOC_TYPES)
-                        ->where('nr_doc', $invoice->nr_doc)
-                        ->where('data_doc', $invoice->data_doc)
-                        ->value('id')
-                    : null;
+        foreach ($stale->chunk(self::KEYS) as $chunk) {
+            $rows = $this->whereKeys($remote->table('doc')->select(self::DOC_COLUMNS), ['data_doc', 'tip_doc', 'nr_doc'], $chunk->map(fn (Invoice $i) => [$i->data_doc->toDateString(), $i->tip_doc, $i->nr_doc])->all())->get();
+            $live = $rows->whereNull('data_anulare')->values();
+            $this->store($company, $remote, $live);
 
-                if (
-                    $invoice->source_company_id !== $sourceCompanyId
-                    || $invoice->source_invoice_id !== $sourceInvoiceId
-                ) {
-                    $invoice->forceFill([
-                        'source_company_id' => $sourceCompanyId,
-                        'source_invoice_id' => $sourceInvoiceId,
-                    ])->save();
-                }
-            });
+            $found = $live->mapWithKeys(fn (object $row) => [self::key($row->data_doc, $row->tip_doc, $row->nr_doc) => true])->all();
+            $gone = $chunk->reject(fn (Invoice $i) => isset($found[self::key($i->data_doc, $i->tip_doc, $i->nr_doc)]))->pluck('id');
 
-        // Reverse pass: when *this* company's emitted invoices have receivers
-        // that are themselves synced companies, the receivers' FactFI rows
-        // referencing this invoice should be linked back as well.
-        Invoice::query()
-            ->where('source_company_id', $company->id)
-            ->whereNull('source_invoice_id')
-            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
-            ->lazy(500)
-            ->each(function (Invoice $invoice) {
-                $sourceInvoiceId = Invoice::query()
-                    ->where('company_id', $invoice->source_company_id)
-                    ->whereIn('tip_doc', self::CLIENT_DOC_TYPES)
-                    ->where('nr_doc', $invoice->nr_doc)
-                    ->where('data_doc', $invoice->data_doc)
-                    ->value('id');
-
-                if ($sourceInvoiceId !== null) {
-                    $invoice->forceFill(['source_invoice_id' => $sourceInvoiceId])->save();
-                }
-            });
-    }
-
-    private function syncEInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
-    {
-        $rows = $remote->table('view_anaf_e_fact_furn_msg')
-            ->select([
-                'msg_id', 'msg_cif', 'msg_index_incarcare', 'msg_data_creare_d',
-                'msg_detalii', 'msg_xml', 'data_ins_omc', 'err_ins_omc',
-                'data_doc_xml', 'tip_doc_xml', 'nr_doc_xml', 'partener_xml', 'cod_cci_xml',
-            ])
-            ->where('msg_tip', 'FACTURA PRIMITA')
-            ->whereBetween('msg_data_creare_d', [$from->toDateTimeString(), $to->toDateTimeString()])
-            ->orderBy('msg_data_creare_d')
-            ->get();
-
-        if ($rows->isEmpty()) {
-            return 0;
+            if ($gone->isNotEmpty()) {
+                Invoice::query()->whereKey($gone->all())->update(['omc_removed_at' => now()]);
+            }
         }
 
-        $partnerLookup = new PartnerCuiLookup($company->id);
+        return $open->count() + $stale->count();
+    }
 
-        $count = 0;
+    /**
+     * @param  callable(string): void|null  $progress
+     * @param  callable(Carbon): void|null  $finished  called with the end of each slice
+     * @return array<string, int>
+     */
+    private function walk(Company $company, Carbon $from, Carbon $to, ?callable $progress, ?callable $finished = null, bool $invoicesOnly = false): array
+    {
+        $sliceDays = max(1, (int) config('sync.slice_days', 31));
+        $totals = [];
 
-        foreach ($rows as $row) {
-            $nrDoc = $row->nr_doc_xml !== null ? trim((string) $row->nr_doc_xml) : null;
+        for ($start = $from->copy(); $start->lte($to); $start = $start->copy()->addDays($sliceDays)) {
+            $end = $start->copy()->addDays($sliceDays - 1)->endOfDay();
+            $end = $end->gt($to) ? $to->copy() : $end;
 
-            $supplierCui = EInvoice::extractEmitentCui($row->msg_detalii);
+            $result = $this->sync($company, $start, $end, $invoicesOnly);
 
-            $partnerId = $partnerLookup->find($supplierCui)
-                ?? $partnerLookup->find($row->cod_cci_xml)
-                ?? $partnerLookup->find($this->xmlParser->extractSellerTaxId($row->msg_xml));
-
-            $totals = $this->xmlParser->extractTotals($row->msg_xml);
-
-            $eInvoice = EInvoice::updateOrCreate(
-                [
-                    'company_id' => $company->id,
-                    'msg_id' => $row->msg_id,
-                ],
-                [
-                    'partner_id' => $partnerId,
-                    'msg_cif' => $row->msg_cif,
-                    'supplier_cui' => $supplierCui,
-                    'msg_index_incarcare' => $row->msg_index_incarcare,
-                    'msg_data_creare_d' => $row->msg_data_creare_d,
-                    'data_doc_xml' => $row->data_doc_xml,
-                    'tip_doc_xml' => $row->tip_doc_xml,
-                    'nr_doc_xml' => $nrDoc,
-                    'partener_xml' => $row->partener_xml,
-                    'cod_cci_xml' => $row->cod_cci_xml,
-                    'total_amount' => $totals['total_amount'],
-                    'total_vat' => $totals['total_vat'],
-                    'currency' => $totals['currency'],
-                    'msg_detalii' => $row->msg_detalii,
-                    'msg_xml' => $row->msg_xml,
-                    'data_ins_omc' => $row->data_ins_omc,
-                    'err_ins_omc' => $row->err_ins_omc,
-                ]
-            );
-
-            $matchedInvoiceId = $this->matcher->find($eInvoice)?->id;
-
-            if ($eInvoice->invoice_id !== $matchedInvoiceId) {
-                $eInvoice->forceFill(['invoice_id' => $matchedInvoiceId])->save();
+            foreach ($result as $name => $count) {
+                $totals[$name] = ($totals[$name] ?? 0) + $count;
             }
 
-            $count++;
-        }
-
-        return $count;
-    }
-
-    private function normalizeCui(string $cui): string
-    {
-        return PartnerCuiLookup::normalize($cui);
-    }
-
-    /**
-     * An ERP date as the local date columns keep it, so that "2026-09-15" and
-     * "2026-09-15 00:00:00" cannot pass for two different days.
-     */
-    private static function day(mixed $value): ?string
-    {
-        if ($value === null || trim((string) $value) === '') {
-            return null;
-        }
-
-        return Carbon::parse((string) $value)->toDateString();
-    }
-
-    private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
-    {
-        $headers = $remote->table('extrasb as e')
-            ->leftJoin('eu_banca as b', function ($join) {
-                $join->on('b.banca', '=', 'e.banca_eu')->on('b.cont_banca', '=', 'e.cont_banca_eu');
-            })
-            ->select([
-                'e.data_extras', 'e.banca_eu', 'e.cont_banca_eu', 'e.operator', 'b.moneda',
-            ])
-            ->whereBetween('e.data_extras', [$from->toDateString(), $to->toDateString()])
-            ->orderBy('e.data_extras')
-            ->get();
-
-        if ($headers->isEmpty()) {
-            return 0;
-        }
-
-        $incasareTypes = [
-            'OP_INC', 'Ch_INC', 'Reg_INC', 'CardINC', 'CredINC', 'BO_INC', 'CEC_INC', 'Cmb_INC',
-            'DI_Casa', 'DIV_INC', 'Dob_INC', 'FV_B', 'OCV_INC', 'OVV_INC', 'DocCred',
-            'B_Cadou', 'B_CasaF', 'B_Masa', 'BonMasa', 'BordMgz', 'CCredit', 'CEC_N_C',
-        ];
-
-        $partnerLookup = Partner::where('company_id', $company->id)->pluck('id', 'name');
-
-        $count = 0;
-
-        foreach ($headers as $header) {
-            $statement = BankStatement::query()
-                ->where('company_id', $company->id)
-                ->where('iban', $header->cont_banca_eu)
-                ->whereDate('data_extras', Carbon::parse((string) $header->data_extras)->toDateString())
-                ->first() ?? new BankStatement([
-                    'company_id' => $company->id,
-                    'data_extras' => $header->data_extras,
-                    'iban' => $header->cont_banca_eu,
-                ]);
-
-            $statement->forceFill([
-                'banca' => $header->banca_eu !== '-' ? $header->banca_eu : null,
-                'operator' => $header->operator,
-                'moneda' => $header->moneda,
-            ])->save();
-
-            $lines = $remote->table('doc')
-                ->select([
-                    'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'val_mon',
-                    'emitent', 'cine_preda', 'cine_primeste', 'obs_txt',
-                ])
-                ->where('data_contab', $header->data_extras)
-                ->where('banca_eu', $header->banca_eu)
-                ->where('cont_banca_eu', $header->cont_banca_eu)
-                ->orderBy('data_doc')
-                ->get();
-
-            $allocationRows = $remote->table('doc_fin')
-                ->select([
-                    'data_doc_fin', 'tip_doc_fin', 'nr_doc_fin',
-                    'data_doc_com', 'tip_doc_com', 'nr_doc_com', 'val_fin', 'val_com',
-                ])
-                ->whereIn('tip_doc_fin', $lines->pluck('tip_doc')->unique()->all() ?: [''])
-                ->where(function ($q) use ($lines) {
-                    foreach ($lines as $line) {
-                        $q->orWhere(function ($q) use ($line) {
-                            $q->where('data_doc_fin', $line->data_doc)
-                                ->where('tip_doc_fin', $line->tip_doc)
-                                ->where('nr_doc_fin', $line->nr_doc);
-                        });
-                    }
-                })
-                ->get();
-
-            $invoiceLookup = $allocationRows->isEmpty()
-                ? collect()
-                : Invoice::where('company_id', $company->id)
-                    ->whereIn('nr_doc', $allocationRows->pluck('nr_doc_com')->unique()->all())
-                    ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
-                    ->keyBy(fn ($i) => $i->data_doc->toDateString().'|'.$i->tip_doc.'|'.$i->nr_doc);
-
-            $allocationByLine = [];
-            $allocationRowsByLine = [];
-            foreach ($allocationRows as $row) {
-                $key = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
-                $allocationByLine[$key] = ($allocationByLine[$key] ?? 0) + ($row->val_fin ?? 0);
-                $allocationRowsByLine[$key][] = $row;
+            if ($finished !== null) {
+                $finished($end);
             }
 
-            $statement->lines()->delete();
+            if ($progress !== null) {
+                $progress(sprintf(
+                    '%s → %s: %d facturi, %d linii, %d plăți, %d parteneri, %d extrase, %d eFacturi%s',
+                    $start->toDateString(), $end->toDateString(), $result['invoices'], $result['details'], $result['payments'],
+                    $result['partners'], $result['statements'], $result['e_invoices'],
+                    $result['removed'] > 0 ? ", {$result['removed']} scoase din OMC" : '',
+                ));
+            }
+        }
 
-            $linesCount = 0;
-            $unallocatedCount = 0;
-            $totalIn = 0.0;
-            $totalOut = 0.0;
-            $totalUnallocated = 0.0;
+        return $totals;
+    }
 
-            foreach ($lines as $line) {
-                $lineKey = $line->data_doc.'|'.$line->tip_doc.'|'.$line->nr_doc;
-                $direction = in_array($line->tip_doc, $incasareTypes, true) ? 'incoming' : 'outgoing';
-                $valAllocated = (float) ($allocationByLine[$lineKey] ?? 0);
-                $val = (float) ($line->val_mon ?? 0);
+    /**
+     * Every supplier invoice dated in the window, page by page of the OMC
+     * primary key, then the local ones OMC no longer holds.
+     *
+     * @return array{partners: int, invoices: int, details: int, payments: int, removed: int}
+     */
+    private function syncInvoiceRange(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): array
+    {
+        $totals = ['partners' => 0, 'invoices' => 0, 'details' => 0, 'payments' => 0, 'removed' => 0];
+        $seen = [];
+        $cursor = null;
 
-                $lineModel = BankStatementLine::create([
-                    'bank_statement_id' => $statement->id,
-                    'data_doc' => $line->data_doc,
-                    'tip_doc' => $line->tip_doc,
-                    'nr_doc' => $line->nr_doc,
-                    'direction' => $direction,
-                    'partener_name' => $line->partener,
-                    'partner_id' => $line->partener ? ($partnerLookup[$line->partener] ?? null) : null,
-                    'emitent' => $line->emitent,
-                    'cine_preda' => $line->cine_preda,
-                    'cine_primeste' => $line->cine_primeste,
-                    'obs_txt' => $line->obs_txt,
-                    'moneda' => $line->moneda,
-                    'val_mon' => $val,
-                    'val_allocated' => $valAllocated,
-                ]);
+        do {
+            $query = $remote->table('doc')
+                ->select(self::DOC_COLUMNS)
+                ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+                ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()]);
 
-                foreach ($allocationRowsByLine[$lineKey] ?? [] as $alloc) {
-                    $invoiceKey = Carbon::parse((string) $alloc->data_doc_com)->toDateString().'|'.$alloc->tip_doc_com.'|'.$alloc->nr_doc_com;
-                    $invoiceId = $invoiceLookup->get($invoiceKey)?->id;
-
-                    BankStatementLineAllocation::create([
-                        'bank_statement_line_id' => $lineModel->id,
-                        'invoice_id' => $invoiceId,
-                        'data_doc_com' => $alloc->data_doc_com,
-                        'tip_doc_com' => $alloc->tip_doc_com,
-                        'nr_doc_com' => $alloc->nr_doc_com,
-                        'val_fin' => $alloc->val_fin ?? 0,
-                        'val_com' => $alloc->val_com ?? 0,
-                    ]);
-                }
-
-                $linesCount++;
-                $unallocatedAmount = max(0, $val - $valAllocated);
-                if ($unallocatedAmount > 0.01) {
-                    $unallocatedCount++;
-                    $totalUnallocated += $unallocatedAmount;
-                }
-                if ($direction === 'incoming') {
-                    $totalIn += $val;
-                } else {
-                    $totalOut += $val;
-                }
+            if ($cursor !== null) {
+                $query->whereRaw('(data_doc, tip_doc, nr_doc) > (?, ?, ?)', $cursor);
             }
 
-            $statement->forceFill([
-                'lines_count' => $linesCount,
-                'unallocated_count' => $unallocatedCount,
-                'total_incoming' => $totalIn,
-                'total_outgoing' => $totalOut,
-                'total_unallocated' => $totalUnallocated,
-            ])->save();
+            $rows = $query->orderBy('data_doc')->orderBy('tip_doc')->orderBy('nr_doc')->limit($this->page())->get();
 
-            $count++;
+            if ($rows->isEmpty()) {
+                break;
+            }
+
+            $first = $rows->first();
+            $last = $rows->last();
+            $cursor = [self::day($last->data_doc), $last->tip_doc, $last->nr_doc];
+            $live = $rows->whereNull('data_anulare')->values();
+
+            foreach ($live as $row) {
+                $seen[self::key($row->data_doc, $row->tip_doc, $row->nr_doc)] = true;
+            }
+
+            $result = $this->store($company, $remote, $live, [[self::day($first->data_doc), $first->tip_doc, $first->nr_doc], $cursor]);
+
+            foreach ($result as $name => $count) {
+                $totals[$name] += $count;
+            }
+        } while ($rows->count() === $this->page());
+
+        $removed = Invoice::query()
+            ->where('company_id', $company->id)
+            ->whereIn('tip_doc', self::FURNIZOR_DOC_TYPES)
+            ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
+            ->whereNull('omc_removed_at')
+            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])
+            ->reject(fn (Invoice $invoice) => isset($seen[self::key($invoice->data_doc, $invoice->tip_doc, $invoice->nr_doc)]))
+            ->pluck('id');
+
+        foreach ($removed->chunk(1000) as $chunk) {
+            Invoice::query()->whereKey($chunk->all())->update(['omc_removed_at' => now()]);
         }
 
-        return $count;
+        $totals['removed'] = $removed->count();
+
+        return $totals;
     }
 
     /**
-     * Payment allocations of the invoices dated in the window.
+     * Write a set of OMC documents with their suppliers, lines and payments.
+     * With `$range` (first and last primary key of a page) the lines and
+     * payments are read as one key range; without it, by the documents' keys.
      *
-     * @param  array<int, string>  $tipDocs
+     * @param  Collection<int, object>  $docs
+     * @param  array{0: array{0: string, 1: string, 2: string}, 1: array{0: string, 1: string, 2: string}}|null  $range
+     * @return array{partners: int, invoices: int, details: int, payments: int}
      */
-    private function syncInvoicePayments(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to, array $tipDocs): int
+    private function store(Company $company, ConnectionInterface $remote, Collection $docs, ?array $range = null): array
     {
-        $invoices = Invoice::where('company_id', $company->id)
-            ->whereBetween('data_doc', [$from->toDateString(), $to->copy()->endOfDay()->toDateTimeString()])
-            ->whereIn('tip_doc', $tipDocs)
-            ->get(['id', 'data_doc', 'tip_doc', 'nr_doc']);
-
-        if ($invoices->isEmpty()) {
-            return 0;
+        if ($docs->isEmpty()) {
+            return ['partners' => 0, 'invoices' => 0, 'details' => 0, 'payments' => 0];
         }
 
-        $rows = $remote->table('doc_fin as df')
-            ->leftJoin('doc as d', function ($join) {
-                $join->on('d.data_doc', '=', 'df.data_doc_fin')
-                    ->on('d.tip_doc', '=', 'df.tip_doc_fin')
-                    ->on('d.nr_doc', '=', 'df.nr_doc_fin');
-            })
-            ->select([
-                'df.data_doc_com', 'df.tip_doc_com', 'df.nr_doc_com',
-                'df.data_doc_fin', 'df.tip_doc_fin', 'df.nr_doc_fin',
-                'df.data_repartizare', 'df.val_fin', 'df.val_com',
-                'd.moneda as fin_moneda',
-            ])
-            ->whereIn('df.tip_doc_com', $tipDocs)
-            ->whereBetween('df.data_doc_com', [$from->toDateString(), $to->toDateString()])
-            ->get();
-
-        return $this->storeInvoicePayments($company, $invoices, $rows);
-    }
-
-    /**
-     * Payment allocations of a given set of invoices, whatever their dates,
-     * looked up by document key (indexed on doc_fin).
-     *
-     * @param  Collection<int, Invoice>  $invoices
-     */
-    private function syncPaymentsOfInvoices(Company $company, ConnectionInterface $remote, Collection $invoices): int
-    {
-        if ($invoices->isEmpty()) {
-            return 0;
-        }
-
-        $rows = collect();
-
-        foreach ($invoices->chunk(200) as $chunk) {
-            $placeholders = implode(', ', array_fill(0, $chunk->count(), '(?, ?, ?)'));
-            $bindings = $chunk
-                ->flatMap(fn (Invoice $invoice) => [$invoice->data_doc->toDateString(), $invoice->tip_doc, $invoice->nr_doc])
-                ->all();
-
-            $rows = $rows->merge($remote->select(
-                'select df.data_doc_com, df.tip_doc_com, df.nr_doc_com, df.data_doc_fin, df.tip_doc_fin, df.nr_doc_fin,'
-                .' df.data_repartizare, df.val_fin, df.val_com, d.moneda as fin_moneda'
-                .' from doc_fin df'
-                .' left join doc d on d.data_doc = df.data_doc_fin and d.tip_doc = df.tip_doc_fin and d.nr_doc = df.nr_doc_fin'
-                ." where (df.data_doc_com, df.tip_doc_com, df.nr_doc_com) in ({$placeholders})",
-                $bindings,
-            ));
-        }
-
-        return $this->storeInvoicePayments($company, $invoices, $rows);
-    }
-
-    /**
-     * Replace the local payment rows of the invoices with the allocations read
-     * from the ERP.
-     *
-     * @param  Collection<int, Invoice>  $invoices
-     * @param  Collection<int, object>  $rows
-     */
-    private function storeInvoicePayments(Company $company, Collection $invoices, Collection $rows): int
-    {
-        $lookup = [];
-        foreach ($invoices as $invoice) {
-            $key = $invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc;
-            $lookup[$key] = $invoice->id;
-        }
-
-        InvoicePayment::whereIn('invoice_id', array_values($lookup))->delete();
-
+        $partners = $this->syncPartners($company, $remote, $docs->pluck('partener')->filter()->unique()->values()->all());
         $now = Carbon::now();
         $payload = [];
 
-        $bankLineLookup = $this->buildBankStatementLineLookup($company, $rows);
+        foreach ($docs as $row) {
+            // The last one read wins when the local collation sees two OMC
+            // keys as one ("16" and "16 "), as the database would do anyway.
+            $payload[self::key($row->data_doc, $row->tip_doc, $row->nr_doc)] = [
+                'company_id' => $company->id,
+                'data_doc' => self::day($row->data_doc),
+                'tip_doc' => $row->tip_doc,
+                'nr_doc' => $row->nr_doc,
+                'nr_doc_key' => MatchInvoiceToEInvoice::key($row->nr_doc),
+                'partner_id' => $row->partener !== null ? ($partners[self::name($row->partener)] ?? null) : null,
+                'partener_type' => 'furnizor',
+                'moneda' => $row->moneda,
+                'curs' => $row->curs,
+                'val_mon' => $row->val_mon ?? 0,
+                'val_mon_tva' => $row->val_mon_tva ?? 0,
+                'val_mon_paid' => $row->val_mon_pl ?? 0,
+                // Offsets on either side: a positive invoice is reduced by the
+                // credit notes set against it (negru), a credit note is used
+                // up by the invoices it is set against (rosu).
+                'val_mon_storno' => (float) ($row->val_mon_dimin_negru ?? 0) - (float) ($row->val_mon_dimin_rosu ?? 0),
+                'data_scadenta' => self::day($row->data_scadenta),
+                'data_inchidere' => self::day($row->data_inchidere),
+                'emitent' => $row->emitent,
+                'office' => self::text($row->eu_punct_lucru),
+                'omc_modified_at' => $row->ultima_modif_data ?: null,
+                'omc_removed_at' => null,
+                'com_int' => self::text($row->com_int),
+                'data_doc_baza' => self::day($row->data_doc_baza),
+                'tip_doc_baza' => self::text($row->tip_doc_baza),
+                'nr_doc_baza' => self::text($row->nr_doc_baza),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
 
-        $count = 0;
-        $seen = [];
+        $update = array_values(array_diff(array_keys(reset($payload)), ['company_id', 'data_doc', 'tip_doc', 'nr_doc', 'created_at']));
+
+        foreach (array_chunk(array_values($payload), 500) as $chunk) {
+            Invoice::query()->upsert($chunk, ['company_id', 'data_doc', 'tip_doc', 'nr_doc'], $update);
+        }
+
+        $ids = $this->localIds($company, $docs);
+
+        return [
+            'partners' => count($partners),
+            'invoices' => count($payload),
+            'details' => $this->storeLines($remote, $ids, $range),
+            'payments' => $this->storePayments($company, $remote, $ids, $range),
+        ];
+    }
+
+    /**
+     * Local id of each document, by normalised key.
+     *
+     * @param  Collection<int, object>  $docs
+     * @return array<string, int>
+     */
+    private function localIds(Company $company, Collection $docs): array
+    {
+        $ids = [];
+
+        foreach ($docs->chunk(self::KEYS) as $chunk) {
+            $query = Invoice::query()->where('company_id', $company->id)->select(['id', 'data_doc', 'tip_doc', 'nr_doc']);
+
+            $this->whereKeys($query, ['data_doc', 'tip_doc', 'nr_doc'], $chunk->map(fn (object $row) => [self::day($row->data_doc), $row->tip_doc, $row->nr_doc])->all())
+                ->get()
+                ->each(function (Invoice $invoice) use (&$ids) {
+                    $ids[self::key($invoice->data_doc, $invoice->tip_doc, $invoice->nr_doc)] = $invoice->id;
+                });
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Replace the lines of the invoices with the ones OMC holds.
+     *
+     * @param  array<string, int>  $ids
+     * @param  array{0: array<int, string>, 1: array<int, string>}|null  $range
+     */
+    private function storeLines(ConnectionInterface $remote, array $ids, ?array $range): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $rows = $this->readByKeys($remote, 'doc_poz', self::LINE_COLUMNS, ['data_doc', 'tip_doc', 'nr_doc'], $ids, $range);
+        $now = Carbon::now();
+        $inserts = [];
+
         foreach ($rows as $row) {
-            $key = Carbon::parse((string) $row->data_doc_com)->toDateString().'|'.$row->tip_doc_com.'|'.$row->nr_doc_com;
-            $invoiceId = $lookup[$key] ?? null;
+            $invoiceId = $ids[self::key($row->data_doc, $row->tip_doc, $row->nr_doc)] ?? null;
+
             if ($invoiceId === null) {
                 continue;
             }
 
-            $paymentKey = $row->data_doc_fin.'|'.$row->tip_doc_fin.'|'.$row->nr_doc_fin;
+            $inserts[$invoiceId.'|'.$row->scv] = [
+                'invoice_id' => $invoiceId,
+                'scv' => $row->scv,
+                'articol' => (string) $row->articol,
+                'detaliu_articol' => self::text($row->detaliu_articol, 255),
+                'cant' => $row->cant ?? 0,
+                'um' => self::text($row->um, 10),
+                'pret' => $row->pret ?? 0,
+                'proc_tva' => $row->proc_tva,
+                'account' => self::text($row->conts, 20),
+                'analytic' => self::text($row->conta, 120),
+                'loc' => self::text($row->loc, 80),
+                'com_int' => self::text($row->com_int, 40),
+                'nr_obiect' => self::text($row->nr_obiect, 40),
+                'furnizor' => self::text($row->furnizor, 255),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
 
-            // The unique index is (invoice_id, data_doc, tip_doc, nr_doc,
-            // data_repartizare), so the key that decides what is a repeat has
-            // to be the database's, not PHP's: dates as the date column stores
-            // them, and the document number the way the collation compares it.
-            $paidOn = self::day($row->data_doc_fin);
-            $allocatedOn = self::day($row->data_repartizare);
-            $allocationKey = implode('|', [
-                $invoiceId,
-                $paidOn,
-                mb_strtolower(trim((string) $row->tip_doc_fin)),
-                mb_strtolower(trim((string) $row->nr_doc_fin)),
-                $allocatedOn ?? '',
-            ]);
+        foreach (array_chunk(array_values($ids), 1000) as $chunk) {
+            InvoiceDetail::query()->whereIn('invoice_id', $chunk)->delete();
+        }
 
-            if (isset($seen[$allocationKey])) {
+        foreach (array_chunk(array_values($inserts), 1000) as $chunk) {
+            InvoiceDetail::query()->insert($chunk);
+        }
+
+        return count($inserts);
+    }
+
+    /**
+     * Replace the payment allocations of the invoices with OMC's.
+     *
+     * @param  array<string, int>  $ids
+     * @param  array{0: array<int, string>, 1: array<int, string>}|null  $range
+     */
+    private function storePayments(Company $company, ConnectionInterface $remote, array $ids, ?array $range): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $rows = $this->readByKeys($remote, 'doc_fin', [
+            'data_doc_com', 'tip_doc_com', 'nr_doc_com', 'data_doc_fin', 'tip_doc_fin', 'nr_doc_fin', 'data_repartizare', 'val_fin', 'val_com',
+        ], ['data_doc_com', 'tip_doc_com', 'nr_doc_com'], $ids, $range);
+
+        $currencies = $this->paymentCurrencies($remote, $rows);
+        $bankLines = $this->bankLineIds($company, $rows);
+        $now = Carbon::now();
+        $payload = [];
+
+        foreach ($rows as $row) {
+            $invoiceId = $ids[self::key($row->data_doc_com, $row->tip_doc_com, $row->nr_doc_com)] ?? null;
+
+            if ($invoiceId === null) {
                 continue;
             }
-            $seen[$allocationKey] = true;
 
-            $payload[] = [
+            $paidOn = self::day($row->data_doc_fin);
+            $allocatedOn = self::day($row->data_repartizare);
+            $finKey = self::key($row->data_doc_fin, $row->tip_doc_fin, $row->nr_doc_fin);
+
+            // The unique index compares as the database does: dates as stored,
+            // the document number with trailing spaces ignored.
+            $payload[implode('|', [$invoiceId, $finKey, $allocatedOn])] = [
                 'invoice_id' => $invoiceId,
                 'data_doc' => $paidOn,
                 'tip_doc' => $row->tip_doc_fin,
@@ -736,120 +496,221 @@ class SyncService
                 'data_repartizare' => $allocatedOn,
                 'val_fin' => $row->val_fin ?? 0,
                 'val_com' => $row->val_com ?? 0,
-                'moneda' => $row->fin_moneda,
-                'bank_statement_line_id' => $bankLineLookup[$paymentKey] ?? null,
+                'moneda' => $currencies[$finKey] ?? null,
+                'bank_statement_line_id' => $bankLines[$finKey] ?? null,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
-            $count++;
         }
 
-        // The rows above were just deleted, so they go back in bulk: a history
-        // slice carries a few thousand allocations. Written as an upsert, not
-        // an insert: an allocation the ERP hands us twice under keys only the
-        // database sees as one must not take the whole slice down with it.
-        foreach (array_chunk($payload, 500) as $chunk) {
-            InvoicePayment::query()->upsert(
-                $chunk,
-                ['invoice_id', 'data_doc', 'tip_doc', 'nr_doc', 'data_repartizare'],
-                ['val_fin', 'val_com', 'moneda', 'bank_statement_line_id', 'updated_at'],
-            );
+        foreach (array_chunk(array_values($ids), 1000) as $chunk) {
+            InvoicePayment::query()->whereIn('invoice_id', $chunk)->delete();
         }
 
-        return $count;
+        foreach (array_chunk(array_values($payload), 1000) as $chunk) {
+            InvoicePayment::query()->insert($chunk);
+        }
+
+        return count($payload);
     }
 
     /**
-     * Map bank statement line key (data_doc|tip_doc|nr_doc) → line id, scoped to a company.
+     * Rows of a child table (lines, allocations) of the given documents: one
+     * primary-key range read for a page, or key tuples otherwise.
      *
-     * @return array<string, int>
+     * @param  list<string>  $columns
+     * @param  array{0: string, 1: string, 2: string}  $keyColumns
+     * @param  array<string, int>  $ids
+     * @param  array{0: array<int, string>, 1: array<int, string>}|null  $range
+     * @return Collection<int, object>
      */
-    private function buildBankStatementLineLookup(Company $company, Collection $rows): array
+    private function readByKeys(ConnectionInterface $remote, string $table, array $columns, array $keyColumns, array $ids, ?array $range): Collection
     {
-        $lookup = [];
+        [$date, $type, $number] = $keyColumns;
 
-        if ($rows->isEmpty()) {
-            return $lookup;
+        if ($range !== null) {
+            return $remote->table($table)
+                ->select($columns)
+                ->whereIn($type, self::FURNIZOR_DOC_TYPES)
+                ->whereRaw("({$date}, {$type}, {$number}) >= (?, ?, ?)", $range[0])
+                ->whereRaw("({$date}, {$type}, {$number}) <= (?, ?, ?)", $range[1])
+                ->get();
         }
 
-        BankStatementLine::query()
-            ->whereHas('statement', fn ($q) => $q->where('company_id', $company->id))
-            ->whereIn('nr_doc', $rows->pluck('nr_doc_fin')->unique()->all())
-            ->select(['id', 'data_doc', 'tip_doc', 'nr_doc'])
-            ->lazy(1000)
-            ->each(function (BankStatementLine $line) use (&$lookup) {
-                $key = $line->data_doc->toDateString().'|'.$line->tip_doc.'|'.$line->nr_doc;
-                $lookup[$key] = $line->id;
-            });
+        $rows = collect();
+
+        foreach (array_chunk(array_keys($ids), self::KEYS) as $chunk) {
+            $keys = array_map(fn (string $key) => explode('|', $key, 3), $chunk);
+            $rows = $rows->merge($this->whereKeys($remote->table($table)->select($columns), $keyColumns, $keys)->get());
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Currency of each paying document.
+     *
+     * @param  Collection<int, object>  $rows  doc_fin rows
+     * @return array<string, string>
+     */
+    private function paymentCurrencies(ConnectionInterface $remote, Collection $rows): array
+    {
+        $currencies = [];
+        $keys = $rows->map(fn (object $row) => [self::day($row->data_doc_fin), $row->tip_doc_fin, $row->nr_doc_fin])
+            ->unique(fn (array $key) => implode('|', $key))
+            ->values();
+
+        foreach ($keys->chunk(self::KEYS) as $chunk) {
+            $this->whereKeys($remote->table('doc')->select(['data_doc', 'tip_doc', 'nr_doc', 'moneda']), ['data_doc', 'tip_doc', 'nr_doc'], $chunk->values()->all())
+                ->get()
+                ->each(function (object $doc) use (&$currencies) {
+                    $currencies[self::key($doc->data_doc, $doc->tip_doc, $doc->nr_doc)] = $doc->moneda;
+                });
+        }
+
+        return $currencies;
+    }
+
+    /**
+     * Local bank-statement line of each paying document.
+     *
+     * @param  Collection<int, object>  $rows  doc_fin rows
+     * @return array<string, int>
+     */
+    private function bankLineIds(Company $company, Collection $rows): array
+    {
+        $lookup = [];
+        $keys = $rows->map(fn (object $row) => [self::day($row->data_doc_fin), $row->tip_doc_fin, $row->nr_doc_fin])
+            ->unique(fn (array $key) => implode('|', $key))
+            ->values();
+
+        foreach ($keys->chunk(self::KEYS) as $chunk) {
+            $query = BankStatementLine::query()
+                ->whereHas('statement', fn ($q) => $q->where('company_id', $company->id))
+                ->select(['id', 'data_doc', 'tip_doc', 'nr_doc']);
+
+            $this->whereKeys($query, ['data_doc', 'tip_doc', 'nr_doc'], $chunk->values()->all())
+                ->get()
+                ->each(function (BankStatementLine $line) use (&$lookup) {
+                    $lookup[self::key($line->data_doc, $line->tip_doc, $line->nr_doc)] = $line->id;
+                });
+        }
 
         return $lookup;
     }
 
     /**
-     * @param  array<int, string>  $furnizorNames
+     * Upsert the suppliers by name, with their bank accounts; returns the
+     * local id of each by normalised name.
+     *
+     * @param  list<string>  $names
+     * @return array<string, int>
      */
-    private function syncBankAccounts(Company $company, ConnectionInterface $remote, array $furnizorNames): int
+    private function syncPartners(Company $company, ConnectionInterface $remote, array $names): array
     {
-        if (empty($furnizorNames)) {
-            return 0;
+        if ($names === []) {
+            return [];
         }
 
-        $partners = Partner::where('company_id', $company->id)
-            ->whereIn('name', $furnizorNames)
-            ->pluck('id', 'name');
+        $now = Carbon::now();
+        $rows = collect();
 
-        if ($partners->isEmpty()) {
-            return 0;
+        foreach (array_chunk($names, 500) as $chunk) {
+            $rows = $rows->merge($remote->table('partener')
+                ->select(['partener', 'cod_cci', 'reg_comert_nr', 'da_nu_platitor_tva', 'tara', 'localit', 'adresa', 'telefon', 'email_adr'])
+                ->whereIn('partener', $chunk)
+                ->get());
         }
 
-        $rows = $remote->table('partener_banca as pb')
-            ->leftJoin('banca as b', 'b.banca', '=', 'pb.banca')
-            ->select([
-                'pb.partener', 'pb.banca', 'pb.cont_banca', 'pb.moneda',
-                'pb.da_nu_implicit', 'pb.discontinued',
-                'b.cod_bic', 'b.swift',
-            ])
-            ->whereIn('pb.partener', $partners->keys()->all())
-            ->get();
+        $payload = $rows->map(fn (object $row) => [
+            'company_id' => $company->id,
+            'name' => $row->partener,
+            'cui' => $row->cod_cci,
+            'reg_com' => $row->reg_comert_nr,
+            'is_furnizor' => true,
+            'is_client' => false,
+            'is_vat_payer' => (bool) $row->da_nu_platitor_tva,
+            'country' => $row->tara,
+            'city' => $row->localit,
+            'address' => $row->adresa,
+            'phone' => $row->telefon,
+            'email' => $row->email_adr,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->all();
 
-        $count = 0;
-        foreach ($rows as $row) {
-            $partnerId = $partners[$row->partener] ?? null;
-            if ($partnerId === null) {
-                continue;
-            }
+        foreach (array_chunk($payload, 500) as $chunk) {
+            Partner::query()->upsert($chunk, ['company_id', 'name'], ['cui', 'reg_com', 'is_furnizor', 'is_vat_payer', 'country', 'city', 'address', 'phone', 'email', 'updated_at']);
+        }
 
-            $bank = $row->banca !== null ? trim((string) $row->banca) : null;
+        $ids = [];
 
-            PartnerBankAccount::updateOrCreate(
-                ['partner_id' => $partnerId, 'iban' => $row->cont_banca],
-                [
+        foreach (array_chunk($names, 500) as $chunk) {
+            Partner::query()->where('company_id', $company->id)->whereIn('name', $chunk)->get(['id', 'name'])
+                ->each(function (Partner $partner) use (&$ids) {
+                    $ids[self::name($partner->name)] = $partner->id;
+                });
+        }
+
+        $this->syncPartnerBankAccounts($remote, $names, $ids);
+
+        return $ids;
+    }
+
+    /**
+     * @param  list<string>  $names  as OMC holds them
+     * @param  array<string, int>  $partners  normalised name → id
+     */
+    private function syncPartnerBankAccounts(ConnectionInterface $remote, array $names, array $partners): void
+    {
+        $payload = [];
+        $now = Carbon::now();
+
+        foreach (array_chunk($names, 500) as $chunk) {
+            $rows = $remote->table('partener_banca as pb')
+                ->leftJoin('banca as b', 'b.banca', '=', 'pb.banca')
+                ->select(['pb.partener', 'pb.banca', 'pb.cont_banca', 'pb.moneda', 'pb.da_nu_implicit', 'pb.discontinued', 'b.cod_bic', 'b.swift'])
+                ->whereIn('pb.partener', $chunk)
+                ->get();
+
+            foreach ($rows as $row) {
+                $partnerId = $partners[self::name($row->partener)] ?? null;
+                $iban = trim((string) $row->cont_banca);
+
+                if ($partnerId === null || $iban === '') {
+                    continue;
+                }
+
+                $bank = $row->banca !== null ? trim((string) $row->banca) : null;
+                $payload[$partnerId.'|'.mb_strtolower($iban)] = [
+                    'partner_id' => $partnerId,
+                    'iban' => $iban,
                     'bank' => $bank !== null && $bank !== '' && $bank !== '-' ? $bank : null,
                     'bic' => $row->cod_bic ? trim((string) $row->cod_bic) : null,
                     'swift' => $row->swift ? trim((string) $row->swift) : null,
                     'currency' => $row->moneda,
                     'is_default' => (bool) $row->da_nu_implicit,
                     'is_discontinued' => (bool) $row->discontinued,
-                ]
-            );
-            $count++;
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
         }
 
-        return $count;
+        foreach (array_chunk(array_values($payload), 500) as $chunk) {
+            PartnerBankAccount::query()->upsert($chunk, ['partner_id', 'iban'], ['bank', 'bic', 'swift', 'currency', 'is_default', 'is_discontinued', 'updated_at']);
+        }
     }
 
     private function syncCompanyBankAccounts(Company $company, ConnectionInterface $remote): int
     {
         $rows = $remote->table('eu_banca as eb')
             ->leftJoin('banca as b', 'b.banca', '=', 'eb.banca')
-            ->select([
-                'eb.banca', 'eb.cont_banca', 'eb.moneda',
-                'eb.da_nu_implicit', 'eb.discontinued',
-                'b.cod_bic', 'b.swift',
-            ])
+            ->select(['eb.banca', 'eb.cont_banca', 'eb.moneda', 'eb.da_nu_implicit', 'eb.discontinued', 'b.cod_bic', 'b.swift'])
             ->get();
 
         $count = 0;
+
         foreach ($rows as $row) {
             $iban = $row->cont_banca !== null ? trim((string) $row->cont_banca) : '';
 
@@ -877,276 +738,358 @@ class SyncService
     }
 
     /**
-     * @param  array<string, array{furnizor: bool, client: bool}>  $roles
+     * The bank statements of the window, their lines and what each line
+     * settles. Lines are updated in place (payments point at them), and the
+     * ones OMC no longer lists are dropped.
      */
-    private function syncPartners(Company $company, ConnectionInterface $remote, array $roles): int
+    private function syncBankStatements(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
     {
-        if (empty($roles)) {
+        $headers = $remote->table('extrasb as e')
+            ->leftJoin('eu_banca as b', function ($join) {
+                $join->on('b.banca', '=', 'e.banca_eu')->on('b.cont_banca', '=', 'e.cont_banca_eu');
+            })
+            ->select(['e.data_extras', 'e.banca_eu', 'e.cont_banca_eu', 'e.operator', 'b.moneda'])
+            ->whereBetween('e.data_extras', [$from->toDateString(), $to->toDateString()])
+            ->orderBy('e.data_extras')
+            ->get();
+
+        if ($headers->isEmpty()) {
             return 0;
         }
 
-        $rows = $remote->table('partener')
-            ->select([
-                'partener',
-                'cod_cci',
-                'reg_comert_nr',
-                'da_nu_platitor_tva',
-                'tara',
-                'localit',
-                'adresa',
-                'telefon',
-                'email_adr',
-            ])
-            ->whereIn('partener', array_keys($roles))
-            ->get();
+        $partners = Partner::query()->where('company_id', $company->id)->where('is_furnizor', true)->pluck('id', 'name')
+            ->mapWithKeys(fn (int $id, string $name) => [self::name($name) => $id])
+            ->all();
 
-        $existing = Partner::where('company_id', $company->id)
-            ->whereIn('name', array_keys($roles))
-            ->get(['id', 'name', 'is_furnizor', 'is_client'])
-            ->keyBy('name');
+        // Every bank document booked in the window, in one read, grouped by
+        // the statement (day, bank, account) it belongs to.
+        $windowLines = $remote->table('doc')
+            ->select(['data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'val_mon', 'emitent', 'cine_preda', 'cine_primeste', 'obs_txt', 'data_contab', 'banca_eu', 'cont_banca_eu'])
+            ->whereBetween('data_contab', [$from->toDateString(), $to->toDateString()])
+            ->whereNotNull('cont_banca_eu')
+            ->whereNull('data_anulare')
+            ->orderBy('data_doc')
+            ->get()
+            ->groupBy(fn (object $line) => self::day($line->data_contab).'|'.$line->banca_eu.'|'.$line->cont_banca_eu);
 
-        $synced = 0;
+        $windowAllocations = collect();
+        $keys = $windowLines->flatten(1)->map(fn (object $line) => [self::day($line->data_doc), $line->tip_doc, $line->nr_doc])->values();
+
+        foreach ($keys->chunk(self::KEYS) as $chunk) {
+            $windowAllocations = $windowAllocations->merge($this->whereKeys(
+                $remote->table('doc_fin')->select(['data_doc_fin', 'tip_doc_fin', 'nr_doc_fin', 'data_doc_com', 'tip_doc_com', 'nr_doc_com', 'val_fin', 'val_com']),
+                ['data_doc_fin', 'tip_doc_fin', 'nr_doc_fin'],
+                $chunk->values()->all(),
+            )->get());
+        }
+
+        $windowAllocations = $windowAllocations->groupBy(fn (object $row) => self::key($row->data_doc_fin, $row->tip_doc_fin, $row->nr_doc_fin));
+
+        foreach ($headers as $header) {
+            $day = self::day($header->data_extras);
+            $statement = BankStatement::query()
+                ->where('company_id', $company->id)
+                ->where('iban', $header->cont_banca_eu)
+                ->whereDate('data_extras', $day)
+                ->first() ?? new BankStatement(['company_id' => $company->id, 'data_extras' => $day, 'iban' => $header->cont_banca_eu]);
+
+            $statement->forceFill([
+                'banca' => $header->banca_eu !== '-' ? $header->banca_eu : null,
+                'operator' => $header->operator,
+                'moneda' => $header->moneda,
+            ])->save();
+
+            $lines = $windowLines->get($day.'|'.$header->banca_eu.'|'.$header->cont_banca_eu, collect());
+            $allocations = $lines->flatMap(fn (object $line) => $windowAllocations->get(self::key($line->data_doc, $line->tip_doc, $line->nr_doc), collect()))->values();
+
+            $allocated = [];
+
+            foreach ($allocations as $row) {
+                $key = self::key($row->data_doc_fin, $row->tip_doc_fin, $row->nr_doc_fin);
+                $allocated[$key] = ($allocated[$key] ?? 0) + (float) ($row->val_fin ?? 0);
+            }
+
+            $now = Carbon::now();
+            $payload = [];
+            $totals = ['lines_count' => 0, 'unallocated_count' => 0, 'total_incoming' => 0.0, 'total_outgoing' => 0.0, 'total_unallocated' => 0.0];
+
+            foreach ($lines as $line) {
+                $key = self::key($line->data_doc, $line->tip_doc, $line->nr_doc);
+                $incoming = in_array($line->tip_doc, self::INCOMING_TYPES, true);
+                $value = (float) ($line->val_mon ?? 0);
+                $unallocated = max(0, $value - ($allocated[$key] ?? 0));
+
+                $payload[$key] = [
+                    'bank_statement_id' => $statement->id,
+                    'data_doc' => self::day($line->data_doc),
+                    'tip_doc' => $line->tip_doc,
+                    'nr_doc' => $line->nr_doc,
+                    'direction' => $incoming ? 'incoming' : 'outgoing',
+                    'partener_name' => $line->partener,
+                    'partner_id' => $line->partener !== null ? ($partners[self::name($line->partener)] ?? null) : null,
+                    'emitent' => $line->emitent,
+                    'cine_preda' => $line->cine_preda,
+                    'cine_primeste' => $line->cine_primeste,
+                    'obs_txt' => $line->obs_txt,
+                    'moneda' => $line->moneda,
+                    'val_mon' => $value,
+                    'val_allocated' => $allocated[$key] ?? 0,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                $totals['lines_count']++;
+                $totals[$incoming ? 'total_incoming' : 'total_outgoing'] += $value;
+
+                if ($unallocated > 0.01) {
+                    $totals['unallocated_count']++;
+                    $totals['total_unallocated'] += $unallocated;
+                }
+            }
+
+            foreach (array_chunk(array_values($payload), 500) as $chunk) {
+                BankStatementLine::query()->upsert($chunk, ['bank_statement_id', 'data_doc', 'tip_doc', 'nr_doc'], [
+                    'direction', 'partener_name', 'partner_id', 'emitent', 'cine_preda', 'cine_primeste', 'obs_txt', 'moneda', 'val_mon', 'val_allocated', 'updated_at',
+                ]);
+            }
+
+            $lineIds = [];
+
+            $statement->lines()->get(['id', 'data_doc', 'tip_doc', 'nr_doc'])->each(function (BankStatementLine $line) use (&$lineIds, $payload) {
+                $key = self::key($line->data_doc, $line->tip_doc, $line->nr_doc);
+
+                if (isset($payload[$key])) {
+                    $lineIds[$key] = $line->id;
+                } else {
+                    $line->delete();
+                }
+            });
+
+            $this->storeAllocations($company, $lineIds, $allocations);
+            $statement->forceFill($totals)->save();
+        }
+
+        return $headers->count();
+    }
+
+    /**
+     * @param  array<string, int>  $lineIds
+     * @param  Collection<int, object>  $allocations
+     */
+    private function storeAllocations(Company $company, array $lineIds, Collection $allocations): void
+    {
+        BankStatementLineAllocation::query()->whereIn('bank_statement_line_id', array_values($lineIds) ?: [0])->delete();
+
+        if ($allocations->isEmpty()) {
+            return;
+        }
+
+        $invoices = [];
+        $keys = $allocations->map(fn (object $row) => [self::day($row->data_doc_com), $row->tip_doc_com, $row->nr_doc_com])
+            ->unique(fn (array $key) => implode('|', $key))
+            ->values();
+
+        foreach ($keys->chunk(self::KEYS) as $chunk) {
+            $this->whereKeys(Invoice::query()->where('company_id', $company->id)->select(['id', 'data_doc', 'tip_doc', 'nr_doc']), ['data_doc', 'tip_doc', 'nr_doc'], $chunk->values()->all())
+                ->get()
+                ->each(function (Invoice $invoice) use (&$invoices) {
+                    $invoices[self::key($invoice->data_doc, $invoice->tip_doc, $invoice->nr_doc)] = $invoice->id;
+                });
+        }
 
         $now = Carbon::now();
         $payload = [];
 
-        foreach ($rows as $row) {
-            $role = $roles[$row->partener];
-            $prior = $existing->get($row->partener);
+        foreach ($allocations as $row) {
+            $lineId = $lineIds[self::key($row->data_doc_fin, $row->tip_doc_fin, $row->nr_doc_fin)] ?? null;
 
-            $payload[] = [
-                'company_id' => $company->id,
-                'name' => $row->partener,
-                'cui' => $row->cod_cci,
-                'reg_com' => $row->reg_comert_nr,
-                'is_furnizor' => $role['furnizor'] || (bool) $prior?->is_furnizor,
-                'is_client' => $role['client'] || (bool) $prior?->is_client,
-                'is_vat_payer' => (bool) $row->da_nu_platitor_tva,
-                'country' => $row->tara,
-                'city' => $row->localit,
-                'address' => $row->adresa,
-                'phone' => $row->telefon,
-                'email' => $row->email_adr,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-            $synced++;
-        }
-
-        // One statement per chunk instead of a read and a write per partner:
-        // a history slice carries a couple of thousand of them.
-        foreach (array_chunk($payload, 500) as $chunk) {
-            Partner::query()->upsert(
-                $chunk,
-                ['company_id', 'name'],
-                ['cui', 'reg_com', 'is_furnizor', 'is_client', 'is_vat_payer', 'country', 'city', 'address', 'phone', 'email', 'updated_at'],
-            );
-        }
-
-        return $synced;
-    }
-
-    /**
-     * Write the mirrored invoice. A document key the ERP keeps apart can still
-     * collide locally when the database compares two keys as equal, for
-     * instance on a collation that ignores letter case or trailing spaces.
-     * Update the row that holds the key rather than losing the whole slice,
-     * and record the collision so the run reports it.
-     *
-     * @param  array<string, mixed>  $attributes
-     */
-    private function storeInvoice(Company $company, Invoice $invoice, object $row, array $attributes): Invoice
-    {
-        try {
-            $invoice->forceFill($attributes)->save();
-
-            return $invoice;
-        } catch (UniqueConstraintViolationException $e) {
-            // Found the way the database compared them, not the way PHP does,
-            // so the row that holds the key turns up whatever its collation.
-            $conflict = Invoice::query()
-                ->where('company_id', $company->id)
-                ->whereDate('data_doc', Carbon::parse((string) $row->data_doc)->toDateString())
-                ->whereRaw('lower(trim(tip_doc)) = ?', [mb_strtolower(trim((string) $row->tip_doc))])
-                ->whereRaw('lower(trim(nr_doc)) = ?', [mb_strtolower(trim((string) $row->nr_doc))])
-                ->orderBy('id')
-                ->first();
-
-            if ($conflict === null) {
-                throw $e;
-            }
-
-            $this->keyCollisions++;
-
-            Log::warning('Sync: document key collides with one already stored', [
-                'company_id' => $company->id,
-                'incoming' => sprintf('%s|%s|%s', $row->data_doc, $row->tip_doc, $row->nr_doc),
-                'stored' => sprintf('%s|%s|%s', $conflict->data_doc->toDateString(), $conflict->tip_doc, $conflict->nr_doc),
-            ]);
-
-            $conflict->forceFill($attributes)->save();
-
-            return $conflict;
-        }
-    }
-
-    /**
-     * @param  array<int, string>  $tipDocs
-     * @return array{0: int, 1: int}
-     */
-    private function syncInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to, array $tipDocs): array
-    {
-        $partnerLookup = Partner::where('company_id', $company->id)
-            ->pluck('id', 'name');
-
-        $invoicesCount = 0;
-        $detailsCount = 0;
-
-        $remote->table('doc')
-            ->select([
-                'data_doc', 'tip_doc', 'nr_doc', 'partener', 'moneda', 'curs',
-                'val_mon', 'val_mon_tva', 'val_mon_inc', 'val_mon_pl', 'val_mon_dimin_negru',
-                'data_scadenta', 'data_inchidere', 'emitent', 'com_int',
-                'data_doc_baza', 'tip_doc_baza', 'nr_doc_baza',
-            ])
-            ->whereIn('tip_doc', $tipDocs)
-            ->whereBetween('data_doc', [$from->toDateString(), $to->toDateString()])
-            ->orderBy('data_doc')
-            ->chunk(500, function ($chunk) use ($company, $remote, $partnerLookup, $tipDocs, &$invoicesCount, &$detailsCount) {
-                $invoiceIds = [];
-                $rowsByKey = [];
-
-                // The chunk is ordered by date, so its first and last rows bound
-                // the local rows it may update; matching on the normalized
-                // document key sidesteps how each driver stores a date.
-                $existing = Invoice::query()
-                    ->where('company_id', $company->id)
-                    ->whereIn('tip_doc', $tipDocs)
-                    ->whereBetween('data_doc', [
-                        Carbon::parse((string) $chunk->first()->data_doc)->toDateString(),
-                        Carbon::parse((string) $chunk->last()->data_doc)->endOfDay()->toDateTimeString(),
-                    ])
-                    ->get()
-                    ->keyBy(fn (Invoice $invoice) => $invoice->data_doc->toDateString().'|'.$invoice->tip_doc.'|'.$invoice->nr_doc);
-
-                $clientComIntCodes = collect($chunk)
-                    ->filter(fn ($r) => in_array($r->tip_doc, self::CLIENT_DOC_TYPES, true) && ! empty($r->com_int))
-                    ->pluck('com_int')
-                    ->unique()
-                    ->values()
-                    ->all();
-
-                $travelDates = empty($clientComIntCodes)
-                    ? []
-                    : $remote->table('com_int')
-                        ->whereIn('com_int', $clientComIntCodes)
-                        ->pluck('data_incep', 'com_int')
-                        ->all();
-
-                foreach ($chunk as $row) {
-                    $type = in_array($row->tip_doc, self::FURNIZOR_DOC_TYPES, true) ? 'furnizor' : 'client';
-                    $paid = $type === 'furnizor' ? $row->val_mon_pl : $row->val_mon_inc;
-                    $rawTravel = $type === 'client' && ! empty($row->com_int)
-                        ? ($travelDates[$row->com_int] ?? null)
-                        : null;
-                    $dataCalatoriei = is_string($rawTravel) && trim($rawTravel) === '' ? null : $rawTravel;
-
-                    $key = Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc;
-
-                    $invoice = $existing->get($key) ?? new Invoice([
-                        'company_id' => $company->id,
-                        'data_doc' => $row->data_doc,
-                        'tip_doc' => $row->tip_doc,
-                        'nr_doc' => $row->nr_doc,
-                    ]);
-
-                    $invoice = $this->storeInvoice($company, $invoice, $row, [
-                        'partner_id' => $partnerLookup[$row->partener] ?? null,
-                        'partener_type' => $type,
-                        'moneda' => $row->moneda,
-                        'curs' => $row->curs,
-                        'val_mon' => $row->val_mon ?? 0,
-                        'val_mon_tva' => $row->val_mon_tva ?? 0,
-                        'val_mon_paid' => $paid ?? 0,
-                        'val_mon_storno' => $row->val_mon_dimin_negru ?? 0,
-                        'data_scadenta' => $row->data_scadenta,
-                        'data_inchidere' => $row->data_inchidere,
-                        'emitent' => $row->emitent,
-                        'com_int' => $row->com_int ?: null,
-                        'data_calatoriei' => $dataCalatoriei,
-                        'data_doc_baza' => ! empty($row->data_doc_baza) ? $row->data_doc_baza : null,
-                        'tip_doc_baza' => $row->tip_doc_baza ?: null,
-                        'nr_doc_baza' => $row->nr_doc_baza ?: null,
-                    ]);
-
-                    $invoicesCount++;
-                    $invoiceIds[] = $invoice->id;
-                    $rowsByKey[$key] = $invoice->id;
-                }
-
-                $detailsCount += $this->syncInvoiceDetailsBulk($remote, $invoiceIds, $rowsByKey);
-            });
-
-        return [$invoicesCount, $detailsCount];
-    }
-
-    /**
-     * @param  array<int, int>  $invoiceIds
-     * @param  array<string, int>  $rowsByKey
-     */
-    private function syncInvoiceDetailsBulk(ConnectionInterface $remote, array $invoiceIds, array $rowsByKey): int
-    {
-        if (empty($invoiceIds)) {
-            return 0;
-        }
-
-        InvoiceDetail::whereIn('invoice_id', $invoiceIds)->delete();
-
-        $pozRows = $remote->table('doc_poz')
-            ->select(['data_doc', 'tip_doc', 'nr_doc', 'scv', 'articol', 'detaliu_articol', 'cant', 'um', 'pret', 'proc_tva'])
-            ->where(function ($q) use ($rowsByKey) {
-                foreach (array_keys($rowsByKey) as $key) {
-                    [$dataDoc, $tipDoc, $nrDoc] = explode('|', $key);
-                    $q->orWhere(function ($q) use ($dataDoc, $tipDoc, $nrDoc) {
-                        $q->where('data_doc', $dataDoc)
-                            ->where('tip_doc', $tipDoc)
-                            ->where('nr_doc', $nrDoc);
-                    });
-                }
-            })
-            ->get();
-
-        $inserts = [];
-        $now = now();
-
-        foreach ($pozRows as $row) {
-            $key = Carbon::parse((string) $row->data_doc)->toDateString().'|'.$row->tip_doc.'|'.$row->nr_doc;
-            $invoiceId = $rowsByKey[$key] ?? null;
-            if ($invoiceId === null) {
+            if ($lineId === null) {
                 continue;
             }
 
-            // Two ERP documents can share one local invoice when the database
-            // cannot tell their keys apart; their lines would then collide on
-            // (invoice_id, scv), so the last one read wins.
-            $inserts[$invoiceId.'|'.$row->scv] = [
-                'invoice_id' => $invoiceId,
-                'scv' => $row->scv,
-                'articol' => $row->articol,
-                'detaliu_articol' => $row->detaliu_articol,
-                'cant' => $row->cant ?? 0,
-                'um' => $row->um,
-                'pret' => $row->pret ?? 0,
-                'proc_tva' => $row->proc_tva,
+            $payload[] = [
+                'bank_statement_line_id' => $lineId,
+                'invoice_id' => $invoices[self::key($row->data_doc_com, $row->tip_doc_com, $row->nr_doc_com)] ?? null,
+                'data_doc_com' => self::day($row->data_doc_com),
+                'tip_doc_com' => $row->tip_doc_com,
+                'nr_doc_com' => $row->nr_doc_com,
+                'val_fin' => $row->val_fin ?? 0,
+                'val_com' => $row->val_com ?? 0,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
         }
 
-        foreach (array_chunk(array_values($inserts), 500) as $batch) {
-            InvoiceDetail::insert($batch);
+        foreach (array_chunk($payload, 500) as $chunk) {
+            BankStatementLineAllocation::query()->insert($chunk);
+        }
+    }
+
+    /**
+     * Received e-invoices of the window. Only messages not stored yet are
+     * read in full (their XML gives the totals and the seller, then stays in
+     * OMC: the page fetches it when it is opened); the unmatched ones are
+     * matched again, as their invoice may have been entered since.
+     */
+    private function syncEInvoices(Company $company, ConnectionInterface $remote, Carbon $from, Carbon $to): int
+    {
+        $rows = $remote->table('view_anaf_e_fact_furn_msg')
+            ->select([
+                'msg_id', 'msg_cif', 'msg_index_incarcare', 'msg_data_creare_d',
+                'msg_detalii', 'data_ins_omc', 'err_ins_omc',
+                'data_doc_xml', 'tip_doc_xml', 'nr_doc_xml', 'partener_xml', 'cod_cci_xml',
+            ])
+            ->where('msg_tip', 'FACTURA PRIMITA')
+            ->whereBetween('msg_data_creare_d', [$from->toDateTimeString(), $to->toDateTimeString()])
+            ->orderBy('msg_data_creare_d')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return 0;
         }
 
-        return count($inserts);
+        $stored = EInvoice::query()
+            ->where('company_id', $company->id)
+            ->whereIn('msg_id', $rows->pluck('msg_id')->all())
+            ->get()
+            ->keyBy('msg_id');
+
+        $new = $rows->reject(fn (object $row) => $stored->has($row->msg_id));
+        $xml = [];
+
+        foreach ($new->pluck('msg_id')->chunk(100) as $chunk) {
+            $xml += $remote->table('view_anaf_e_fact_furn_msg')->whereIn('msg_id', $chunk->all())->pluck('msg_xml', 'msg_id')->all();
+        }
+
+        $partnerLookup = new PartnerCuiLookup($company->id);
+
+        foreach ($rows as $row) {
+            $eInvoice = $stored->get($row->msg_id);
+
+            if ($eInvoice === null) {
+                $supplierCui = EInvoice::extractEmitentCui($row->msg_detalii);
+                $message = $xml[$row->msg_id] ?? null;
+                $totals = $this->xmlParser->extractTotals($message);
+
+                $eInvoice = EInvoice::create([
+                    'company_id' => $company->id,
+                    'msg_id' => $row->msg_id,
+                    'partner_id' => $partnerLookup->find($supplierCui)
+                        ?? $partnerLookup->find($row->cod_cci_xml)
+                        ?? $partnerLookup->find($this->xmlParser->extractSellerTaxId($message)),
+                    'msg_cif' => $row->msg_cif,
+                    'supplier_cui' => $supplierCui,
+                    'msg_index_incarcare' => $row->msg_index_incarcare,
+                    'msg_data_creare_d' => $row->msg_data_creare_d,
+                    'data_doc_xml' => $row->data_doc_xml,
+                    'tip_doc_xml' => $row->tip_doc_xml,
+                    'nr_doc_xml' => $row->nr_doc_xml !== null ? trim((string) $row->nr_doc_xml) : null,
+                    'partener_xml' => $row->partener_xml,
+                    'cod_cci_xml' => $row->cod_cci_xml,
+                    'total_amount' => $totals['total_amount'],
+                    'total_vat' => $totals['total_vat'],
+                    'currency' => $totals['currency'],
+                    'msg_detalii' => $row->msg_detalii,
+                    'data_ins_omc' => $row->data_ins_omc,
+                    'err_ins_omc' => $row->err_ins_omc,
+                ]);
+            } else {
+                $eInvoice->forceFill(['data_ins_omc' => $row->data_ins_omc, 'err_ins_omc' => $row->err_ins_omc]);
+
+                if ($eInvoice->isDirty()) {
+                    $eInvoice->save();
+                }
+
+                if ($eInvoice->invoice_id !== null) {
+                    continue;
+                }
+            }
+
+            $matchedInvoiceId = $this->matcher->find($eInvoice)?->id;
+
+            if ($eInvoice->invoice_id !== $matchedInvoiceId) {
+                $eInvoice->forceFill(['invoice_id' => $matchedInvoiceId])->save();
+            }
+        }
+
+        return $rows->count();
+    }
+
+    /** Documents per page read from OMC. */
+    private function page(): int
+    {
+        return max(1, (int) config('sync.page_size', 1000));
+    }
+
+    private function connect(Company $company): ConnectionInterface
+    {
+        $remote = $this->remote->connection($company);
+
+        try {
+            $remote->getPdo();
+        } catch (\Throwable $e) {
+            throw new \RuntimeException("Cannot reach remote database for company {$company->getKey()}: {$e->getMessage()}", 0, $e);
+        }
+
+        return $remote;
+    }
+
+    /**
+     * Restrict a query to a list of three-part keys.
+     *
+     * @template T of \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder
+     *
+     * @param  T  $query
+     * @param  array{0: string, 1: string, 2: string}  $columns
+     * @param  list<array{0: string, 1: string, 2: string}>  $keys
+     * @return T
+     */
+    private function whereKeys($query, array $columns, array $keys)
+    {
+        if ($keys === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($keys), '(?, ?, ?)'));
+
+        return $query->whereRaw(sprintf('(%s) in (%s)', implode(', ', $columns), $placeholders), array_merge(...array_map('array_values', $keys)));
+    }
+
+    private static function historyKey(Company $company): string
+    {
+        return "erp:sync:history:{$company->id}";
+    }
+
+    /**
+     * A document key as both databases agree on it: the date as a day, the
+     * number without the trailing spaces the local collation ignores.
+     */
+    private static function key(mixed $date, mixed $type, mixed $number): string
+    {
+        return self::day($date).'|'.$type.'|'.rtrim((string) $number);
+    }
+
+    /**
+     * A partner name as the local collation compares it.
+     */
+    private static function name(string $name): string
+    {
+        return mb_strtolower(trim($name));
+    }
+
+    private static function day(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return Carbon::parse((string) $value)->toDateString();
+    }
+
+    private static function text(mixed $value, int $length = 255): ?string
+    {
+        $value = $value !== null ? trim((string) $value) : '';
+
+        return $value === '' || $value === '-' ? null : mb_substr($value, 0, $length);
     }
 }

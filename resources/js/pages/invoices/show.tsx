@@ -6,21 +6,23 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { show as bankStatementShow } from '@/routes/bank-statements';
-import {
-    emise as facturiEmise,
-    primite as facturiPrimite,
-} from '@/routes/invoices';
+import { primite as facturiPrimite } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
 import { InvoicePaymentCard } from './invoice-payment-card';
 import { InvoiceTimeline } from './invoice-timeline';
+import { InvoiceWorkflowCard } from './invoice-workflow-card';
 import type { Invoice, ShowProps } from './types';
 
 function formatAmount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
 }
 
-export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
+export default function InvoiceShow({
+    invoice,
+    currentUser,
+    departments,
+}: ShowProps) {
     const isFurnizor = invoice.partener_type === 'furnizor';
 
     return (
@@ -34,7 +36,7 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                             href={
                                 invoice.partener_type === 'furnizor'
                                     ? facturiPrimite()
-                                    : facturiEmise()
+                                    : facturiPrimite()
                             }
                         >
                             <ArrowLeft />
@@ -449,6 +451,17 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                         </div>
 
                         {isFurnizor && (
+                            <InvoiceWorkflowCard
+                                invoiceId={invoice.id}
+                                currency={invoice.moneda}
+                                workflow={invoice.workflow}
+                                routing={invoice.routing}
+                                currentUser={currentUser}
+                                departments={departments}
+                            />
+                        )}
+
+                        {isFurnizor && (
                             <InvoicePaymentCard
                                 invoiceId={invoice.id}
                                 status={invoice.payment_status}
@@ -767,10 +780,6 @@ export default function InvoiceShow({ invoice, currentUser }: ShowProps) {
                                 <InvoiceTimeline
                                     invoiceId={invoice.id}
                                     events={invoice.timeline}
-                                    approval={
-                                        isFurnizor ? invoice.approval : null
-                                    }
-                                    currentUser={currentUser}
                                 />
                             </div>
                         </div>
@@ -790,7 +799,7 @@ function InvoiceShowLayout({ children }: { children: React.ReactNode }) {
             breadcrumbs={[
                 {
                     title: isFurnizor ? 'Facturi primite' : 'Facturi emise',
-                    href: isFurnizor ? facturiPrimite() : facturiEmise(),
+                    href: isFurnizor ? facturiPrimite() : facturiPrimite(),
                 },
             ]}
         >

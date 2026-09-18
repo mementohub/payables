@@ -597,8 +597,8 @@ export default function PaymentRequestShow({
                                     <CardDescription>
                                         Când factura ajunge în ERP, leag-o aici;
                                         verificarea apare apoi în cronologia
-                                        facturii, pentru responsabili și
-                                        ordonator.
+                                        facturii, pentru departamente și Top
+                                        Management.
                                     </CardDescription>
                                 </div>
                                 <LinkInvoiceDialog
@@ -682,8 +682,8 @@ export default function PaymentRequestShow({
                                                                     {invoice.is_fully_approved
                                                                         ? 'Bun de plată'
                                                                         : invoice.responsabili_approved
-                                                                          ? 'Așteaptă ordonatorul'
-                                                                          : 'Așteaptă responsabilii'}
+                                                                          ? 'La Top Management'
+                                                                          : 'La departamente'}
                                                                 </Badge>
                                                             </td>
                                                             <td className="px-3 py-2 text-right">

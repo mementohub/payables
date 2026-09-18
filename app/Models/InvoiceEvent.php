@@ -8,10 +8,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InvoiceEvent extends Model
 {
-    public const TYPE_APPROVED = 'approved';
-
-    public const TYPE_APPROVAL_REVOKED = 'approval_revoked';
-
     public const TYPE_COMMENTED = 'commented';
 
     public const TYPE_PAYMENT_STATUS_CHANGED = 'payment_status_changed';

@@ -6,10 +6,10 @@ use App\Models\Builders\InvoiceBuilder;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
-use App\Models\InvoiceApproval;
+use App\Models\InvoiceLineDepartment;
 use App\Models\PaymentRequest;
 use App\Models\User;
-use App\Services\Invoices\InvoiceApprovalService;
+use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Invoices\InvoiceCommentService;
 use App\Services\Invoices\InvoiceListQuery;
 use App\Services\Invoices\InvoicePaymentService;
@@ -26,24 +26,13 @@ class InvoiceController extends Controller
 {
     public function __construct(
         private readonly InvoicePresenter $presenter,
-        private readonly InvoiceApprovalService $approvalService,
         private readonly InvoiceCommentService $commentService,
         private readonly InvoicePaymentService $paymentService,
     ) {}
 
-    public function emise(Request $request): Response
-    {
-        return $this->list($request, 'emise');
-    }
-
     public function primite(Request $request): Response
     {
         return $this->list($request, 'primite');
-    }
-
-    public function exportEmise(Request $request): StreamedResponse
-    {
-        return $this->export($request, 'emise');
     }
 
     public function exportPrimite(Request $request): StreamedResponse
@@ -61,7 +50,6 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         $this->presenter->preloadBazaInvoices($paginator->items());
-        $this->presenter->preloadComIntCounterparts($paginator->items());
 
         $invoices = $paginator->through(fn (Invoice $invoice) => $this->presenter->listRow($invoice, $scope));
 
@@ -80,12 +68,7 @@ class InvoiceController extends Controller
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,
             'currentUser' => $this->currentUserContext($request),
-            'availableResponsibles' => $scope === 'primite'
-                ? User::query()
-                    ->whereHas('departments', fn ($d) => $d->where('type', Department::TYPE_RESPONSABIL))
-                    ->orderBy('name')
-                    ->get(['id', 'name'])
-                : [],
+            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
         ]);
     }
 
@@ -107,11 +90,11 @@ class InvoiceController extends Controller
 
         $headers = $scope === 'emise'
             ? ['Data', 'Scadență', 'Tip doc', 'Număr', 'Client', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată']
-            : ['Data', 'Scadență', 'Tip doc', 'Număr', 'Furnizor', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată', 'Bun de plată'];
+            : ['Data', 'Scadență', 'Tip doc', 'Număr', 'Furnizor', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată', 'Departament', 'Aprobare'];
 
         $rows = function () use ($query, $scope) {
             foreach ($query->lazy(500) as $invoice) {
-                $rest = round((float) $invoice->val_mon - (float) $invoice->val_mon_paid, 2);
+                $rest = $invoice->outstandingAmount();
                 $row = [
                     $invoice->data_doc?->toDateString() ?? '',
                     $invoice->data_scadenta?->toDateString() ?? '',
@@ -129,6 +112,7 @@ class InvoiceController extends Controller
                 ];
 
                 if ($scope === 'primite') {
+                    $row[] = $invoice->department?->name ?? '';
                     $row[] = $this->presenter->exportApprovalLabel($invoice);
                 }
 
@@ -160,16 +144,13 @@ class InvoiceController extends Controller
 
         $invoice->load([
             'partner',
-            'partner.responsabilDepartments',
             'company',
             'details',
+            ...ApprovalPresenter::relations(),
             'payments.bankStatementLine.statement:id,data_extras,banca,iban',
-            'approvals.user:id,name,email',
-            'approvals.department:id,name,type',
-            'approvals.revokedBy:id,name',
             'events' => fn ($q) => $q->orderByDesc('created_at')->orderByDesc('id'),
             'events.user:id,name,email',
-            'events.department:id,name,type',
+            'events.department:id,name',
             'sourceCompany:id,name',
             'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
             'sourceInvoice.partner:id,name,cui',
@@ -240,7 +221,8 @@ class InvoiceController extends Controller
                         ] : null,
                     ];
                 }),
-                'approval' => $this->presenter->approvalPayload($invoice),
+                'workflow' => $this->presenter->workflowPayload($invoice),
+                'routing' => $this->routingPayload($invoice),
                 'timeline' => $this->presenter->timelinePayload($invoice),
                 'source_invoice' => $this->presenter->sourceInvoicePayload($invoice),
                 'payment_requests' => $invoice->paymentRequests()
@@ -263,46 +245,12 @@ class InvoiceController extends Controller
                     ])
                     ->all(),
                 'baza' => $this->presenter->bazaPayload($invoice),
-                'com_int_matches' => $this->presenter->comIntMatchesPayload($invoice),
+                'com_int_matches' => [],
             ],
             'activeCompany' => ['id' => (int) $invoice->company->id, 'name' => $invoice->company->name],
             'currentUser' => $this->currentUserContext($request),
+            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
         ]);
-    }
-
-    public function approve(Request $request, Invoice $invoice): RedirectResponse
-    {
-        $user = $request->user();
-        abort_unless($user, 403);
-
-        $validated = $request->validate([
-            'department_id' => ['required', 'integer', 'exists:departments,id'],
-        ]);
-
-        $department = Department::query()->findOrFail($validated['department_id']);
-
-        $this->approvalService->approve($invoice, $department, $user);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Bun de plată înregistrat.']);
-
-        return back();
-    }
-
-    public function revokeApproval(Request $request, Invoice $invoice, InvoiceApproval $approval): RedirectResponse
-    {
-        $user = $request->user();
-        abort_unless($user, 403);
-        abort_unless($approval->invoice_id === $invoice->id, 404);
-
-        $validated = $request->validate([
-            'reason' => ['required', 'string', 'min:3', 'max:2000'],
-        ]);
-
-        $this->approvalService->revoke($approval, $user, $validated['reason']);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Aprobarea a fost retrasă.']);
-
-        return back();
     }
 
     public function comment(Request $request, Invoice $invoice): RedirectResponse
@@ -346,42 +294,46 @@ class InvoiceController extends Controller
     }
 
     /**
-     * @return array{id: ?int, name: ?string, responsabil_department_ids: list<int>, ordonator_department_ids: list<int>, plati_department_ids: list<int>}
+     * Who is looking, and what they may do on an invoice.
+     *
+     * @return array{id: ?int, name: ?string, department_ids: list<int>, roles: list<string>}
      */
     private function currentUserContext(Request $request): array
     {
         $user = $request->user();
 
-        if (! $user) {
-            return [
-                'id' => null,
-                'name' => null,
-                'responsabil_department_ids' => [],
-                'ordonator_department_ids' => [],
-                'plati_department_ids' => [],
-            ];
-        }
-
-        $departments = $user->departments()->get(['departments.id', 'departments.type']);
-
         return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'responsabil_department_ids' => $departments
-                ->where('type', Department::TYPE_RESPONSABIL)
-                ->pluck('id')
-                ->values()
-                ->all(),
-            'ordonator_department_ids' => $departments
-                ->where('type', Department::TYPE_ORDONATOR)
-                ->pluck('id')
-                ->values()
-                ->all(),
-            'plati_department_ids' => $departments
-                ->where('type', Department::TYPE_PLATI)
-                ->pluck('id')
-                ->values()
-                ->all(),
+            'id' => $user?->id,
+            'name' => $user?->name,
+            'department_ids' => $user ? ($user->isAdmin() ? Department::query()->whereNotNull('code')->pluck('id')->all() : $user->departmentIds()) : [],
+            'roles' => $user ? array_values((array) ($user->roles ?? [])) : [],
         ];
+    }
+
+    /**
+     * Each line with the department it was routed to and why.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function routingPayload(Invoice $invoice): array
+    {
+        $routing = InvoiceLineDepartment::query()
+            ->where('invoice_id', $invoice->id)
+            ->with(['department:id,name', 'channel:id,name', 'assignedBy:id,name'])
+            ->get()
+            ->keyBy('scv');
+
+        return $invoice->details->sortBy('scv')->map(fn ($line) => [
+            'scv' => $line->scv,
+            'account' => $line->account,
+            'loc' => $line->loc,
+            'com_int' => $line->com_int,
+            'amount' => round((float) $line->cant * (float) $line->pret, 2),
+            'department' => $routing->get($line->scv)?->department?->name,
+            'channel' => $routing->get($line->scv)?->channel?->name,
+            'rule' => $routing->get($line->scv)?->rule,
+            'detail' => $routing->get($line->scv)?->detail,
+            'manual_by' => $routing->get($line->scv)?->is_manual ? $routing->get($line->scv)?->assignedBy?->name : null,
+        ])->values()->all();
     }
 }

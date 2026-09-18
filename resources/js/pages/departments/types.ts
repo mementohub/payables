@@ -1,4 +1,4 @@
-import type { Paginated } from '@/types/pagination';
+import type { DepartmentGroup } from '@/types/approvals';
 
 export type Member = {
     id: number;
@@ -6,12 +6,14 @@ export type Member = {
     email: string;
 };
 
-export type DepartmentType = 'responsabil' | 'ordonator';
-
 export type Department = {
     id: number;
+    code: string;
     name: string;
-    type: DepartmentType;
+    group: DepartmentGroup;
+    parent_id: number | null;
+    is_active: boolean;
+    pending_count: number;
     members: Member[];
 };
 
@@ -21,13 +23,7 @@ export type UserOption = {
     email: string;
 };
 
-export type Filters = {
-    search: string | null;
-    type: DepartmentType | null;
-};
-
 export type Props = {
-    departments: Paginated<Department>;
+    departments: Department[];
     users: UserOption[];
-    filters: Filters;
 };

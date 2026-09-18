@@ -29,7 +29,6 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import {
-    clienti as clientiRoute,
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
@@ -156,7 +155,7 @@ export default function PartnersIndex({
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const label = scope === 'furnizori' ? 'Furnizori' : 'Clienti';
-    const href = scope === 'furnizori' ? furnizoriRoute() : clientiRoute();
+    const href = scope === 'furnizori' ? furnizoriRoute() : furnizoriRoute();
     const baseUrl = href.url;
 
     const applyFilter = (next: Partial<Props['filters']>) => {
@@ -230,7 +229,7 @@ export default function PartnersIndex({
                                 <TableHead>Locație</TableHead>
                                 <TableHead>Contact</TableHead>
                                 {scope === 'furnizori' && (
-                                    <TableHead>Responsabili</TableHead>
+                                    <TableHead>Departamente</TableHead>
                                 )}
                                 <TableHead>Companie</TableHead>
                                 <TableHead className="text-right">
@@ -291,7 +290,7 @@ export default function PartnersIndex({
                                         <TableCell>
                                             <DepartmentChips
                                                 departments={
-                                                    partner.responsabil_departments
+                                                    partner.departments
                                                 }
                                             />
                                         </TableCell>
@@ -323,7 +322,7 @@ export default function PartnersIndex({
 function PartnersLayout({ children }: { children: React.ReactNode }) {
     const { scope } = usePage<Props>().props;
     const label = scope === 'furnizori' ? 'Furnizori' : 'Clienti';
-    const href = scope === 'furnizori' ? furnizoriRoute() : clientiRoute();
+    const href = scope === 'furnizori' ? furnizoriRoute() : furnizoriRoute();
 
     return (
         <AppLayout breadcrumbs={[{ title: label, href }]}>{children}</AppLayout>

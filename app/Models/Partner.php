@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -45,18 +44,6 @@ class Partner extends Model
     public function bankAccounts(): HasMany
     {
         return $this->hasMany(PartnerBankAccount::class);
-    }
-
-    public function departments(): BelongsToMany
-    {
-        return $this->belongsToMany(Department::class, 'partner_department')->withTimestamps();
-    }
-
-    public function responsabilDepartments(): BelongsToMany
-    {
-        return $this->belongsToMany(Department::class, 'partner_department')
-            ->where('type', Department::TYPE_RESPONSABIL)
-            ->withTimestamps();
     }
 
     public function scopeFurnizori(Builder $query): Builder

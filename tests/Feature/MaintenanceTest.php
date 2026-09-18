@@ -16,7 +16,7 @@ beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
     Cache::flush();
 
-    $this->user = User::factory()->create(['name' => 'Bogdan']);
+    $this->user = User::factory()->withRoles('admin')->create(['name' => 'Bogdan']);
     $this->dir = sys_get_temp_dir().'/payables-runs-'.uniqid();
     $this->log = $this->dir.'/app:upgrade.log';
     $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));

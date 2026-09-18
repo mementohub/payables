@@ -9,6 +9,7 @@ import {
     SidebarGroup,
     SidebarGroupLabel,
     SidebarMenu,
+    SidebarMenuBadge,
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarMenuSub,
@@ -43,6 +44,11 @@ export function NavMain({
                     <span>{item.title}</span>
                 </Link>
             </SidebarMenuButton>
+            {item.badge ? (
+                <SidebarMenuBadge className="rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                    {item.badge}
+                </SidebarMenuBadge>
+            ) : null}
         </SidebarMenuItem>
     );
 

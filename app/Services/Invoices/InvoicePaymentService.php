@@ -2,7 +2,6 @@
 
 namespace App\Services\Invoices;
 
-use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceEvent;
 use App\Models\User;
@@ -34,12 +33,8 @@ class InvoicePaymentService
             throw ValidationException::withMessages(['invoice' => 'Doar facturile primite pot fi marcate.']);
         }
 
-        $isPlatiMember = $user->departments()
-            ->where('type', Department::TYPE_PLATI)
-            ->exists();
-
-        if (! $isPlatiMember) {
-            throw new AuthorizationException('Doar membrii departamentului de plăți pot marca plăți.');
+        if (! $user->hasRole(User::ROLE_TREASURY)) {
+            throw new AuthorizationException('Doar Trezoreria poate marca plăți.');
         }
 
         if ($invoice->payment_status_manual === $override) {

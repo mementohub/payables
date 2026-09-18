@@ -77,10 +77,13 @@ export function BtPaymentDialog({
     open,
     onOpenChange,
     request,
+    onDownloaded,
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     request: BtPrepareRequest;
+    /** Called once the file has been asked for (a payment run marks itself sent). */
+    onDownloaded?: () => void;
 }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -284,6 +287,7 @@ export function BtPaymentDialog({
         document.body.appendChild(form);
         form.submit();
         form.remove();
+        onDownloaded?.();
 
         onOpenChange(false);
     };

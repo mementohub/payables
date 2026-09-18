@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CompanyBankAccount;
 use App\Models\Invoice;
+use App\Services\Approvals\InvoiceWorkflow;
 use App\Services\Invoices\InvoiceListQuery;
 use App\Services\PaymentExport\BtPaymentRow;
 use App\Services\Xlsx\XlsxWriter;
@@ -41,7 +42,8 @@ class PaymentExportController extends Controller
             : Invoice::query();
 
         $query
-            ->where('is_fully_approved', true)
+            ->where('approval_status', InvoiceWorkflow::APPROVED)
+            ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
             ->with(['partner.bankAccounts', 'company:id,name,cui'])
             ->orderBy('invoices.data_doc');
 

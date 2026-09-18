@@ -32,6 +32,14 @@ class UserFactory extends Factory
         ];
     }
 
+    /**
+     * @param  string|list<string>  $roles
+     */
+    public function withRoles(string|array $roles): static
+    {
+        return $this->state(fn () => ['roles' => (array) $roles]);
+    }
+
     public function withMicrosoft(): static
     {
         return $this->state(fn () => [

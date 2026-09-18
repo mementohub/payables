@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Actions\EInvoices\MatchInvoiceToEInvoice;
 use App\Models\Builders\InvoiceBuilder;
 use App\Services\Invoices\InvoicePresenter;
 use Database\Factories\InvoiceFactory;
@@ -39,6 +40,15 @@ class Invoice extends Model
     /** Two amounts count as equal below this difference. */
     public const PAYMENT_TOLERANCE = 0.01;
 
+    protected static function booted(): void
+    {
+        static::saving(function (Invoice $invoice) {
+            if ($invoice->isDirty('nr_doc') || $invoice->nr_doc_key === null) {
+                $invoice->nr_doc_key = MatchInvoiceToEInvoice::key($invoice->nr_doc);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -52,11 +62,47 @@ class Invoice extends Model
             'val_mon_tva' => 'decimal:4',
             'val_mon_paid' => 'decimal:4',
             'val_mon_storno' => 'decimal:4',
-            'responsabili_approved_at' => 'datetime',
-            'is_fully_approved' => 'boolean',
-            'fully_approved_at' => 'datetime',
             'payment_status_updated_at' => 'datetime',
+            'omc_modified_at' => 'datetime',
+            'omc_removed_at' => 'datetime',
+            'assigned_at' => 'datetime',
+            'postponed_until' => 'date',
+            'final_decided_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The department that owns most of the invoice's value.
+     *
+     * @return BelongsTo<Department, $this>
+     */
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    /**
+     * @return HasMany<InvoiceLineDepartment, $this>
+     */
+    public function lineDepartments(): HasMany
+    {
+        return $this->hasMany(InvoiceLineDepartment::class);
+    }
+
+    /**
+     * @return HasMany<InvoiceDepartmentApproval, $this>
+     */
+    public function departmentApprovals(): HasMany
+    {
+        return $this->hasMany(InvoiceDepartmentApproval::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function finalDecidedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'final_decided_by_id');
     }
 
     public function company(): BelongsTo
@@ -77,11 +123,6 @@ class Invoice extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(InvoicePayment::class)->orderBy('data_repartizare');
-    }
-
-    public function approvals(): HasMany
-    {
-        return $this->hasMany(InvoiceApproval::class);
     }
 
     public function events(): HasMany
@@ -131,12 +172,15 @@ class Invoice extends Model
 
     /**
      * What the ERP has settled on the document: payments allocated to it plus
-     * the credit notes offset against it. `val_mon` is the document total,
-     * VAT included, so both sides of the comparison are gross.
+     * the offsets against it, counted in the document's own direction so a
+     * credit note used up reads as settled like a paid invoice. `val_mon` is
+     * the document total, VAT included, so both sides are gross.
      */
     public function settledAmount(): float
     {
-        return round((float) $this->val_mon_paid + (float) $this->val_mon_storno, 2);
+        $direction = (float) $this->val_mon < 0 ? -1 : 1;
+
+        return round($direction * ((float) $this->val_mon_paid + (float) $this->val_mon_storno), 2);
     }
 
     /**
@@ -188,11 +232,13 @@ class Invoice extends Model
     {
         $tolerance = self::PAYMENT_TOLERANCE;
 
+        $settled = "(case when {$prefix}val_mon < 0 then -1 else 1 end) * ({$prefix}val_mon_paid + {$prefix}val_mon_storno)";
+
         return <<<SQL
             case
-                when {$prefix}val_mon_paid + {$prefix}val_mon_storno + {$tolerance} >= abs({$prefix}val_mon) then 'paid'
+                when {$settled} + {$tolerance} >= abs({$prefix}val_mon) then 'paid'
                 when {$prefix}payment_status_manual is not null then {$prefix}payment_status_manual
-                when {$prefix}val_mon_paid + {$prefix}val_mon_storno <= {$tolerance} - 0.001 then 'unpaid'
+                when {$settled} <= {$tolerance} - 0.001 then 'unpaid'
                 else 'partial'
             end
             SQL;

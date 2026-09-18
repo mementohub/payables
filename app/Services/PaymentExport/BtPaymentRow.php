@@ -33,7 +33,7 @@ class BtPaymentRow
         $accounts = self::accountsFor($partner?->bankAccounts->all() ?? [], $invoice->moneda);
         $picked = self::pickAccount($accounts, $invoice->moneda);
 
-        $rest = round((float) $invoice->val_mon - (float) $invoice->val_mon_paid, 2);
+        $rest = $invoice->outstandingAmount();
 
         $warnings = [];
         if ($picked === null) {

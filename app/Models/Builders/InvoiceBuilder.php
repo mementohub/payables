@@ -3,7 +3,6 @@
 namespace App\Models\Builders;
 
 use App\Models\Invoice;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -16,11 +15,9 @@ class InvoiceBuilder extends Builder
         return $this
             ->with([
                 'partner:id,name,cui',
-                'partner.responsabilDepartments:id,name,type',
                 'company:id,name',
-                'approvals:id,invoice_id,department_id,user_id,role,approved_at,revoked_at',
-                'approvals.user:id,name,email',
-                'approvals.department:id,name,type',
+                'department:id,name,group',
+                'departmentApprovals' => fn ($q) => $q->with(['department:id,name', 'decidedBy:id,name'])->orderByDesc('amount'),
                 'sourceCompany:id,name',
                 'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
                 'sourceInvoice.partner:id,name,cui',
@@ -36,11 +33,6 @@ class InvoiceBuilder extends Builder
             'emise' => $this->where('partener_type', 'client'),
             default => $this,
         };
-    }
-
-    public function visibleToFurnizorUser(?User $user): self
-    {
-        return $this;
     }
 
     public function forCompany(?int $companyId): self
@@ -71,32 +63,31 @@ class InvoiceBuilder extends Builder
         return $this->whereRaw('('.Invoice::paymentStatusSql().') = ?', [$status]);
     }
 
-    public function approvalStage(?string $stage): self
+    /**
+     * Invoices at one step of the approval flow; "none" for the ones outside
+     * it (paid when they arrived, or credit notes).
+     */
+    public function approvalStatus(?string $status): self
     {
-        return match ($stage) {
-            'ok' => $this->where('is_fully_approved', true),
-            'responsabili_ok' => $this
-                ->where('is_fully_approved', false)
-                ->whereNotNull('responsabili_approved_at'),
-            'pending' => $this
-                ->where('is_fully_approved', false)
-                ->whereHas('partner.responsabilDepartments'),
-            'needs_approval' => $this->whereHas('partner.responsabilDepartments'),
-            'na' => $this->whereDoesntHave('partner.responsabilDepartments'),
+        return match (true) {
+            $status === 'none' => $this->whereNull('approval_status'),
+            in_array($status, ['routing', 'department', 'final', 'approved', 'disputed', 'postponed'], true) => $this->where('approval_status', $status),
             default => $this,
         };
     }
 
-    public function responsibleUser(?int $userId): self
+    /**
+     * Invoices a department owns part of.
+     */
+    public function inDepartment(?int $departmentId): self
     {
-        if (! $userId) {
+        if (! $departmentId) {
             return $this;
         }
 
-        return $this->whereHas(
-            'partner.responsabilDepartments.members',
-            fn ($m) => $m->where('users.id', $userId),
-        );
+        return $this->where(fn ($q) => $q
+            ->where('department_id', $departmentId)
+            ->orWhereHas('departmentApprovals', fn ($a) => $a->where('department_id', $departmentId)));
     }
 
     public function search(?string $term): self

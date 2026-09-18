@@ -6,8 +6,35 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
+import { index as departmentsIndex } from '@/routes/departments';
 import { edit as usersEdit, index as usersIndex } from '@/routes/users';
 import type { EditUser as User } from './types';
+
+const roleOptions = [
+    {
+        value: 'top_management',
+        label: 'Top Management',
+        description:
+            'Aprobarea finală a facturilor și a rulajelor de plată; contestă sau amână.',
+    },
+    {
+        value: 'finance',
+        label: 'Financiar',
+        description:
+            'Rutează facturile pe departamente, gestionează regulile și pregătește rulajele de plată.',
+    },
+    {
+        value: 'treasury',
+        label: 'Trezorerie',
+        description: 'Trimite rulajele aprobate la bancă (fișierul BT).',
+    },
+    {
+        value: 'admin',
+        label: 'Administrator',
+        description:
+            'Toate rolurile, plus utilizatori, departamente, companii și întreținere.',
+    },
+];
 
 export default function UserEdit({ user }: { user: User }) {
     return (
@@ -52,6 +79,50 @@ export default function UserEdit({ user }: { user: User }) {
                                 />
                                 <InputError message={errors.email} />
                             </div>
+                            <fieldset className="grid gap-3">
+                                <legend className="mb-1 text-sm font-medium">
+                                    Roluri în fluxul de plată
+                                </legend>
+                                {roleOptions.map((role) => (
+                                    <label
+                                        key={role.value}
+                                        className="flex items-start gap-3 text-sm"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            name="roles[]"
+                                            value={role.value}
+                                            defaultChecked={user.roles.includes(
+                                                role.value,
+                                            )}
+                                            className="mt-0.5 size-4 accent-primary"
+                                        />
+                                        <span>
+                                            <span className="font-medium">
+                                                {role.label}
+                                            </span>
+                                            <span className="block text-muted-foreground">
+                                                {role.description}
+                                            </span>
+                                        </span>
+                                    </label>
+                                ))}
+                                <InputError message={errors.roles} />
+                                <p className="text-sm text-muted-foreground">
+                                    Aprobă pentru departamentele:{' '}
+                                    {user.departments.length > 0
+                                        ? user.departments.join(', ')
+                                        : 'niciunul'}{' '}
+                                    (se schimbă din{' '}
+                                    <Link
+                                        href={departmentsIndex()}
+                                        className="underline"
+                                    >
+                                        Departamente
+                                    </Link>
+                                    ).
+                                </p>
+                            </fieldset>
                             <Button disabled={processing}>
                                 Salvează modificările
                             </Button>

@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Company;
-use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceEvent;
 use App\Models\Partner;
@@ -133,8 +132,7 @@ test('a status change is recorded and marking as paid needs the payments departm
 
     expect(fn () => $service->changeStatus($request, $this->user, 'paid'))->toThrow(AuthorizationException::class);
 
-    $plati = Department::create(['name' => 'Plăți', 'type' => Department::TYPE_PLATI]);
-    $plati->members()->attach($this->user);
+    $this->user->forceFill(['roles' => ['treasury']])->save();
 
     $this->actingAs($this->user)
         ->post("/payment-requests/{$request->id}/status", ['status' => 'paid'])

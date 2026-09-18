@@ -2,44 +2,67 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Department extends Model
 {
-    public const TYPE_RESPONSABIL = 'responsabil';
+    public const GROUP_PRODUCT = 'product';
 
-    public const TYPE_ORDONATOR = 'ordonator';
+    public const GROUP_CHANNEL = 'channel';
 
-    public const TYPE_PLATI = 'plati';
+    public const GROUP_SUPPORT = 'support';
 
-    public const TYPES = [self::TYPE_RESPONSABIL, self::TYPE_ORDONATOR, self::TYPE_PLATI];
+    public const GROUPS = [self::GROUP_PRODUCT, self::GROUP_CHANNEL, self::GROUP_SUPPORT];
 
     protected $guarded = [];
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+            'sort' => 'integer',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Department, $this>
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'parent_id');
+    }
+
+    /**
+     * @return HasMany<Department, $this>
+     */
+    public function children(): HasMany
+    {
+        return $this->hasMany(Department::class, 'parent_id');
+    }
+
+    /**
+     * Department id by code, for the routing rules.
+     *
+     * @return array<string, int>
+     */
+    public static function idsByCode(): array
+    {
+        return static::query()->whereNotNull('code')->pluck('id', 'code')->all();
+    }
 
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withTimestamps();
     }
 
-    public function partners(): BelongsToMany
+    /**
+     * @return HasMany<InvoiceDepartmentApproval, $this>
+     */
+    public function approvals(): HasMany
     {
-        return $this->belongsToMany(Partner::class, 'partner_department')->withTimestamps();
-    }
-
-    public function scopeResponsabili(Builder $query): Builder
-    {
-        return $query->where('type', self::TYPE_RESPONSABIL);
-    }
-
-    public function scopeOrdonatori(Builder $query): Builder
-    {
-        return $query->where('type', self::TYPE_ORDONATOR);
-    }
-
-    public function scopePlati(Builder $query): Builder
-    {
-        return $query->where('type', self::TYPE_PLATI);
+        return $this->hasMany(InvoiceDepartmentApproval::class);
     }
 }

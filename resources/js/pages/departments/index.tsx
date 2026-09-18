@@ -1,10 +1,18 @@
-import { Form, Head, router } from '@inertiajs/react';
-import { Pencil, Plus, Save, Trash2, UserMinus, UserPlus } from 'lucide-react';
+import { Head, router, useForm } from '@inertiajs/react';
+import { Pencil, Plus, UserMinus } from 'lucide-react';
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import DepartmentController from '@/actions/App/Http/Controllers/DepartmentController';
-import Pagination from '@/components/pagination';
+import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -12,7 +20,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,535 +30,376 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { index as departmentsIndex } from '@/routes/departments';
-import type {
-    Department,
-    DepartmentType,
-    Filters,
-    Props,
-    UserOption as User,
-} from './types';
+import type { DepartmentGroup } from '@/types/approvals';
+import type { Department, Props, UserOption } from './types';
 
-const typeLabels: Record<DepartmentType, string> = {
-    responsabil: 'Responsabil',
-    ordonator: 'Ordonator',
+const groups: { value: DepartmentGroup; title: string; description: string }[] =
+    [
+        {
+            value: 'product',
+            title: 'Categorii de produs',
+            description:
+                'Aprobă costurile turistice: liniile ajung aici după rezervarea eTrip, contractul charter sau biletul Tina.',
+        },
+        {
+            value: 'channel',
+            title: 'Canale de vânzare',
+            description:
+                'Aprobă costurile proprii (agenții, francize, site, B2B); pe liniile turistice canalul se păstrează doar pentru raportare.',
+        },
+        {
+            value: 'support',
+            title: 'Departamente suport',
+            description:
+                'Aprobă costurile corporate: marketing, financiar, administrativ, calitate.',
+        },
+    ];
+
+type DepartmentForm = {
+    name: string;
+    group: DepartmentGroup;
+    parent_id: string;
+    is_active: boolean;
 };
 
-export default function DepartmentsIndex({
-    departments,
-    users,
-    filters,
-}: Props) {
-    const [search, setSearch] = useState(filters.search ?? '');
-    const [createOpen, setCreateOpen] = useState(false);
-    const [editingId, setEditingId] = useState<number | null>(null);
-
-    const baseUrl = departmentsIndex().url;
-
-    const applyFilter = (next: Partial<Filters>) => {
-        router.get(
-            baseUrl,
-            {
-                search: next.search ?? filters.search ?? undefined,
-                type: next.type ?? filters.type ?? undefined,
-            },
-            { preserveState: true, preserveScroll: true, replace: true },
-        );
-    };
-
-    const editingDepartment =
-        editingId === null
-            ? null
-            : (departments.data.find((d) => d.id === editingId) ?? null);
+export default function DepartmentsIndex({ departments, users }: Props) {
+    const [editing, setEditing] = useState<Department | 'new' | null>(null);
 
     return (
         <>
             <Head title="Departamente" />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <h1 className="text-2xl font-semibold">Departamente</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Responsabilii aprobă facturi pe furnizorii la care
-                            sunt atribuiți. Ordonatorii dau OK final după etapa
-                            responsabililor, indiferent de furnizor.
+                        <p className="max-w-3xl text-sm text-muted-foreground">
+                            Fiecare factură de furnizor se împarte, linie cu
+                            linie, pe departamentele de mai jos. Membrii unui
+                            departament aprobă partea lui din factură; apoi
+                            decide Top Management.
                         </p>
                     </div>
-                    <CreateDialog
-                        open={createOpen}
-                        onOpenChange={setCreateOpen}
-                    />
-                </div>
-
-                <form
-                    className="flex flex-wrap items-center gap-2"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        applyFilter({ search });
-                    }}
-                >
-                    <Input
-                        className="max-w-xs"
-                        placeholder="Caută departament sau utilizator…"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                    <Select
-                        value={filters.type ?? 'all'}
-                        onValueChange={(v) =>
-                            applyFilter({
-                                type:
-                                    v === 'all' ? null : (v as DepartmentType),
-                            })
-                        }
-                    >
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Tip" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Toate tipurile</SelectItem>
-                            <SelectItem value="responsabil">
-                                Responsabili
-                            </SelectItem>
-                            <SelectItem value="ordonator">
-                                Ordonatori
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button type="submit" variant="secondary">
-                        Caută
+                    <Button onClick={() => setEditing('new')}>
+                        <Plus />
+                        Departament nou
                     </Button>
-                </form>
+                </div>
 
-                <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Nume</TableHead>
-                                <TableHead className="w-[120px]">Tip</TableHead>
-                                <TableHead>Membri</TableHead>
-                                <TableHead className="text-right">
-                                    Acțiuni
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {departments.data.length === 0 && (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={4}
-                                        className="py-6 text-center text-muted-foreground"
-                                    >
-                                        Niciun departament.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {departments.data.map((dept) => (
-                                <TableRow key={dept.id} className="align-top">
-                                    <TableCell className="font-medium">
-                                        {dept.name}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            variant="outline"
-                                            className="text-[10px]"
-                                        >
-                                            {typeLabels[dept.type]}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        {dept.members.length === 0 ? (
-                                            <span className="text-xs text-muted-foreground">
-                                                —
-                                            </span>
-                                        ) : (
-                                            <div className="flex flex-wrap gap-1">
-                                                {dept.members.map((m) => (
-                                                    <Badge
-                                                        key={m.id}
-                                                        variant="outline"
-                                                        className="text-[10px]"
-                                                        title={m.email}
-                                                    >
-                                                        {m.name}
-                                                    </Badge>
-                                                ))}
-                                            </div>
+                {groups.map((group) => (
+                    <section key={group.value} className="grid gap-3">
+                        <div>
+                            <h2 className="text-lg font-semibold">
+                                {group.title}
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                {group.description}
+                            </p>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {departments
+                                .filter((d) => d.group === group.value)
+                                .map((department) => (
+                                    <DepartmentCard
+                                        key={department.id}
+                                        department={department}
+                                        parent={departments.find(
+                                            (d) =>
+                                                d.id === department.parent_id,
                                         )}
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center justify-end gap-2">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    setEditingId(dept.id)
-                                                }
-                                            >
-                                                <Pencil />
-                                            </Button>
-                                            <Form
-                                                {...DepartmentController.destroy.form(
-                                                    dept.id,
-                                                )}
-                                                options={{
-                                                    preserveScroll: true,
-                                                }}
-                                                onBefore={() =>
-                                                    confirm(
-                                                        `Ștergi departamentul ${dept.name}?`,
-                                                    )
-                                                }
-                                            >
-                                                {({ processing }) => (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="destructive"
-                                                        disabled={processing}
-                                                    >
-                                                        <Trash2 />
-                                                    </Button>
-                                                )}
-                                            </Form>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                        {departments.from ?? 0}–{departments.to ?? 0} din{' '}
-                        {departments.total}
-                    </span>
-                    <Pagination links={departments.links} />
-                </div>
+                                        users={users}
+                                        onEdit={() => setEditing(department)}
+                                    />
+                                ))}
+                        </div>
+                    </section>
+                ))}
             </div>
 
-            <Dialog
-                open={editingDepartment !== null}
-                onOpenChange={(o) => !o && setEditingId(null)}
-            >
-                <DialogContent>
-                    {editingDepartment && (
-                        <EditDialogContent
-                            key={editingDepartment.id}
-                            department={editingDepartment}
-                            users={users}
-                        />
-                    )}
-                </DialogContent>
-            </Dialog>
+            {editing !== null && (
+                <DepartmentDialog
+                    department={editing === 'new' ? null : editing}
+                    departments={departments}
+                    onClose={() => setEditing(null)}
+                />
+            )}
         </>
     );
 }
 
-function CreateDialog({
-    open,
-    onOpenChange,
-}: {
-    open: boolean;
-    onOpenChange: (v: boolean) => void;
-}) {
-    const [name, setName] = useState('');
-    const [type, setType] = useState<DepartmentType>('responsabil');
-
-    const reset = () => {
-        setName('');
-        setType('responsabil');
-    };
-
-    return (
-        <Dialog
-            open={open}
-            onOpenChange={(v) => {
-                if (!v) {
-                    reset();
-                }
-
-                onOpenChange(v);
-            }}
-        >
-            <DialogTrigger asChild>
-                <Button>
-                    <Plus />
-                    Adaugă departament
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Departament nou</DialogTitle>
-                    <DialogDescription>
-                        Crează un departament de tip responsabil sau ordonator.
-                    </DialogDescription>
-                </DialogHeader>
-                <Form
-                    {...DepartmentController.store.form()}
-                    options={{ preserveScroll: true }}
-                    onSuccess={() => {
-                        reset();
-                        onOpenChange(false);
-                    }}
-                    className="space-y-4"
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="create-name">Nume</Label>
-                                <Input
-                                    id="create-name"
-                                    name="name"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="Ex: Operațional transport"
-                                    required
-                                />
-                                {errors.name && (
-                                    <span className="text-xs text-destructive">
-                                        {errors.name}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Tip</Label>
-                                <Select
-                                    value={type}
-                                    onValueChange={(v) =>
-                                        setType(v as DepartmentType)
-                                    }
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="responsabil">
-                                            Responsabil
-                                        </SelectItem>
-                                        <SelectItem value="ordonator">
-                                            Ordonator
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <input type="hidden" name="type" value={type} />
-                                {errors.type && (
-                                    <span className="text-xs text-destructive">
-                                        {errors.type}
-                                    </span>
-                                )}
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => onOpenChange(false)}
-                                >
-                                    Anulează
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    disabled={processing || !name.trim()}
-                                >
-                                    <Plus />
-                                    Creează
-                                </Button>
-                            </DialogFooter>
-                        </>
-                    )}
-                </Form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-function EditDialogContent({
+function DepartmentCard({
     department,
+    parent,
     users,
+    onEdit,
 }: {
     department: Department;
-    users: User[];
+    parent: Department | undefined;
+    users: UserOption[];
+    onEdit: () => void;
 }) {
-    const [name, setName] = useState(department.name);
-    const [type, setType] = useState<DepartmentType>(department.type);
-    const [addUserId, setAddUserId] = useState('');
+    const candidates = users.filter(
+        (user) => !department.members.some((m) => m.id === user.id),
+    );
 
-    const memberIds = new Set(department.members.map((m) => m.id));
-    const available = users.filter((u) => !memberIds.has(u.id));
+    const addMember = (userId: string) =>
+        router.post(
+            DepartmentController.attachMember(department.id).url,
+            { user_id: Number(userId) },
+            { preserveScroll: true },
+        );
+
+    const removeMember = (userId: number) =>
+        router.delete(
+            DepartmentController.detachMember({
+                department: department.id,
+                user: userId,
+            }).url,
+            { preserveScroll: true },
+        );
 
     return (
-        <>
-            <DialogHeader>
-                <DialogTitle>Modifică departament</DialogTitle>
-                <DialogDescription>
-                    Editează numele, tipul și membrii.
-                </DialogDescription>
-            </DialogHeader>
-
-            <Form
-                {...DepartmentController.update.form(department.id)}
-                options={{ preserveScroll: true }}
-                className="space-y-4"
-            >
-                {({ processing, errors }) => (
-                    <>
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-name">Nume</Label>
-                            <Input
-                                id="edit-name"
-                                name="name"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                required
-                            />
-                            {errors.name && (
-                                <span className="text-xs text-destructive">
-                                    {errors.name}
-                                </span>
-                            )}
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Tip</Label>
-                            <Select
-                                value={type}
-                                onValueChange={(v) =>
-                                    setType(v as DepartmentType)
-                                }
+        <Card className={department.is_active ? '' : 'opacity-60'}>
+            <CardHeader className="gap-1">
+                <div className="flex items-start justify-between gap-2">
+                    <div>
+                        <CardTitle className="text-base">
+                            {department.name}
+                        </CardTitle>
+                        <CardDescription>
+                            {parent ? `în ${parent.name}` : department.code}
+                        </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {!department.is_active && (
+                            <Badge variant="outline">Inactiv</Badge>
+                        )}
+                        {department.pending_count > 0 && (
+                            <Badge
+                                variant="outline"
+                                className="border-amber-600/40 text-amber-700 dark:text-amber-300"
                             >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="responsabil">
-                                        Responsabil
-                                    </SelectItem>
-                                    <SelectItem value="ordonator">
-                                        Ordonator
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <input type="hidden" name="type" value={type} />
-                            {errors.type && (
-                                <span className="text-xs text-destructive">
-                                    {errors.type}
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex justify-end">
-                            <Button
-                                type="submit"
-                                size="sm"
-                                disabled={processing || !name.trim()}
-                            >
-                                <Save />
-                                Salvează
-                            </Button>
-                        </div>
-                    </>
-                )}
-            </Form>
-
-            <div className="space-y-2 border-t pt-4">
-                <h3 className="text-sm font-semibold">Membri</h3>
+                                {department.pending_count} de aprobat
+                            </Badge>
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onEdit}
+                            aria-label={`Modifică ${department.name}`}
+                        >
+                            <Pencil />
+                        </Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="grid gap-2">
                 {department.members.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                        Niciun membru.
+                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                        Nimeni nu aprobă încă pentru acest departament.
                     </p>
                 ) : (
-                    <ul className="flex flex-col gap-1">
-                        {department.members.map((m) => (
+                    <ul className="grid gap-1">
+                        {department.members.map((member) => (
                             <li
-                                key={m.id}
-                                className="flex items-center justify-between rounded-md border border-sidebar-border/70 px-2 py-1 text-xs dark:border-sidebar-border"
+                                key={member.id}
+                                className="flex items-center justify-between gap-2 text-sm"
                             >
-                                <div>
-                                    <div className="font-medium">{m.name}</div>
-                                    <div className="text-muted-foreground">
-                                        {m.email}
-                                    </div>
-                                </div>
-                                <Form
-                                    {...DepartmentController.detachMember.form([
-                                        department.id,
-                                        m.id,
-                                    ])}
-                                    options={{ preserveScroll: true }}
+                                <span>
+                                    {member.name}{' '}
+                                    <span className="text-muted-foreground">
+                                        {member.email}
+                                    </span>
+                                </span>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => removeMember(member.id)}
+                                    aria-label={`Scoate ${member.name}`}
                                 >
-                                    {({ processing }) => (
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            disabled={processing}
-                                        >
-                                            <UserMinus className="size-4" />
-                                        </Button>
-                                    )}
-                                </Form>
+                                    <UserMinus className="size-4" />
+                                </Button>
                             </li>
                         ))}
                     </ul>
                 )}
-
-                {available.length > 0 && (
-                    <Form
-                        {...DepartmentController.attachMember.form(
-                            department.id,
-                        )}
-                        options={{ preserveScroll: true }}
-                        onSuccess={() => setAddUserId('')}
-                        className="flex items-center gap-2"
-                    >
-                        {({ processing }) => (
-                            <>
-                                <Select
-                                    value={addUserId}
-                                    onValueChange={setAddUserId}
+                {candidates.length > 0 && (
+                    <Select value="" onValueChange={addMember}>
+                        <SelectTrigger size="sm" className="w-full">
+                            <SelectValue placeholder="Adaugă un aprobator…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {candidates.map((user) => (
+                                <SelectItem
+                                    key={user.id}
+                                    value={String(user.id)}
                                 >
-                                    <SelectTrigger size="sm" className="w-full">
-                                        <SelectValue placeholder="Adaugă utilizator…" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {available.map((u) => (
-                                            <SelectItem
-                                                key={u.id}
-                                                value={String(u.id)}
-                                            >
-                                                {u.name}
-                                                <span className="ml-2 text-xs text-muted-foreground">
-                                                    {u.email}
-                                                </span>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <input
-                                    type="hidden"
-                                    name="user_id"
-                                    value={addUserId}
-                                />
-                                <Button
-                                    size="sm"
-                                    type="submit"
-                                    disabled={processing || !addUserId}
-                                >
-                                    <UserPlus className="size-4" />
-                                </Button>
-                            </>
-                        )}
-                    </Form>
+                                    {user.name} ({user.email})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 )}
-            </div>
-        </>
+            </CardContent>
+        </Card>
+    );
+}
+
+function DepartmentDialog({
+    department,
+    departments,
+    onClose,
+}: {
+    department: Department | null;
+    departments: Department[];
+    onClose: () => void;
+}) {
+    const form = useForm<DepartmentForm>({
+        name: department?.name ?? '',
+        group: department?.group ?? 'support',
+        parent_id: department?.parent_id ? String(department.parent_id) : '',
+        is_active: department?.is_active ?? true,
+    });
+
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        form.transform((data) => ({
+            ...data,
+            parent_id: data.parent_id === '' ? null : Number(data.parent_id),
+        }));
+
+        const options = { preserveScroll: true, onSuccess: onClose };
+
+        if (department) {
+            form.put(DepartmentController.update(department.id).url, options);
+        } else {
+            form.post(DepartmentController.store().url, options);
+        }
+    };
+
+    const parents = departments.filter(
+        (d) =>
+            d.id !== department?.id &&
+            d.group === form.data.group &&
+            d.parent_id === null,
+    );
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent>
+                <form onSubmit={submit} className="grid gap-4">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {department
+                                ? `Modifică ${department.name}`
+                                : 'Departament nou'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Regulile de rutare trimit liniile de factură către
+                            departamente; un departament nou primește linii după
+                            ce îl folosește o regulă.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="department-name">Nume</Label>
+                        <Input
+                            id="department-name"
+                            value={form.data.name}
+                            onChange={(e) =>
+                                form.setData('name', e.target.value)
+                            }
+                            required
+                        />
+                        <InputError message={form.errors.name} />
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label>Grup</Label>
+                        <Select
+                            value={form.data.group}
+                            onValueChange={(value) =>
+                                form.setData({
+                                    ...form.data,
+                                    group: value as DepartmentGroup,
+                                    parent_id: '',
+                                })
+                            }
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {groups.map((group) => (
+                                    <SelectItem
+                                        key={group.value}
+                                        value={group.value}
+                                    >
+                                        {group.title}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={form.errors.group} />
+                    </div>
+
+                    {parents.length > 0 && (
+                        <div className="grid gap-2">
+                            <Label>Face parte din</Label>
+                            <Select
+                                value={form.data.parent_id || 'none'}
+                                onValueChange={(value) =>
+                                    form.setData(
+                                        'parent_id',
+                                        value === 'none' ? '' : value,
+                                    )
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">—</SelectItem>
+                                    {parents.map((parent) => (
+                                        <SelectItem
+                                            key={parent.id}
+                                            value={String(parent.id)}
+                                        >
+                                            {parent.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <InputError message={form.errors.parent_id} />
+                        </div>
+                    )}
+
+                    {department && (
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={form.data.is_active}
+                                onChange={(e) =>
+                                    form.setData('is_active', e.target.checked)
+                                }
+                                className="size-4 accent-primary"
+                            />
+                            Activ
+                        </label>
+                    )}
+
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={onClose}>
+                            Renunță
+                        </Button>
+                        <Button disabled={form.processing}>Salvează</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }
 

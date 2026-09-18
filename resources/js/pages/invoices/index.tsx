@@ -9,12 +9,12 @@ import {
     ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import InvoiceController from '@/actions/App/Http/Controllers/InvoiceController';
+import ApprovalController from '@/actions/App/Http/Controllers/Approvals/ApprovalController';
 import SyncController from '@/actions/App/Http/Controllers/SyncController';
-import ApprovalStatusBadge from '@/components/approval-status-badge';
 import CompanyBadge from '@/components/company-badge';
 import DateRangePicker from '@/components/date-range-picker';
 import type { DateRangeValue } from '@/components/date-range-picker';
+import DepartmentShares from '@/components/department-shares';
 import {
     FilterField,
     filterInputClass,
@@ -51,20 +51,21 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import WorkflowStatusBadge, {
+    workflowStatusLabels,
+} from '@/components/workflow-status-badge';
 import AppLayout from '@/layouts/app-layout';
+import { formatDate } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import {
-    emise as facturiEmise,
     primite as facturiPrimite,
     show as invoicesShow,
 } from '@/routes/invoices';
-import { exportMethod as exportEmise } from '@/routes/invoices/emise';
 import { exportMethod as exportPrimite } from '@/routes/invoices/primite';
 import { show as partnersShow } from '@/routes/partners';
 import type { BtPrepareRequest } from './bt-payment-dialog';
 import { BtPaymentDialog } from './bt-payment-dialog';
 import type {
-    Approval,
     CurrentUser,
     IndexFilters as Filters,
     IndexProps as Props,
@@ -266,12 +267,12 @@ export default function InvoicesIndex({
     companies,
     syncRunning,
     currentUser,
-    availableResponsibles,
+    departments,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const label = scope === 'emise' ? 'Facturi emise' : 'Facturi primite';
     const baseUrl =
-        scope === 'emise' ? facturiEmise().url : facturiPrimite().url;
+        scope === 'emise' ? facturiPrimite().url : facturiPrimite().url;
     const description =
         scope === 'emise'
             ? 'Facturi emise către clienți (FactCI / FactCE / FactINT), sincronizate din OMC la fiecare 10 minute.'
@@ -290,7 +291,7 @@ export default function InvoicesIndex({
                 data_scadenta_from: merged.data_scadenta_from ?? undefined,
                 data_scadenta_to: merged.data_scadenta_to ?? undefined,
                 approval: merged.approval ?? undefined,
-                responsible_id: merged.responsible_id ?? undefined,
+                department_id: merged.department_id ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -319,8 +320,8 @@ export default function InvoicesIndex({
             .filter(
                 (i) =>
                     selection.isSelected(i.id) &&
-                    i.approval?.is_fully_approved === true &&
-                    i.val_mon - i.val_mon_paid > 0,
+                    i.workflow?.approval_status === 'approved' &&
+                    i.val_mon - i.val_mon_paid - i.val_mon_storno > 0.01,
             )
             .map((i) => i.id);
     }, [invoices.data, selection, isPrimite]);
@@ -334,7 +335,7 @@ export default function InvoicesIndex({
         data_scadenta_from: filters.data_scadenta_from,
         data_scadenta_to: filters.data_scadenta_to,
         approval: filters.approval,
-        responsible_id: filters.responsible_id,
+        department_id: filters.department_id,
     };
 
     const btRequest = useMemo<BtPrepareRequest>(
@@ -351,7 +352,7 @@ export default function InvoicesIndex({
 
     const handleExport = () => {
         setExporting(true);
-        const url = (scope === 'emise' ? exportEmise() : exportPrimite()).url;
+        const url = (scope === 'emise' ? exportPrimite() : exportPrimite()).url;
         downloadXlsxFromForm(url, selection.payload(), exportFilters);
         setTimeout(() => setExporting(false), 1500);
     };
@@ -463,7 +464,7 @@ export default function InvoicesIndex({
                     {isPrimite && (
                         <>
                             <FilterField
-                                label="Bun de plată"
+                                label="Aprobare"
                                 active={!!filters.approval}
                                 onClear={() => applyFilter({ approval: null })}
                             >
@@ -483,46 +484,46 @@ export default function InvoicesIndex({
                                             ),
                                         )}
                                     >
-                                        <SelectValue placeholder="Bun de plată" />
+                                        <SelectValue placeholder="Aprobare" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">
                                             Toate
                                         </SelectItem>
-                                        <SelectItem value="needs_approval">
-                                            Necesită aprobare
-                                        </SelectItem>
-                                        <SelectItem value="pending">
-                                            Așteaptă responsabil
-                                        </SelectItem>
-                                        <SelectItem value="responsabili_ok">
-                                            Așteaptă ordonator
-                                        </SelectItem>
-                                        <SelectItem value="ok">
-                                            Bun de plată
-                                        </SelectItem>
-                                        <SelectItem value="na">
-                                            Fără departament
+                                        {(
+                                            Object.entries(
+                                                workflowStatusLabels,
+                                            ) as [string, string][]
+                                        ).map(([value, label]) => (
+                                            <SelectItem
+                                                key={value}
+                                                value={value}
+                                            >
+                                                {label}
+                                            </SelectItem>
+                                        ))}
+                                        <SelectItem value="none">
+                                            În afara fluxului
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
                             </FilterField>
                             <FilterField
-                                label="Responsabil"
-                                active={!!filters.responsible_id}
+                                label="Departament"
+                                active={!!filters.department_id}
                                 onClear={() =>
-                                    applyFilter({ responsible_id: null })
+                                    applyFilter({ department_id: null })
                                 }
                             >
                                 <Select
                                     value={
-                                        filters.responsible_id
-                                            ? String(filters.responsible_id)
+                                        filters.department_id
+                                            ? String(filters.department_id)
                                             : 'all'
                                     }
                                     onValueChange={(v) =>
                                         applyFilter({
-                                            responsible_id:
+                                            department_id:
                                                 v === 'all' ? null : Number(v),
                                         })
                                     }
@@ -531,22 +532,22 @@ export default function InvoicesIndex({
                                         className={cn(
                                             'min-h-11 w-full sm:w-[200px]',
                                             filterTriggerClass(
-                                                !!filters.responsible_id,
+                                                !!filters.department_id,
                                             ),
                                         )}
                                     >
-                                        <SelectValue placeholder="Responsabil" />
+                                        <SelectValue placeholder="Departament" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">
-                                            Toți responsabilii
+                                            Toate departamentele
                                         </SelectItem>
-                                        {availableResponsibles.map((u) => (
+                                        {departments.map((d) => (
                                             <SelectItem
-                                                key={u.id}
-                                                value={String(u.id)}
+                                                key={d.id}
+                                                value={String(d.id)}
                                             >
-                                                {u.name}
+                                                {d.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -741,9 +742,7 @@ export default function InvoicesIndex({
                                     </td>
                                     {isPrimite && (
                                         <td className="px-4 py-3">
-                                            <ApprovalCell
-                                                approval={invoice.approval}
-                                            />
+                                            <WorkflowCell invoice={invoice} />
                                         </td>
                                     )}
                                     {isPrimite && (
@@ -792,56 +791,27 @@ export default function InvoicesIndex({
     );
 }
 
-function ApprovalCell({ approval }: { approval?: Approval }) {
-    if (!approval || !approval.needs_approval) {
-        return <ApprovalStatusBadge stage="na" />;
+function WorkflowCell({ invoice }: { invoice: InvoiceRow }) {
+    const workflow = invoice.workflow;
+
+    if (!workflow || workflow.approval_status === null) {
+        return <span className="text-xs text-muted-foreground">—</span>;
     }
 
     return (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <span className="inline-flex cursor-help items-center">
-                    <ApprovalStatusBadge stage={approval.stage} />
-                </span>
-            </TooltipTrigger>
-            <TooltipContent className="flex max-w-sm flex-col items-stretch gap-1.5 text-left">
-                {approval.responsabil_steps.map((step) => (
-                    <div
-                        key={step.department_id}
-                        className="flex flex-col gap-0.5"
-                    >
-                        <div className="flex items-center gap-1.5 font-medium">
-                            {step.approved ? (
-                                <Check className="size-3 text-green-500" />
-                            ) : (
-                                <span className="inline-block size-1.5 rounded-full bg-amber-400" />
-                            )}
-                            {step.department_name}
-                        </div>
-                        <div className="pl-4.5 text-muted-foreground">
-                            {step.approved && step.approved_by
-                                ? `${step.approved_by.name} · ${formatDateTime(step.approved_at)}`
-                                : 'în așteptare'}
-                        </div>
-                    </div>
-                ))}
-                <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-1.5 font-medium">
-                        {approval.ordonator ? (
-                            <Check className="size-3 text-green-500" />
-                        ) : (
-                            <ShieldCheck className="size-3 text-sky-500" />
-                        )}
-                        Ordonator
-                    </div>
-                    <div className="pl-4.5 text-muted-foreground">
-                        {approval.ordonator
-                            ? `${approval.ordonator.approved_by?.name ?? 'Ordonator'}${approval.ordonator.approved_at ? ` · ${formatDateTime(approval.ordonator.approved_at)}` : ''}`
-                            : 'în așteptare'}
-                    </div>
-                </div>
-            </TooltipContent>
-        </Tooltip>
+        <div className="flex flex-col items-start gap-1.5">
+            <WorkflowStatusBadge status={workflow.approval_status} />
+            {workflow.approval_status === 'postponed' &&
+                workflow.postponed_until && (
+                    <span className="text-xs text-muted-foreground">
+                        până la {formatDate(workflow.postponed_until)}
+                    </span>
+                )}
+            <DepartmentShares
+                shares={workflow.departments}
+                currency={invoice.moneda}
+            />
+        </div>
     );
 }
 
@@ -938,9 +908,9 @@ function InvoiceMobileCard({
                 <div className="mt-3 space-y-3 border-t border-sidebar-border/70 pt-3 dark:border-sidebar-border">
                     <div>
                         <div className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                            Bun de plată
+                            Aprobare
                         </div>
-                        <ApprovalCell approval={invoice.approval} />
+                        <WorkflowCell invoice={invoice} />
                     </div>
                     <ApproveActions
                         invoice={invoice}
@@ -953,6 +923,11 @@ function InvoiceMobileCard({
     );
 }
 
+/**
+ * The one decision the user can take on the row straight away: approve
+ * their department's share, or (Top Management) give the final approval
+ * of an overhead invoice. Everything else happens in Aprobări.
+ */
 function ApproveActions({
     invoice,
     currentUser,
@@ -962,103 +937,94 @@ function ApproveActions({
     currentUser: CurrentUser;
     fullWidth?: boolean;
 }) {
-    const approval = invoice.approval;
+    const [processing, setProcessing] = useState(false);
+    const workflow = invoice.workflow;
+    const isTopManagement =
+        currentUser.roles.includes('top_management') ||
+        currentUser.roles.includes('admin');
+
     const action = useMemo(() => {
-        if (
-            !approval ||
-            !approval.needs_approval ||
-            approval.is_fully_approved ||
-            !currentUser.id
-        ) {
+        if (!workflow) {
             return null;
         }
 
-        const pendingStep = approval.responsabil_steps.find(
-            (s) =>
-                !s.approved &&
-                currentUser.responsabil_department_ids.includes(
-                    s.department_id,
-                ),
-        );
+        if (workflow.approval_status === 'department') {
+            const share = workflow.departments.find(
+                (d) =>
+                    d.status === 'pending' &&
+                    currentUser.department_ids.includes(d.id),
+            );
 
-        if (pendingStep) {
-            return {
-                departmentId: pendingStep.department_id,
-                kind: 'responsabil' as const,
-                label: 'Aprobă',
-                hint: pendingStep.department_name,
-            };
+            return share
+                ? {
+                      url: ApprovalController.decide().url,
+                      data: {
+                          invoice_ids: [invoice.id],
+                          department_id: share.id,
+                          decision: 'approved',
+                      },
+                      hint: `Aprobă partea ${share.name ?? 'departamentului'}`,
+                      final: false,
+                  }
+                : null;
         }
 
-        if (
-            approval.responsabili_approved_at !== null &&
-            currentUser.ordonator_department_ids.length > 0
-        ) {
+        if (workflow.approval_status === 'final' && isTopManagement) {
             return {
-                departmentId: currentUser.ordonator_department_ids[0],
-                kind: 'ordonator' as const,
-                label: 'Aprobă',
-                hint: 'final',
+                url: ApprovalController.decideFinal().url,
+                data: { invoice_ids: [invoice.id], decision: 'approved' },
+                hint:
+                    workflow.approval_track === 'run'
+                        ? 'Aprobare finală (altfel se aprobă prin rulajul de plată)'
+                        : 'Aprobare finală',
+                final: true,
             };
         }
 
         return null;
-    }, [approval, currentUser]);
+    }, [workflow, currentUser, invoice.id, isTopManagement]);
 
     if (!action) {
         return <span className="text-xs text-muted-foreground">—</span>;
     }
 
-    const isResponsabil = action.kind === 'responsabil';
-    const Icon = isResponsabil ? Check : ShieldCheck;
-    const colorClass = isResponsabil
-        ? 'border-green-600/40 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20'
-        : 'border-sky-600/40 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20';
+    const Icon = action.final ? ShieldCheck : Check;
 
     return (
-        <Form
-            {...InvoiceController.approve.form(invoice.id)}
-            options={{ preserveScroll: true }}
-        >
-            {({ processing }) => (
-                <>
-                    <input
-                        type="hidden"
-                        name="department_id"
-                        value={action.departmentId}
-                    />
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                type="submit"
-                                size="sm"
-                                variant="outline"
-                                disabled={processing}
-                                className={cn(
-                                    colorClass,
-                                    fullWidth && 'w-full',
-                                )}
-                            >
-                                <Icon />
-                                {action.label}
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            {isResponsabil
-                                ? `Aprobă ca responsabil (${action.hint})`
-                                : 'Aprobă ca ordonator (semnătura finală)'}
-                        </TooltipContent>
-                    </Tooltip>
-                </>
-            )}
-        </Form>
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={processing}
+                    onClick={() =>
+                        router.post(action.url, action.data, {
+                            preserveScroll: true,
+                            onStart: () => setProcessing(true),
+                            onFinish: () => setProcessing(false),
+                        })
+                    }
+                    className={cn(
+                        action.final
+                            ? 'border-sky-600/40 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20'
+                            : 'border-green-600/40 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-300 dark:hover:bg-green-500/20',
+                        fullWidth && 'w-full',
+                    )}
+                >
+                    <Icon />
+                    Aprobă
+                </Button>
+            </TooltipTrigger>
+            <TooltipContent>{action.hint}</TooltipContent>
+        </Tooltip>
     );
 }
 
 function InvoicesLayout({ children }: { children: React.ReactNode }) {
     const { scope } = usePage<Props>().props;
     const label = scope === 'emise' ? 'Facturi emise' : 'Facturi primite';
-    const href = scope === 'emise' ? facturiEmise() : facturiPrimite();
+    const href = scope === 'emise' ? facturiPrimite() : facturiPrimite();
 
     return (
         <AppLayout breadcrumbs={[{ title: label, href }]}>{children}</AppLayout>

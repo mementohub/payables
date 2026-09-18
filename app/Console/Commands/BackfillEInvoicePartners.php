@@ -56,7 +56,7 @@ class BackfillEInvoicePartners extends Command
                         if ($eInvoice->partner_id === null) {
                             $partnerId = $lookup->find($eInvoice->supplier_cui)
                                 ?? $lookup->find($eInvoice->cod_cci_xml)
-                                ?? $lookup->find($parser->extractSellerTaxId($eInvoice->msg_xml));
+                                ?? $lookup->find($parser->extractSellerTaxId($eInvoice->xml()));
 
                             if ($partnerId !== null) {
                                 $partnerSet++;

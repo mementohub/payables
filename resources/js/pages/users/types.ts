@@ -4,6 +4,7 @@ export type UserRow = {
     email: string;
     initials: string;
     departments_count: number;
+    roles: string[];
     created_at: string | null;
 };
 
@@ -16,4 +17,6 @@ export type EditUser = {
     id: number;
     name: string;
     email: string;
+    roles: string[];
+    departments: string[];
 };

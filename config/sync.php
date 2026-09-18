@@ -7,11 +7,11 @@ return [
     | ERP document sync
     |--------------------------------------------------------------------------
     |
-    | Documents are pulled from each company's ERP database into the local
-    | tables the invoice, partner and bank statement pages read. The scheduler
-    | runs `erp:sync` every ten minutes for the last `recent_days` and nightly
-    | for the last `window_days`; every run also re-reads the invoices still
-    | open locally, so payments allocated to older invoices show up too.
+    | The supplier side of each company's ERP (OMC) is mirrored into the local
+    | tables the invoice, supplier and bank statement pages read. The
+    | scheduler runs `erp:sync` every ten minutes for the last `recent_days`
+    | and nightly for the last `window_days`; every run also re-reads every
+    | invoice open in OMC or locally, so payments show up at once.
     |
     */
 
@@ -43,21 +43,24 @@ return [
     'nightly_hour' => (int) env('SYNC_NIGHTLY_HOUR', 4),
 
     /*
-    | "Adu tot istoricul" pulls every document from this date on, in slices of
-    | `history_slice_days`, remembering the last finished slice so a stopped
-    | run continues where it left off.
+    | "Adu tot istoricul" pulls every supplier invoice from this date on, a
+    | slice at a time, remembering the last finished slice so a stopped run
+    | continues where it left off.
     */
-    'history_from' => env('SYNC_HISTORY_FROM', '2016-01-01'),
-
-    'history_slice_days' => (int) env('SYNC_HISTORY_SLICE_DAYS', 7),
+    'history_from' => env('SYNC_HISTORY_FROM', '2013-01-01'),
 
     /*
-    | A window is pulled in slices of this many days, so each slice's lookups
-    | stay small and the log shows progress.
+    | A window is pulled in slices of this many days (OMC is read a page of
+    | its primary key at a time within each slice).
     */
-    'slice_days' => (int) env('SYNC_SLICE_DAYS', 3),
+    'slice_days' => (int) env('SYNC_SLICE_DAYS', 31),
 
-    'window_days' => (int) env('SYNC_WINDOW_DAYS', 45),
+    /*
+    | The nightly pass re-reads this many days whole: OMC documents are often
+    | entered or edited weeks after their date, and the cost centres are
+    | tagged at month close, so thirteen months are kept current.
+    */
+    'window_days' => (int) env('SYNC_WINDOW_DAYS', 400),
 
     /*
     | Syncs started from the browser run as a detached background process.

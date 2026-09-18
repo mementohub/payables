@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 class InvoiceListQuery
 {
     /**
-     * @return array{search: ?string, company_id: ?int, payment: ?string, data_doc_from: ?string, data_doc_to: ?string, data_scadenta_from: ?string, data_scadenta_to: ?string, approval: ?string, responsible_id: ?int}
+     * @return array{search: ?string, company_id: ?int, payment: ?string, data_doc_from: ?string, data_doc_to: ?string, data_scadenta_from: ?string, data_scadenta_to: ?string, approval: ?string, department_id: ?int}
      */
     public static function parseFilters(Request $request): array
     {
@@ -26,7 +26,7 @@ class InvoiceListQuery
             'data_scadenta_from' => $request->string('data_scadenta_from')->toString() ?: null,
             'data_scadenta_to' => $request->string('data_scadenta_to')->toString() ?: null,
             'approval' => $request->string('approval')->toString() ?: null,
-            'responsible_id' => $request->integer('responsible_id') ?: null,
+            'department_id' => $request->integer('department_id') ?: null,
         ];
     }
 
@@ -37,14 +37,13 @@ class InvoiceListQuery
         return Invoice::query()
             ->withListRelations()
             ->forScope($scope)
-            ->when($scope === 'primite', fn ($q) => $q->visibleToFurnizorUser($request->user()))
+            ->whereNull('omc_removed_at')
             ->forCompany($filters['company_id'])
             ->dataDocBetween($filters['data_doc_from'], $filters['data_doc_to'])
             ->scadentaBetween($filters['data_scadenta_from'], $filters['data_scadenta_to'])
             ->paymentStatus($filters['payment'])
-            ->when($scope === 'primite', fn ($q) => $q
-                ->approvalStage($filters['approval'])
-                ->responsibleUser($filters['responsible_id']))
+            ->approvalStatus($filters['approval'])
+            ->inDepartment($filters['department_id'])
             ->search($filters['search']);
     }
 }

@@ -10,7 +10,7 @@ use Throwable;
 /**
  * Keeps the ERP copy fresh on servers where the Laravel scheduler is not
  * running: page views start the background sync when the last run is older
- * than the interval, and a 45-day pass once a day. When the scheduler's
+ * than the interval, and a 400-day pass once a day. When the scheduler's
  * heartbeat is alive, the cron does this instead and page views do nothing.
  */
 class AutoSync
@@ -53,7 +53,7 @@ class AutoSync
         try {
             $this->runner->start(
                 ArtisanRunner::SYNC,
-                $nightly ? ['--days='.max(1, (int) config('sync.window_days', 45))] : [],
+                $nightly ? ['--days='.max(1, (int) config('sync.window_days', 400))] : [],
                 'automat',
             );
 

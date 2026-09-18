@@ -1,8 +1,7 @@
-import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, X } from 'lucide-react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { ArrowLeft, Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import PartnerController from '@/actions/App/Http/Controllers/PartnerController';
 import CompanyBadge from '@/components/company-badge';
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
@@ -47,7 +46,6 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { show as invoiceShow } from '@/routes/invoices';
 import {
-    clienti as clientiRoute,
     furnizori as furnizoriRoute,
     show as partnerShow,
 } from '@/routes/partners';
@@ -64,15 +62,12 @@ export default function PartnerShow({
     invoices,
     invoiceFilters,
     availableTipDocs,
-    availableDepartments,
     role,
     statsFurnizor,
     statsClient,
     monthlyFurnizor,
     monthlyClient,
 }: Props) {
-    const [selectedDepartmentId, setSelectedDepartmentId] =
-        useState<string>('');
     const [search, setSearch] = useState(invoiceFilters.search ?? '');
     const [from, setFrom] = useState(invoiceFilters.from ?? '');
     const [to, setTo] = useState(invoiceFilters.to ?? '');
@@ -132,7 +127,7 @@ export default function PartnerShow({
                             href={
                                 partner.is_furnizor
                                     ? furnizoriRoute()
-                                    : clientiRoute()
+                                    : furnizoriRoute()
                             }
                         >
                             <ArrowLeft />
@@ -332,110 +327,35 @@ export default function PartnerShow({
                     <Card className="gap-2 py-3">
                         <CardHeader className="px-4 pb-0">
                             <CardTitle className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                                Departamente responsabili
+                                Departamente (ultimele 12 luni)
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2 px-4 pb-2">
-                            {partner.responsabil_departments.length === 0 ? (
+                            {partner.departments.length === 0 ? (
                                 <p className="text-xs text-muted-foreground">
-                                    Niciun departament atribuit.
+                                    Facturile furnizorului nu au fost încă
+                                    rutate pe departamente.
                                 </p>
                             ) : (
                                 <ul className="flex flex-wrap gap-1.5">
-                                    {partner.responsabil_departments.map(
-                                        (dept) => (
-                                            <li
-                                                key={dept.id}
-                                                className="flex items-center gap-1.5 rounded-full border border-sidebar-border/70 px-2 py-0.5 text-xs dark:border-sidebar-border"
-                                            >
-                                                <span>{dept.name}</span>
-                                                <Form
-                                                    {...PartnerController.detachResponsabilDepartment.form(
-                                                        [partner.id, dept.id],
-                                                    )}
-                                                    options={{
-                                                        preserveScroll: true,
-                                                    }}
-                                                    className="flex"
-                                                >
-                                                    {({ processing }) => (
-                                                        <button
-                                                            type="submit"
-                                                            className="rounded-full p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
-                                                            disabled={
-                                                                processing
-                                                            }
-                                                            aria-label={`Elimină ${dept.name}`}
-                                                        >
-                                                            <X className="size-3" />
-                                                        </button>
-                                                    )}
-                                                </Form>
-                                            </li>
-                                        ),
-                                    )}
+                                    {partner.departments.map((dept) => (
+                                        <li
+                                            key={dept.id}
+                                            className="rounded-full border border-sidebar-border/70 px-2 py-0.5 text-xs dark:border-sidebar-border"
+                                        >
+                                            {dept.name}{' '}
+                                            <span className="text-muted-foreground">
+                                                {dept.invoices}
+                                            </span>
+                                        </li>
+                                    ))}
                                 </ul>
                             )}
-
-                            {availableDepartments.length > 0 && (
-                                <Form
-                                    {...PartnerController.attachResponsabilDepartment.form(
-                                        partner.id,
-                                    )}
-                                    options={{ preserveScroll: true }}
-                                    onSuccess={() =>
-                                        setSelectedDepartmentId('')
-                                    }
-                                    className="flex items-center gap-2"
-                                >
-                                    {({ processing }) => (
-                                        <>
-                                            <Select
-                                                value={selectedDepartmentId}
-                                                onValueChange={
-                                                    setSelectedDepartmentId
-                                                }
-                                            >
-                                                <SelectTrigger
-                                                    size="sm"
-                                                    className="w-full"
-                                                >
-                                                    <SelectValue placeholder="Atribuie departament…" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {availableDepartments.map(
-                                                        (dept) => (
-                                                            <SelectItem
-                                                                key={dept.id}
-                                                                value={String(
-                                                                    dept.id,
-                                                                )}
-                                                            >
-                                                                {dept.name}
-                                                            </SelectItem>
-                                                        ),
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                            <input
-                                                type="hidden"
-                                                name="department_id"
-                                                value={selectedDepartmentId}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                type="submit"
-                                                disabled={
-                                                    processing ||
-                                                    !selectedDepartmentId
-                                                }
-                                            >
-                                                Atribuie
-                                            </Button>
-                                        </>
-                                    )}
-                                </Form>
-                            )}
+                            <p className="text-xs text-muted-foreground">
+                                Liniile facturilor merg la departamente după
+                                reguli; Financiar le schimbă din Rutare pe
+                                departamente.
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
@@ -686,7 +606,7 @@ function PartnerShowLayout({ children }: { children: React.ReactNode }) {
             breadcrumbs={[
                 {
                     title: isFurnizor ? 'Furnizori' : 'Clienți',
-                    href: isFurnizor ? furnizoriRoute() : clientiRoute(),
+                    href: isFurnizor ? furnizoriRoute() : furnizoriRoute(),
                 },
                 { title: partner.name, href: partnerShow(partner.id) },
             ]}

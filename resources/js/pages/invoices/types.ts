@@ -1,47 +1,44 @@
-import type { ApprovalStage } from '@/components/approval-status-badge';
 import type { PaymentStatus } from '@/components/payment-status-badge';
+import type {
+    DepartmentRef,
+    DepartmentShare,
+    WorkflowStatus,
+} from '@/types/approvals';
 import type { Paginated } from '@/types/pagination';
-
-export type ResponsabilStep = {
-    approval_id: number | null;
-    department_id: number;
-    department_name: string;
-    approved: boolean;
-    approved_by: { id: number; name: string } | null;
-    approved_at: string | null;
-};
-
-export type OrdonatorApproval = {
-    approval_id: number;
-    department_id: number;
-    department_name: string | null;
-    approved_by: { id: number; name: string } | null;
-    approved_at: string | null;
-} | null;
 
 export type TimelineEvent = {
     id: number;
-    type:
-        | 'approved'
-        | 'approval_revoked'
-        | 'commented'
-        | 'payment_status_changed'
-        | 'payment_request_linked';
+    type: string;
     body: string | null;
     payload: Record<string, unknown> | null;
     created_at: string;
     user: { id: number; name: string } | null;
-    department: { id: number; name: string; type: string } | null;
+    department: { id: number; name: string } | null;
 };
 
-export type Approval = {
-    needs_approval: boolean;
-    stage: ApprovalStage;
-    responsabili_approved_at: string | null;
-    is_fully_approved: boolean;
-    fully_approved_at: string | null;
-    responsabil_steps: ResponsabilStep[];
-    ordonator: OrdonatorApproval;
+/** Where the invoice stands in the approval flow (InvoicePresenter::workflowPayload). */
+export type Workflow = {
+    approval_status: WorkflowStatus | null;
+    approval_track: 'run' | 'invoice' | null;
+    postponed_until: string | null;
+    assignment_state: 'assigned' | 'partial' | 'unassigned' | null;
+    department: DepartmentRef | null;
+    departments: DepartmentShare[];
+    final: { by: string | null; at: string; comment: string | null } | null;
+};
+
+/** One invoice line with the department it was routed to, and why. */
+export type RoutedLine = {
+    scv: number;
+    account: string | null;
+    loc: string | null;
+    com_int: string | null;
+    amount: number;
+    department: string | null;
+    channel: string | null;
+    rule: string | null;
+    detail: string | null;
+    manual_by: string | null;
 };
 
 export type SourceInvoiceRef = {
@@ -97,7 +94,7 @@ export type InvoiceRow = {
     has_com_int_counterpart: boolean;
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
-    approval?: Approval;
+    workflow?: Workflow;
 };
 
 export type Scope = 'emise' | 'primite';
@@ -111,15 +108,15 @@ export type IndexFilters = {
     data_scadenta_from: string | null;
     data_scadenta_to: string | null;
     approval: string | null;
-    responsible_id: number | null;
+    department_id: number | null;
 };
 
 export type CurrentUser = {
     id: number | null;
     name?: string | null;
-    responsabil_department_ids: number[];
-    ordonator_department_ids: number[];
-    plati_department_ids: number[];
+    /** Departments the user approves for (all of them for an admin). */
+    department_ids: number[];
+    roles: string[];
 };
 
 export type IndexProps = {
@@ -129,7 +126,7 @@ export type IndexProps = {
     companies: { id: number; name: string; last_synced_at?: string | null }[];
     syncRunning: boolean;
     currentUser: CurrentUser;
-    availableResponsibles: { id: number; name: string }[];
+    departments: { id: number; name: string }[];
 };
 
 export type Detail = {
@@ -215,7 +212,8 @@ export type Invoice = {
     source_invoice: SourceInvoiceRef | null;
     baza: BazaRef | null;
     payment_requests: InvoicePaymentRequestRef[];
-    approval: Approval;
+    workflow: Workflow;
+    routing: RoutedLine[];
     timeline: TimelineEvent[];
 };
 
@@ -223,4 +221,5 @@ export type ShowProps = {
     invoice: Invoice;
     activeCompany: { id: number; name: string };
     currentUser: CurrentUser;
+    departments: DepartmentRef[];
 };

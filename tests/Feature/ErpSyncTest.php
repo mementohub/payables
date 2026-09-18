@@ -1,13 +1,9 @@
 <?php
 
 use App\Models\Company;
-use App\Models\Invoice;
-use App\Models\Partner;
 use App\Models\User;
 use App\Services\Maintenance\ArtisanRunner;
-use App\Services\RemoteConnection;
 use App\Services\SyncService;
-use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -31,7 +27,7 @@ beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
     Cache::flush();
 
-    $this->user = User::factory()->create(['name' => 'Bogdan']);
+    $this->user = User::factory()->withRoles('admin')->create(['name' => 'Bogdan']);
     $this->company = Company::factory()->create(['name' => 'Christian Tour']);
     $this->dir = sys_get_temp_dir().'/payables-sync-'.uniqid();
     $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
@@ -162,47 +158,6 @@ test('the erp:sync command accepts an explicit range', function () {
     });
 
     $this->artisan('erp:sync', ['--company' => $this->company->id, '--from' => '2026-08-01', '--to' => '2026-08-31'])->assertSuccessful();
-});
-
-test('open invoices are refreshed from the erp by their document key', function () {
-    $partner = Partner::factory()->for($this->company)->create();
-    $paidMeanwhile = Invoice::factory()->for($this->company)->for($partner)->create(['data_doc' => '2026-08-05', 'nr_doc' => 'A', 'val_mon' => 1000]);
-    $stillOpen = Invoice::factory()->for($this->company)->for($partner)->create(['data_doc' => '2026-08-06', 'nr_doc' => 'B', 'val_mon' => 500]);
-    Invoice::factory()->for($this->company)->for($partner)->create(['data_doc' => '2026-08-07', 'nr_doc' => 'C', 'val_mon' => 300, 'val_mon_paid' => 300]);
-    Invoice::factory()->create(['data_doc' => '2026-08-08', 'nr_doc' => 'OTHER', 'val_mon' => 100]);
-
-    $remote = Mockery::mock(ConnectionInterface::class);
-    $remote->shouldReceive('select')->andReturnUsing(function (string $sql, array $bindings) {
-        if (str_contains($sql, 'from doc_fin')) {
-            expect($bindings)->toBe(['2026-08-05', 'FactFI', 'A']);
-
-            return [(object) [
-                'data_doc_com' => '2026-08-05', 'tip_doc_com' => 'FactFI', 'nr_doc_com' => 'A',
-                'data_doc_fin' => '2026-09-15', 'tip_doc_fin' => 'OP_PL', 'nr_doc_fin' => 'BTRL1',
-                'data_repartizare' => '2026-09-15', 'val_fin' => 1000, 'val_com' => 1000, 'fin_moneda' => 'Lei',
-            ]];
-        }
-
-        expect($bindings)->toBe(['2026-08-05', 'FactFI', 'A', '2026-08-06', 'FactFI', 'B']);
-
-        return [
-            (object) ['data_doc' => '2026-08-05', 'tip_doc' => 'FactFI', 'nr_doc' => 'A', 'val_mon' => 1000, 'val_mon_inc' => 0, 'val_mon_pl' => 1000, 'val_mon_dimin_negru' => 0, 'data_scadenta' => '2026-09-04'],
-            (object) ['data_doc' => '2026-08-06', 'tip_doc' => 'FactFI', 'nr_doc' => 'B', 'val_mon' => 500, 'val_mon_inc' => 0, 'val_mon_pl' => 0, 'val_mon_dimin_negru' => 0, 'data_scadenta' => null],
-        ];
-    });
-
-    $this->mock(RemoteConnection::class, function (MockInterface $mock) use ($remote) {
-        $mock->shouldReceive('connection')->andReturn($remote);
-    });
-
-    $updated = app(SyncService::class)->refreshOpenInvoices($this->company);
-
-    expect($updated)->toBe(1)
-        ->and((float) $paidMeanwhile->fresh()->val_mon_paid)->toBe(1000.0)
-        ->and($paidMeanwhile->fresh()->data_scadenta?->toDateString())->toBe('2026-09-04')
-        ->and($paidMeanwhile->payments()->count())->toBe(1)
-        ->and($paidMeanwhile->payments()->first()->nr_doc)->toBe('BTRL1')
-        ->and((float) $stillOpen->fresh()->val_mon_paid)->toBe(0.0);
 });
 
 test('the full history can be started from the page and by the command', function () {
