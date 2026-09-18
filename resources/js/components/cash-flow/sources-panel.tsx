@@ -7,7 +7,12 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import type { OpeningDetail, RunStatus, SourceStatus } from '@/types/cash-flow';
+import type {
+    OpeningDetail,
+    RunStatus,
+    SourceStatus,
+    SupplierAdvance,
+} from '@/types/cash-flow';
 import { fmtRon } from './report-math';
 
 function StatusIcon({ status }: { status: SourceStatus['status'] }) {
@@ -31,11 +36,13 @@ export default function SourcesPanel({
     opening,
     run,
     fx,
+    advances = [],
 }: {
     sources: SourceStatus[];
     opening: OpeningDetail | null;
     run: RunStatus;
     fx: Record<string, number>;
+    advances?: SupplierAdvance[];
 }) {
     return (
         <div className="grid gap-4 xl:grid-cols-2">
@@ -195,6 +202,140 @@ export default function SourcesPanel({
                     ) : null}
                 </CardContent>
             </Card>
+
+            {advances.length > 0 && (
+                <Card className="xl:col-span-2">
+                    <CardHeader>
+                        <CardTitle>
+                            Avansuri plătite, scăzute din prognoză
+                        </CardTitle>
+                        <CardDescription>
+                            Bani dați deja furnizorilor, ca să nu fie plătiți a
+                            doua oară. Plățile pe care OMC nu le-a legat de
+                            nicio factură sting întâi facturile deschise ale
+                            furnizorului (C10); ce rămâne din ele sau, dacă e
+                            mai mare, avansul de pe 409 acoperă plățile
+                            viitoare: contractele charter ale contrapărții
+                            (întâi depozitele neplătite, apoi rotațiile în
+                            ordinea datei), apoi serviciile lui din eTrip. Un
+                            depozit marcat plătit în contract, pe care
+                            contractul îl scade deja din ultimele rotații, nu se
+                            mai scade o dată.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="max-h-[420px] overflow-auto rounded-lg border border-sidebar-border/70 dark:border-sidebar-border">
+                            <table className="w-full text-xs">
+                                <thead className="sticky top-0 bg-muted text-left text-muted-foreground">
+                                    <tr>
+                                        <th className="px-2 py-1.5">
+                                            Furnizor
+                                        </th>
+                                        <th className="px-2 py-1.5 text-right">
+                                            Plătit fără factură
+                                        </th>
+                                        <th className="px-2 py-1.5 text-right">
+                                            Avans pe 409
+                                        </th>
+                                        <th className="px-2 py-1.5">
+                                            Scăzut din prognoză
+                                        </th>
+                                        <th className="px-2 py-1.5 text-right">
+                                            Nefolosit
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                    {advances.map((row) => (
+                                        <tr
+                                            key={row.partner}
+                                            className="align-top"
+                                        >
+                                            <td className="px-2 py-1.5 font-medium">
+                                                {row.partner}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right tabular-nums">
+                                                {row.unmatched_lei > 0
+                                                    ? fmtRon(row.unmatched_lei)
+                                                    : '–'}
+                                                {row.unmatched_payments > 0 && (
+                                                    <div className="text-muted-foreground">
+                                                        {row.unmatched_payments}{' '}
+                                                        plăți
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right tabular-nums">
+                                                {row.advance_lei > 0
+                                                    ? fmtRon(row.advance_lei)
+                                                    : '–'}
+                                                {Object.keys(row.advance)
+                                                    .length > 0 && (
+                                                    <div className="text-muted-foreground">
+                                                        {Object.entries(
+                                                            row.advance,
+                                                        )
+                                                            .map(
+                                                                ([
+                                                                    currency,
+                                                                    amount,
+                                                                ]) =>
+                                                                    `${fmtRon(amount)} ${currency}`,
+                                                            )
+                                                            .join(' + ')}
+                                                    </div>
+                                                )}
+                                                {row.deposit_in_contract_lei >
+                                                    0 && (
+                                                    <div className="text-muted-foreground">
+                                                        din care depozit deja în
+                                                        contract{' '}
+                                                        {fmtRon(
+                                                            row.deposit_in_contract_lei,
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-1.5">
+                                                <span className="font-semibold tabular-nums">
+                                                    {fmtRon(row.applied_lei)}
+                                                </span>
+                                                {Object.keys(row.applied)
+                                                    .length > 0 && (
+                                                    <span className="ml-1 text-muted-foreground">
+                                                        (
+                                                        {Object.entries(
+                                                            row.applied,
+                                                        )
+                                                            .map(
+                                                                ([line, lei]) =>
+                                                                    `${line} ${fmtRon(lei)}`,
+                                                            )
+                                                            .join(', ')}
+                                                        )
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right text-muted-foreground tabular-nums">
+                                                {row.left_lei > 0
+                                                    ? fmtRon(row.left_lei)
+                                                    : '–'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            „Nefolosit” rămâne un avans fără plăți de acoperit
+                            în prognoză (de exemplu un furnizor fără contract
+                            charter sau servicii eTrip legate sigur de el).
+                            Fiecare sumă scăzută apare, cu minus, în celula ei
+                            din tabel.
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="xl:col-span-2">
                 <CardHeader>

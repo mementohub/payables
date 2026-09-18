@@ -129,6 +129,9 @@ class CashFlowCellDetails
             'new_costs' => sprintf('cost %s în an anterior%s', $this->money($meta['ly_amount'] ?? 0).' '.$piece->currency, (float) ($meta['factor'] ?? 1) !== 1.0 ? ' × '.$this->money($meta['factor']) : ''),
             'omc_payment' => trim(($piece->group ?? '').(! empty($meta['account']) && ($meta['rule'] ?? '') === 'account' ? ' · facturile merg pe '.$meta['account'] : '')),
             'etrip_receipts' => 'încasări emise în săptămână, pe segmentul dosarului',
+            'advance' => ($meta['basis'] ?? null) === '409'
+                ? sprintf('avans plătit deja (sold 409 în OMC), folosit pentru %s', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))
+                : sprintf('plătit deja fără factură în OMC, stinge %s', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? ''))),
             default => null,
         };
     }

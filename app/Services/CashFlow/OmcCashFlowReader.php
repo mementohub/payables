@@ -350,6 +350,92 @@ class OmcCashFlowReader
     }
 
     /**
+     * Advances paid to suppliers and not used yet: the balance of the 409
+     * accounts per partner and currency, from the journal (advance and
+     * deposit invoices debit it, their regularisation credits it).
+     *
+     * @return list<array{partner: string, currency: string, amount: float, lei: float, last: ?string}>
+     */
+    public function supplierAdvances(): array
+    {
+        $rows = $this->omc->connection()->select(<<<'SQL'
+            with j as (
+                select j.data_doc, j.tip_doc, j.nr_doc,
+                       case when j.conts_db like '409%' then 1 else -1 end as sign,
+                       case when j.conts_db like '409%' then j.moneda_db else j.moneda_cr end as currency,
+                       case when j.conts_db like '409%' then j.val_mon_db else j.val_mon_cr end as amount,
+                       j.valoare_lei
+                from reg_jurnal j
+                where (j.conts_db like '409%' or j.conts_cr like '409%')
+                  and not (j.conts_db like '409%' and j.conts_cr like '409%')
+            )
+            select d.partener as partner, j.currency,
+                   sum(j.sign * j.amount)::numeric(20,2) as amount,
+                   sum(j.sign * j.valoare_lei)::numeric(20,2) as lei,
+                   max(j.data_doc)::date as last_posting
+            from j
+            join doc d on (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+            where d.partener is not null
+            group by 1, 2
+            SQL);
+
+        return array_map(fn ($row) => [
+            'partner' => (string) $row->partner,
+            'currency' => self::currency((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
+            'last' => $row->last_posting !== null ? (string) $row->last_posting : null,
+        ], $rows);
+    }
+
+    /**
+     * Supplier payments not (fully) matched to an invoice yet, one by one,
+     * with what is left unmatched on each.
+     *
+     * @return list<array{partner: string, data_doc: string, tip_doc: string, nr_doc: string, currency: string, amount: float, lei: float}>
+     */
+    public function unmatchedSupplierPayments(CarbonInterface $since): array
+    {
+        $rows = $this->omc->connection()->select(<<<'SQL'
+            with p as (
+                select d.data_doc, d.tip_doc, d.nr_doc, d.partener, d.moneda, d.val_mon,
+                       case when d.moneda = 'Lei' then 1 else coalesce(nullif(d.curs, 0), 1) end as rate
+                from doc d
+                join tip_doc t on t.tip_doc = d.tip_doc
+                where d.data_doc >= ?::date
+                  and (t.plata_b or t.plata_c)
+                  and not (t.incasare_b or t.incasare_c)
+                  and d.data_anulare is null
+                  and d.partener is not null
+                  and d.val_mon > 0
+            ),
+            a as (
+                select f.data_doc_fin, f.tip_doc_fin, f.nr_doc_fin, sum(f.val_fin) as used
+                from doc_fin f
+                join p on (p.data_doc, p.tip_doc, p.nr_doc) = (f.data_doc_fin, f.tip_doc_fin, f.nr_doc_fin)
+                group by 1, 2, 3
+            )
+            select p.partener as partner, p.data_doc::date as data_doc, p.tip_doc, p.nr_doc, p.moneda as currency,
+                   (p.val_mon - coalesce(a.used, 0))::numeric(20,2) as amount,
+                   ((p.val_mon - coalesce(a.used, 0)) * p.rate)::numeric(20,2) as lei
+            from p
+            left join a on (a.data_doc_fin, a.tip_doc_fin, a.nr_doc_fin) = (p.data_doc, p.tip_doc, p.nr_doc)
+            where p.val_mon - coalesce(a.used, 0) > 1
+            order by p.partener, p.data_doc
+            SQL, [$since->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'partner' => (string) $row->partner,
+            'data_doc' => (string) $row->data_doc,
+            'tip_doc' => (string) $row->tip_doc,
+            'nr_doc' => trim((string) $row->nr_doc),
+            'currency' => self::currency((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
+        ], $rows);
+    }
+
+    /**
      * The bank and cash documents behind one classified flow: one partner
      * (or none) and counterpart account, receipts or payments, in a range.
      *

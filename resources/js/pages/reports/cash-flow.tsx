@@ -899,6 +899,7 @@ export default function CashFlowReport({
                             opening={payload?.opening ?? null}
                             run={run}
                             fx={payload?.fx ?? {}}
+                            advances={payload?.advances ?? []}
                         />
                     </TabsContent>
                 </Tabs>

@@ -183,6 +183,20 @@ export type CharterSummary = {
     terms?: CharterTerms;
 };
 
+/** Money already paid to a supplier, taken off the forecast. */
+export type SupplierAdvance = {
+    partner: string;
+    unmatched_lei: number;
+    unmatched_payments: number;
+    unmatched_last: string | null;
+    advance: Record<string, number>;
+    advance_lei: number;
+    deposit_in_contract_lei: number;
+    applied: Record<string, number>;
+    applied_lei: number;
+    left_lei: number;
+};
+
 export type ReportPayload = {
     generated: string;
     today: string;
@@ -197,6 +211,8 @@ export type ReportPayload = {
     past?: PastWeeks | null;
     kpis: ReportKpis;
     opening: OpeningDetail;
+    /** Absent in a snapshot built before advances were netted. */
+    advances?: SupplierAdvance[];
     structure: {
         receivables: ReceivableStructureRow[];
         payables: PayableStructureRow[];

@@ -36,11 +36,11 @@ function omcFlows(): array
     ];
 }
 
-function mockOmc(bool $anchor = true, ?array $positionRates = null): void
+function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advances = []): void
 {
     $positionRates ??= ['RON' => 1.0, 'EUR' => 5.0, 'USD' => 4.5];
 
-    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor, $positionRates) {
+    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor, $positionRates, $advances) {
         $mock->shouldReceive('dailyFlows')->andReturnUsing(fn (CarbonInterface $from, CarbonInterface $to) => array_values(array_filter(
             omcFlows(),
             fn (array $row) => $row['day'] >= $from->toDateString() && $row['day'] < $to->toDateString(),
@@ -50,6 +50,8 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null): void
             ['data_doc' => '2026-08-03', 'tip_doc' => 'FactFI', 'nr_doc' => 'B7', 'partner' => 'Hotel Beta', 'due' => '2026-09-01', 'currency' => 'RON', 'amount' => 150000, 'lei' => 150000],
             ['data_doc' => '2026-09-10', 'tip_doc' => 'FactFE', 'nr_doc' => 'INV-9', 'partner' => 'Tour Gamma', 'due' => '2026-10-20', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000],
         ]);
+        $mock->shouldReceive('supplierAdvances')->andReturn($advances['ledger'] ?? [])->byDefault();
+        $mock->shouldReceive('unmatchedSupplierPayments')->andReturn($advances['unmatched'] ?? [])->byDefault();
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
         $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
@@ -150,7 +152,7 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['fx'])->toEqual(['RON' => 1, 'EUR' => 5, 'USD' => 4.5])
         ->and(collect($snapshot->sources)->pluck('status', 'key')->all())->toBe([
             'fx' => 'ok', 'opening' => 'ok', 'receivables' => 'ok', 'payables' => 'ok', 'charter' => 'ok',
-            'suppliers_open' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok', 'actual_lines' => 'ok',
+            'suppliers_open' => 'ok', 'advances' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok', 'actual_lines' => 'ok',
         ]);
 
     // Opening: OMC month-end position at 31.08 rolled with September's documents (see mockOmc()).
@@ -534,4 +536,48 @@ test('a source that fails leaves no pieces behind, and only the latest snapshots
     expect(CashFlowDetail::query()->where('cash_flow_snapshot_id', $second->id)->whereIn('line', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'])->where('actual', false)->count())->toBe(0)
         ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $second->id)->count())->toBeGreaterThan(0)
         ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $first->id)->count())->toBe(0);
+});
+
+test('money already paid to a supplier is not paid again: unmatched payments settle its invoices, the 409 advance its contract', function () {
+    mockOmc(advances: [
+        // 100.000 lei paid to Hotel Alfa with no invoice: most of its open 250.000 lei invoice is settled.
+        'unmatched' => [['partner' => 'HOTEL ALFA S.R.L.', 'data_doc' => '2026-08-20', 'tip_doc' => 'OP_PL', 'nr_doc' => 'BT 1', 'currency' => 'RON', 'amount' => 100000, 'lei' => 100000]],
+        // A 1.500 EUR deposit booked on 409 for the charter counterparty.
+        'ledger' => [['partner' => 'Memento Air Srl', 'currency' => 'EUR', 'amount' => 1500, 'lei' => 7500, 'last' => '2026-08-14']],
+    ]);
+    mockEtrip();
+
+    $contract = CharterContract::factory()->draft()->create(['name' => 'W26/27', 'counterparty' => 'Memento Air S.R.L.', 'deposit_percent' => 50, 'deposit_due_date' => '2026-10-05', 'contract_value' => 2000, 'currency' => 'EUR']);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-12-01', 'net_value' => 2000, 'taxes' => 0]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $advances = collect($snapshot->payload['advances'])->keyBy('partner');
+    $pieces = CashFlowDetail::query()->where('cash_flow_snapshot_id', $snapshot->id)->where('kind', 'advance')->get();
+
+    // C10: Hotel Alfa's 250.000 lei invoice is half in each of the first two weeks; 100.000 lei come off the first ones.
+    expect(lineValues($snapshot, 'C10')[0])->toEqualWithDelta(200000 - 100000, 0.01)
+        // C8: the 1.000 EUR deposit (50 %) is covered by the 409 advance, the rest (500 EUR) goes to the next rotation.
+        ->and(array_sum(lineValues($snapshot, 'C8')))->toEqualWithDelta(0, 0.01)
+        ->and($advances['HOTEL ALFA S.R.L.'])->toMatchArray(['unmatched_lei' => 100000.0, 'applied_lei' => 100000.0, 'left_lei' => 0.0])
+        ->and($advances['Memento Air Srl'])->toMatchArray(['advance_lei' => 7500.0, 'applied_lei' => 7500.0, 'left_lei' => 0.0])
+        ->and($advances['Memento Air Srl']['applied'])->toEqual(['C8' => 5000.0, 'C7' => 2500.0])
+        ->and($pieces->sum('lei'))->toEqualWithDelta(-107500, 0.01)
+        ->and($pieces->firstWhere('line', 'C8')->meta)->toMatchArray(['basis' => '409', 'partner' => 'Memento Air Srl']);
+
+    expect(collect($snapshot->sources)->firstWhere('key', 'advances')['message'])->toContain('107.500');
+});
+
+test('a paid deposit the contract already sets against its last rotations is not taken off a second time', function () {
+    mockOmc(advances: ['ledger' => [['partner' => 'Anima Wings Aviation SA', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000, 'last' => '2026-05-01']]]);
+    mockEtrip();
+
+    $contract = CharterContract::factory()->create(['counterparty' => 'Anima Wings Aviation S.A.', 'status' => 'signed', 'direction' => 'out', 'deposit_amount' => 1000, 'deposit_paid' => true, 'deposit_due_date' => '2026-03-01', 'currency' => 'EUR', 'days_before_flight' => 10]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-11-10', 'net_value' => 3000, 'taxes' => 0]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+
+    // The deposit covers 1.000 of the 3.000 EUR rotation: 2.000 EUR still paid, nothing more taken off.
+    expect(array_sum(lineValues($snapshot, 'C6')))->toEqualWithDelta(10000, 0.01)
+        ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $snapshot->id)->where('kind', 'advance')->count())->toBe(0)
+        ->and(collect($snapshot->payload['advances'])->firstWhere('partner', 'Anima Wings Aviation SA'))->toBeNull();
 });

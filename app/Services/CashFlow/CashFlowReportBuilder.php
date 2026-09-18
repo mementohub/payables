@@ -4,6 +4,7 @@ namespace App\Services\CashFlow;
 
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
+use App\Models\EtripSupplier;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -158,6 +159,14 @@ class CashFlowReportBuilder
         $suppliers = $this->source('suppliers_open', 'Furnizori – facturi neachitate (OMC)', fn () => $this->openSuppliers())
             ?? ['line' => $this->grid->zeros(), 'total' => 0.0, 'overdue' => 0.0, 'mode' => 'none'];
 
+        $advances = config('cashflow.advances.enabled', true)
+            ? $this->source('advances', 'Avansuri plătite furnizorilor (OMC)', fn () => $this->advances($suppliers, $charter, $payables))
+            : null;
+
+        if ($advances !== null) {
+            [$suppliers, $charter, $payables] = [$advances['suppliers'], $advances['charter'], $advances['payables']];
+        }
+
         $opex = $this->source('opex', 'OPEX (OMC, medii 12 luni)', fn () => $this->opex())
             ?? ['lines' => [], 'catalogue' => CashFlowParameters::opexCatalogue($this->params)];
 
@@ -175,7 +184,10 @@ class CashFlowReportBuilder
             self::SEGMENT_LINES,
         )) ?? ['lines' => [], 'classified' => []];
 
-        return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals, $classified);
+        return [
+            ...$this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals, $classified),
+            'advances' => $advances['summary'] ?? [],
+        ];
     }
 
     /**
@@ -486,6 +498,7 @@ class CashFlowReportBuilder
         $prepaid = max(0.0, min(100.0, (float) ($this->params['payables']['prepaid_pct'] ?? 0))) / 100;
         $lines = array_fill_keys(['hotel', 'transfer', 'insurance', 'flight', 'other'], $this->grid->zeros());
         $structure = [];
+        $claims = [];
         $rows = 0;
 
         // Services paid `daysBefore` days ahead of check-in: only those whose
@@ -501,6 +514,12 @@ class CashFlowReportBuilder
                 $week = CarbonImmutable::parse($row['week']);
                 // The check-ins paid in that week; the first week also carries the earlier ones.
                 $checkinFrom = $week->addDays($daysBefore)->max($firstCheckin);
+                $index = $this->grid->column($row['week'], carryEarly: true);
+
+                if ($index !== null && ! empty($row['supplier'])) {
+                    $claims[] = ['supplier' => $connection.'|'.$row['supplier'], 'series' => $row['category'], 'line' => self::PAYABLE_LINES[$row['category']] ?? 'C5', 'index' => $index, 'lei' => $lei, 'label' => $row['supplier_name'] ?? $row['supplier'], 'priority' => 1];
+                }
+
                 $this->put($lines[$row['category']], self::PAYABLE_LINES[$row['category']] ?? 'C5', $row['week'], $lei, 'services', $row['supplier_name'] ?? $row['supplier'] ?? 'Furnizor eTrip', [
                     'group' => self::PAYABLE_LABELS[$row['category']] ?? $row['category'],
                     'reference' => $row['supplier'] ?? null,
@@ -537,6 +556,7 @@ class CashFlowReportBuilder
 
         return [
             'lines' => $lines,
+            'claims' => $claims,
             'structure' => array_values($structure),
             '_rows' => $rows,
             '_message' => sprintf('Servicii cu check-in de la %s; plata cu %d zile înainte; bilete comandate în ultimele %d zile.', $firstCheckin->format('d.m.Y'), $daysBefore, $ticketDays),
@@ -591,6 +611,17 @@ class CashFlowReportBuilder
 
         $factor = (float) ($this->params['scenario']['charter_factor'] ?? 1);
         [$estimates, $contracted] = $this->charterEstimates($contracts->where('in_cash_flow', true));
+        $claims = [];
+        // Paid deposits the contracts already set against their coming rotations, by counterparty.
+        $depositsInUse = [];
+        // What the contract makes us pay, by counterparty, for the advances to settle.
+        $claim = function (CharterContract $contract, string $key, CarbonInterface $date, float $lei, string $reference) use (&$claims): void {
+            $index = $this->grid->index($date);
+
+            if ($index !== null && $key !== 'incoming' && (string) $contract->counterparty !== '') {
+                $claims[] = ['key' => ActualCashFlowClassifier::normalize((string) $contract->counterparty), 'series' => $key, 'line' => self::CHARTER_LINES[$key], 'index' => $index, 'lei' => $lei, 'label' => $contract->name, 'reference' => $reference, 'priority' => $key === 'deposit' ? 0 : 1];
+            }
+        };
         $flights = 0;
         $counted = 0;
 
@@ -632,6 +663,16 @@ class CashFlowReportBuilder
             $counted++;
             $settled = $this->depositSettlement($contract, $withTaxes, $row['total_net']);
 
+            if ($contract->deposit_paid && ! $incomingContract && (string) $contract->counterparty !== '') {
+                $key = ActualCashFlowClassifier::normalize((string) $contract->counterparty);
+
+                foreach ($contract->flights as $flight) {
+                    if (isset($settled[$flight->id]) && $flight->setRelation('contract', $contract)->paymentDate()->gte($this->today)) {
+                        $depositsInUse[$key] = ($depositsInUse[$key] ?? 0.0) + $this->charterLei($settled[$flight->id], $contract);
+                    }
+                }
+            }
+
             foreach ($contract->flights as $flight) {
                 $flight->setRelation('contract', $contract);
                 $flights++;
@@ -653,6 +694,7 @@ class CashFlowReportBuilder
                         'amount' => $due,
                         'meta' => [...$flightMeta, 'net' => round((float) $flight->net_value, 2), 'taxes' => $withTaxes ? round($flightTaxes, 2) : 0.0, 'deposit_covered' => round($settled[$flight->id] ?? 0.0, 2), 'seats' => $flight->seats],
                     ])) {
+                        $claim($contract, $key, $payDate, $this->charterLei($due, $contract), $flightLabel);
                         $row['in_horizon'] += $due;
 
                         if ($withTaxes) {
@@ -674,6 +716,7 @@ class CashFlowReportBuilder
                         'amount' => $flightTaxes,
                         'meta' => $flightMeta,
                     ])) {
+                        $claim($contract, $key, $taxDate, $this->charterLei($flightTaxes, $contract), trim($flightLabel.' taxe'));
                         $row['taxes'] += $flightTaxes;
                     }
                 }
@@ -722,6 +765,7 @@ class CashFlowReportBuilder
                         'amount' => $amount,
                         'meta' => ['contract_id' => $contract->id, 'season' => $contract->season],
                     ])) {
+                    $claim($contract, $key, $contract->deposit_due_date, $this->charterLei($amount, $contract), 'depozit');
                     $row['deposit'] = $amount;
                 }
             }
@@ -749,6 +793,8 @@ class CashFlowReportBuilder
             'estimate_taxes' => $estimateTaxes,
             'estimates' => $estimates,
             'contracts' => $summary,
+            'claims' => $claims,
+            'deposits_in_use' => $depositsInUse,
             '_rows' => $flights,
             '_message' => $message,
             '_skipped' => $counted === 0,
@@ -929,6 +975,7 @@ class CashFlowReportBuilder
         $rows = $this->omc->openSupplierInvoiceList($since);
         $overdue = 0.0;
         $overdueRows = [];
+        $claims = [];
         $total = 0.0;
         $byCurrency = [];
 
@@ -948,7 +995,11 @@ class CashFlowReportBuilder
                 $overdue += $row['lei'];
                 $overdueRows[] = [$row, $detail, (int) $due->diffInDays($this->today)];
             } else {
-                $this->put($line, 'C10', $due, $row['lei'], 'invoice', $row['partner'] ?? 'Furnizor', [...$detail, 'group' => 'Scadente în săptămână'], carryEarly: true);
+                $index = $this->grid->column($due, carryEarly: true);
+
+                if ($this->put($line, 'C10', $due, $row['lei'], 'invoice', $row['partner'] ?? 'Furnizor', [...$detail, 'group' => 'Scadente în săptămână'], carryEarly: true) && $row['partner'] !== null) {
+                    $claims[] = ['key' => ActualCashFlowClassifier::normalize($row['partner']), 'series' => 'line', 'line' => 'C10', 'index' => $index, 'lei' => $row['lei'], 'label' => $row['partner'], 'reference' => $row['nr_doc'], 'priority' => 1];
+                }
             }
         }
 
@@ -956,6 +1007,10 @@ class CashFlowReportBuilder
             $line[$i] += $overdue / $weeks;
 
             foreach ($overdueRows as [$row, $detail, $days]) {
+                if ($row['partner'] !== null) {
+                    $claims[] = ['key' => ActualCashFlowClassifier::normalize($row['partner']), 'series' => 'line', 'line' => 'C10', 'index' => $i, 'lei' => $row['lei'] / $weeks, 'label' => $row['partner'], 'reference' => $row['nr_doc'], 'priority' => 0];
+                }
+
                 $this->recorder->record('C10', $this->grid->monday($i)->toDateString(), 'invoice', $row['partner'] ?? 'Furnizor', $row['lei'] / $weeks, [
                     ...$detail,
                     'group' => 'Restante',
@@ -966,6 +1021,7 @@ class CashFlowReportBuilder
 
         return [
             'line' => $line,
+            'claims' => $claims,
             'total' => round($total, 2),
             'overdue' => round($overdue, 2),
             'by_currency' => array_map(fn (float $v) => round($v, 2), $byCurrency),
@@ -973,6 +1029,156 @@ class CashFlowReportBuilder
             '_rows' => count($rows),
             '_message' => sprintf('Facturi furnizori deschise din OMC: %s RON, din care scadente depășite %s RON plătite pe %d săptămâni.', number_format($total, 0, ',', '.'), number_format($overdue, 0, ',', '.'), $weeks),
         ];
+    }
+
+    /**
+     * Money already paid to a supplier that the forecast would otherwise
+     * pay again. Payments OMC has not matched to any invoice settle the
+     * supplier's open invoices first (C10); what is left of them, or the
+     * advance balance on 409 when larger (never both, so nothing counts
+     * twice), covers the supplier's future dues: the charter contracts of
+     * the counterparty (unpaid deposits first, then by date), then its eTrip
+     * services where the eTrip supplier is surely the same partner. Every
+     * amount taken off is kept as a negative piece of its cell.
+     *
+     * @param  array<string, mixed>  $suppliers
+     * @param  array<string, mixed>  $charter
+     * @param  array<string, mixed>  $payables
+     * @return array<string, mixed>
+     */
+    private function advances(array $suppliers, array $charter, array $payables): array
+    {
+        $since = $this->today->subYears(max(1, (int) config('omc.open_window_years', 2)));
+        $name = fn (string $partner) => ActualCashFlowClassifier::normalize($partner);
+        $unmatched = collect($this->omc->unmatchedSupplierPayments($since))->groupBy(fn (array $row) => $name($row['partner']));
+        $ledger = collect($this->omc->supplierAdvances())->groupBy(fn (array $row) => $name($row['partner']));
+        $etripPartners = $this->etripPartners();
+        $summary = [];
+
+        $take = function (array $claims, float $credit, string $basis, string $partner, array &$applied) use (&$suppliers, &$charter, &$payables): float {
+            foreach ($claims as $claim) {
+                if ($credit <= 0.005) {
+                    break;
+                }
+
+                $amount = min($credit, $claim['lei']);
+
+                if ($amount <= 0.005) {
+                    continue;
+                }
+
+                match (true) {
+                    $claim['line'] === 'C10' => $suppliers['line'][$claim['index']] -= $amount,
+                    isset($claim['supplier']) => $payables['lines'][$claim['series']][$claim['index']] -= $amount,
+                    default => $charter[$claim['series']][$claim['index']] -= $amount,
+                };
+
+                $this->recorder->record($claim['line'], $this->grid->monday($claim['index'])->toDateString(), 'advance', 'Avans plătit – '.$partner, -$amount, [
+                    'group' => 'Avansuri plătite anterior',
+                    'reference' => trim(($claim['label'] ?? '').' '.($claim['reference'] ?? '')),
+                    'currency' => 'RON',
+                    'amount' => -$amount,
+                    'meta' => ['basis' => $basis, 'partner' => $partner, 'covers' => $claim['label'] ?? null, 'covers_reference' => $claim['reference'] ?? null, 'covers_lei' => round($claim['lei'], 2)],
+                ]);
+
+                $applied[$claim['line']] = ($applied[$claim['line']] ?? 0.0) + $amount;
+                $credit -= $amount;
+            }
+
+            return $credit;
+        };
+
+        foreach ($unmatched->keys()->merge($ledger->keys())->unique() as $key) {
+            $payments = $unmatched->get($key, collect());
+            $balances = $ledger->get($key, collect());
+            $partner = (string) ($payments->first()['partner'] ?? $balances->first()['partner']);
+            $unmatchedLei = round((float) $payments->sum(fn (array $row) => $this->lei($row['amount'], $row['currency'])), 2);
+            $advance = $balances->groupBy('currency')->map(fn (Collection $rows) => round((float) $rows->sum('amount'), 2))->filter(fn (float $amount) => $amount > 0.5);
+            $advanceLei = round((float) $advance->map(fn (float $amount, string $currency) => $this->lei($amount, $currency))->sum(), 2);
+            // A paid deposit the contract already sets against its last rotations is not used twice.
+            $inUse = round((float) ($charter['deposits_in_use'][$key] ?? 0.0), 2);
+            $available = max(0.0, $advanceLei - $inUse);
+
+            if ($unmatchedLei <= 0.5 && $available <= 0.5) {
+                continue;
+            }
+
+            $applied = [];
+            $claims = fn (array $list, callable $match) => collect($list)->filter($match)->sortBy([['priority', 'asc'], ['index', 'asc']])->values()->all();
+
+            // 1. Paid without an invoice: the supplier's open invoices are settled by it.
+            $left = $take($claims($suppliers['claims'] ?? [], fn (array $c) => $c['key'] === $key), $unmatchedLei, 'nealocat', $partner, $applied);
+
+            // 2. The future dues, from the larger of what is left and the 409 balance.
+            $future = max($left, $available);
+            $basis = $available >= $left ? '409' : 'nealocat';
+            $future = $take($claims($charter['claims'] ?? [], fn (array $c) => $c['key'] === $key), $future, $basis, $partner, $applied);
+            $future = $take($claims($payables['claims'] ?? [], fn (array $c) => ($etripPartners[$c['supplier']] ?? null) === $key), $future, $basis, $partner, $applied);
+
+            $summary[] = [
+                'partner' => $partner,
+                'unmatched_lei' => $unmatchedLei,
+                'unmatched_payments' => $payments->count(),
+                'unmatched_last' => $payments->max('data_doc'),
+                'advance' => $advance->all(),
+                'advance_lei' => $advanceLei,
+                'deposit_in_contract_lei' => $inUse,
+                'applied' => array_map(fn (float $v) => round($v, 2), $applied),
+                'applied_lei' => round(array_sum($applied), 2),
+                'left_lei' => round($future, 2),
+            ];
+        }
+
+        usort($summary, fn (array $a, array $b) => $b['applied_lei'] <=> $a['applied_lei'] ?: $b['advance_lei'] + $b['unmatched_lei'] <=> $a['advance_lei'] + $a['unmatched_lei']);
+        $appliedTotal = array_sum(array_column($summary, 'applied_lei'));
+        $withCredit = count($summary);
+        // The report keeps the suppliers the forecast was changed for, and the larger unused credits.
+        $summary = array_slice(array_values(array_filter($summary, fn (array $row) => $row['applied_lei'] > 0 || $row['left_lei'] >= 10000)), 0, 200);
+        $byLine = [];
+
+        foreach ($summary as $row) {
+            foreach ($row['applied'] as $line => $lei) {
+                $byLine[$line] = ($byLine[$line] ?? 0.0) + $lei;
+            }
+        }
+
+        ksort($byLine);
+
+        return [
+            'suppliers' => $suppliers,
+            'charter' => $charter,
+            'payables' => $payables,
+            'summary' => $summary,
+            '_rows' => count($summary),
+            '_message' => sprintf(
+                '%d furnizori cu plăți nealocate pe facturi sau avans pe 409; %s RON scăzuți din prognoză%s, ca să nu fie plătiți de două ori.',
+                $withCredit,
+                number_format($appliedTotal, 0, ',', '.'),
+                $byLine !== [] ? ' ('.implode(', ', array_map(fn (string $line, float $lei) => $line.' '.number_format($lei, 0, ',', '.'), array_keys($byLine), $byLine)).')' : '',
+            ),
+        ];
+    }
+
+    /**
+     * eTrip supplier (connection|code) → the OMC partner it is surely the
+     * same company as: linked by hand, or linked with a name that agrees.
+     * A VAT number shared by two companies in eTrip must not move an
+     * advance to the wrong one.
+     *
+     * @return array<string, string> normalised partner name by supplier
+     */
+    private function etripPartners(): array
+    {
+        $first = fn (string $name) => strtok(ActualCashFlowClassifier::normalize($name), ' ') ?: '';
+
+        return EtripSupplier::query()
+            ->whereNotNull('partner_id')
+            ->with('partner:id,name')
+            ->get(['id', 'etrip_connection', 'code', 'name', 'partner_id', 'match_source'])
+            ->filter(fn (EtripSupplier $supplier) => $supplier->partner !== null
+                && ($supplier->match_source === EtripSupplier::MATCH_MANUAL || $first($supplier->name) === $first($supplier->partner->name)))
+            ->mapWithKeys(fn (EtripSupplier $supplier) => [$supplier->etrip_connection.'|'.$supplier->code => ActualCashFlowClassifier::normalize($supplier->partner->name)])
+            ->all();
     }
 
     /**

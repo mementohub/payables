@@ -26,6 +26,15 @@ return [
     'keep_snapshots' => 60,
 
     /*
+    | Money already paid to suppliers (payments OMC has not matched to an
+    | invoice, advances on 409) is taken off the forecast, so it is not
+    | paid a second time. Off leaves the forecast gross.
+    */
+    'advances' => [
+        'enabled' => (bool) env('CASHFLOW_ADVANCES', true),
+    ],
+
+    /*
     | Snapshots whose cell details (cash_flow_details) are kept; older ones
     | keep their figures but can no longer be opened cell by cell.
     */
