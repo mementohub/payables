@@ -1,12 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import {
-    CircleAlert,
-    CircleCheck,
-    CircleX,
-    ExternalLink,
-    RefreshCw,
-    Search,
-} from 'lucide-react';
+import { ExternalLink, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import EtripSupplierController from '@/actions/App/Http/Controllers/EtripSupplierController';
@@ -14,6 +7,13 @@ import PaymentCheckController from '@/actions/App/Http/Controllers/PaymentCheckC
 import DatePicker from '@/components/date-picker';
 import EtripSupplierPicker from '@/components/etrip-supplier-picker';
 import type { EtripSupplierOption } from '@/components/etrip-supplier-picker';
+import {
+    Tile,
+    VerdictIcon,
+    dmy,
+    fmt,
+} from '@/components/payment-checks/check-ui';
+import SupplierReconciliationPanel from '@/components/payment-checks/supplier-reconciliation';
 import SavePaymentRequest from '@/components/save-payment-request';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,14 +36,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { show as partnerShow } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
 import type {
     CheckinBreakdownRow,
     CheckinCategory,
     CheckinCheck,
-    CheckinLevel,
     CheckinLine,
+    CheckView,
     ExpectedPayload,
     ExpectedSupplier,
     Props,
@@ -60,36 +61,7 @@ type ExpectedAll = Omit<ExpectedPayload, 'suppliers'> & {
 
 const CURRENCIES = ['EUR', 'USD', 'RON', 'GBP'];
 
-const LEVEL_BORDER: Record<CheckinLevel, string> = {
-    ok: 'border-t-emerald-600',
-    warn: 'border-t-amber-500',
-    crit: 'border-t-destructive',
-};
-
-const LEVEL_TEXT: Record<CheckinLevel, string> = {
-    ok: 'text-emerald-700 dark:text-emerald-500',
-    warn: 'text-amber-600 dark:text-amber-400',
-    crit: 'text-destructive',
-};
-
 type BreakdownMode = 'hotel' | 'day' | 'product';
-
-function fmt(value: number, decimals = 0): string {
-    return new Intl.NumberFormat('ro-RO', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-    }).format(value);
-}
-
-function dmy(value: string | null): string {
-    if (!value) {
-        return '—';
-    }
-
-    const [year, month, day] = value.split('-');
-
-    return `${day}.${month}.${year}`;
-}
 
 function today(): string {
     return new Date().toISOString().slice(0, 10);
@@ -100,54 +72,6 @@ function addDays(date: string, days: number): string {
     d.setDate(d.getDate() + days);
 
     return d.toISOString().slice(0, 10);
-}
-
-function VerdictIcon({ level }: { level: CheckinLevel }) {
-    const className = `size-4 shrink-0 ${LEVEL_TEXT[level]}`;
-
-    if (level === 'ok') {
-        return <CircleCheck className={className} />;
-    }
-
-    if (level === 'warn') {
-        return <CircleAlert className={className} />;
-    }
-
-    return <CircleX className={className} />;
-}
-
-function Tile({
-    label,
-    value,
-    detail,
-    level,
-}: {
-    label: string;
-    value: React.ReactNode;
-    detail?: React.ReactNode;
-    level?: CheckinLevel | null;
-}) {
-    return (
-        <div
-            className={`flex flex-col gap-1 rounded-xl border border-t-[3px] border-sidebar-border/70 bg-card p-4 dark:border-sidebar-border ${
-                level ? LEVEL_BORDER[level] : 'border-t-foreground'
-            }`}
-        >
-            <span className="text-xs tracking-wide text-muted-foreground uppercase">
-                {label}
-            </span>
-            <span
-                className={`font-heading text-2xl leading-tight font-bold ${
-                    level ? LEVEL_TEXT[level] : ''
-                }`}
-            >
-                {value}
-            </span>
-            {detail && (
-                <span className="text-sm text-muted-foreground">{detail}</span>
-            )}
-        </div>
-    );
 }
 
 function Bars({
@@ -393,10 +317,15 @@ export default function PaymentChecksIndex({
 
     const [check, setCheck] = useState<CheckinCheck | null>(null);
     const [checking, setChecking] = useState(
-        Boolean(filters.supplier && filters.connection !== null),
+        Boolean(
+            filters.supplier &&
+            filters.connection !== null &&
+            filters.view === 'checkin',
+        ),
     );
     const [checkError, setCheckError] = useState<string | null>(null);
     const [mode, setMode] = useState<BreakdownMode>('hotel');
+    const [view, setView] = useState<CheckView>(filters.view);
 
     const [expected, setExpected] = useState<ExpectedAll | null>(null);
     const [expectedDays, setExpectedDays] = useState(windows[0] ?? 2);
@@ -530,8 +459,13 @@ export default function PaymentChecksIndex({
     }
 
     useEffect(() => {
-        // A deep link (e.g. from the supplier page) runs its check once on mount.
-        if (!filters.supplier || filters.connection === null) {
+        // A deep link (e.g. from the supplier page) runs its check once on
+        // mount; on the invoices tab, that tab runs its own.
+        if (
+            !filters.supplier ||
+            filters.connection === null ||
+            filters.view !== 'checkin'
+        ) {
             return;
         }
 
@@ -626,6 +560,54 @@ export default function PaymentChecksIndex({
         });
     }
 
+    function chooseSupplier(option: EtripSupplierOption | null) {
+        setSupplier(option);
+        setConnection(option?.connection ?? null);
+        setSupplierCode(option?.code ?? null);
+
+        if (option?.currency && !amount) {
+            setCurrency(option.currency.toUpperCase());
+        }
+    }
+
+    /** Keeps the tab in the address, so a reload or a shared link opens it. */
+    function changeView(next: CheckView) {
+        setView(next);
+
+        const url = new URL(window.location.href);
+
+        if (next === 'checkin') {
+            url.searchParams.delete('view');
+        } else {
+            url.searchParams.set('view', next);
+        }
+
+        window.history.replaceState(window.history.state, '', url);
+    }
+
+    /** From the invoices tab: the services of a check-in range, all types. */
+    function openCheckin(start: string, end: string) {
+        if (!supplierCode || connection === null) {
+            return;
+        }
+
+        changeView('checkin');
+        setFrom(start);
+        setTo(end);
+        setCategory('all');
+        setAmount('');
+        runCheck({
+            connection,
+            supplier: supplierCode,
+            from: start,
+            to: end,
+            category: 'all',
+            amount: '',
+            currency,
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     function pickExpected(row: ExpectedRow) {
         const start = today();
         const end = addDays(start, expectedDays - 1);
@@ -665,7 +647,13 @@ export default function PaymentChecksIndex({
 
     return (
         <>
-            <Head title="Verificare plăți pe check-in" />
+            <Head
+                title={
+                    view === 'invoices'
+                        ? 'Facturi furnizor vs. servicii'
+                        : 'Verificare plăți pe check-in'
+                }
+            />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -674,11 +662,9 @@ export default function PaymentChecksIndex({
                             Verificare plăți pe check-in
                         </h1>
                         <p className="max-w-3xl text-sm text-muted-foreground">
-                            Alege furnizorul și intervalul de check-in din
-                            cerere; pagina adună costul de furnizor al
-                            serviciilor confirmate din eTrip (net de comision,
-                            în moneda furnizorului) și îl compară cu suma
-                            cerută.
+                            {view === 'invoices'
+                                ? 'Facturile furnizorului din eTrip față de serviciile efectiv consumate: ce s-a facturat, ce lipsește și ce a rămas de plată.'
+                                : 'Alege furnizorul și intervalul de check-in din cerere; pagina adună costul de furnizor al serviciilor confirmate din eTrip (net de comision, în moneda furnizorului) și îl compară cu suma cerută.'}
                         </p>
                     </div>
                     {bases.length > 0 && (
@@ -706,449 +692,515 @@ export default function PaymentChecksIndex({
                     )}
                 </div>
 
-                {bases.length === 0 ? (
-                    <Card>
-                        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                            Nicio bază eTrip nu este definită în configurația
-                            aplicației.
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Cererea de plată</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <form
-                                onSubmit={submit}
-                                className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end"
-                            >
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-6">
-                                    <Label htmlFor="check-supplier">
-                                        Furnizor
-                                    </Label>
-                                    <EtripSupplierPicker
-                                        id="check-supplier"
-                                        bases={pickerBases}
-                                        value={
-                                            supplierCode && connection !== null
-                                                ? {
-                                                      connection,
-                                                      code: supplierCode,
-                                                  }
-                                                : null
-                                        }
-                                        onChange={(option) => {
-                                            setSupplier(option);
-                                            setConnection(
-                                                option?.connection ?? null,
-                                            );
-                                            setSupplierCode(
-                                                option?.code ?? null,
-                                            );
+                {bases.length > 0 && (
+                    <Tabs
+                        value={view}
+                        onValueChange={(value) =>
+                            changeView(value as CheckView)
+                        }
+                    >
+                        <TabsList>
+                            <TabsTrigger value="checkin">
+                                Cerere pe check-in
+                            </TabsTrigger>
+                            <TabsTrigger value="invoices">
+                                Facturi vs. servicii
+                            </TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+                )}
 
-                                            if (option?.currency && !amount) {
-                                                setCurrency(
-                                                    option.currency.toUpperCase(),
-                                                );
+                {bases.length > 0 && (
+                    <div className={cn(view !== 'invoices' && 'hidden')}>
+                        <SupplierReconciliationPanel
+                            active={view === 'invoices'}
+                            bases={pickerBases}
+                            connection={connection}
+                            supplierCode={supplierCode}
+                            onSupplierChange={chooseSupplier}
+                            initialFrom={
+                                filters.view === 'invoices'
+                                    ? filters.period_from
+                                    : null
+                            }
+                            initialTo={
+                                filters.view === 'invoices'
+                                    ? filters.period_to
+                                    : null
+                            }
+                            onCheckin={openCheckin}
+                        />
+                    </div>
+                )}
+
+                <div
+                    className={cn(
+                        'flex flex-col gap-4',
+                        view !== 'checkin' && 'hidden',
+                    )}
+                >
+                    {bases.length === 0 ? (
+                        <Card>
+                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                                Nicio bază eTrip nu este definită în
+                                configurația aplicației.
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Cererea de plată</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <form
+                                    onSubmit={submit}
+                                    className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end"
+                                >
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-6">
+                                        <Label htmlFor="check-supplier">
+                                            Furnizor
+                                        </Label>
+                                        <EtripSupplierPicker
+                                            id="check-supplier"
+                                            bases={pickerBases}
+                                            value={
+                                                supplierCode &&
+                                                connection !== null
+                                                    ? {
+                                                          connection,
+                                                          code: supplierCode,
+                                                      }
+                                                    : null
                                             }
-                                        }}
-                                    />
-                                </div>
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-1">
-                                    <Label htmlFor="check-from">
-                                        Check-in de la
-                                    </Label>
-                                    <DatePicker
-                                        id="check-from"
-                                        name="from"
-                                        value={from}
-                                        onChange={setFrom}
-                                        required
-                                    />
-                                </div>
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-1">
-                                    <Label htmlFor="check-to">
-                                        până la (inclusiv)
-                                    </Label>
-                                    <DatePicker
-                                        id="check-to"
-                                        name="to"
-                                        value={to}
-                                        onChange={setTo}
-                                        required
-                                    />
-                                </div>
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-1">
-                                    <Label htmlFor="check-category">
-                                        Categorie
-                                    </Label>
-                                    <Select
-                                        value={category}
-                                        onValueChange={(value) =>
-                                            setCategory(
-                                                value as CheckinCategory,
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            id="check-category"
-                                            className="w-full"
-                                        >
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {Object.entries(categories).map(
-                                                ([value, label]) => (
-                                                    <SelectItem
-                                                        key={value}
-                                                        value={value}
-                                                    >
-                                                        {label}
-                                                    </SelectItem>
-                                                ),
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid min-w-0 gap-1.5 xl:col-span-2">
-                                    <Label htmlFor="check-amount">
-                                        Suma cerută
-                                    </Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            id="check-amount"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            inputMode="decimal"
-                                            placeholder="ex. 140000"
-                                            value={amount}
-                                            onChange={(event) =>
-                                                setAmount(event.target.value)
-                                            }
+                                            onChange={chooseSupplier}
                                         />
+                                    </div>
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-1">
+                                        <Label htmlFor="check-from">
+                                            Check-in de la
+                                        </Label>
+                                        <DatePicker
+                                            id="check-from"
+                                            name="from"
+                                            value={from}
+                                            onChange={setFrom}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-1">
+                                        <Label htmlFor="check-to">
+                                            până la (inclusiv)
+                                        </Label>
+                                        <DatePicker
+                                            id="check-to"
+                                            name="to"
+                                            value={to}
+                                            onChange={setTo}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-1">
+                                        <Label htmlFor="check-category">
+                                            Categorie
+                                        </Label>
                                         <Select
-                                            value={currency}
-                                            onValueChange={setCurrency}
+                                            value={category}
+                                            onValueChange={(value) =>
+                                                setCategory(
+                                                    value as CheckinCategory,
+                                                )
+                                            }
                                         >
                                             <SelectTrigger
-                                                className="w-24"
-                                                aria-label="Monedă"
+                                                id="check-category"
+                                                className="w-full"
                                             >
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {[
-                                                    ...new Set([
-                                                        ...CURRENCIES,
-                                                        currency,
-                                                    ]),
-                                                ].map((code) => (
-                                                    <SelectItem
-                                                        key={code}
-                                                        value={code}
-                                                    >
-                                                        {code}
-                                                    </SelectItem>
-                                                ))}
+                                                {Object.entries(categories).map(
+                                                    ([value, label]) => (
+                                                        <SelectItem
+                                                            key={value}
+                                                            value={value}
+                                                        >
+                                                            {label}
+                                                        </SelectItem>
+                                                    ),
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                </div>
-                                <Button
-                                    type="submit"
-                                    disabled={checking || connection === null}
-                                >
-                                    <Search />
-                                    Verifică
-                                </Button>
-                            </form>
-                            {checkError && (
-                                <p className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                                    {checkError}
-                                </p>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
-
-                {checking && !check && (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {[0, 1, 2, 3].map((index) => (
-                            <Skeleton
-                                key={index}
-                                className="h-24 animate-pulse rounded-xl"
-                            />
-                        ))}
-                    </div>
-                )}
-
-                {check && (
-                    <>
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                            <Tile
-                                label="Valoare eTrip"
-                                value={
-                                    check.totals.length > 0
-                                        ? check.totals
-                                              .map(
-                                                  (total) =>
-                                                      `${fmt(total.cost)} ${total.currency}`,
-                                              )
-                                              .join(' + ')
-                                        : '0'
-                                }
-                                detail={`${check.items} servicii${check.bookings ? ` · ${check.bookings} dosare` : ''} · check-in ${dmy(check.from)} – ${dmy(check.to)} · ${supplier?.name ?? check.supplier.name}`}
-                            />
-                            {check.requested ? (
-                                <>
-                                    <Tile
-                                        label="Suma cerută"
-                                        value={`${fmt(check.requested.amount)} ${check.requested.currency}`}
-                                        detail={
-                                            check.requested.rate
-                                                ? `convertită la ${fmt(check.requested.compared_amount ?? 0, 2)} ${check.requested.compared_currency} · curs BNR ${dmy(check.requested.rate.date)}: 1 ${check.requested.rate.from} = ${check.requested.rate.value} ${check.requested.rate.to}`
-                                                : `comparată cu costul eTrip în ${check.requested.compared_currency}`
+                                    <div className="grid min-w-0 gap-1.5 xl:col-span-2">
+                                        <Label htmlFor="check-amount">
+                                            Suma cerută
+                                        </Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="check-amount"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                inputMode="decimal"
+                                                placeholder="ex. 140000"
+                                                value={amount}
+                                                onChange={(event) =>
+                                                    setAmount(
+                                                        event.target.value,
+                                                    )
+                                                }
+                                            />
+                                            <Select
+                                                value={currency}
+                                                onValueChange={setCurrency}
+                                            >
+                                                <SelectTrigger
+                                                    className="w-24"
+                                                    aria-label="Monedă"
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {[
+                                                        ...new Set([
+                                                            ...CURRENCIES,
+                                                            currency,
+                                                        ]),
+                                                    ].map((code) => (
+                                                        <SelectItem
+                                                            key={code}
+                                                            value={code}
+                                                        >
+                                                            {code}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="submit"
+                                        disabled={
+                                            checking || connection === null
                                         }
-                                    />
-                                    <Tile
-                                        label="Diferența (cerut − eTrip)"
-                                        level={check.requested.level}
-                                        value={
-                                            check.requested.diff === null
-                                                ? '–'
-                                                : `${check.requested.diff > 0 ? '+' : ''}${fmt(check.requested.diff)} ${check.requested.compared_currency}`
-                                        }
-                                        detail={
-                                            <span className="flex items-start gap-1.5">
-                                                <VerdictIcon
-                                                    level={
-                                                        check.requested.level
-                                                    }
-                                                />
-                                                <span>
-                                                    {check.requested
-                                                        .diff_pct !== null &&
-                                                        `${check.requested.diff_pct > 0 ? '+' : ''}${fmt(check.requested.diff_pct, 2)}% · `}
-                                                    {check.requested.message}
-                                                </span>
-                                            </span>
-                                        }
-                                    />
-                                </>
-                            ) : (
-                                <Tile
-                                    label="Suma cerută"
-                                    value={
-                                        <span className="text-muted-foreground">
-                                            –
-                                        </span>
-                                    }
-                                    detail="Introdu suma din cerere pentru a vedea diferența."
-                                />
-                            )}
-                            <Tile
-                                label="Compoziție"
-                                value={
-                                    <span className="text-base leading-snug font-semibold">
-                                        {composition.length > 0
-                                            ? composition.map((row) => (
-                                                  <span
-                                                      key={`${row.product_type}-${row.currency}`}
-                                                      className="block"
-                                                  >
-                                                      {row.label}{' '}
-                                                      {fmt(row.cost)}{' '}
-                                                      {row.currency}
-                                                  </span>
-                                              ))
-                                            : '–'}
-                                    </span>
-                                }
-                                detail={
-                                    check.by_product.length > 3
-                                        ? `+${check.by_product.length - 3} alte tipuri`
-                                        : 'tipuri de produs în interval'
-                                }
-                            />
-                        </div>
-
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Ce intră în sumă</CardTitle>
-                                <CardDescription>
-                                    Cost pe hotel / serviciu, pe zi de check-in
-                                    sau pe tip de produs, cu numărul de dosare.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-3">
-                                <Tabs
-                                    value={mode}
-                                    onValueChange={(value) =>
-                                        setMode(value as BreakdownMode)
-                                    }
-                                >
-                                    <TabsList>
-                                        <TabsTrigger value="hotel">
-                                            Pe hotel / serviciu
-                                        </TabsTrigger>
-                                        <TabsTrigger value="day">
-                                            Pe zi de check-in
-                                        </TabsTrigger>
-                                        <TabsTrigger value="product">
-                                            Pe tip de produs
-                                        </TabsTrigger>
-                                    </TabsList>
-                                </Tabs>
-                                <Bars
-                                    mode={mode}
-                                    rows={
-                                        mode === 'hotel'
-                                            ? check.by_hotel
-                                            : mode === 'day'
-                                              ? check.by_day
-                                              : check.by_product
-                                    }
-                                />
+                                    >
+                                        <Search />
+                                        Verifică
+                                    </Button>
+                                </form>
+                                {checkError && (
+                                    <p className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                                        {checkError}
+                                    </p>
+                                )}
                             </CardContent>
                         </Card>
+                    )}
 
-                        {check.requested && partnersCompanyId !== null && (
-                            <SavePaymentRequest
-                                title="Salvează verificarea în registru"
-                                description="Cererea rămâne în registru cu cifrele eTrip din acest moment, ca dovadă pentru aprobare."
-                                payload={{
-                                    company_id: partnersCompanyId,
-                                    kind: 'checkin',
-                                    supplier_name:
-                                        supplier?.name ?? check.supplier.name,
-                                    etrip_supplier_id: check.supplier.id,
-                                    partner_id: supplier?.partner_id ?? null,
-                                    requested_amount: check.requested.amount,
-                                    requested_currency:
-                                        check.requested.currency,
-                                    checkin_from: check.from,
-                                    checkin_to: check.to,
-                                    category: check.category,
-                                    expected_amount: check.requested.etrip,
-                                    expected_currency:
-                                        check.requested.compared_currency,
-                                    difference: check.requested.diff,
-                                    difference_pct: check.requested.diff_pct,
-                                    level: check.requested.level,
-                                    verdict:
-                                        check.requested.diff === null
-                                            ? 'unconverted'
-                                            : check.requested.level,
-                                    snapshot: {
-                                        totals: check.totals,
-                                        items: check.items,
-                                        bookings: check.bookings,
-                                        compared_amount:
-                                            check.requested.compared_amount,
-                                        rate: check.requested.rate,
-                                        message: check.requested.message,
-                                    },
-                                }}
-                            />
-                        )}
+                    {checking && !check && (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {[0, 1, 2, 3].map((index) => (
+                                <Skeleton
+                                    key={index}
+                                    className="h-24 animate-pulse rounded-xl"
+                                />
+                            ))}
+                        </div>
+                    )}
 
-                        <LinesTable check={check} />
-                    </>
-                )}
-
-                {bases.length > 0 && (
-                    <Card>
-                        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-                            <div>
-                                <CardTitle>Cereri de așteptat</CardTitle>
-                                <CardDescription>
-                                    Furnizorii cu cele mai mari costuri de
-                                    check-in în următoarele zile (toate
-                                    serviciile, moneda furnizorului).
-                                    {expected?.cached_at &&
-                                        ` Calculat la ${new Date(expected.cached_at).toLocaleString('ro-RO')}.`}
-                                </CardDescription>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Tabs
-                                    value={String(expectedDays)}
-                                    onValueChange={(value) =>
-                                        setExpectedDays(Number(value))
-                                    }
-                                >
-                                    <TabsList>
-                                        {windows.map((days) => (
-                                            <TabsTrigger
-                                                key={days}
-                                                value={String(days)}
-                                            >
-                                                {days === 2
-                                                    ? 'Azi + mâine'
-                                                    : `${days} zile`}
-                                            </TabsTrigger>
-                                        ))}
-                                    </TabsList>
-                                </Tabs>
+                    {check && (
+                        <>
+                            <div className="-mb-1 flex justify-end">
                                 <Button
-                                    variant="ghost"
+                                    variant="link"
                                     size="sm"
-                                    onClick={refreshExpected}
-                                    disabled={expectedLoading}
-                                    title="Recalculează din eTrip"
+                                    className="h-auto p-0"
+                                    onClick={() => {
+                                        changeView('invoices');
+                                        window.scrollTo({
+                                            top: 0,
+                                            behavior: 'smooth',
+                                        });
+                                    }}
                                 >
-                                    <RefreshCw
-                                        className={
-                                            expectedLoading
-                                                ? 'animate-spin'
-                                                : ''
-                                        }
-                                    />
+                                    Facturile acestui furnizor față de servicii
+                                    →
                                 </Button>
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            {expectedError && (
-                                <p className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                                    {expectedError}
-                                </p>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <Tile
+                                    label="Valoare eTrip"
+                                    value={
+                                        check.totals.length > 0
+                                            ? check.totals
+                                                  .map(
+                                                      (total) =>
+                                                          `${fmt(total.cost)} ${total.currency}`,
+                                                  )
+                                                  .join(' + ')
+                                            : '0'
+                                    }
+                                    detail={`${check.items} servicii${check.bookings ? ` · ${check.bookings} dosare` : ''} · check-in ${dmy(check.from)} – ${dmy(check.to)} · ${supplier?.name ?? check.supplier.name}`}
+                                />
+                                {check.requested ? (
+                                    <>
+                                        <Tile
+                                            label="Suma cerută"
+                                            value={`${fmt(check.requested.amount)} ${check.requested.currency}`}
+                                            detail={
+                                                check.requested.rate
+                                                    ? `convertită la ${fmt(check.requested.compared_amount ?? 0, 2)} ${check.requested.compared_currency} · curs BNR ${dmy(check.requested.rate.date)}: 1 ${check.requested.rate.from} = ${check.requested.rate.value} ${check.requested.rate.to}`
+                                                    : `comparată cu costul eTrip în ${check.requested.compared_currency}`
+                                            }
+                                        />
+                                        <Tile
+                                            label="Diferența (cerut − eTrip)"
+                                            level={check.requested.level}
+                                            value={
+                                                check.requested.diff === null
+                                                    ? '–'
+                                                    : `${check.requested.diff > 0 ? '+' : ''}${fmt(check.requested.diff)} ${check.requested.compared_currency}`
+                                            }
+                                            detail={
+                                                <span className="flex items-start gap-1.5">
+                                                    <VerdictIcon
+                                                        level={
+                                                            check.requested
+                                                                .level
+                                                        }
+                                                    />
+                                                    <span>
+                                                        {check.requested
+                                                            .diff_pct !==
+                                                            null &&
+                                                            `${check.requested.diff_pct > 0 ? '+' : ''}${fmt(check.requested.diff_pct, 2)}% · `}
+                                                        {
+                                                            check.requested
+                                                                .message
+                                                        }
+                                                    </span>
+                                                </span>
+                                            }
+                                        />
+                                    </>
+                                ) : (
+                                    <Tile
+                                        label="Suma cerută"
+                                        value={
+                                            <span className="text-muted-foreground">
+                                                –
+                                            </span>
+                                        }
+                                        detail="Introdu suma din cerere pentru a vedea diferența."
+                                    />
+                                )}
+                                <Tile
+                                    label="Compoziție"
+                                    value={
+                                        <span className="text-base leading-snug font-semibold">
+                                            {composition.length > 0
+                                                ? composition.map((row) => (
+                                                      <span
+                                                          key={`${row.product_type}-${row.currency}`}
+                                                          className="block"
+                                                      >
+                                                          {row.label}{' '}
+                                                          {fmt(row.cost)}{' '}
+                                                          {row.currency}
+                                                      </span>
+                                                  ))
+                                                : '–'}
+                                        </span>
+                                    }
+                                    detail={
+                                        check.by_product.length > 3
+                                            ? `+${check.by_product.length - 3} alte tipuri`
+                                            : 'tipuri de produs în interval'
+                                    }
+                                />
+                            </div>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Ce intră în sumă</CardTitle>
+                                    <CardDescription>
+                                        Cost pe hotel / serviciu, pe zi de
+                                        check-in sau pe tip de produs, cu
+                                        numărul de dosare.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <Tabs
+                                        value={mode}
+                                        onValueChange={(value) =>
+                                            setMode(value as BreakdownMode)
+                                        }
+                                    >
+                                        <TabsList>
+                                            <TabsTrigger value="hotel">
+                                                Pe hotel / serviciu
+                                            </TabsTrigger>
+                                            <TabsTrigger value="day">
+                                                Pe zi de check-in
+                                            </TabsTrigger>
+                                            <TabsTrigger value="product">
+                                                Pe tip de produs
+                                            </TabsTrigger>
+                                        </TabsList>
+                                    </Tabs>
+                                    <Bars
+                                        mode={mode}
+                                        rows={
+                                            mode === 'hotel'
+                                                ? check.by_hotel
+                                                : mode === 'day'
+                                                  ? check.by_day
+                                                  : check.by_product
+                                        }
+                                    />
+                                </CardContent>
+                            </Card>
+
+                            {check.requested && partnersCompanyId !== null && (
+                                <SavePaymentRequest
+                                    title="Salvează verificarea în registru"
+                                    description="Cererea rămâne în registru cu cifrele eTrip din acest moment, ca dovadă pentru aprobare."
+                                    payload={{
+                                        company_id: partnersCompanyId,
+                                        kind: 'checkin',
+                                        supplier_name:
+                                            supplier?.name ??
+                                            check.supplier.name,
+                                        etrip_supplier_id: check.supplier.id,
+                                        partner_id:
+                                            supplier?.partner_id ?? null,
+                                        requested_amount:
+                                            check.requested.amount,
+                                        requested_currency:
+                                            check.requested.currency,
+                                        checkin_from: check.from,
+                                        checkin_to: check.to,
+                                        category: check.category,
+                                        expected_amount: check.requested.etrip,
+                                        expected_currency:
+                                            check.requested.compared_currency,
+                                        difference: check.requested.diff,
+                                        difference_pct:
+                                            check.requested.diff_pct,
+                                        level: check.requested.level,
+                                        verdict:
+                                            check.requested.diff === null
+                                                ? 'unconverted'
+                                                : check.requested.level,
+                                        snapshot: {
+                                            totals: check.totals,
+                                            items: check.items,
+                                            bookings: check.bookings,
+                                            compared_amount:
+                                                check.requested.compared_amount,
+                                            rate: check.requested.rate,
+                                            message: check.requested.message,
+                                        },
+                                    }}
+                                />
                             )}
-                            {expectedLoading && !expected ? (
-                                <Skeleton className="h-32 animate-pulse rounded-xl" />
-                            ) : (
-                                <div className="max-h-[420px] overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                                    <table className="w-full text-sm">
-                                        <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground uppercase backdrop-blur">
-                                            <tr>
-                                                <th className="px-3 py-2">
-                                                    Furnizor
-                                                </th>
-                                                <th className="px-3 py-2 text-right">
-                                                    Dosare
-                                                </th>
-                                                <th className="px-3 py-2 text-right">
-                                                    Cost
-                                                </th>
-                                                <th className="px-3 py-2 text-right">
-                                                    Acțiuni
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                                            {(expected?.suppliers ?? [])
-                                                .length === 0 && (
+
+                            <LinesTable check={check} />
+                        </>
+                    )}
+
+                    {bases.length > 0 && (
+                        <Card>
+                            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+                                <div>
+                                    <CardTitle>Cereri de așteptat</CardTitle>
+                                    <CardDescription>
+                                        Furnizorii cu cele mai mari costuri de
+                                        check-in în următoarele zile (toate
+                                        serviciile, moneda furnizorului).
+                                        {expected?.cached_at &&
+                                            ` Calculat la ${new Date(expected.cached_at).toLocaleString('ro-RO')}.`}
+                                    </CardDescription>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Tabs
+                                        value={String(expectedDays)}
+                                        onValueChange={(value) =>
+                                            setExpectedDays(Number(value))
+                                        }
+                                    >
+                                        <TabsList>
+                                            {windows.map((days) => (
+                                                <TabsTrigger
+                                                    key={days}
+                                                    value={String(days)}
+                                                >
+                                                    {days === 2
+                                                        ? 'Azi + mâine'
+                                                        : `${days} zile`}
+                                                </TabsTrigger>
+                                            ))}
+                                        </TabsList>
+                                    </Tabs>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={refreshExpected}
+                                        disabled={expectedLoading}
+                                        title="Recalculează din eTrip"
+                                    >
+                                        <RefreshCw
+                                            className={
+                                                expectedLoading
+                                                    ? 'animate-spin'
+                                                    : ''
+                                            }
+                                        />
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                {expectedError && (
+                                    <p className="mb-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                                        {expectedError}
+                                    </p>
+                                )}
+                                {expectedLoading && !expected ? (
+                                    <Skeleton className="h-32 animate-pulse rounded-xl" />
+                                ) : (
+                                    <div className="max-h-[420px] overflow-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground uppercase backdrop-blur">
                                                 <tr>
-                                                    <td
-                                                        className="px-3 py-6 text-center text-muted-foreground"
-                                                        colSpan={4}
-                                                    >
-                                                        Nimic în interval.
-                                                    </td>
+                                                    <th className="px-3 py-2">
+                                                        Furnizor
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Dosare
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Cost
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Acțiuni
+                                                    </th>
                                                 </tr>
-                                            )}
-                                            {(expected?.suppliers ?? []).map(
-                                                (row) => (
+                                            </thead>
+                                            <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                                                {(expected?.suppliers ?? [])
+                                                    .length === 0 && (
+                                                    <tr>
+                                                        <td
+                                                            className="px-3 py-6 text-center text-muted-foreground"
+                                                            colSpan={4}
+                                                        >
+                                                            Nimic în interval.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                {(
+                                                    expected?.suppliers ?? []
+                                                ).map((row) => (
                                                     <tr
                                                         key={`${row.connection}-${row.supplier_code}-${row.currency}`}
                                                     >
@@ -1211,48 +1263,50 @@ export default function PaymentChecksIndex({
                                                             </div>
                                                         </td>
                                                     </tr>
-                                                ),
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Cum se citește</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm text-muted-foreground">
+                            <p>
+                                <b className="text-foreground">Sursa:</b> eTrip,
+                                live la fiecare verificare — dosare cu status
+                                confirmat, servicii confirmate la client și
+                                neanulate la furnizor; cost = brut + taxe −
+                                comision furnizor, în moneda furnizorului,
+                                grupat pe data de check-in. Serviciile din
+                                pachete sunt luate pe componente, deci un dosar
+                                poate apărea cu mai multe rânduri.
+                            </p>
+                            <p>
+                                <b className="text-foreground">Limite:</b> eTrip
+                                nu înregistrează plățile către furnizori, iar
+                                facturile furnizorilor din grup merg în altă
+                                bază OMC, așa că „deja plătit” se verifică pe
+                                pagina furnizorului, din facturile sincronizate.
+                            </p>
+                            <p>
+                                <b className="text-foreground">
+                                    Diferențe tipice:
+                                </b>{' '}
+                                dosare create sau modificate după cererea
+                                furnizorului, penalizări de anulare, early
+                                check-in / late check-out, taxe locale facturate
+                                separat, curs de schimb când furnizorul
+                                facturează în altă monedă.
+                            </p>
                         </CardContent>
                     </Card>
-                )}
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Cum se citește</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm text-muted-foreground">
-                        <p>
-                            <b className="text-foreground">Sursa:</b> eTrip,
-                            live la fiecare verificare — dosare cu status
-                            confirmat, servicii confirmate la client și
-                            neanulate la furnizor; cost = brut + taxe − comision
-                            furnizor, în moneda furnizorului, grupat pe data de
-                            check-in. Serviciile din pachete sunt luate pe
-                            componente, deci un dosar poate apărea cu mai multe
-                            rânduri.
-                        </p>
-                        <p>
-                            <b className="text-foreground">Limite:</b> eTrip nu
-                            înregistrează plățile către furnizori, iar facturile
-                            furnizorilor din grup merg în altă bază OMC, așa că
-                            „deja plătit” se verifică pe pagina furnizorului,
-                            din facturile sincronizate.
-                        </p>
-                        <p>
-                            <b className="text-foreground">Diferențe tipice:</b>{' '}
-                            dosare create sau modificate după cererea
-                            furnizorului, penalizări de anulare, early check-in
-                            / late check-out, taxe locale facturate separat,
-                            curs de schimb când furnizorul facturează în altă
-                            monedă.
-                        </p>
-                    </CardContent>
-                </Card>
+                </div>
             </div>
         </>
     );

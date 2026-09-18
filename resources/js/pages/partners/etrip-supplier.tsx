@@ -1,5 +1,5 @@
 import { Form, Link } from '@inertiajs/react';
-import { ClipboardCheck, Link2, Link2Off } from 'lucide-react';
+import { ClipboardCheck, FileSearch, Link2, Link2Off } from 'lucide-react';
 import { useState } from 'react';
 import EtripSupplierController from '@/actions/App/Http/Controllers/EtripSupplierController';
 import EtripSupplierPicker from '@/components/etrip-supplier-picker';
@@ -66,6 +66,20 @@ export default function EtripSupplierSection({
                         >
                             <ClipboardCheck />
                             Verifică cereri pe check-in
+                        </Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                        <Link
+                            href={paymentChecksIndex({
+                                query: {
+                                    view: 'invoices',
+                                    connection: linked.etrip_connection,
+                                    supplier: linked.code,
+                                },
+                            })}
+                        >
+                            <FileSearch />
+                            Facturi vs. servicii
                         </Link>
                     </Button>
                 </>

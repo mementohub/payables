@@ -7,6 +7,7 @@ use App\Models\EtripSupplier;
 use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\Etrip\EtripReader;
 use App\Services\Etrip\EtripSupplierSyncService;
+use App\Services\Etrip\SupplierReconciliationService;
 use App\Services\Omc\OmcReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -17,7 +18,8 @@ use Inertia\Response;
 
 /**
  * Verificare plăți → Check-in (eTrip): the supplier cost of the services
- * booked in any eTrip base, compared with a payment request.
+ * booked in any eTrip base, compared with a payment request, and the
+ * supplier's eTrip invoices against the services it delivered.
  */
 class PaymentCheckController extends Controller
 {
@@ -36,6 +38,7 @@ class PaymentCheckController extends Controller
             'categories' => CheckinCostCheckService::CATEGORY_LABELS,
             'windows' => self::EXPECTED_WINDOWS,
             'filters' => [
+                'view' => $request->string('view')->toString() === 'invoices' ? 'invoices' : 'checkin',
                 'connection' => array_key_exists($requested, (array) config('etrip.connections')) ? $requested : null,
                 'supplier' => $request->string('supplier')->toString() ?: null,
                 'from' => $request->string('from')->toString() ?: Carbon::today()->toDateString(),
@@ -45,6 +48,8 @@ class PaymentCheckController extends Controller
                     : 'hotel',
                 'amount' => $request->string('amount')->toString() ?: null,
                 'currency' => $request->string('currency')->toString() ?: null,
+                'period_from' => $request->date('period_from')?->toDateString(),
+                'period_to' => $request->date('period_to')?->toDateString(),
             ],
         ]);
     }
@@ -82,6 +87,39 @@ class PaymentCheckController extends Controller
             $validated['category'] ?? 'hotel',
             isset($validated['amount']) && $validated['amount'] !== '' ? (float) $validated['amount'] : null,
             $validated['currency'] ?? null,
+        ));
+    }
+
+    /**
+     * The supplier's eTrip invoices dated in the range against the services
+     * it delivered with check-in in the range, read live.
+     *
+     * @return array<string, mixed>
+     */
+    public function reconcile(Request $request, SupplierReconciliationService $reconciliation, EtripSupplierSyncService $sync): array
+    {
+        $validated = $request->validate([
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
+            'supplier' => ['required', 'string', 'max:50'],
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+        ]);
+
+        $connection = $validated['connection'];
+
+        $supplier = EtripSupplier::query()
+            ->forConnection($connection)
+            ->where('code', $validated['supplier'])
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($connection, $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
+
+        return $this->readingEtrip(fn () => $reconciliation->reconcile(
+            $connection,
+            $supplier,
+            Carbon::parse($validated['from'])->startOfDay(),
+            Carbon::parse($validated['to'])->startOfDay(),
         ));
     }
 
