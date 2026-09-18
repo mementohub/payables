@@ -28,6 +28,18 @@ class CashFlowReportBuilder
     /** Booking segment → receipts line. */
     public const SEGMENT_LINES = ['pachete' => 'B1', 'circuite' => 'B2', 'exotic' => 'B3', 'sphinx' => 'B4', 'cazare' => 'B5', 'bilete' => 'B6', 'altele' => 'B7'];
 
+    /** Charter series → report line. */
+    private const CHARTER_LINES = [
+        CharterContract::STATUS_SIGNED => 'C6',
+        CharterContract::STATUS_DRAFT => 'C7',
+        'deposit' => 'C8',
+        'taxes' => 'C9',
+        'incoming' => 'B10',
+    ];
+
+    /** eTrip payable category → product payments line. */
+    public const PAYABLE_LINES = ['hotel' => 'C1', 'transfer' => 'C2', 'insurance' => 'C3', 'flight' => 'C4', 'other' => 'C5'];
+
     private WeekGrid $grid;
 
     private CarbonImmutable $today;
@@ -66,6 +78,7 @@ class CashFlowReportBuilder
         private CashFlowParameters $parameters,
         private ReceivablesScheduler $scheduler,
         private ActualCashFlowClassifier $classifier,
+        private CashFlowDetailRecorder $recorder,
     ) {}
 
     public function build(?string $builtBy = null, ?CarbonInterface $today = null): CashFlowSnapshot
@@ -89,6 +102,13 @@ class CashFlowReportBuilder
         ]);
 
         try {
+            $this->recorder->start();
+        } catch (Throwable $e) {
+            // The report goes on without its cell details.
+            report($e);
+        }
+
+        try {
             $payload = $this->compute();
             $failed = array_filter($this->sources, fn (array $source) => $source['status'] === 'error');
 
@@ -105,6 +125,12 @@ class CashFlowReportBuilder
         $snapshot->sources = $this->sources;
         $snapshot->duration_ms = (int) round((microtime(true) - $startedAt) * 1000);
         $snapshot->save();
+
+        try {
+            $snapshot->payload !== null ? $this->recorder->attach($snapshot) : $this->recorder->discard();
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         $this->prune();
 
@@ -163,6 +189,7 @@ class CashFlowReportBuilder
     private function source(string $key, string $label, callable $read): mixed
     {
         $started = microtime(true);
+        $this->recorder->source($key);
 
         try {
             $result = $read();
@@ -182,6 +209,7 @@ class CashFlowReportBuilder
             return $result;
         } catch (Throwable $e) {
             report($e);
+            $this->recorder->forget($key);
             $cause = $e->getPrevious() ?? $e;
             $this->sources[] = [
                 'key' => $key,
@@ -361,6 +389,7 @@ class CashFlowReportBuilder
         $lines = array_fill_keys(array_keys(BookingSegments::LABELS), $this->grid->zeros());
         $overdueRecent = [];
         $overdueOld = [];
+        $overdueRows = ['recent' => [], 'old' => []];
         $beyond = [];
         $structure = [];
         $recentDays = (int) ($this->params['overdue']['recent_days'] ?? 60);
@@ -383,22 +412,46 @@ class CashFlowReportBuilder
                     $tranches++;
                     $currency = $tranche['currency'];
                     $lei = $this->lei($tranche['amount'], $currency);
-                    $due = CarbonImmutable::parse($tranche['date']);
+                    $due = $this->day($tranche['date']);
+                    $piece = [
+                        'client' => $booking['client'] ?? null,
+                        'booking' => $booking['id'],
+                        'connection' => $connection,
+                        'segment' => $segment,
+                        'channel' => $channel,
+                        'type' => $tranche['type'],
+                        'due' => $tranche['date'],
+                        'currency' => $currency,
+                        'amount' => $tranche['amount'],
+                        'lei' => $lei,
+                        'start_date' => $booking['start_date'] ?? null,
+                    ];
 
                     if ($due->lt($this->today)) {
-                        if ($due->diffInDays($this->today) <= $recentDays) {
+                        $days = (int) $due->diffInDays($this->today);
+
+                        if ($days <= $recentDays) {
                             $bucket = 'restant_recent';
                             $overdueRecent[$currency] = ($overdueRecent[$currency] ?? 0.0) + $tranche['amount'];
+                            $overdueRows['recent'][] = [...$piece, 'days' => $days];
                         } else {
                             $bucket = 'restant_vechi';
                             $overdueOld[$currency] = ($overdueOld[$currency] ?? 0.0) + $tranche['amount'];
+                            $overdueRows['old'][] = [...$piece, 'days' => $days];
                         }
                     } elseif ($this->grid->index($due) === null) {
                         $bucket = 'dupa_orizont';
                         $beyond[$currency] = ($beyond[$currency] ?? 0.0) + $tranche['amount'];
                     } else {
                         $bucket = $tranche['type'];
-                        $this->grid->add($lines[$segment], $due, $lei);
+                        $this->put($lines[$segment], self::SEGMENT_LINES[$segment], $due, $lei, 'tranche', $this->bookingLabel($piece), [
+                            'group' => $tranche['type'],
+                            'reference' => $booking['id'],
+                            'date' => $tranche['date'],
+                            'currency' => $currency,
+                            'amount' => $tranche['amount'],
+                            'meta' => ['connection' => $connection, 'channel' => $channel, 'start_date' => $booking['start_date'] ?? null, 'total_due' => round((float) $booking['total_due'], 2), 'paid' => round((float) $booking['paid'], 2)],
+                        ]);
                     }
 
                     $key = "{$segment}|{$bucket}|{$channel}|{$currency}";
@@ -414,6 +467,7 @@ class CashFlowReportBuilder
             'lines' => $lines,
             'overdue_recent' => array_map(fn (float $v) => round($v, 2), $overdueRecent),
             'overdue_old' => array_map(fn (float $v) => round($v, 2), $overdueOld),
+            'overdue_rows' => $overdueRows,
             'beyond' => array_map(fn (float $v) => round($v, 2), $beyond),
             'structure' => array_values(array_map(fn (array $row) => [...$row, 'amount' => round($row['amount'], 2), 'lei' => round($row['lei'], 2)], $structure)),
             'bookings' => $bookings,
@@ -444,14 +498,39 @@ class CashFlowReportBuilder
                 $rows++;
                 $factor = in_array($row['category'], ['hotel', 'transfer'], true) ? 1 - $prepaid : 1;
                 $lei = $this->lei($row['cost'], $row['currency']) * $factor;
-                $this->grid->add($lines[$row['category']], $row['week'], $lei, carryEarly: true);
+                $week = CarbonImmutable::parse($row['week']);
+                // The check-ins paid in that week; the first week also carries the earlier ones.
+                $checkinFrom = $week->addDays($daysBefore)->max($firstCheckin);
+                $this->put($lines[$row['category']], self::PAYABLE_LINES[$row['category']] ?? 'C5', $row['week'], $lei, 'services', $row['supplier_name'] ?? $row['supplier'] ?? 'Furnizor eTrip', [
+                    'group' => self::PAYABLE_LABELS[$row['category']] ?? $row['category'],
+                    'reference' => $row['supplier'] ?? null,
+                    'currency' => $row['currency'],
+                    'amount' => $row['cost'] * $factor,
+                    'meta' => [
+                        'connection' => $connection,
+                        'supplier' => $row['supplier'] ?? null,
+                        'category' => $row['category'],
+                        'items' => $row['items'],
+                        'bookings' => $row['bookings'] ?? null,
+                        'checkin_from' => $checkinFrom->toDateString(),
+                        'checkin_to' => $week->addDays($daysBefore + 6)->toDateString(),
+                        'days_before' => $daysBefore,
+                        'factor' => round($factor, 4),
+                    ],
+                ], carryEarly: true);
                 $this->collect($structure, $row['category'], $row['currency'], $row['cost'] * $factor, $lei, $row['items']);
             }
 
             foreach ($this->etrip->ticketsOrdered($connection, $this->today->subDays($ticketDays), $this->today->addDay()) as $row) {
                 $rows++;
                 $lei = $this->lei($row['cost'], $row['currency']);
-                $lines['flight'][0] += $lei;
+                $this->put($lines['flight'], 'C4', $this->grid->start, $lei, 'tickets', $row['supplier_name'] ?? $row['supplier'] ?? 'Bilete de linie', [
+                    'group' => 'Bilete comandate',
+                    'reference' => $row['supplier'] ?? null,
+                    'currency' => $row['currency'],
+                    'amount' => $row['cost'],
+                    'meta' => ['connection' => $connection, 'supplier' => $row['supplier'] ?? null, 'items' => $row['items'], 'ordered_week' => $row['week'], 'ticket_days' => $ticketDays],
+                ]);
                 $this->collect($structure, 'flight', $row['currency'], $row['cost'], $lei, $row['items']);
             }
         }
@@ -559,11 +638,21 @@ class CashFlowReportBuilder
                 $payDate = $flight->paymentDate();
                 $flightTaxes = (float) $flight->taxes;
 
+                $flightLabel = trim(implode(' ', array_filter([$flight->flight_no, $flight->route])));
+                $flightMeta = ['contract_id' => $contract->id, 'flight_id' => $flight->id, 'flight_date' => $flight->flight_date?->toDateString(), 'season' => $contract->season, 'operator' => $flight->operator ?? $contract->operator];
+
                 if ($payDate->gte($this->today)) {
                     $due = (float) $flight->net_value + ($withTaxes ? $flightTaxes : 0.0) - ($settled[$flight->id] ?? 0.0);
                     $key = $incomingContract ? 'incoming' : $bucket;
 
-                    if ($this->grid->add($series[$key], $payDate, $this->charterLei($due, $contract))) {
+                    if ($this->put($series[$key], self::CHARTER_LINES[$key], $payDate, $this->charterLei($due, $contract), 'rotation', $contract->name, [
+                        'group' => $contract->name,
+                        'reference' => $flightLabel !== '' ? $flightLabel : $flight->flight_date?->format('d.m.Y'),
+                        'date' => $payDate->toDateString(),
+                        'currency' => OmcCashFlowReader::currency((string) $contract->currency),
+                        'amount' => $due,
+                        'meta' => [...$flightMeta, 'net' => round((float) $flight->net_value, 2), 'taxes' => $withTaxes ? round($flightTaxes, 2) : 0.0, 'deposit_covered' => round($settled[$flight->id] ?? 0.0, 2), 'seats' => $flight->seats],
+                    ])) {
                         $row['in_horizon'] += $due;
 
                         if ($withTaxes) {
@@ -577,7 +666,14 @@ class CashFlowReportBuilder
                 if ($flightTaxes > 0 && $taxDate !== null && $taxDate->gte($this->today)) {
                     $key = $incomingContract ? 'incoming' : 'taxes';
 
-                    if ($this->grid->add($series[$key], $taxDate, $this->charterLei($flightTaxes, $contract))) {
+                    if ($this->put($series[$key], self::CHARTER_LINES[$key], $taxDate, $this->charterLei($flightTaxes, $contract), 'airport_taxes', $contract->name, [
+                        'group' => $contract->name,
+                        'reference' => ($flightLabel !== '' ? $flightLabel.' · ' : '').'taxe aeroport',
+                        'date' => $taxDate->toDateString(),
+                        'currency' => OmcCashFlowReader::currency((string) $contract->currency),
+                        'amount' => $flightTaxes,
+                        'meta' => $flightMeta,
+                    ])) {
                         $row['taxes'] += $flightTaxes;
                     }
                 }
@@ -585,14 +681,30 @@ class CashFlowReportBuilder
                 if (! $incomingContract && $factor > 0 && array_key_exists($contract->season, $estimates)) {
                     $shifted = $payDate->copy()->addDays(364);
 
+                    $estimateMeta = [...$flightMeta, 'target_season' => $estimates[$contract->season] ?? null, 'factor' => $factor];
+
                     if ($shifted->gte($this->today)) {
-                        $this->grid->add($estimate, $shifted, $this->charterLei((float) $flight->net_value * $factor, $contract));
+                        $this->put($estimate, 'C12', $shifted, $this->charterLei((float) $flight->net_value * $factor, $contract), 'estimate', $contract->name, [
+                            'group' => $contract->name.' → '.($estimates[$contract->season] ?? 'sezonul următor'),
+                            'reference' => ($flightLabel !== '' ? $flightLabel.' · ' : '').'din '.$payDate->format('d.m.Y'),
+                            'date' => $shifted->toDateString(),
+                            'currency' => OmcCashFlowReader::currency((string) $contract->currency),
+                            'amount' => (float) $flight->net_value * $factor,
+                            'meta' => $estimateMeta,
+                        ]);
                     }
 
                     $shiftedTax = ($taxDate ?? $payDate)->copy()->addDays(364);
 
                     if ($flightTaxes > 0 && $shiftedTax->gte($this->today)) {
-                        $this->grid->add($estimateTaxes, $shiftedTax, $this->charterLei($flightTaxes * $factor, $contract));
+                        $this->put($estimateTaxes, 'C13', $shiftedTax, $this->charterLei($flightTaxes * $factor, $contract), 'estimate_taxes', $contract->name, [
+                            'group' => $contract->name.' → '.($estimates[$contract->season] ?? 'sezonul următor'),
+                            'reference' => ($flightLabel !== '' ? $flightLabel.' · ' : '').'taxe din '.($taxDate ?? $payDate)->format('d.m.Y'),
+                            'date' => $shiftedTax->toDateString(),
+                            'currency' => OmcCashFlowReader::currency((string) $contract->currency),
+                            'amount' => $flightTaxes * $factor,
+                            'meta' => $estimateMeta,
+                        ]);
                     }
                 }
             }
@@ -602,7 +714,14 @@ class CashFlowReportBuilder
                 $key = $incomingContract ? 'incoming' : 'deposit';
 
                 if ($amount > 0 && $contract->deposit_due_date->gte($this->today)
-                    && $this->grid->add($series[$key], $contract->deposit_due_date, $this->charterLei($amount, $contract))) {
+                    && $this->put($series[$key], self::CHARTER_LINES[$key], $contract->deposit_due_date, $this->charterLei($amount, $contract), 'deposit', $contract->name, [
+                        'group' => $contract->name,
+                        'reference' => 'depozit contract',
+                        'date' => $contract->deposit_due_date->toDateString(),
+                        'currency' => OmcCashFlowReader::currency((string) $contract->currency),
+                        'amount' => $amount,
+                        'meta' => ['contract_id' => $contract->id, 'season' => $contract->season],
+                    ])) {
                     $row['deposit'] = $amount;
                 }
             }
@@ -795,31 +914,54 @@ class CashFlowReportBuilder
 
             for ($i = 0; $i < $weeks; $i++) {
                 $line[$i] += $total / $weeks;
+                $this->recorder->record('C10', $this->grid->monday($i)->toDateString(), 'manual', 'Sold furnizori introdus în parametri', $total / $weeks, [
+                    'group' => 'Parametri',
+                    'currency' => 'RON',
+                    'amount' => $total,
+                    'meta' => ['share' => round(1 / $weeks, 6), 'weeks' => $weeks],
+                ]);
             }
 
             return ['line' => $line, 'total' => round($total, 2), 'overdue' => round($total, 2), 'mode' => 'manual', '_message' => sprintf('Sold introdus manual: %s RON pe %d săptămâni.', number_format($total, 0, ',', '.'), $weeks)];
         }
 
         $since = $this->today->subYears(max(1, (int) config('omc.open_window_years', 2)));
-        $rows = $this->omc->openSupplierInvoices($since);
+        $rows = $this->omc->openSupplierInvoiceList($since);
         $overdue = 0.0;
+        $overdueRows = [];
         $total = 0.0;
         $byCurrency = [];
 
         foreach ($rows as $row) {
             $total += $row['lei'];
             $byCurrency[$row['currency']] = ($byCurrency[$row['currency']] ?? 0.0) + $row['amount'];
-            $due = CarbonImmutable::parse($row['due']);
+            $due = $this->day($row['due']);
+            $detail = [
+                'reference' => $row['nr_doc'],
+                'date' => $row['due'],
+                'currency' => $row['currency'],
+                'amount' => $row['amount'],
+                'meta' => ['data_doc' => $row['data_doc'], 'tip_doc' => $row['tip_doc'], 'nr_doc' => $row['nr_doc']],
+            ];
 
             if ($due->lt($this->today)) {
                 $overdue += $row['lei'];
+                $overdueRows[] = [$row, $detail, (int) $due->diffInDays($this->today)];
             } else {
-                $this->grid->add($line, $due, $row['lei'], carryEarly: true);
+                $this->put($line, 'C10', $due, $row['lei'], 'invoice', $row['partner'] ?? 'Furnizor', [...$detail, 'group' => 'Scadente în săptămână'], carryEarly: true);
             }
         }
 
         for ($i = 0; $i < $weeks; $i++) {
             $line[$i] += $overdue / $weeks;
+
+            foreach ($overdueRows as [$row, $detail, $days]) {
+                $this->recorder->record('C10', $this->grid->monday($i)->toDateString(), 'invoice', $row['partner'] ?? 'Furnizor', $row['lei'] / $weeks, [
+                    ...$detail,
+                    'group' => 'Restante',
+                    'meta' => [...$detail['meta'], 'days_overdue' => $days, 'share' => round(1 / $weeks, 6), 'weeks' => $weeks],
+                ]);
+            }
         }
 
         return [
@@ -847,6 +989,7 @@ class CashFlowReportBuilder
         $end = ($this->anchor ?? $this->today->startOfMonth()->subDay())->addDay();
         $from = $end->subMonthsNoOverflow($months)->startOfMonth();
         $computed = [];
+        $accounts = [];
         $messages = [];
         $categories = (array) config('cashflow.opex');
 
@@ -867,6 +1010,7 @@ class CashFlowReportBuilder
                         foreach ($category['accounts'] as $prefix) {
                             if (str_starts_with((string) $account, $prefix)) {
                                 $sum += $monthly;
+                                $accounts[$category['key']][(string) $account] = round((float) $monthly, 2);
                                 break;
                             }
                         }
@@ -885,8 +1029,24 @@ class CashFlowReportBuilder
         $catalogue = CashFlowParameters::opexCatalogue($this->params, $computed);
         $lines = [];
 
-        foreach ($catalogue as $category) {
+        foreach (array_values($catalogue) as $index => $category) {
             $lines[$category['key']] = $this->scheduleOpex((float) $category['monthly'], $category['rule']);
+            $origin = $category['override'] !== null ? 'parametri' : ($category['computed'] !== null ? 'omc' : 'implicit');
+
+            foreach ($lines[$category['key']] as $i => $lei) {
+                $this->recorder->record('D'.($index + 1), $this->grid->monday($i)->toDateString(), 'opex', $category['label'], $lei, [
+                    'group' => $this->opexNote($category),
+                    'currency' => 'RON',
+                    'amount' => (float) $category['monthly'],
+                    'meta' => [
+                        'origin' => $origin,
+                        'rule' => $category['rule'],
+                        'basis' => $category['basis'] ?? 'invoices',
+                        'accounts' => $origin === 'omc' ? ($accounts[$category['key']] ?? []) : [],
+                        'window' => $from->format('m.Y').' – '.$end->subDay()->format('m.Y'),
+                    ],
+                ]);
+            }
         }
 
         return [
@@ -965,8 +1125,16 @@ class CashFlowReportBuilder
             foreach ($curve['receipts'] as $row) {
                 $segment = BookingSegments::of($row);
                 $lei = $this->lei($row['amount'], $row['currency']) * $factor;
+                $line = 'B11.'.(array_search($segment, array_keys(self::SEGMENT_LINES), true) + 1);
+                $scenarioMeta = ['connection' => $connection, 'ly_week' => $row['week'], 'factor' => $factor, 'created_from' => $from->toDateString(), 'created_to' => $to->subDay()->toDateString()];
 
-                if ($this->grid->add($receipts[$segment], CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
+                if ($this->put($receipts[$segment], $line, CarbonImmutable::parse($row['week'])->addWeeks(52), $lei, 'new_receipts', 'Încasări '.BookingSegments::LABELS[$segment].' – an anterior', [
+                    'group' => 'Săptămâna '.CarbonImmutable::parse($row['week'])->format('d.m.Y'),
+                    'reference' => ($row['receipts'] ?? 0).' încasări',
+                    'currency' => $row['currency'],
+                    'amount' => $row['amount'] * $factor,
+                    'meta' => [...$scenarioMeta, 'segment_type' => $row['segment_type'] ?? null, 'receipts' => (int) ($row['receipts'] ?? 0), 'ly_amount' => round((float) $row['amount'], 2)],
+                ])) {
                     $key = "{$segment}|{$row['currency']}";
                     $receiptsStructure[$key] ??= ['segment' => $segment, 'label' => BookingSegments::LABELS[$segment], 'currency' => $row['currency'], 'amount' => 0.0, 'lei' => 0.0, 'receipts' => 0];
                     $receiptsStructure[$key]['amount'] = round($receiptsStructure[$key]['amount'] + $row['amount'] * $factor, 2);
@@ -978,7 +1146,13 @@ class CashFlowReportBuilder
             foreach ($curve['costs'] as $row) {
                 $lei = $this->lei($row['cost'], $row['currency']) * $factor;
 
-                if ($this->grid->add($costs, CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
+                if ($this->put($costs, 'C11', CarbonImmutable::parse($row['week'])->addWeeks(52), $lei, 'new_costs', (self::PAYABLE_LABELS[$row['category']] ?? $row['category']).' – an anterior', [
+                    'group' => 'Săptămâna '.CarbonImmutable::parse($row['week'])->format('d.m.Y'),
+                    'reference' => ($row['items'] ?? 0).' servicii',
+                    'currency' => $row['currency'],
+                    'amount' => $row['cost'] * $factor,
+                    'meta' => ['connection' => $connection, 'ly_week' => $row['week'], 'factor' => $factor, 'category' => $row['category'], 'items' => (int) ($row['items'] ?? 0), 'ly_amount' => round((float) $row['cost'], 2), 'days_before' => $daysBefore],
+                ])) {
                     $this->collect($structure, $row['category'], $row['currency'], $row['cost'] * $factor, $lei, (int) ($row['items'] ?? 0));
                 }
             }
@@ -986,7 +1160,13 @@ class CashFlowReportBuilder
             foreach ($curve['tickets'] as $row) {
                 $lei = $this->lei($row['cost'], $row['currency']) * $factor;
 
-                if ($this->grid->add($costs, CarbonImmutable::parse($row['week'])->addWeeks(52), $lei)) {
+                if ($this->put($costs, 'C11', CarbonImmutable::parse($row['week'])->addWeeks(52), $lei, 'new_costs', 'Bilete avion – an anterior', [
+                    'group' => 'Săptămâna '.CarbonImmutable::parse($row['week'])->format('d.m.Y'),
+                    'reference' => ($row['items'] ?? 0).' bilete',
+                    'currency' => $row['currency'],
+                    'amount' => $row['cost'] * $factor,
+                    'meta' => ['connection' => $connection, 'ly_week' => $row['week'], 'factor' => $factor, 'category' => 'flight', 'items' => (int) ($row['items'] ?? 0), 'ly_amount' => round((float) $row['cost'], 2)],
+                ])) {
                     $this->collect($structure, 'flight', $row['currency'], $row['cost'] * $factor, $lei, (int) ($row['items'] ?? 0));
                 }
             }
@@ -1283,7 +1463,7 @@ class CashFlowReportBuilder
      * @param  list<array{ly_week: string, ly_in: float, ly_out: float, ly_bal: ?float}|null>  $lastYear
      * @return array{weeks: list<string>, lastyear: list<array<string, mixed>|null>, lines: array<string, list<float|string>>}|null
      */
-    private function past(array $history, array $classified, float $minimum, float $comfort, array $lastYear = []): ?array
+    private function past(array $history, array $classified, float $minimum, float $comfort, array $lastYear = [], array $details = []): ?array
     {
         if ($history === []) {
             return null;
@@ -1293,6 +1473,7 @@ class CashFlowReportBuilder
         $zeros = array_fill(0, $count, 0.0);
         $lines = [];
         $totals = ['B' => $zeros, 'C' => $zeros, 'D' => $zeros];
+        $this->recordPast($details);
 
         foreach ($this->lines as $line) {
             if ($line['kind'] !== 'value' || ! isset($totals[$line['section']])) {
@@ -1369,6 +1550,9 @@ class CashFlowReportBuilder
 
         $recovery = $this->recovery($receivables['overdue_recent'] ?? [], (float) ($this->params['overdue']['recent_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
         $recoveryOld = $this->recovery($receivables['overdue_old'] ?? [], (float) ($this->params['overdue']['old_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
+        $this->recorder->source('receivables');
+        $this->recordRecovery('B8', $receivables['overdue_rows']['recent'] ?? [], (float) ($this->params['overdue']['recent_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
+        $this->recordRecovery('B9', $receivables['overdue_rows']['old'] ?? [], (float) ($this->params['overdue']['old_pct'] ?? 0), (int) ($this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B8', sprintf('Recuperare solduri restante ≤ %d zile (scadență depășită)', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recovery, note: sprintf('%s%% din restanțe, egal pe %d săptămâni', $this->params['overdue']['recent_pct'] ?? 0, $this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B9', sprintf('Recuperare solduri restante > %d zile', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recoveryOld, note: sprintf('%s%% din restanțele vechi', $this->params['overdue']['old_pct'] ?? 0));
         $this->line('B10', 'Încasări din vânzarea de locuri charter (contracte hard block)', 'B', $charter['incoming'], note: 'contracte charter în care CHR vinde locuri; rotația, taxele și depozitul pe termenii contractului');
@@ -1489,7 +1673,7 @@ class CashFlowReportBuilder
             'coverage' => $coverage,
             'lastyear' => $actuals['lastyear'],
             'recent' => $actuals['recent'],
-            'past' => $this->past($actuals['history'] ?? [], $classified['lines'] ?? [], $minimum, $comfort, $actuals['history_lastyear'] ?? []),
+            'past' => $this->past($actuals['history'] ?? [], $classified['lines'] ?? [], $minimum, $comfort, $actuals['history_lastyear'] ?? [], $classified['details'] ?? []),
             'kpis' => $kpis,
             'opening' => $opening,
             'structure' => [
@@ -1529,6 +1713,68 @@ class CashFlowReportBuilder
     }
 
     /**
+     * The pieces of the past weeks, on the report's line codes (the
+     * classifier names OPEX lines by their category key).
+     *
+     * @param  list<array{line: string, week: string, kind: string, label: string, lei: float, detail: array<string, mixed>}>  $details
+     */
+    private function recordPast(array $details): void
+    {
+        $codes = [];
+
+        foreach ($this->lines as $line) {
+            $codes[$line['section'] === 'D' && $line['key'] ? $line['key'] : $line['code']] = $line['code'];
+        }
+
+        $this->recorder->source('actual_lines', actual: true);
+
+        foreach ($details as $piece) {
+            $code = $codes[$piece['line']] ?? null;
+
+            if ($code !== null) {
+                $this->recorder->record($code, $piece['week'], $piece['kind'], $piece['label'], $piece['lei'], $piece['detail']);
+            }
+        }
+    }
+
+    /**
+     * The overdue tranches behind B8 / B9: each weighs its share of the
+     * recovery (pct of it, evenly over the weeks) in every one of them.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function recordRecovery(string $line, array $rows, float $pct, int $weeks): void
+    {
+        $weeks = max(1, min($weeks, $this->grid->weeks));
+        $share = max(0.0, min(100.0, $pct)) / 100 / $weeks;
+
+        if ($share <= 0) {
+            return;
+        }
+
+        foreach ($rows as $row) {
+            for ($i = 0; $i < $weeks; $i++) {
+                $this->recorder->record($line, $this->grid->monday($i)->toDateString(), 'overdue', $this->bookingLabel($row), $row['lei'] * $share, [
+                    'group' => $row['type'],
+                    'reference' => $row['booking'],
+                    'date' => $row['due'],
+                    'currency' => $row['currency'],
+                    'amount' => $row['amount'],
+                    'meta' => ['connection' => $row['connection'], 'segment' => $row['segment'], 'channel' => $row['channel'], 'days_overdue' => $row['days'], 'share' => round($share, 6), 'pct' => $pct, 'weeks' => $weeks],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $piece
+     */
+    private function bookingLabel(array $piece): string
+    {
+        return (string) ($piece['client'] ?? '') !== '' ? (string) $piece['client'] : 'Dosar '.$piece['booking'];
+    }
+
+    /**
      * @param  array<string, mixed>  $category
      */
     private function opexNote(array $category): string
@@ -1542,6 +1788,36 @@ class CashFlowReportBuilder
         $origin = $category['override'] !== null ? 'valoare din parametri' : ($category['computed'] !== null ? 'medie OMC 12 luni' : 'valoare implicită');
 
         return sprintf('%s RON/lună, %s (%s)', number_format((float) $category['monthly'], 0, ',', '.'), $when, $origin);
+    }
+
+    /**
+     * A calendar day from a source, in the report's timezone like today, so
+     * the days between them are whole.
+     */
+    private function day(string $date): CarbonImmutable
+    {
+        return CarbonImmutable::parse(substr($date, 0, 10), $this->today->getTimezone())->startOfDay();
+    }
+
+    /**
+     * Add an amount to the week of a date on a line, as WeekGrid::add()
+     * does, and keep what it is so the cell can be opened.
+     *
+     * @param  list<float>  $series
+     * @param  array{group?: ?string, reference?: string|int|null, date?: ?string, currency?: ?string, amount?: ?float, meta?: array<string, mixed>}  $detail
+     */
+    private function put(array &$series, string $line, CarbonInterface|string|null $date, float $lei, string $kind, string $label, array $detail = [], bool $carryEarly = false): bool
+    {
+        $index = $this->grid->column($date, $carryEarly);
+
+        if ($index === null) {
+            return false;
+        }
+
+        $series[$index] += $lei;
+        $this->recorder->record($line, $this->grid->monday($index)->toDateString(), $kind, $label, $lei, $detail);
+
+        return true;
     }
 
     /**

@@ -115,9 +115,7 @@ export default function CashFlowReport({
     const [compare, setCompare] = useState(false);
     const [monthly, setMonthly] = useState(false);
     const [pastWeeks, setPastWeeks] = useState<4 | 13 | 52>(4);
-    const [drill, setDrill] = useState<
-        (DrillTarget & { value: number }) | null
-    >(null);
+    const [drill, setDrill] = useState<DrillTarget | null>(null);
 
     useEffect(() => {
         if (!run.running) {
@@ -672,22 +670,31 @@ export default function CashFlowReport({
                                                 monthly={monthly}
                                                 scenarioOn={scenarioOn}
                                                 onOverride={saveOverride}
-                                                onDrill={(line, week, value) =>
+                                                onDrill={(
+                                                    line,
+                                                    column,
+                                                    value,
+                                                ) =>
                                                     setDrill({
-                                                        line: line.code,
-                                                        label: line.label,
-                                                        week,
+                                                        line,
+                                                        column,
                                                         value,
                                                     })
                                                 }
                                             />
-                                            <DrilldownSheet
-                                                target={drill}
-                                                reportValue={
-                                                    drill?.value ?? null
-                                                }
-                                                onClose={() => setDrill(null)}
-                                            />
+                                            {snapshot && (
+                                                <DrilldownSheet
+                                                    target={drill}
+                                                    report={report}
+                                                    past={payload.past ?? null}
+                                                    payload={payload}
+                                                    snapshotId={snapshot.id}
+                                                    scenarioOn={scenarioOn}
+                                                    onClose={() =>
+                                                        setDrill(null)
+                                                    }
+                                                />
+                                            )}
                                         </CardContent>
                                     </Card>
 

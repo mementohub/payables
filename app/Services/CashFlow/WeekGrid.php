@@ -87,11 +87,7 @@ final class WeekGrid
      */
     public function add(array &$series, CarbonInterface|string|null $date, float $amount, bool $carryEarly = false): bool
     {
-        $index = $this->index($date);
-
-        if ($index === null && $carryEarly && $date !== null && CarbonImmutable::parse(is_string($date) ? $date : $date->toDateTimeString())->lt($this->start)) {
-            $index = 0;
-        }
+        $index = $this->column($date, $carryEarly);
 
         if ($index === null) {
             return false;
@@ -100,5 +96,20 @@ final class WeekGrid
         $series[$index] += $amount;
 
         return true;
+    }
+
+    /**
+     * The column add() puts a date in: its week, or the first one for an
+     * earlier date when $carryEarly is set; null outside the horizon.
+     */
+    public function column(CarbonInterface|string|null $date, bool $carryEarly = false): ?int
+    {
+        $index = $this->index($date);
+
+        if ($index === null && $carryEarly && $date !== null && CarbonImmutable::parse(is_string($date) ? $date : $date->toDateTimeString())->lt($this->start)) {
+            return 0;
+        }
+
+        return $index;
     }
 }

@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
 use App\Models\CharterFlight;
-use App\Models\Invoice;
+use App\Services\CashFlow\BookingSegments;
+use App\Services\CashFlow\CashFlowCellDetails;
 use App\Services\CashFlow\CashFlowOverrides;
 use App\Services\CashFlow\CashFlowParameters;
+use App\Services\CashFlow\EtripCashFlowReader;
+use App\Services\CashFlow\OmcCashFlowReader;
 use App\Services\CashFlow\WeekGrid;
 use App\Services\Maintenance\ArtisanRunner;
 use Carbon\CarbonImmutable;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +30,8 @@ use Throwable;
  */
 class CashFlowReportController extends Controller
 {
+    use ReadsRemote;
+
     public function index(ArtisanRunner $runner, CashFlowParameters $parameters, CashFlowOverrides $overrides): Response
     {
         $params = $parameters->load();
@@ -199,81 +204,68 @@ class CashFlowReportController extends Controller
     }
 
     /**
-     * The invoices behind one week of line C10 (supplier invoices still open
-     * in OMC): the overdue ones, each with the share of it the report puts
-     * in that week, and the ones falling due in it. Read from the mirror now,
-     * so it may differ a little from the report built earlier.
+     * What one cell of a snapshot is made of: the pieces the build laid on
+     * the line in those weeks (one week, or the weeks of a month).
+     *
+     * @return array<string, mixed>
      */
-    public function drilldown(Request $request, CashFlowParameters $parameters): JsonResponse
+    public function drilldown(Request $request, CashFlowCellDetails $details): array
     {
         $validated = $request->validate([
-            'line' => ['required', Rule::in(['C10'])],
+            'snapshot' => ['required', 'integer', 'exists:cash_flow_snapshots,id'],
+            'line' => ['required', 'string', 'max:16'],
+            'weeks' => ['required', 'array', 'min:1', 'max:6'],
+            'weeks.*' => ['required', 'date_format:Y-m-d'],
+            'actual' => ['boolean'],
+        ]);
+
+        return $details->cell(
+            CashFlowSnapshot::query()->findOrFail($validated['snapshot']),
+            $validated['line'],
+            array_values(array_unique($validated['weeks'])),
+            (bool) ($validated['actual'] ?? false),
+        );
+    }
+
+    /**
+     * The documents behind an aggregated piece of a past week, read live:
+     * a partner's bank and cash documents in OMC, or the eTrip receipts of
+     * a booking segment.
+     *
+     * @return array{rows: list<array<string, mixed>>}
+     */
+    public function documents(Request $request, OmcCashFlowReader $omc, EtripCashFlowReader $etrip): array
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in(['omc', 'etrip_receipts'])],
             'week' => ['required', 'date_format:Y-m-d'],
+            'until' => ['nullable', 'date_format:Y-m-d'],
+            'direction' => ['required_if:kind,omc', Rule::in(['in', 'out'])],
+            'partner' => ['nullable', 'string', 'max:191'],
+            'coresp' => ['nullable', 'string', 'max:40'],
+            'connection' => ['required_if:kind,etrip_receipts', Rule::in(array_keys((array) config('etrip.connections')))],
+            'segment' => ['required_if:kind,etrip_receipts', Rule::in(array_keys(BookingSegments::LABELS))],
         ]);
 
-        $timezone = (string) config('cashflow.timezone', 'Europe/Bucharest');
-        $today = CarbonImmutable::now($timezone)->startOfDay();
-        $grid = WeekGrid::fromToday($today);
-        $index = $grid->index(CarbonImmutable::parse($validated['week'], $timezone));
-        abort_if($index === null, 422, 'Săptămâna nu este în orizontul raportului.');
+        $from = CarbonImmutable::parse($validated['week']);
+        $to = $from->addWeek();
 
-        $params = $parameters->load();
-        $spread = max(1, (int) ($params['payables']['supplier_balance_weeks'] ?? 2));
-        $monday = $grid->monday($index);
-        $weekStart = $index === 0 ? $today : $monday;
-        $weekEnd = $monday->addDays(6);
-        $due = 'coalesce(data_scadenta, data_doc)';
+        if (! empty($validated['until']) && CarbonImmutable::parse($validated['until'])->lt($to)) {
+            $to = CarbonImmutable::parse($validated['until']);
+        }
 
-        $invoices = Invoice::query()
-            ->where('partener_type', 'furnizor')
-            ->whereNull('omc_removed_at')
-            ->where('data_doc', '>=', $today->subYears(max(1, (int) config('omc.open_window_years', 2)))->toDateString())
-            ->where('val_mon', '>', 0)
-            ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
-            ->where(fn ($q) => $q
-                ->when($index < $spread, fn ($w) => $w->orWhereRaw("{$due} < ?", [$today->toDateString()]))
-                ->orWhereRaw("{$due} between ? and ?", [$weekStart->toDateString(), $weekEnd->toDateString()]))
-            ->with(['partner:id,name', 'department:id,name'])
-            ->get();
+        if ($validated['kind'] === 'omc') {
+            $rows = $this->readingOmc(fn () => $omc->treasuryDocuments($from, $to, $validated['direction'], $validated['partner'] ?? null, (string) ($validated['coresp'] ?? '')));
 
-        $rows = $invoices->map(function (Invoice $invoice) use ($today, $spread, $timezone) {
-            // The due date is a calendar day: read it in the report's timezone.
-            $dueDate = CarbonImmutable::parse(($invoice->data_scadenta ?? $invoice->data_doc)->toDateString(), $timezone);
-            $overdue = $dueDate->lt($today);
-            $open = $invoice->outstandingAmount();
-            $rate = $invoice->moneda === 'Lei' || $invoice->moneda === null ? 1.0 : (float) ($invoice->curs ?: 1);
+            return ['rows' => $rows];
+        }
 
-            return [
-                'id' => $invoice->id,
-                'partner' => $invoice->partner?->name,
-                'nr_doc' => $invoice->nr_doc,
-                'data_doc' => $invoice->data_doc?->toDateString(),
-                'due' => $dueDate->toDateString(),
-                'days_overdue' => $overdue ? (int) $dueDate->diffInDays($today) : 0,
-                'kind' => $overdue ? 'overdue' : 'due',
-                'currency' => $invoice->moneda,
-                'open' => $open,
-                'open_lei' => round($open * $rate, 2),
-                // What of it the report counts in this week.
-                'week_lei' => round($open * $rate / ($overdue ? $spread : 1), 2),
-                'department' => $invoice->department?->name,
-                'approval_status' => $invoice->approval_status,
-            ];
-        })->sortBy([['kind', 'desc'], ['week_lei', 'desc']])->values();
+        $rows = $this->readingEtrip(fn () => $etrip->receiptsIn($validated['connection'], $from, $to));
 
-        return response()->json([
-            'line' => $validated['line'],
-            'week' => $monday->toDateString(),
-            'week_label' => sprintf('S+%d (%s – %s)', $index + 1, $weekStart->format('d.m'), $weekEnd->format('d.m.Y')),
-            'spread_weeks' => $spread,
-            'overdue_in_week' => $index < $spread,
-            'rows' => $rows,
-            'totals' => [
-                'overdue' => round($rows->where('kind', 'overdue')->sum('week_lei'), 2),
-                'due' => round($rows->where('kind', 'due')->sum('week_lei'), 2),
-                'week' => round($rows->sum('week_lei'), 2),
-            ],
-        ]);
+        return ['rows' => array_values(array_filter(
+            $rows,
+            fn (array $row) => BookingSegments::of(['segment_type' => $row['segment_type']]) === $validated['segment'],
+        ))];
     }
 
     public function build(Request $request, ArtisanRunner $runner): RedirectResponse

@@ -21,10 +21,7 @@ const SECTION_TITLES: Record<ReportLine['section'], string> = {
     F: 'F. Referință: fluxuri efective anul anterior (OMC)',
 };
 
-/** Lines whose forecast cells open the documents behind them. */
-const DRILLABLE = new Set(['C10']);
-
-type Column = {
+export type Column = {
     key: string;
     label: string;
     /** past: actual flows from OMC; future: the forecast. */
@@ -33,14 +30,14 @@ type Column = {
     partial?: boolean;
 };
 
-type Cell = number | string | null;
+export type Cell = number | string | null;
 
 /**
  * One line's value over a column: flows add up, the opening balance is the
  * first week's, the closing balance, the threshold and the signal the last
  * week's. A past line with nothing recorded reads as zero.
  */
-function cellValue(
+export function cellValue(
     line: ReportLine,
     column: Column,
     past: PastWeeks | null,
@@ -99,6 +96,18 @@ function sumOver(
     });
 
     return any ? total : null;
+}
+
+/**
+ * Whether a cell has something behind it to open: a flow line with an
+ * amount, or any computed line (totals, balances, the signal).
+ */
+function drillable(line: ReportLine, value: Cell): boolean {
+    if (value === null || value === '') {
+        return false;
+    }
+
+    return line.kind !== 'value' || value !== 0;
 }
 
 function signalClass(value: number | string): string {
@@ -229,8 +238,8 @@ export default function WeeklyTable({
         week: string,
         amount: number | null,
     ) => void;
-    /** Opens the documents behind a forecast cell, for the lines that have them. */
-    onDrill?: (line: ReportLine, week: string, value: number) => void;
+    /** Opens what a cell is made of. */
+    onDrill?: (line: ReportLine, column: Column, value: Cell) => void;
 }) {
     const [editing, setEditing] = useState<{
         code: string;
@@ -542,6 +551,13 @@ export default function WeeklyTable({
                                                         editable &&
                                                             !isEditing &&
                                                             'cursor-text hover:bg-muted hover:ring-1 hover:ring-sidebar-border hover:ring-inset',
+                                                        !editable &&
+                                                            onDrill &&
+                                                            drillable(
+                                                                line,
+                                                                value,
+                                                            ) &&
+                                                            'cursor-pointer hover:bg-muted hover:ring-1 hover:ring-sidebar-border hover:ring-inset',
                                                         isEditing && 'py-0.5',
                                                     )}
                                                     title={
@@ -550,8 +566,14 @@ export default function WeeklyTable({
                                                                   manual,
                                                               )
                                                             : editable
-                                                              ? 'Click pentru a seta valoarea manual'
-                                                              : undefined
+                                                              ? 'Click pentru a seta valoarea manual; lupa arată ce conține'
+                                                              : onDrill &&
+                                                                  drillable(
+                                                                      line,
+                                                                      value,
+                                                                  )
+                                                                ? 'Click pentru a vedea ce conține'
+                                                                : undefined
                                                     }
                                                     onClick={
                                                         editable && !isEditing
@@ -560,7 +582,19 @@ export default function WeeklyTable({
                                                                       code: line.code,
                                                                       index,
                                                                   })
-                                                            : undefined
+                                                            : !editable &&
+                                                                onDrill &&
+                                                                drillable(
+                                                                    line,
+                                                                    value,
+                                                                )
+                                                              ? () =>
+                                                                    onDrill(
+                                                                        line,
+                                                                        column,
+                                                                        value,
+                                                                    )
+                                                              : undefined
                                                     }
                                                 >
                                                     {isEditing ? (
@@ -595,29 +629,23 @@ export default function WeeklyTable({
                                                     ) : (
                                                         <>
                                                             {onDrill &&
-                                                                !isPast &&
-                                                                !monthly &&
-                                                                DRILLABLE.has(
-                                                                    line.code,
-                                                                ) &&
-                                                                typeof value ===
-                                                                    'number' &&
-                                                                value !== 0 && (
+                                                                editable &&
+                                                                drillable(
+                                                                    line,
+                                                                    value,
+                                                                ) && (
                                                                     <button
                                                                         type="button"
-                                                                        title="Vezi facturile"
-                                                                        aria-label="Vezi facturile"
-                                                                        className="mr-1 inline-flex align-middle text-muted-foreground opacity-40 group-hover:opacity-100 hover:text-foreground"
+                                                                        title="Ce conține"
+                                                                        aria-label="Ce conține"
+                                                                        className="mr-1 inline-flex align-middle text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
                                                                         onClick={(
                                                                             event,
                                                                         ) => {
                                                                             event.stopPropagation();
                                                                             onDrill(
                                                                                 line,
-                                                                                report
-                                                                                    .weeks[
-                                                                                    index
-                                                                                ],
+                                                                                column,
                                                                                 value,
                                                                             );
                                                                         }}

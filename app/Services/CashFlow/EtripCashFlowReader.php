@@ -56,13 +56,13 @@ class EtripCashFlowReader
      * the configured window), with the amounts scheduled in eTrip, the
      * product type of their most expensive root item and the channel.
      *
-     * @return list<array{id: int, currency: string, total_due: float, paid: float, balance_due_date: ?string, start_date: ?string, brand: ?int, channel: ?int, segment_type: ?int, due_dates: list<array{date: string, amount: float}>}>
+     * @return list<array{id: int, client: ?string, currency: string, total_due: float, paid: float, balance_due_date: ?string, start_date: ?string, brand: ?int, channel: ?int, segment_type: ?int, due_dates: list<array{date: string, amount: float}>}>
      */
     public function openBookings(string $name, CarbonInterface $from, CarbonInterface $to, float $minBalance = 0.5): array
     {
         $rows = $this->connection($name)->select(<<<'SQL'
             with b as (
-                select b.id, b.currency, b.total_amount_due, b.paid_amount, b.balance_due_date, b.start_date, b.brand, b.booked_via
+                select b.id, b.client, b.currency, b.total_amount_due, b.paid_amount, b.balance_due_date, b.start_date, b.brand, b.booked_via
                 from bookings.bookings b
                 where b.status = 'confirmed'
                   and b.start_date >= ?::timestamp
@@ -70,6 +70,8 @@ class EtripCashFlowReader
                   and b.total_amount_due - b.paid_amount > ?
             )
             select b.id, b.currency, b.total_amount_due as total_due, b.paid_amount as paid,
+                   coalesce(nullif(trim(ct.name), ''), nullif(trim(cb.name), ''),
+                            nullif(trim(concat_ws(' ', cd.fname, cd.lname)), ''), b.client) as client,
                    b.balance_due_date::date as balance_due_date, b.start_date::date as start_date,
                    b.brand, b.booked_via as channel,
                    (select i.product_type
@@ -81,11 +83,15 @@ class EtripCashFlowReader
                       from bookings.due_dates dd
                      where dd.booking = b.id) as due_dates
             from b
+            left join clients.trade ct on ct.code = b.client
+            left join clients.business cb on cb.code = b.client
+            left join clients.direct cd on cd.code = b.client
             order by b.id
             SQL, [$from->toDateTimeString(), $to->toDateTimeString(), $minBalance]);
 
         return array_map(fn ($row) => [
             'id' => (int) $row->id,
+            'client' => $row->client !== null ? (string) $row->client : null,
             'currency' => strtoupper((string) $row->currency),
             'total_due' => (float) $row->total_due,
             'paid' => (float) $row->paid,
@@ -105,10 +111,10 @@ class EtripCashFlowReader
      * Supplier cost of the confirmed services with check-in in the range,
      * net of what eTrip already recorded as paid, by the week the supplier
      * is paid (check-in minus the given days), category and supplier
-     * currency. Charter seats (paid per contract) and line tickets (paid
-     * at order) are left out.
+     * currency and supplier. Charter seats (paid per contract) and line
+     * tickets (paid at order) are left out.
      *
-     * @return list<array{week: string, category: string, currency: string, cost: float, items: int, bookings: int}>
+     * @return list<array{week: string, category: string, currency: string, supplier: ?string, supplier_name: ?string, cost: float, items: int, bookings: int}>
      */
     public function payables(string $name, CarbonInterface $firstCheckin, CarbonInterface $lastCheckin, int $daysBefore): array
     {
@@ -116,20 +122,23 @@ class EtripCashFlowReader
             select (date_trunc('week', i.start_date - interval '%1$d days'))::date as week,
                    %2$s as category,
                    i.supplier_currency as currency,
+                   i.supplier,
+                   s.name as supplier_name,
                    sum(%3$s)::numeric(20,2) as cost,
                    count(*) as items,
                    count(distinct i.booking) as bookings
             from bookings.items i
             join bookings.bookings b on b.id = i.booking
+            left join suppliers.suppliers s on s.code = i.supplier
             where i.start_date >= ?::timestamp
               and i.start_date < ?::timestamp
               and b.status = 'confirmed'
               and i.client_status = 'confirmed'
               and i.supplier_status <> 'cancelled'
               and %4$s
-            group by 1, 2, 3
+            group by 1, 2, 3, 4, 5
             having sum(%3$s) <> 0
-            order by 1, 2, 3
+            order by 1, 2, 3, 4
             SQL, max(0, $daysBefore), $this->categoryCase(), $this->costExpression(), $this->payableTypesClause()),
             [$firstCheckin->toDateTimeString(), $lastCheckin->toDateTimeString()]);
 
@@ -137,6 +146,8 @@ class EtripCashFlowReader
             'week' => (string) $row->week,
             'category' => (string) $row->category,
             'currency' => strtoupper((string) ($row->currency ?? 'RON')),
+            'supplier' => $row->supplier !== null ? (string) $row->supplier : null,
+            'supplier_name' => $row->supplier_name !== null ? (string) $row->supplier_name : null,
             'cost' => (float) $row->cost,
             'items' => (int) $row->items,
             'bookings' => (int) $row->bookings,
@@ -147,32 +158,37 @@ class EtripCashFlowReader
      * Line flight tickets confirmed in the range: paid to the airline as soon
      * as they are issued.
      *
-     * @return list<array{week: string, currency: string, cost: float, items: int}>
+     * @return list<array{week: string, currency: string, supplier: ?string, supplier_name: ?string, cost: float, items: int}>
      */
     public function ticketsOrdered(string $name, CarbonInterface $from, CarbonInterface $to): array
     {
         $rows = $this->connection($name)->select(sprintf(<<<'SQL'
             select (date_trunc('week', i.ctime))::date as week,
                    i.supplier_currency as currency,
+                   i.supplier,
+                   s.name as supplier_name,
                    sum(%1$s)::numeric(20,2) as cost,
                    count(*) as items
             from bookings.items i
             join bookings.bookings b on b.id = i.booking
+            left join suppliers.suppliers s on s.code = i.supplier
             where i.ctime >= ?::timestamp
               and i.ctime < ?::timestamp
               and b.status = 'confirmed'
               and i.client_status = 'confirmed'
               and i.supplier_status <> 'cancelled'
               and i.product_type in (%2$s)
-            group by 1, 2
+            group by 1, 2, 3, 4
             having sum(%1$s) <> 0
-            order by 1, 2
+            order by 1, 2, 3
             SQL, $this->costExpression(), $this->idList('flight')),
             [$from->toDateTimeString(), $to->toDateTimeString()]);
 
         return array_map(fn ($row) => [
             'week' => (string) $row->week,
             'currency' => strtoupper((string) ($row->currency ?? 'RON')),
+            'supplier' => $row->supplier !== null ? (string) $row->supplier : null,
+            'supplier_name' => $row->supplier_name !== null ? (string) $row->supplier_name : null,
             'cost' => (float) $row->cost,
             'items' => (int) $row->items,
         ], $rows);
@@ -330,6 +346,55 @@ class EtripCashFlowReader
             'segment_type' => $row->segment_type !== null ? (int) $row->segment_type : null,
             'lei' => (float) $row->lei,
             'receipts' => (int) $row->receipts,
+        ], $rows);
+    }
+
+    /**
+     * The receipts issued in a range, one per booking they were allocated
+     * to, with the client and the segment of the booking (as in
+     * receiptsByWeek()).
+     *
+     * @return list<array{receipt: string, issue_date: string, booking: int, client: ?string, currency: string, amount: float, lei: float, segment_type: ?int}>
+     */
+    public function receiptsIn(string $name, CarbonInterface $from, CarbonInterface $to): array
+    {
+        $rows = $this->connection($name)->select(<<<'SQL'
+            with rc as (
+                select coalesce(nullif(concat_ws('', r.prefix, r.receipt_no::text), ''), '#'||r.id::text) as receipt, r.issue_date::date as issue_date, r.currency,
+                       rb.booking, rb.receipt_amount as amount,
+                       rb.receipt_amount * coalesce(nullif(r.exchange_rate, 0), 1) as lei
+                from financials.receipts r
+                join financials.receipt_bookings rb on rb.receipt = r.id
+                where r.issue_date >= ?::date and r.issue_date < ?::date
+            ),
+            s as (
+                select distinct on (i.booking) i.booking, i.product_type
+                from bookings.items i
+                where i.booking in (select booking from rc) and i.package is null
+                order by i.booking, (i.client_status = 'confirmed') desc, (i.price).gross desc nulls last, i.id
+            )
+            select rc.receipt, rc.issue_date, rc.booking, rc.currency, rc.amount::numeric(20,2) as amount, rc.lei::numeric(20,2) as lei,
+                   s.product_type as segment_type,
+                   coalesce(nullif(trim(ct.name), ''), nullif(trim(cb.name), ''),
+                            nullif(trim(concat_ws(' ', cd.fname, cd.lname)), ''), b.client) as client
+            from rc
+            left join s on s.booking = rc.booking
+            left join bookings.bookings b on b.id = rc.booking
+            left join clients.trade ct on ct.code = b.client
+            left join clients.business cb on cb.code = b.client
+            left join clients.direct cd on cd.code = b.client
+            order by rc.lei desc
+            SQL, [$from->toDateString(), $to->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'receipt' => (string) $row->receipt,
+            'issue_date' => (string) $row->issue_date,
+            'booking' => (int) $row->booking,
+            'client' => $row->client !== null ? (string) $row->client : null,
+            'currency' => strtoupper((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
+            'segment_type' => $row->segment_type !== null ? (int) $row->segment_type : null,
         ], $rows);
     }
 

@@ -25,6 +25,12 @@ return [
     /** Snapshots kept for the history of the report. */
     'keep_snapshots' => 60,
 
+    /*
+    | Snapshots whose cell details (cash_flow_details) are kept; older ones
+    | keep their figures but can no longer be opened cell by cell.
+    */
+    'keep_details' => 10,
+
     'statement_timeout_ms' => (int) env('CASHFLOW_STATEMENT_TIMEOUT_MS', 240000),
 
     /*

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\CashFlowDetail;
 use App\Models\CashFlowSetting;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
@@ -44,9 +45,10 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null): void
             omcFlows(),
             fn (array $row) => $row['day'] >= $from->toDateString() && $row['day'] < $to->toDateString(),
         )));
-        $mock->shouldReceive('openSupplierInvoices')->andReturn([
-            ['due' => '2026-09-01', 'currency' => 'RON', 'amount' => 400000, 'lei' => 400000, 'invoices' => 3],
-            ['due' => '2026-10-20', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000, 'invoices' => 1],
+        $mock->shouldReceive('openSupplierInvoiceList')->andReturn([
+            ['data_doc' => '2026-08-01', 'tip_doc' => 'FactFI', 'nr_doc' => 'A1', 'partner' => 'Hotel Alfa', 'due' => '2026-09-01', 'currency' => 'RON', 'amount' => 250000, 'lei' => 250000],
+            ['data_doc' => '2026-08-03', 'tip_doc' => 'FactFI', 'nr_doc' => 'B7', 'partner' => 'Hotel Beta', 'due' => '2026-09-01', 'currency' => 'RON', 'amount' => 150000, 'lei' => 150000],
+            ['data_doc' => '2026-09-10', 'tip_doc' => 'FactFE', 'nr_doc' => 'INV-9', 'partner' => 'Tour Gamma', 'due' => '2026-10-20', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000],
         ]);
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
@@ -474,4 +476,62 @@ test('every charter contract is settled on its own terms', function () {
         ->and($contracts['CTR 281']['terms']['taxes'])->toBe('la 3 zile după zbor')
         ->and($contracts[$signed->name]['terms']['fx'])->toBe('EUR sau RON la BNR + 2%')
         ->and(collect($snapshot->sources)->firstWhere('key', 'charter')['message'])->toContain('3 contracte în flux (din 4)');
+});
+
+test('every cell of the snapshot is the sum of the pieces the build kept for it', function () {
+    mockOmc();
+    mockEtrip();
+
+    $signed = CharterContract::factory()->create(['name' => 'CTR 317', 'season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
+    CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100, 'flight_no' => 'A2 4212']);
+    $draft = CharterContract::factory()->draft()->create(['deposit_percent' => 50, 'deposit_due_date' => '2026-10-05', 'contract_value' => 3000]);
+    CharterFlight::factory()->for($draft, 'contract')->create(['flight_date' => '2026-12-01', 'net_value' => 2000, 'taxes' => 0]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $pieces = CashFlowDetail::query()->where('cash_flow_snapshot_id', $snapshot->id)->get();
+    $sums = $pieces->groupBy(fn (CashFlowDetail $piece) => $piece->line.'|'.(int) $piece->actual.'|'.$piece->week->toDateString())
+        ->map(fn ($group) => round($group->sum('lei'), 2));
+    $checked = 0;
+
+    foreach ($snapshot->payload['lines'] as $line) {
+        if ($line['kind'] !== 'value') {
+            continue;
+        }
+
+        foreach ($snapshot->payload['weeks'] as $i => $week) {
+            expect($sums[$line['code'].'|0|'.$week] ?? 0.0)->toEqualWithDelta((float) $line['values'][$i], 0.05, "{$line['code']} {$week}");
+            $checked++;
+        }
+
+        foreach ($snapshot->payload['past']['lines'][$line['code']] ?? [] as $i => $value) {
+            expect($sums[$line['code'].'|1|'.$snapshot->payload['past']['weeks'][$i]] ?? 0.0)->toEqualWithDelta((float) $value, 0.05, "past {$line['code']}");
+            $checked++;
+        }
+    }
+
+    $invoice = $pieces->first(fn (CashFlowDetail $piece) => $piece->line === 'C10' && $piece->reference === 'A1' && $piece->week->toDateString() === '2026-09-14');
+    $rotation = $pieces->firstWhere('kind', 'rotation');
+
+    expect($checked)->toBeGreaterThan(1000)
+        ->and($pieces->whereNull('cash_flow_snapshot_id'))->toBeEmpty()
+        // Overdue: half of it in each of the first two weeks.
+        ->and($invoice->only(['label', 'lei', 'group', 'currency', 'amount']))->toBe(['label' => 'Hotel Alfa', 'lei' => 125000.0, 'group' => 'Restante', 'currency' => 'RON', 'amount' => 250000.0])
+        ->and($invoice->meta)->toMatchArray(['tip_doc' => 'FactFI', 'nr_doc' => 'A1', 'days_overdue' => 15])
+        ->and($rotation->only(['line', 'label']))->toBe(['line' => 'C6', 'label' => 'CTR 317'])
+        ->and($rotation->reference)->toStartWith('A2 4212')
+        ->and($pieces->where('line', 'B1')->where('actual', false)->pluck('reference')->unique()->values()->all())->toBe(['1'])
+        ->and($pieces->where('line', 'C1')->first()->meta)->toMatchArray(['category' => 'hotel', 'checkin_from' => '2026-10-05', 'checkin_to' => '2026-10-11']);
+});
+
+test('a source that fails leaves no pieces behind, and only the latest snapshots keep theirs', function () {
+    config(['cashflow.keep_details' => 1]);
+    mockOmc();
+    mockEtrip(failBookings: true);
+
+    $first = app(CashFlowReportBuilder::class)->build();
+    $second = app(CashFlowReportBuilder::class)->build();
+
+    expect(CashFlowDetail::query()->where('cash_flow_snapshot_id', $second->id)->whereIn('line', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'])->where('actual', false)->count())->toBe(0)
+        ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $second->id)->count())->toBeGreaterThan(0)
+        ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $first->id)->count())->toBe(0);
 });

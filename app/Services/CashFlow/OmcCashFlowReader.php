@@ -350,6 +350,48 @@ class OmcCashFlowReader
     }
 
     /**
+     * The bank and cash documents behind one classified flow: one partner
+     * (or none) and counterpart account, receipts or payments, in a range.
+     *
+     * @return list<array{data_doc: string, tip_doc: string, nr_doc: string, currency: string, amount: float, lei: float, note: ?string}>
+     */
+    public function treasuryDocuments(CarbonInterface $from, CarbonInterface $to, string $direction, ?string $partner, string $coresp, int $limit = 300): array
+    {
+        $internalTypes = (array) config('cashflow.omc.internal_tip_doc', []);
+        $internal = (array) config('cashflow.omc.internal_coresp', []);
+
+        $rows = $this->omc->connection()->select(sprintf(<<<'SQL'
+            select d.data_doc::date as data_doc, d.tip_doc, d.nr_doc, d.moneda as currency,
+                   d.val_mon::numeric(20,2) as amount,
+                   (case when d.moneda = 'Lei' then d.val_mon else d.val_mon * coalesce(nullif(d.curs, 0), 1) end)::numeric(20,2) as lei,
+                   nullif(trim(d.obs_txt), '') as note
+            from doc d
+            join tip_doc t on t.tip_doc = d.tip_doc
+            where d.data_doc >= ?::date
+              and d.data_doc < ?::date
+              and (t.incasare_b or t.plata_b or t.incasare_c or t.plata_c)
+              and (t.incasare_b or t.incasare_c) = ?
+              and d.data_anulare is null
+              and not coalesce(%1$s, false)
+              and %2$s
+              and coalesce(trim(d.conts_direct_coresp), '') = ?
+            order by abs(d.val_mon) desc
+            limit %3$d
+            SQL, $this->groupCondition($internalTypes, $internal), $partner === null ? 'd.partener is null' : 'd.partener = ?', max(1, $limit)),
+            array_values(array_filter([$from->toDateString(), $to->toDateString(), $direction === 'in', $partner, $coresp], fn ($value) => $value !== null)));
+
+        return array_map(fn ($row) => [
+            'data_doc' => (string) $row->data_doc,
+            'tip_doc' => (string) $row->tip_doc,
+            'nr_doc' => (string) $row->nr_doc,
+            'currency' => self::currency((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
+            'note' => $row->note !== null ? (string) $row->note : null,
+        ], $rows);
+    }
+
+    /**
      * The account each supplier's invoices mostly go to (by value), e.g.
      * 471 for tourism services, 623 for marketing, 612 for rent.
      *
@@ -490,6 +532,43 @@ class OmcCashFlowReader
             'amount' => (float) $row->amount,
             'lei' => (float) $row->lei,
             'invoices' => (int) $row->invoices,
+        ], $rows);
+    }
+
+    /**
+     * Supplier invoices not fully paid, one by one, with what is still open
+     * on each (in its currency and in lei at its own rate).
+     *
+     * @return list<array{data_doc: string, tip_doc: string, nr_doc: string, partner: ?string, due: string, currency: string, amount: float, lei: float}>
+     */
+    public function openSupplierInvoiceList(CarbonInterface $since): array
+    {
+        $types = (array) config('cashflow.omc.supplier_tip_doc', ['FactFI', 'FactFE']);
+
+        $rows = $this->omc->connection()->select(sprintf(<<<'SQL'
+            select d.data_doc::date as data_doc, d.tip_doc, d.nr_doc, d.partener as partner,
+                   coalesce(d.data_scadenta, d.data_doc)::date as due,
+                   d.moneda as currency,
+                   (%2$s)::numeric(20,2) as amount,
+                   ((%2$s) * (case when d.moneda = 'Lei' then 1 else coalesce(nullif(d.curs, 0), 1) end))::numeric(20,2) as lei
+            from doc d
+            where d.tip_doc in (%1$s)
+              and d.data_doc >= ?::date
+              and d.data_anulare is null
+              and (%2$s) > 0.01
+            order by 5, 4, 1
+            SQL, $this->quoted($types), 'd.val_mon - coalesce(d.val_mon_pl, 0) - coalesce(d.val_mon_dimin_negru, 0)'),
+            [$since->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'data_doc' => (string) $row->data_doc,
+            'tip_doc' => (string) $row->tip_doc,
+            'nr_doc' => (string) $row->nr_doc,
+            'partner' => $row->partner !== null ? (string) $row->partner : null,
+            'due' => (string) $row->due,
+            'currency' => self::currency((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
         ], $rows);
     }
 
