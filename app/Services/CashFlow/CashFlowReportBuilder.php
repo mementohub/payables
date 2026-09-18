@@ -22,6 +22,9 @@ class CashFlowReportBuilder
     /** Weeks before the horizon kept in the snapshot as actual flows. */
     public const RECENT_WEEKS = 13;
 
+    /** Past weeks the actual cash-flow history covers. */
+    public const HISTORY_WEEKS = 52;
+
     private WeekGrid $grid;
 
     private CarbonImmutable $today;
@@ -132,7 +135,7 @@ class CashFlowReportBuilder
             ?? ['receipts' => array_fill_keys(array_keys(BookingSegments::LABELS), $this->grid->zeros()), 'costs' => $this->grid->zeros(), 'bookings' => 0];
 
         $actuals = $this->source('actuals', 'Fluxuri efective an anterior (OMC)', fn () => $this->actuals($opening['total']))
-            ?? ['lastyear' => [], 'recent' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
+            ?? ['lastyear' => [], 'recent' => [], 'history' => [], 'in' => $this->grid->zeros(), 'out_partner' => $this->grid->zeros(), 'out_salaries' => $this->grid->zeros(), 'out_other' => $this->grid->zeros()];
 
         return $this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals);
     }
@@ -1002,10 +1005,15 @@ class CashFlowReportBuilder
         $from = $this->grid->lastYearMonday(0)->subMonth()->startOfMonth();
         $flows = $this->omc->dailyFlows($from, $this->today->addDay());
         $weekly = [];
+        $todayNet = 0.0;
 
         foreach ($flows as $flow) {
             if ($flow['group'] === OmcCashFlowReader::GROUP_INTERNAL) {
                 continue;
+            }
+
+            if ($flow['day'] === $this->today->toDateString()) {
+                $todayNet += $flow['kind'] === 'in' ? $flow['lei'] : -$flow['lei'];
             }
 
             $monday = CarbonImmutable::parse($flow['day'])->startOfWeek(CarbonInterface::MONDAY)->toDateString();
@@ -1072,7 +1080,9 @@ class CashFlowReportBuilder
             // Weeks whose end falls after the previous anchor (and up to the next one).
             $span = [];
             $cursor = CarbonImmutable::parse($previous)->subDays(6)->startOfWeek(CarbonInterface::MONDAY);
-            $limit = $next !== null ? CarbonImmutable::parse($next) : $monday;
+            // Parsed from the date alone, like the cursor: the grid's Mondays
+            // carry the report's timezone and would end the walk a week early.
+            $limit = CarbonImmutable::parse($next ?? $monday->toDateString());
 
             while ($cursor->lte($limit)) {
                 $end = $cursor->addDays(6);
@@ -1129,6 +1139,8 @@ class CashFlowReportBuilder
             $running -= $net($key);
         }
 
+        $history = $this->history($weekly, $balanceAt, $openingTotal + $todayNet);
+
         $in = $this->grid->zeros();
         $outPartner = $this->grid->zeros();
         $outSalaries = $this->grid->zeros();
@@ -1163,6 +1175,7 @@ class CashFlowReportBuilder
         return [
             'lastyear' => $lastyear,
             'recent' => $recent,
+            'history' => $history,
             'in' => $in,
             'out_partner' => $outPartner,
             'out_salaries' => $outSalaries,
@@ -1177,6 +1190,57 @@ class CashFlowReportBuilder
     }
 
     // --------------------------------------------------------------- assembly
+
+    /**
+     * The actual cash flow of the past weeks as OMC recorded it, oldest
+     * first, the current week last (partial: what OMC holds so far). Receipts and
+     * payments are split by class, internal moves left out. The closing
+     * balance is the position walked from the closed month-ends; whatever
+     * the documents do not explain (FX revaluation, interest, timing) shows
+     * as the adjustment, so opening + net + adjustment = closing.
+     *
+     * @param  array<string, array<string, float>>  $weekly
+     * @param  callable(CarbonImmutable): ?float  $balanceAt
+     * @return list<array{week: string, partial: bool, opening: ?float, in_partner: float, in_other: float, in: float, out_partner: float, out_salaries: float, out_other: float, out: float, net: float, adjustment: ?float, closing: ?float}>
+     */
+    private function history(array $weekly, callable $balanceAt, float $currentPosition): array
+    {
+        $rows = [];
+        $opening = $balanceAt($this->grid->start->subWeeks(self::HISTORY_WEEKS + 1));
+        $opening = $opening !== null ? round($opening, 2) : null;
+
+        for ($i = self::HISTORY_WEEKS; $i >= 0; $i--) {
+            $monday = $this->grid->start->subWeeks($i);
+            $week = $weekly[$monday->toDateString()] ?? [];
+            $in = (float) ($week['in'] ?? 0.0);
+            $inOther = (float) ($week['in_other'] ?? 0.0);
+            $out = (float) ($week['out'] ?? 0.0);
+            $net = round($in, 2) - round($out, 2);
+            // The current week closes on the end of yesterday plus today's documents.
+            $closing = $i === 0 ? $currentPosition : $balanceAt($monday);
+            $closing = $closing !== null ? round($closing, 2) : null;
+
+            $rows[] = [
+                'week' => $monday->toDateString(),
+                'partial' => $i === 0,
+                'opening' => $opening !== null ? round($opening, 2) : null,
+                'in_partner' => round($in - $inOther, 2),
+                'in_other' => round($inOther, 2),
+                'in' => round($in, 2),
+                'out_partner' => round((float) ($week['out_partner'] ?? 0.0), 2),
+                'out_salaries' => round((float) ($week['out_salaries'] ?? 0.0), 2),
+                'out_other' => round((float) ($week['out_other'] ?? 0.0), 2),
+                'out' => round($out, 2),
+                'net' => round($net, 2),
+                'adjustment' => $opening !== null && $closing !== null ? round($closing - $opening - $net, 2) : null,
+                'closing' => $closing !== null ? round($closing, 2) : null,
+            ];
+
+            $opening = $closing;
+        }
+
+        return $rows;
+    }
 
     /**
      * @param  array<string, mixed>  $opening
@@ -1321,6 +1385,7 @@ class CashFlowReportBuilder
             'coverage' => $coverage,
             'lastyear' => $actuals['lastyear'],
             'recent' => $actuals['recent'],
+            'history' => $actuals['history'] ?? [],
             'kpis' => $kpis,
             'opening' => $opening,
             'structure' => [

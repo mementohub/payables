@@ -34,6 +34,23 @@ export type LastYearRow = {
     ly_bal_open: number | null;
 };
 
+/** One past week as OMC recorded it, in lei; the current week is partial. */
+export type HistoryRow = {
+    week: string;
+    partial: boolean;
+    opening: number | null;
+    in_partner: number;
+    in_other: number;
+    in: number;
+    out_partner: number;
+    out_salaries: number;
+    out_other: number;
+    out: number;
+    net: number;
+    adjustment: number | null;
+    closing: number | null;
+};
+
 export type ReportKpis = {
     opening: number;
     closing_13: number;
@@ -175,6 +192,8 @@ export type ReportPayload = {
     lines: ReportLine[];
     coverage: ('existing' | 'scenario')[];
     lastyear: LastYearRow[];
+    /** Absent in a snapshot built before the history was kept. */
+    history?: HistoryRow[];
     kpis: ReportKpis;
     opening: OpeningDetail;
     structure: {

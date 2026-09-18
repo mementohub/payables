@@ -7,6 +7,7 @@ import CashFlowReportController from '@/actions/App/Http/Controllers/CashFlowRep
 import MaintenanceController from '@/actions/App/Http/Controllers/MaintenanceController';
 import BalanceChart from '@/components/cash-flow/balance-chart';
 import CharterPanel from '@/components/cash-flow/charter-panel';
+import HistoryTable from '@/components/cash-flow/history-table';
 import ParametersForm from '@/components/cash-flow/parameters-form';
 import {
     deriveReport,
@@ -334,6 +335,9 @@ export default function CashFlowReport({
                 <Tabs defaultValue="report">
                     <TabsList>
                         <TabsTrigger value="report">Raport</TabsTrigger>
+                        <TabsTrigger value="history">
+                            Istoric efectiv
+                        </TabsTrigger>
                         <TabsTrigger value="parameters">Parametri</TabsTrigger>
                         <TabsTrigger value="charter">
                             Charter
@@ -795,6 +799,30 @@ export default function CashFlowReport({
                                         </CardContent>
                                     </Card>
                                 </>
+                            )}
+                        </StoredReportBoundary>
+                    </TabsContent>
+
+                    <TabsContent value="history">
+                        <StoredReportBoundary builtAt={snapshot?.built_at}>
+                            {snapshot === undefined ? (
+                                <Card>
+                                    <CardContent className="h-64 animate-pulse rounded-xl bg-muted/40" />
+                                </Card>
+                            ) : payload?.history?.length ? (
+                                <HistoryTable history={payload.history} />
+                            ) : (
+                                <Alert>
+                                    <AlertTitle>
+                                        Istoricul nu este încă în raport
+                                    </AlertTitle>
+                                    <AlertDescription>
+                                        Istoricul efectiv se calculează la
+                                        următoarea construire a raportului
+                                        (noaptea, la {schedule.nightly}) sau la
+                                        „Recalculează”.
+                                    </AlertDescription>
+                                </Alert>
                             )}
                         </StoredReportBoundary>
                     </TabsContent>

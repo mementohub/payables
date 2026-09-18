@@ -218,6 +218,32 @@ test('the snapshot puts every source on its week in lei', function () {
         ->toHaveKeys(['rotation', 'taxes', 'deposit', 'fx']);
 });
 
+test('the actual history lists the past 52 weeks and the current one, split by class and reconciled to the balance', function () {
+    mockOmc();
+    mockEtrip();
+
+    $history = app(CashFlowReportBuilder::class)->build()->payload['history'];
+    $byWeek = collect($history)->keyBy('week');
+
+    expect($history)->toHaveCount(53)
+        ->and($history[0]['week'])->toBe('2025-09-15')
+        ->and($history[52])->toMatchArray(['week' => '2026-09-14', 'partial' => true, 'in' => 0, 'out' => 0, 'closing' => 6665000])
+        // Internal moves stay out; partner and salary payments keep their class.
+        ->and($byWeek['2025-09-15'])->toMatchArray(['partial' => false, 'in_partner' => 300000, 'in_other' => 0, 'in' => 300000, 'out_partner' => 100000, 'out_salaries' => 20000, 'out_other' => 0, 'out' => 120000, 'net' => 180000])
+        ->and($byWeek['2026-09-07'])->toMatchArray(['in' => 200000, 'out' => 50000, 'net' => 150000])
+        // After the last month-end (31.08: 1M + 100k EUR × 5.05 + 10k + 5M) every week walks on
+        // with its own net flow, the current one included, not a week late.
+        ->and($byWeek['2026-08-31']['closing'])->toEqual(6515000)
+        ->and($byWeek['2026-09-07']['closing'])->toEqual(6665000);
+
+    // Each week opens on the last one's close, and what the documents do not
+    // explain shows as the adjustment.
+    foreach (array_slice($history, 1, null, true) as $i => $week) {
+        expect($week['opening'])->toEqual($history[$i - 1]['closing'])
+            ->and(round($week['opening'] + $week['net'] + $week['adjustment'], 2))->toEqual($week['closing']);
+    }
+});
+
 test('without a base season every signed season estimates its next edition until that one is contracted', function () {
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => [
         'fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5],
