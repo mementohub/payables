@@ -158,10 +158,4 @@ class CharterContract extends Model
 
         return round($base * (float) $this->deposit_percent / 100, 2);
     }
-
-    /** The share of a rotation still due once the deposit covers the rest. */
-    public function netOfDepositFactor(): float
-    {
-        return $this->deposit_percent !== null ? 1 - (float) $this->deposit_percent / 100 : 1.0;
-    }
 }

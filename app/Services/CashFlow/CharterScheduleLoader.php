@@ -15,16 +15,27 @@ use Illuminate\Support\Facades\DB;
  * which are kept as terms only until the finance team confirms who actually
  * pays the carriers.
  *
- * Loaded once, by the first upgrade that finds no charter contract, so the
- * charter lines of the WCFR report are right from the start. Everything can
- * be edited afterwards in the Charter tab, and a reloaded programme replaces
- * the rotations of the seasons it carries.
+ * Loaded by the first upgrade that finds no charter contract, and again by
+ * the first upgrade after the pack changes, when the contracts in place came
+ * from an earlier pack rather than from the Charter tab. Everything can be
+ * edited afterwards in the Charter tab, and a reloaded programme replaces the
+ * rotations of the seasons it carries.
  */
 class CharterScheduleLoader
 {
     public const SETTING = 'charter_schedule';
 
-    public const VERSION = 'pachet contracte 17.09.2026 (CTR 317 AA30/ADD7, CTR 281, CTR 1585, draft W26/27, contracte companii aeriene)';
+    public const VERSION = 'pachet contracte 17.09.2026 (CTR 317 AA30/ADD7, CTR 281, CTR 1585, draft W26/27, contracte companii aeriene); taxe CTR 317 la valoarea contractului';
+
+    /**
+     * Names an earlier pack gave the same contracts, so a reload updates them
+     * instead of adding a second copy next to them.
+     *
+     * @var array<string, list<string>>
+     */
+    private const EARLIER_NAMES = [
+        'S26|CTR 317 Memento Air – S26' => ['CTR 317/11.11.2025 Memento Air – S26'],
+    ];
 
     /**
      * The contracts CHR settles, and the ones kept for their terms only.
@@ -64,7 +75,7 @@ class CharterScheduleLoader
             'cancellation_terms' => 'Renunțare după semnare: 100% din valoarea lanțului (art. 3.3). Anulare de către Memento Air: preaviz 30 de zile, rambursare în 7 zile (art. 4.4–4.5).',
             'source' => 'CTR 317/11.11.2025 + anexa AA30/ADD7 din 11.09.2026',
             'confidence' => 'R',
-            'notes' => 'Locuri 100% garantate. Depozitul este prevăzut la art. 3.2 a) „conform anexei”, dar nicio anexă S26 nu conține sumă sau scadență, deci este 0 în model. Avansul de 1.730.662,40 EUR (factura 19617/31.03.2026, stornată) a fost pe rotațiile din mai, nu depozit de contract.',
+            'notes' => 'Locuri 100% garantate. Taxele de aeroport ale rotațiilor sunt aduse proporțional la valoarea contractului cu taxe (36.944.842,79 EUR): anexa le însumează cu 21.835,69 EUR mai puțin. Depozitul este prevăzut la art. 3.2 a) „conform anexei”, dar nicio anexă S26 nu conține sumă sau scadență, deci este 0 în model. Avansul de 1.730.662,40 EUR (factura 19617/31.03.2026, stornată) a fost pe rotațiile din mai, nu depozit de contract.',
         ],
         [
             'name' => 'W26/27 Memento Air – draft',
@@ -241,17 +252,30 @@ class CharterScheduleLoader
         return CashFlowSetting::query()->where('key', self::SETTING)->exists();
     }
 
+    /** The pack the contracts in place were loaded from, when they were. */
+    public function loadedVersion(): ?string
+    {
+        $value = CashFlowSetting::query()->where('key', self::SETTING)->value('value');
+
+        return is_array($value) ? ($value['version'] ?? null) : null;
+    }
+
     /**
-     * Create the contracts and their rotations. Nothing happens when the pack
-     * was loaded before or contracts already exist, unless forced; then the
-     * contracts are updated in place and their rotations replaced.
+     * Create the contracts and their rotations. Nothing happens when this pack
+     * was loaded before, or when contracts were entered by hand before any
+     * pack, unless forced. When an earlier pack is in place the contracts are
+     * updated in place and their rotations replaced.
      *
      * @return array{contracts: int, flights: int}|null null when nothing was loaded
      */
     public function load(bool $force = false): ?array
     {
-        if (! $force && ($this->loaded() || CharterContract::query()->exists())) {
-            return null;
+        if (! $force) {
+            $version = $this->loadedVersion();
+
+            if ($version === self::VERSION || ($version === null && ($this->loaded() || CharterContract::query()->exists()))) {
+                return null;
+            }
         }
 
         $result = DB::transaction(function () {
@@ -268,6 +292,10 @@ class CharterScheduleLoader
             $memento = $contracts['S26|CTR 317 Memento Air – S26'];
             $flights = $this->importer->import($this->path(), 'charter_flights.csv', $memento, replace: true, useContractRules: true)['imported'];
             $flights += $this->loadHardBlock($contracts['S26|CTR 1585 Anima Wings – hard block S26']);
+
+            foreach ($contracts as $contract) {
+                $this->taxesToContractValue($contract);
+            }
 
             return ['contracts' => CharterContract::query()->count(), 'flights' => $flights];
         });
@@ -286,6 +314,17 @@ class CharterScheduleLoader
      */
     private function upsert(array $attributes): CharterContract
     {
+        $current = CharterContract::query()->where('season', $attributes['season'])->where('name', $attributes['name']);
+
+        foreach (self::EARLIER_NAMES[$attributes['season'].'|'.$attributes['name']] ?? [] as $earlier) {
+            if (! $current->clone()->exists()) {
+                CharterContract::query()
+                    ->where('season', $attributes['season'])
+                    ->where('name', $earlier)
+                    ->update(['name' => $attributes['name']]);
+            }
+        }
+
         return CharterContract::query()->updateOrCreate(
             ['season' => $attributes['season'], 'name' => $attributes['name']],
             $attributes,
@@ -334,6 +373,37 @@ class CharterScheduleLoader
             'confidence' => $confidence,
             'notes' => 'Cumpărătorul este Memento Air, nu CHR, deci contractul nu intră în fluxul CHR. Se decontează către CHR prin refacturarea din CTR 317. '.$notes,
         ];
+    }
+
+    /**
+     * The contract value with taxes is what the contract settles, so when
+     * the rotations of the annex add up to other airport taxes, each rotation's
+     * taxes are brought to it in proportion; the rounding rides on the last.
+     */
+    private function taxesToContractValue(CharterContract $contract): void
+    {
+        if ($contract->contract_value_with_taxes === null) {
+            return;
+        }
+
+        $flights = $contract->flights()->orderBy('flight_date')->orderBy('id')->get(['id', 'net_value', 'taxes']);
+        $taxes = round((float) $flights->sum('taxes'), 2);
+        $target = round((float) $contract->contract_value_with_taxes - (float) $flights->sum('net_value'), 2);
+
+        if ($flights->isEmpty() || $taxes <= 0 || $target <= 0 || abs($target - $taxes) < 0.01) {
+            return;
+        }
+
+        $factor = $target / $taxes;
+        $assigned = 0.0;
+
+        foreach ($flights as $index => $flight) {
+            $value = $index === $flights->count() - 1
+                ? round($target - $assigned, 2)
+                : round((float) $flight->taxes * $factor, 2);
+            $assigned += $value;
+            CharterFlight::query()->whereKey($flight->id)->update(['taxes' => $value]);
+        }
     }
 
     /**

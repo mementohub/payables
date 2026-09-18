@@ -173,7 +173,7 @@ function ContractFields({
                 'Status',
                 [
                     ['signed', 'semnat – rotațiile intră la C6'],
-                    ['draft', 'draft – rotațiile intră la C7, net de depozit'],
+                    ['draft', 'draft – rotațiile intră la C7'],
                 ],
                 'signed',
             )}

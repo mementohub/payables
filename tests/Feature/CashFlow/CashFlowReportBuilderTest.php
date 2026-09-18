@@ -117,7 +117,7 @@ test('the snapshot puts every source on its week in lei', function () {
 
     $signed = CharterContract::factory()->create(['season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
     CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100]);
-    $draft = CharterContract::factory()->draft()->create(['deposit_percent' => 50, 'deposit_due_date' => '2026-10-05', 'contract_value' => 20000]);
+    $draft = CharterContract::factory()->draft()->create(['deposit_percent' => 50, 'deposit_due_date' => '2026-10-05', 'contract_value' => 3000]);
     CharterFlight::factory()->for($draft, 'contract')->create(['flight_date' => '2026-12-01', 'net_value' => 2000, 'taxes' => 0]);
 
     $snapshot = app(CashFlowReportBuilder::class)->build('Bogdan');
@@ -162,8 +162,9 @@ test('the snapshot puts every source on its week in lei', function () {
     expect(lineValues($snapshot, 'C1')[2])->toBe(5000.0)
         ->and(lineValues($snapshot, 'C4')[0])->toBe(700.0)
         ->and(lineValues($snapshot, 'C6')[3])->toBe(5000.0)
-        ->and(lineValues($snapshot, 'C7')[9])->toBe(5000.0)
-        ->and(lineValues($snapshot, 'C8')[3])->toBe(50000.0)
+        // The draft's 1.500 EUR deposit is due 05.10 and regularised at its last rotation, which pays 2.000 − 1.500.
+        ->and(lineValues($snapshot, 'C7')[9])->toBe(2500.0)
+        ->and(lineValues($snapshot, 'C8')[3])->toBe(7500.0)
         ->and(lineValues($snapshot, 'C9')[7])->toBe(500.0)
         ->and(array_slice(lineValues($snapshot, 'C10'), 0, 6))->toBe([200000.0, 200000.0, 0.0, 0.0, 0.0, 5000.0])
         ->and(lineValues($snapshot, 'C11')[1])->toBe(500.0);
@@ -368,11 +369,14 @@ test('every charter contract is settled on its own terms', function () {
     ]);
     CharterFlight::factory()->for($afterFlight, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 500, 'taxes' => 200]);
 
-    // CHR sells the seats: rotation and taxes come in together, 10 days before the flight.
+    // CHR sells the seats: rotation and taxes come in together, 10 days before the flight,
+    // less the 10 % deposit collected at signing, which the last rotation regularises.
     $incoming = CharterContract::factory()->create([
         'name' => 'CTR 1585', 'season' => 'S26', 'status' => 'signed', 'direction' => CharterContract::DIRECTION_IN,
         'days_before_flight' => 10, 'taxes_rule' => CharterContract::TAXES_WITH_ROTATION, 'fx_markup_pct' => 0,
+        'deposit_amount' => 412, 'deposit_paid' => true,
     ]);
+    CharterFlight::factory()->for($incoming, 'contract')->create(['flight_date' => '2026-10-08', 'net_value' => 2000, 'taxes' => 60]);
     CharterFlight::factory()->for($incoming, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 2000, 'taxes' => 60]);
 
     // Memento Air's own contract with a carrier: terms only, no cash.
@@ -387,7 +391,8 @@ test('every charter contract is settled on its own terms', function () {
     expect(lineValues($snapshot, 'C6')[3])->toBe(1000 * 5 * 1.02 + 500 * 5)
         ->and(lineValues($snapshot, 'C9')[7])->toBe(100 * 5 * 1.02)
         ->and(lineValues($snapshot, 'C9')[4])->toBe(200 * 5.0)
-        ->and(lineValues($snapshot, 'B10')[3])->toBe((2000 + 60) * 5.0)
+        ->and(lineValues($snapshot, 'B10')[2])->toBe((2000 + 60) * 5.0)
+        ->and(lineValues($snapshot, 'B10')[3])->toBe((2000 + 60 - 412) * 5.0)
         ->and(array_sum(lineValues($snapshot, 'C7')))->toBe(0.0)
         ->and(array_sum(lineValues($snapshot, 'C8')))->toBe(0.0);
 

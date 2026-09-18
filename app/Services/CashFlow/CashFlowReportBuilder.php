@@ -503,9 +503,6 @@ class CashFlowReportBuilder
         foreach ($contracts as $contract) {
             $incomingContract = $contract->isIncoming();
             $withTaxes = $contract->taxesRideWithRotation();
-            $netFactor = ! $incomingContract && $contract->status === CharterContract::STATUS_DRAFT
-                ? $contract->netOfDepositFactor()
-                : 1.0;
             $bucket = $contract->status === CharterContract::STATUS_DRAFT
                 ? CharterContract::STATUS_DRAFT
                 : CharterContract::STATUS_SIGNED;
@@ -539,6 +536,7 @@ class CashFlowReportBuilder
             }
 
             $counted++;
+            $settled = $this->depositSettlement($contract, $withTaxes, $row['total_net']);
 
             foreach ($contract->flights as $flight) {
                 $flight->setRelation('contract', $contract);
@@ -547,7 +545,7 @@ class CashFlowReportBuilder
                 $flightTaxes = (float) $flight->taxes;
 
                 if ($payDate->gte($this->today)) {
-                    $due = (float) $flight->net_value * $netFactor + ($withTaxes ? $flightTaxes : 0.0);
+                    $due = (float) $flight->net_value + ($withTaxes ? $flightTaxes : 0.0) - ($settled[$flight->id] ?? 0.0);
                     $key = $incomingContract ? 'incoming' : $bucket;
 
                     if ($this->grid->add($series[$key], $payDate, $this->charterLei($due, $contract))) {
@@ -621,6 +619,33 @@ class CashFlowReportBuilder
             '_message' => $message,
             '_skipped' => $counted === 0,
         ];
+    }
+
+    /**
+     * How much of each rotation the deposit already covers. As the contracts
+     * settle it (CTR 317 art. 3.5, CTR 1585 art. 3.5, CTR 281, and so the
+     * W26/27 draft), the deposit is regularised at the last rotations: every
+     * rotation is due in full, and the ones at the end of the programme are
+     * paid, or collected, only for what the deposit leaves.
+     *
+     * @return array<int, float> the covered amount keyed by rotation id
+     */
+    private function depositSettlement(CharterContract $contract, bool $withTaxes, float $flightsNet): array
+    {
+        $remaining = $contract->depositAmount($flightsNet);
+        $covered = [];
+
+        foreach ($contract->flights->sortByDesc('flight_date') as $flight) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $amount = (float) $flight->net_value + ($withTaxes ? (float) $flight->taxes : 0.0);
+            $covered[$flight->id] = min($remaining, $amount);
+            $remaining = round($remaining - $covered[$flight->id], 2);
+        }
+
+        return $covered;
     }
 
     /**
@@ -1200,7 +1225,7 @@ class CashFlowReportBuilder
         $this->line('C4', sprintf('Plăți bilete avion linie (comenzi din ultimele %d zile)', (int) ($this->params['payables']['ticket_days'] ?? 7)), 'C', $payables['lines']['flight']);
         $this->line('C5', 'Alte costuri directe de produs', 'C', $payables['lines']['other']);
         $this->line('C6', 'Charter – rotații contracte semnate', 'C', $charter['signed'], note: 'fiecare rotație pe termenul contractului ei (CTR 317: OP cu 10 zile înainte de operare)');
-        $this->line('C7', 'Charter – rotații contracte draft (net de depozit)', 'C', $charter['draft'], note: 'valoarea rotației × (1 − % depozit), pentru contractele nesemnate încă');
+        $this->line('C7', 'Charter – rotații contracte draft', 'C', $charter['draft'], note: 'rotațiile contractelor nesemnate încă, integral; depozitul se regularizează la ultimele rotații');
         $this->line('C8', 'Charter – depozite contracte', 'C', $charter['deposit'], note: 'depozitul fiecărui contract neachitat, la scadența lui');
         $this->line('C9', 'Charter – taxe aeroport', 'C', $charter['taxes'], note: 'pe regula fiecărui contract: reconciliere lunară în prima săptămână a lunii următoare, la N zile după zbor sau în avans; taxele plătite odată cu rotația sunt deja în C6/C7');
         $this->line('C10', 'Furnizori – sold neachitat la data raportului (facturi scadente)', 'C', $suppliers['line'], note: $suppliers['mode'] === 'manual' ? 'parametri' : 'OMC: facturi furnizor deschise, pe scadență');

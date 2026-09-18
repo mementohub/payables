@@ -38,13 +38,16 @@ test('the contract pack is loaded once, with the terms of every contract', funct
         ->and((float) $s26->fx_markup_pct)->toBe(2.0)
         ->and($s26->flights()->count())->toBe(1458)
         ->and(round((float) $s26->flights()->sum('net_value')))->toBe(31312718.0)
-        ->and(round((float) $s26->flights()->sum('taxes')))->toBe(5610289.0);
+        // The annex adds up to 21.835,69 EUR less taxes than the contract; the contract value governs.
+        ->and(round((float) $s26->flights()->sum('taxes'), 2))->toBe(5632124.96)
+        ->and(round((float) $s26->flights()->sum('net_value') + (float) $s26->flights()->sum('taxes'), 2))->toBe(36944842.79);
 
     $flight = $s26->flights()->where('route', 'CLJ HRG CLJ')->orderBy('flight_date')->firstOrFail();
     expect($flight->flight_date->toDateString())->toBe('2026-03-29')
         ->and($flight->pay_date)->toBeNull()
         ->and($flight->paymentDate()->toDateString())->toBe('2026-03-19')
-        ->and($flight->taxesPaymentDate()->toDateString())->toBe('2026-04-05');
+        ->and($flight->taxesPaymentDate()->toDateString())->toBe('2026-04-05')
+        ->and((float) $flight->taxes)->toBe(round(7522.84 * 5632124.96 / 5610289.27, 2));
 
     // W26/27: draft, the 50 % deposit of the CTR 281 precedent due in the first week of October.
     $draft = contractNamed('W26/27 Memento Air – draft');
@@ -53,7 +56,8 @@ test('the contract pack is loaded once, with the terms of every contract', funct
         ->and($draft->deposit_due_date->toDateString())->toBe('2026-10-05')
         ->and($draft->depositAmount())->toBe(3628566.80)
         ->and($draft->flights()->count())->toBe(170)
-        ->and(round((float) $draft->flights()->sum('net_value')))->toBe(7257134.0);
+        ->and(round((float) $draft->flights()->sum('net_value')))->toBe(7257134.0)
+        ->and(round((float) $draft->flights()->sum('taxes'), 2))->toBe(1364180.04);
 
     // CTR 1585: CHR sells the seats, so it is money coming in, taxes included in the rotation.
     $hardBlock = contractNamed('CTR 1585 Anima Wings – hard block S26');
@@ -122,4 +126,24 @@ test('app:upgrade loads the pack when no contract exists yet', function () {
     $this->artisan('app:upgrade', ['--skip-sync' => true, '--skip-etrip' => true])
         ->doesntExpectOutputToContain('Contracte charter')
         ->assertSuccessful();
+});
+
+test('an earlier pack is replaced by this one on the next upgrade, without a second CTR 317', function () {
+    // What the handover of 11.09.2026 left: CTR 317 under its old name and the W26/27 draft, neither with the contract terms.
+    $old = CharterContract::factory()->create(['name' => 'CTR 317/11.11.2025 Memento Air – S26', 'season' => 'S26', 'fx_markup_pct' => 0]);
+    CharterFlight::factory()->for($old, 'contract')->count(3)->create();
+    CharterContract::factory()->draft()->create(['name' => 'W26/27 Memento Air – draft', 'season' => 'W26-27', 'fx_markup_pct' => 0]);
+    CashFlowSetting::query()->create(['key' => CharterScheduleLoader::SETTING, 'value' => ['version' => 'AA30/ADD7 11.09.2026 + W26/27 draft', 'imported' => 1628]]);
+
+    $loader = app(CharterScheduleLoader::class);
+
+    expect($loader->load())->toMatchArray(['contracts' => 17])
+        ->and(CharterContract::query()->count())->toBe(17)
+        ->and(CharterContract::query()->where('season', 'S26')->where('name', 'like', 'CTR 317%')->count())->toBe(1)
+        ->and(contractNamed('CTR 317 Memento Air – S26')->id)->toBe($old->id)
+        ->and(contractNamed('CTR 317 Memento Air – S26')->flights()->count())->toBe(1458)
+        ->and((float) contractNamed('CTR 317 Memento Air – S26')->fx_markup_pct)->toBe(2.0)
+        ->and(contractNamed('CTR 281 Memento Air – W25/26')->deposit_settlement)->toStartWith('regularizare la ultima rotație; stornat')
+        ->and($loader->loadedVersion())->toBe(CharterScheduleLoader::VERSION)
+        ->and($loader->load())->toBeNull();
 });

@@ -233,16 +233,16 @@ export default function SourcesPanel({
                         <b className="text-foreground">Charter.</b> Fiecare
                         contract se decontează pe termenii lui, din tabul
                         Charter: rotațiile contractelor semnate la C6, ale celor
-                        draft la C7 net de depozit, depozitul la C8 la scadența
-                        lui, taxele de aeroport la C9 pe regula contractului
-                        (reconciliere lunară în prima săptămână a lunii
-                        următoare la CTR 317, la N zile după zbor la CTR 281).
-                        Taxele pe care contractul le decontează odată cu rotația
-                        intră în linia rotației. Contractele în care CHR vinde
-                        locuri sunt încasare și intră la B10. Contractele
-                        Memento Air cu companiile aeriene sunt păstrate doar ca
-                        termeni, fără efect de cash, până se confirmă cine
-                        plătește efectiv carrierii.
+                        draft la C7, depozitul la C8 la scadența lui și
+                        regularizat la ultimele rotații, taxele de aeroport la
+                        C9 pe regula contractului (reconciliere lunară în prima
+                        săptămână a lunii următoare la CTR 317, la N zile după
+                        zbor la CTR 281). Taxele pe care contractul le
+                        decontează odată cu rotația intră în linia rotației.
+                        Contractele în care CHR vinde locuri sunt încasare și
+                        intră la B10. Contractele Memento Air cu companiile
+                        aeriene sunt păstrate doar ca termeni, fără efect de
+                        cash, până se confirmă cine plătește efectiv carrierii.
                     </p>
                     <p>
                         <b className="text-foreground">OPEX.</b> Medii lunare pe
