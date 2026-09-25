@@ -13,6 +13,8 @@ use App\Services\CashFlow\CashFlowParameters;
 use App\Services\CashFlow\EtripCashFlowReader;
 use App\Services\CashFlow\OmcCashFlowReader;
 use App\Services\CashFlow\WeekGrid;
+use App\Services\Exports\CashFlowExport;
+use App\Services\Exports\ReportExporter;
 use App\Services\Maintenance\ArtisanRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +23,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 use Throwable;
 
 /**
@@ -139,6 +143,27 @@ class CashFlowReportController extends Controller
      *
      * @return array<string, mixed>|null
      */
+    /**
+     * Ultimul snapshot într-un fișier: Excel cu cele 52 de săptămâni pe o
+     * singură filă, sau PDF cu logo, tăiat pe file de coloane ca să încapă.
+     */
+    public function export(Request $request, CashFlowExport $export, ReportExporter $exporter): HttpResponse|BinaryFileResponse
+    {
+        $validated = $request->validate([
+            'format' => ['required', Rule::in(ReportExporter::FORMATS)],
+        ]);
+
+        $snapshot = CashFlowSnapshot::latest();
+
+        if ($snapshot === null || $snapshot->payload === null) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Nu există încă un raport construit. Apasă „Reconstruiește” și încearcă din nou.']);
+
+            return back(303);
+        }
+
+        return $exporter->download($export->document($snapshot), $validated['format']);
+    }
+
     private function snapshotPayload(): ?array
     {
         $snapshot = CashFlowSnapshot::latest();

@@ -23,6 +23,7 @@ import WeeklyTable from '@/components/cash-flow/weekly-table';
 import YoyTable from '@/components/cash-flow/yoy-table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { ExportMenu } from '@/components/reports/export-menu';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -290,6 +291,14 @@ export default function CashFlowReport({
                                 </Button>
                             </Form>
                         )}
+                        <ExportMenu
+                            disabled={!snapshot?.payload}
+                            href={(format) =>
+                                CashFlowReportController.exportMethod.url({
+                                    query: { format },
+                                })
+                            }
+                        />
                         <Form
                             {...CashFlowReportController.build.form()}
                             options={{ preserveScroll: true }}
