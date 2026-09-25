@@ -28,11 +28,14 @@ class ArtisanRunner
 
     public const ROUTING = 'routing';
 
+    public const PNL = 'pnl';
+
     private const COMMANDS = [
         self::UPGRADE => 'app:upgrade',
         self::SYNC => 'erp:sync',
         self::CASHFLOW => 'cashflow:build',
         self::ROUTING => 'invoices:assign',
+        self::PNL => 'pnl:build',
     ];
 
     /** Written as the last log line by the background run, with the exit code. */
@@ -50,7 +53,23 @@ class ArtisanRunner
 
     public function logPath(string $run): string
     {
-        return ($this->logDirectory ?? storage_path('logs')).'/'.$this->command($run).'.log';
+        return $this->directory().'/'.$this->command($run).'.log';
+    }
+
+    /**
+     * Where the run logs live. A test that reaches this far without saying
+     * where to write gets a directory of its own: the logs of the running
+     * installation are never truncated by a test suite.
+     */
+    private function directory(): string
+    {
+        if ($this->logDirectory !== null) {
+            return $this->logDirectory;
+        }
+
+        return app()->runningUnitTests()
+            ? storage_path('framework/testing/runs')
+            : storage_path('logs');
     }
 
     /**

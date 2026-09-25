@@ -11,6 +11,9 @@ beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
     Cache::flush();
     Process::fake();
+    // The suite runs with the automatic sync off so no test starts a real
+    // background run; this file is the one that exercises it.
+    config(['sync.auto_enabled' => true]);
 
     $this->user = User::factory()->withRoles('admin')->create();
     $this->dir = sys_get_temp_dir().'/payables-auto-'.uniqid();
@@ -135,4 +138,17 @@ test('the cash-flow rebuild waits for the nightly sync of the day', function () 
     $this->actingAs($this->user)->get('/companies')->assertOk();
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'cashflow:build'));
+});
+
+test('the suite never starts a background run by visiting a page, nor writes to the installation logs', function () {
+    // The default for every other test file: no kick, no process, no log touched.
+    config(['sync.auto_enabled' => false]);
+
+    $this->actingAs($this->user)->get('/dashboard')->assertSuccessful();
+
+    Process::assertNothingRan();
+
+    expect((new ArtisanRunner)->logPath(ArtisanRunner::SYNC))
+        ->not->toBe(storage_path('logs/erp:sync.log'))
+        ->toStartWith(storage_path('framework/testing'));
 });
