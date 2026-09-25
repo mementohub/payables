@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use GuzzleHttp\Exception\ClientException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
@@ -18,7 +19,16 @@ class MicrosoftController extends Controller
 
     public function callback(): RedirectResponse
     {
-        $microsoftUser = Socialite::driver('microsoft')->user();
+        try {
+            $microsoftUser = Socialite::driver('microsoft')->user();
+        } catch (ClientException $e) {
+            logger()->error('Microsoft OAuth error', [
+                'status' => $e->getResponse()->getStatusCode(),
+                'body' => json_decode($e->getResponse()->getBody()->getContents(), true),
+            ]);
+
+            throw $e;
+        }
 
         $user = User::query()
             ->where('microsoft_id', $microsoftUser->getId())
