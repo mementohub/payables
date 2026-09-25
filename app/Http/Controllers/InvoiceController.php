@@ -135,6 +135,19 @@ class InvoiceController extends Controller
     /**
      * @return array{search: ?string, company_id: ?int, payment: ?string, data_doc_from: ?string, data_doc_to: ?string, data_scadenta_from: ?string, data_scadenta_to: ?string, approval: ?string, responsible_id: ?int}
      */
+    /**
+     * Factura trebuie să fie a unui departament al omului; altfel nici n-ar fi
+     * apărut în listă, iar linkul direct nu e o portiță.
+     */
+    private function seeable(Request $request, Invoice $invoice): void
+    {
+        abort_unless(
+            Invoice::query()->whereKey($invoice->getKey())->visibleTo($request->user())->exists(),
+            403,
+            'Factura este a altui departament.',
+        );
+    }
+
     private function parseFilters(Request $request): array
     {
         return InvoiceListQuery::parseFilters($request);
@@ -142,6 +155,8 @@ class InvoiceController extends Controller
 
     public function show(Request $request, Invoice $invoice): Response
     {
+        $this->seeable($request, $invoice);
+
         $this->authorizeShow($request, $invoice);
 
         $invoice->load([
@@ -257,6 +272,8 @@ class InvoiceController extends Controller
 
     public function comment(Request $request, Invoice $invoice): RedirectResponse
     {
+        $this->seeable($request, $invoice);
+
         $user = $request->user();
         abort_unless($user, 403);
 
@@ -273,6 +290,8 @@ class InvoiceController extends Controller
 
     public function updatePaymentStatus(Request $request, Invoice $invoice): RedirectResponse
     {
+        $this->seeable($request, $invoice);
+
         $user = $request->user();
         abort_unless($user, 403);
 

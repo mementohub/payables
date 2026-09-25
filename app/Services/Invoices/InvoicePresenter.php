@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceEvent;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\SyncService;
+use Carbon\CarbonImmutable;
 
 class InvoicePresenter
 {
@@ -374,9 +375,16 @@ class InvoicePresenter
             ->whereIn('tip_doc', SyncService::CLIENT_DOC_TYPES)
             ->where(function ($query) use ($pairs) {
                 foreach ($pairs as [$dataDoc, $nrDoc]) {
-                    $query->orWhere(function ($scoped) use ($dataDoc, $nrDoc) {
+                    // Interval, nu `whereDate`: funcția pe coloană ar face
+                    // indexul de nefolosit și pagina citea toată tabela. Capătul
+                    // deschis acoperă și sqlite-ul testelor, unde data se scrie
+                    // cu ora lipită de ea.
+                    $nextDay = CarbonImmutable::parse($dataDoc)->addDay()->toDateString();
+
+                    $query->orWhere(function ($scoped) use ($dataDoc, $nextDay, $nrDoc) {
                         $scoped
-                            ->whereDate('data_doc', $dataDoc)
+                            ->where('data_doc', '>=', $dataDoc)
+                            ->where('data_doc', '<', $nextDay)
                             ->where('nr_doc', $nrDoc);
                     });
                 }

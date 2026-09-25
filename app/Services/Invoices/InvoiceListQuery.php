@@ -37,6 +37,7 @@ class InvoiceListQuery
 
         return Invoice::query()
             ->withListRelations()
+            ->visibleTo($request->user())
             ->forScope($scope)
             ->whereNull('omc_removed_at')
             ->forCompany($filters['company_id'])
