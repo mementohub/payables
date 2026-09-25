@@ -5,7 +5,12 @@
       "mcp__laravel-boost__database-query",
       "Bash(vendor/bin/pint --dirty --format agent)",
       "Bash(grep -rn 'MatchInvoiceToEInvoice\\\\|matcher->find\\\\|->find\\($e' /Users/ciungulete/Sites/payables/tests)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(git fetch *)",
+      "Bash(git -c user.name=Claude -c user.email=noreply@anthropic.com commit -q -F -)",
+      "Bash(git push *)",
+      "Bash(grep -n '$this->line\\(' app/Services/CashFlow/CashFlowReportBuilder.php)",
+      "Bash(grep -n \"line\\(\\\\s*$\\\\|->line\\(\\\\|'B[0-9]\\\\|'C[0-9]\\\\|'D[0-9]\" app/Services/CashFlow/CashFlowReportBuilder.php)"
     ],
     "defaultMode": "bypassPermissions"
   },

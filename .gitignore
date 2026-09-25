@@ -29,3 +29,4 @@ yarn-error.log
 .gstack/
 omc.json
 omc.local.json
+ploi-zero-*.sh
