@@ -36,11 +36,11 @@ function omcFlows(): array
     ];
 }
 
-function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advances = []): void
+function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advances = [], string $balanceSource = OmcCashFlowReader::SOURCE_MONTH): void
 {
     $positionRates ??= ['RON' => 1.0, 'EUR' => 5.0, 'USD' => 4.5];
 
-    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor, $positionRates, $advances) {
+    test()->mock(OmcCashFlowReader::class, function (MockInterface $mock) use ($anchor, $positionRates, $advances, $balanceSource) {
         $mock->shouldReceive('dailyFlows')->andReturnUsing(fn (CarbonInterface $from, CarbonInterface $to) => array_values(array_filter(
             omcFlows(),
             fn (array $row) => $row['day'] >= $from->toDateString() && $row['day'] < $to->toDateString(),
@@ -55,9 +55,18 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
         $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
+        $daily = $balanceSource === OmcCashFlowReader::SOURCE_DAILY;
         $mock->shouldReceive('balanceAnchors')->andReturn($anchor
-            ? ['as_of' => CarbonImmutable::parse('2026-09-15'), 'bank' => CarbonImmutable::parse('2026-08-31'), 'cash' => CarbonImmutable::parse('2026-08-31'), 'deposits' => CarbonImmutable::parse('2026-08-31'), 'fallback' => false]
-            : ['as_of' => CarbonImmutable::parse('2026-09-15'), 'bank' => null, 'cash' => null, 'deposits' => null, 'fallback' => false]);
+            ? [
+                'as_of' => CarbonImmutable::parse('2026-09-15'),
+                'bank' => CarbonImmutable::parse($daily ? '2026-09-15' : '2026-08-31'),
+                'cash' => CarbonImmutable::parse($daily ? '2026-09-15' : '2026-08-31'),
+                'deposits' => CarbonImmutable::parse('2026-08-31'),
+                'bank_source' => $balanceSource,
+                'cash_source' => $balanceSource,
+                'fallback' => false,
+            ]
+            : ['as_of' => CarbonImmutable::parse('2026-09-15'), 'bank' => null, 'cash' => null, 'deposits' => null, 'bank_source' => OmcCashFlowReader::SOURCE_MONTH, 'cash_source' => OmcCashFlowReader::SOURCE_MONTH, 'fallback' => false]);
         $mock->shouldReceive('ratesAt')->andReturn($positionRates);
         $mock->shouldReceive('monthEndPositions')->andReturn([
             ['date' => '2025-08-31', 'bank' => ['RON' => 1000000], 'cash' => ['RON' => 0], 'deposits' => ['RON' => 4000000], 'rates' => []],
@@ -374,7 +383,24 @@ test('the position is stated at the end of yesterday, rolled from the last close
         ->and($opening['total'])->toEqual(6665000)
         ->and(lineValues($snapshot, 'A')[0])->toBe(6665000.0)
         ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('Poziția de trezorerie la 15.09.2026 (sfârșitul zilei de ieri)')
-        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci 31.08.2026');
+        ->and(collect($snapshot->sources)->firstWhere('key', 'opening')['message'])->toContain('bănci sold contabil de bază (31.08.2026)');
+});
+
+test('when OMC has a daily balance the position starts from it, not from the month-end closing', function () {
+    CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
+    mockOmc(balanceSource: OmcCashFlowReader::SOURCE_DAILY);
+    mockEtrip();
+
+    $opening = app(CashFlowReportBuilder::class)->build()->payload['opening'];
+    $rows = collect($opening['rows'])->keyBy('key');
+
+    // Băncile și casieriile pleacă din soldul zilei; depozitele n-au așa ceva
+    // în OMC, deci rămân pe închiderea de lună, rulată cu documentele.
+    expect($opening['base'])->toBe(['bank' => '2026-09-15', 'cash' => '2026-09-15', 'deposits' => '2026-08-31'])
+        ->and($opening['source'])->toBe(['bank' => 'zi', 'cash' => 'zi'])
+        ->and($rows['bank_open']['label'])->toBe('Conturi curente bănci – sold zilnic OMC (15.09.2026)')
+        ->and($rows['cash_open']['label'])->toBe('Numerar în casierii – sold zilnic OMC (15.09.2026)')
+        ->and($rows['deposits_open']['label'])->toBe('Depozite bancare (5081) – sold contabil de bază (31.08.2026)');
 });
 
 test('the position converts at the BNR rate OMC holds for that day, not the forecast rate', function () {
@@ -580,4 +606,49 @@ test('a paid deposit the contract already sets against its last rotations is not
     expect(array_sum(lineValues($snapshot, 'C6')))->toEqualWithDelta(10000, 0.01)
         ->and(CashFlowDetail::query()->where('cash_flow_snapshot_id', $snapshot->id)->where('kind', 'advance')->count())->toBe(0)
         ->and(collect($snapshot->payload['advances'])->firstWhere('partner', 'Anima Wings Aviation SA'))->toBeNull();
+});
+
+test('a deposit paid outside the contract terms stops the next payments due, not the last rotations', function () {
+    mockOmc();
+    mockEtrip();
+
+    // 1.500 EUR already with the carrier, to be used up by whatever is paid next.
+    $contract = CharterContract::factory()->draft()->create([
+        'counterparty' => 'Memento Air S.R.L.', 'currency' => 'EUR', 'days_before_flight' => 10, 'fx_markup_pct' => 0,
+        'deposit_amount' => 1500, 'deposit_paid' => true, 'deposit_settlement_order' => CharterContract::SETTLE_NEXT,
+    ]);
+    // Paid on 10.09, before the report starts: the deposit must not be spent on it.
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-09-20', 'net_value' => 1000, 'taxes' => 0]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 0]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-11-05', 'net_value' => 1000, 'taxes' => 0]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $values = lineValues($snapshot, 'C7');
+
+    // The 05.10 rotation (week 3) is covered whole, the 26.10 one (week 6) for the 500 EUR left.
+    expect($values[3])->toEqualWithDelta(0, 0.01)
+        ->and($values[6])->toEqualWithDelta(500 * 5, 0.01)
+        ->and(array_sum($values))->toEqualWithDelta(500 * 5, 0.01)
+        ->and(array_sum(lineValues($snapshot, 'C8')))->toEqualWithDelta(0, 0.01)
+        ->and(collect($snapshot->payload['charter'])->firstWhere('id', $contract->id)['terms']['deposit'])
+        ->toContain('se consumă din plățile următoare');
+});
+
+test('the same deposit under the contract terms is regularised at the last rotations instead', function () {
+    mockOmc();
+    mockEtrip();
+
+    $contract = CharterContract::factory()->draft()->create([
+        'counterparty' => 'Memento Air S.R.L.', 'currency' => 'EUR', 'days_before_flight' => 10, 'fx_markup_pct' => 0,
+        'deposit_amount' => 1500, 'deposit_paid' => true, 'deposit_settlement_order' => CharterContract::SETTLE_LAST,
+    ]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-09-20', 'net_value' => 1000, 'taxes' => 0]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 0]);
+    CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-11-05', 'net_value' => 1000, 'taxes' => 0]);
+
+    $values = lineValues(app(CashFlowReportBuilder::class)->build(), 'C7');
+
+    // The last rotation (week 6) is free and the one before it pays 500 of its 1.000 EUR.
+    expect($values[3])->toEqualWithDelta(500 * 5, 0.01)
+        ->and($values[6])->toEqualWithDelta(0, 0.01);
 });

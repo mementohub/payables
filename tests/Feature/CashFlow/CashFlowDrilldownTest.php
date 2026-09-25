@@ -13,7 +13,7 @@ use Mockery\MockInterface;
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('top_management')->create();
     $this->snapshot = CashFlowSnapshot::factory()->create(['payload' => ['today' => '2026-09-16', 'params' => ['payables' => ['supplier_balance_weeks' => 2]]]]);
 });
 

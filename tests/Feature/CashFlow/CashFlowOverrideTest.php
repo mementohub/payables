@@ -12,7 +12,7 @@ use Inertia\Support\SessionKey;
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
 
-    $this->user = User::factory()->create(['name' => 'Bogdan']);
+    $this->user = User::factory()->withRoles('top_management')->create(['name' => 'Bogdan']);
 });
 
 /**

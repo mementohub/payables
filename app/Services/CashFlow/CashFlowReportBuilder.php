@@ -4,6 +4,7 @@ namespace App\Services\CashFlow;
 
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
+use App\Models\CharterFlight;
 use App\Models\EtripSupplier;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -308,12 +309,19 @@ class CashFlowReportBuilder
         $rows = [];
         $day = $asOf->format('d.m.Y');
         $base = fn (string $section) => $anchors[$section]?->format('d.m.Y') ?? 'lipsă';
+        // Băncile și casieriile au sold zilnic în OMC; depozitele, nu. Eticheta
+        // trebuie să spună de unde pleacă fiecare, altfel „sold de bază 31.08”
+        // se citește ca „nimeni n-a mai actualizat nimic de atunci”.
+        $origin = fn (string $section) => ($anchors[$section.'_source'] ?? OmcCashFlowReader::SOURCE_MONTH) === OmcCashFlowReader::SOURCE_DAILY
+            ? 'sold zilnic OMC ('.$base($section).')'
+            : 'sold contabil de bază ('.$base($section).')';
+
         $labels = [
-            'bank_open' => 'Conturi curente bănci – sold contabil de bază ('.$base('bank').')',
+            'bank_open' => 'Conturi curente bănci – '.$origin('bank'),
             'bank_in' => 'Încasări prin bancă până la '.$day,
             'bank_out' => 'Plăți prin bancă până la '.$day,
             'bank_now' => 'Conturi curente bănci la '.$day,
-            'cash_open' => 'Numerar în casierii – sold contabil de bază ('.$base('cash').')',
+            'cash_open' => 'Numerar în casierii – '.$origin('cash'),
             'cash_in' => 'Încasări în numerar până la '.$day,
             'cash_out' => 'Plăți în numerar până la '.$day,
             'cash_now' => 'Numerar în casierii la '.$day,
@@ -354,6 +362,7 @@ class CashFlowReportBuilder
             'date' => $asOf->toDateString(),
             'as_of' => $asOf->toDateString(),
             'base' => ['bank' => $anchors['bank']?->toDateString(), 'cash' => $anchors['cash']?->toDateString(), 'deposits' => $anchors['deposits']?->toDateString()],
+            'source' => ['bank' => $anchors['bank_source'] ?? OmcCashFlowReader::SOURCE_MONTH, 'cash' => $anchors['cash_source'] ?? OmcCashFlowReader::SOURCE_MONTH],
             'fallback' => (bool) $anchors['fallback'],
             'rates' => array_map(fn (float $rate) => round($rate, 4), $rates),
             'currencies' => $currencies,
@@ -362,12 +371,12 @@ class CashFlowReportBuilder
             'total' => round($total, 2),
             '_rows' => count($position),
             '_message' => sprintf(
-                'Poziția de trezorerie la %s (%s): soldurile contabile de bază – bănci %s, casierii %s, depozite 5081 %s – rulate cu documentele de bancă și casă până la %s inclusiv%s.%s',
+                'Poziția de trezorerie la %s (%s): bănci %s, casierii %s, depozite 5081 %s – rulate cu documentele de bancă și casă până la %s inclusiv%s.%s',
                 $day,
                 $anchors['fallback'] ? 'cea mai recentă dată cu solduri în OMC' : 'sfârșitul zilei de ieri',
-                $base('bank'),
-                $base('cash'),
-                $base('deposits'),
+                $origin('bank'),
+                $origin('cash'),
+                'sold contabil de bază ('.$base('deposits').')',
                 $day,
                 $rates !== [] ? ', la cursul BNR din OMC de la acea dată ('.implode(', ', array_map(fn ($c, $r) => $c.' '.number_format($r, 4, ',', '.'), array_keys($rates), $rates)).')' : '',
                 $anchors['fallback'] ? ' OMC nu are solduri înainte de ieri; s-a folosit cea mai recentă dată disponibilă.' : '',
@@ -802,20 +811,30 @@ class CashFlowReportBuilder
     }
 
     /**
-     * How much of each rotation the deposit already covers. As the contracts
-     * settle it (CTR 317 art. 3.5, CTR 1585 art. 3.5, CTR 281, and so the
-     * W26/27 draft), the deposit is regularised at the last rotations: every
-     * rotation is due in full, and the ones at the end of the programme are
-     * paid, or collected, only for what the deposit leaves.
+     * How much of each rotation the deposit already covers. As most contracts
+     * settle it (CTR 317 art. 3.5, CTR 1585 art. 3.5, CTR 281), the deposit is
+     * regularised at the last rotations: every rotation is due in full, and the
+     * ones at the end of the programme are paid, or collected, only for what the
+     * deposit leaves. A deposit paid outside those terms settles the other way
+     * round: it stops the next payments due, one by one, until it runs out, and
+     * the rotations already paid are left alone.
      *
      * @return array<int, float> the covered amount keyed by rotation id
      */
     private function depositSettlement(CharterContract $contract, bool $withTaxes, float $flightsNet): array
     {
         $remaining = $contract->depositAmount($flightsNet);
+        $fromNext = $contract->settlesFromNextPayments();
+
+        $flights = $fromNext
+            ? $contract->flights
+                ->filter(fn (CharterFlight $flight) => $flight->setRelation('contract', $contract)->paymentDate()->gte($this->today))
+                ->sortBy('flight_date')
+            : $contract->flights->sortByDesc('flight_date');
+
         $covered = [];
 
-        foreach ($contract->flights->sortByDesc('flight_date') as $flight) {
+        foreach ($flights as $flight) {
             if ($remaining <= 0) {
                 break;
             }
@@ -861,7 +880,9 @@ class CashFlowReportBuilder
         }
 
         if ($contract->deposit_paid) {
-            $deposit .= ' (achitat)';
+            $deposit .= $contract->settlesFromNextPayments()
+                ? ' (achitat, se consumă din plățile următoare)'
+                : ' (achitat)';
         }
 
         return [

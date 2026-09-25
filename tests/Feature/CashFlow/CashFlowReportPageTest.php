@@ -20,7 +20,7 @@ beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
     Cache::flush();
 
-    $this->user = User::factory()->create(['name' => 'Bogdan']);
+    $this->user = User::factory()->withRoles('top_management')->create(['name' => 'Bogdan']);
     $this->dir = sys_get_temp_dir().'/payables-cashflow-'.uniqid();
     $this->app->instance(ArtisanRunner::class, new ArtisanRunner($this->dir));
 });
@@ -311,4 +311,33 @@ test('a contract annex is expanded into weekly rotations paid per the contract t
         ->and($flights->where('operator', 'CORENDON')->count())->toBe(3)
         // 2 rotations announced over 3 Mondays: the value per flight is scaled by 2/3 so the total matches the annex.
         ->and(round((float) $flights->where('operator', 'CORENDON')->sum('net_value'), 2))->toBe(round(2 * 149 * 185.28, 2));
+});
+
+test('the charter form records how a paid deposit is consumed, and keeps the contract rule by default', function () {
+    $terms = [
+        'name' => 'W26/27 Memento Air', 'season' => 'W26-27', 'status' => 'draft', 'currency' => 'EUR',
+        'counterparty' => 'Memento Air S.R.L.', 'direction' => 'out', 'in_cash_flow' => true,
+        'days_before_flight' => 10, 'payment_basis' => 'flight', 'taxes_rule' => 'monthly_first_week',
+        'taxes_month_day' => 5, 'fx_markup_pct' => 2, 'deposit_amount' => 4882741.68, 'deposit_paid' => true,
+    ];
+
+    $this->actingAs($this->user)
+        ->post('/reports/cash-flow/contracts', [...$terms, 'deposit_settlement_order' => 'next'])
+        ->assertRedirect();
+
+    $contract = CharterContract::query()->sole();
+
+    expect($contract->deposit_settlement_order)->toBe('next')
+        ->and($contract->settlesFromNextPayments())->toBeTrue();
+
+    // A form that does not say anything keeps the contracts' own rule: the last rotations.
+    $this->actingAs($this->user)
+        ->put('/reports/cash-flow/contracts/'.$contract->id, $terms)
+        ->assertRedirect();
+
+    expect($contract->fresh()->deposit_settlement_order)->toBe('last');
+
+    $this->actingAs($this->user)
+        ->put('/reports/cash-flow/contracts/'.$contract->id, [...$terms, 'deposit_settlement_order' => 'sometime'])
+        ->assertSessionHasErrors('deposit_settlement_order');
 });
