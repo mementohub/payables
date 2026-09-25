@@ -16,16 +16,15 @@ function FlashToastBridge() {
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
-    layout: (name) => {
-        switch (true) {
-            case name.startsWith('auth/'):
-                return undefined;
-            case name.startsWith('settings/'):
-                return [AppLayout, SettingsLayout];
-            default:
-                return AppLayout;
-        }
-    },
+    /*
+     * Fiecare pagină își pune singură `AppLayout`, ca să-i dea și firimiturile
+     * de navigare. Un layout pus și de aici l-ar desena a doua oară: două bare
+     * de sus, cu două butoane de pliat meniul. Paginile de setări sunt
+     * excepția: ele nu se învelesc singure, așa că primesc ambele straturi
+     * de aici.
+     */
+    layout: (name) =>
+        name.startsWith('settings/') ? [AppLayout, SettingsLayout] : undefined,
     strictMode: true,
     withApp(app) {
         return (

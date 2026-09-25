@@ -154,7 +154,7 @@ export default function OpExInvoices({
     return (
         <>
             <Head
-                title={`Facturi · ${filters.category_label ?? 'OpEx'} · ${filters.year}`}
+                title={`Facturi · ${filters.category_label ?? 'Categorii'} · ${filters.year}`}
             />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
@@ -172,7 +172,7 @@ export default function OpExInvoices({
                             </Link>
                         </Button>
                         <h1 className="text-2xl font-semibold">
-                            Facturi · {filters.category_label ?? 'OpEx'}
+                            Facturi · {filters.category_label ?? 'Categorii'}
                         </h1>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                             <span>{company.name}</span>
@@ -408,7 +408,7 @@ OpExInvoices.layout = (page: React.ReactNode) => (
     <AppLayout
         breadcrumbs={[
             { title: 'Rapoarte', href: opexIndex() },
-            { title: 'OpEx', href: opexIndex() },
+            { title: 'Facturi pe categorii', href: opexIndex() },
             { title: 'Facturi', href: opexIndex() },
         ]}
     >

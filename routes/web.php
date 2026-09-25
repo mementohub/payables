@@ -23,8 +23,10 @@ use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\PaymentCheckController;
 use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PaymentRequestController;
+use App\Http\Controllers\PnlController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\UserController;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -112,24 +114,36 @@ Route::middleware('auth')->group(function () {
     Route::delete('payment-requests/{paymentRequest}/invoices/{invoice}', [PaymentRequestController::class, 'unlinkInvoice'])->name('payment-requests.invoices.unlink');
     Route::redirect('clients', 'suppliers');
 
-    Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
-    Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
-    Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');
+    // Rapoartele arată cifrele companiei întregi — venit, marjă, costuri,
+    // profit — deci sunt ale Top Management-ului (și ale administratorilor,
+    // fiindcă „admin” cuprinde toate rolurile).
+    Route::middleware('role:'.User::ROLE_TOP_MANAGEMENT)->group(function () {
+        Route::get('reports/pnl', [PnlController::class, 'index'])->name('reports.pnl.index');
+        Route::post('reports/pnl/{company}/refresh', [PnlController::class, 'refresh'])->name('reports.pnl.refresh');
+        Route::get('reports/pnl/{company}/details', [PnlController::class, 'details'])->name('reports.pnl.details');
+        Route::get('reports/pnl/{company}/export', [PnlController::class, 'export'])->name('reports.pnl.export');
+        Route::post('reports/pnl/{company}/move', [PnlController::class, 'move'])->name('reports.pnl.move');
+        Route::delete('reports/pnl/{company}/overrides/{override}', [PnlController::class, 'forget'])->name('reports.pnl.overrides.forget');
+        Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
+        Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
+        Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');
 
-    Route::get('reports/cash-flow', [CashFlowReportController::class, 'index'])->name('reports.cash-flow.index');
-    Route::post('reports/cash-flow/build', [CashFlowReportController::class, 'build'])->name('reports.cash-flow.build');
-    Route::get('reports/cash-flow/drilldown', [CashFlowReportController::class, 'drilldown'])->name('reports.cash-flow.drilldown');
-    Route::get('reports/cash-flow/documents', [CashFlowReportController::class, 'documents'])->name('reports.cash-flow.documents');
-    Route::put('reports/cash-flow/parameters', [CashFlowReportController::class, 'parameters'])->name('reports.cash-flow.parameters');
-    Route::put('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'update'])->name('reports.cash-flow.overrides.update');
-    Route::delete('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'destroy'])->name('reports.cash-flow.overrides.destroy');
-    Route::post('reports/cash-flow/contracts', [CharterContractController::class, 'store'])->name('reports.cash-flow.contracts.store');
-    Route::put('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'update'])->name('reports.cash-flow.contracts.update');
-    Route::delete('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'destroy'])->name('reports.cash-flow.contracts.destroy');
-    Route::post('reports/cash-flow/flights', [CharterFlightController::class, 'store'])->name('reports.cash-flow.flights.store');
-    Route::post('reports/cash-flow/flights/import', [CharterFlightController::class, 'import'])->name('reports.cash-flow.flights.import');
-    Route::put('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'update'])->name('reports.cash-flow.flights.update');
-    Route::delete('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'destroy'])->name('reports.cash-flow.flights.destroy');
+        Route::get('reports/cash-flow', [CashFlowReportController::class, 'index'])->name('reports.cash-flow.index');
+        Route::post('reports/cash-flow/build', [CashFlowReportController::class, 'build'])->name('reports.cash-flow.build');
+        Route::get('reports/cash-flow/export', [CashFlowReportController::class, 'export'])->name('reports.cash-flow.export');
+        Route::get('reports/cash-flow/drilldown', [CashFlowReportController::class, 'drilldown'])->name('reports.cash-flow.drilldown');
+        Route::get('reports/cash-flow/documents', [CashFlowReportController::class, 'documents'])->name('reports.cash-flow.documents');
+        Route::put('reports/cash-flow/parameters', [CashFlowReportController::class, 'parameters'])->name('reports.cash-flow.parameters');
+        Route::put('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'update'])->name('reports.cash-flow.overrides.update');
+        Route::delete('reports/cash-flow/overrides', [CashFlowOverrideController::class, 'destroy'])->name('reports.cash-flow.overrides.destroy');
+        Route::post('reports/cash-flow/contracts', [CharterContractController::class, 'store'])->name('reports.cash-flow.contracts.store');
+        Route::put('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'update'])->name('reports.cash-flow.contracts.update');
+        Route::delete('reports/cash-flow/contracts/{contract}', [CharterContractController::class, 'destroy'])->name('reports.cash-flow.contracts.destroy');
+        Route::post('reports/cash-flow/flights', [CharterFlightController::class, 'store'])->name('reports.cash-flow.flights.store');
+        Route::post('reports/cash-flow/flights/import', [CharterFlightController::class, 'import'])->name('reports.cash-flow.flights.import');
+        Route::put('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'update'])->name('reports.cash-flow.flights.update');
+        Route::delete('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'destroy'])->name('reports.cash-flow.flights.destroy');
+    });
 
     Route::get('ai-assistant', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');

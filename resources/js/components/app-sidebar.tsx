@@ -52,12 +52,13 @@ import { index as paymentRequestsIndex } from '@/routes/payment-requests';
 import { index as paymentRunsIndex } from '@/routes/payment-runs';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as opexIndex } from '@/routes/reports/opex';
+import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as routingIndex } from '@/routes/routing';
 import { index as usersIndex } from '@/routes/users';
 import type { Auth } from '@/types/auth';
 import type { NavItemOrGroup } from '@/types/navigation';
 
-const mainNavItems = (pending: number): NavItemOrGroup[] => [
+const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
     {
         title: 'Panou principal',
         href: dashboard(),
@@ -121,22 +122,34 @@ const mainNavItems = (pending: number): NavItemOrGroup[] => [
         href: bankStatementsIndex(),
         icon: Landmark,
     },
-    {
-        title: 'Rapoarte',
-        icon: ChartColumn,
-        children: [
-            {
-                title: 'OpEx',
-                href: opexIndex(),
-                icon: Receipt,
-            },
-            {
-                title: 'WCFR 52 Weeks',
-                href: cashFlowIndex(),
-                icon: CalendarRange,
-            },
-        ],
-    },
+    // Rapoartele arată cifrele companiei întregi, deci sunt ale Top
+    // Management-ului. Rutele verifică același rol: ascunderea meniului e
+    // pentru ordine, nu în loc de autorizare.
+    ...(roles.includes('top_management') || roles.includes('admin')
+        ? [
+              {
+                  title: 'Rapoarte',
+                  icon: ChartColumn,
+                  children: [
+                      {
+                          title: 'P&L',
+                          href: pnlIndex(),
+                          icon: ChartColumn,
+                      },
+                      {
+                          title: 'Facturi pe categorii',
+                          href: opexIndex(),
+                          icon: Receipt,
+                      },
+                      {
+                          title: 'WCFR 52 Weeks',
+                          href: cashFlowIndex(),
+                          icon: CalendarRange,
+                      },
+                  ],
+              },
+          ]
+        : []),
     {
         title: 'Asistent AI',
         href: aiChatIndex(),
@@ -206,7 +219,12 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems(auth.pending ?? 0)} />
+                <NavMain
+                    items={mainNavItems(
+                        auth.pending ?? 0,
+                        auth.user?.roles ?? [],
+                    )}
+                />
                 {settingsNavItems(auth.user?.roles ?? []).length > 0 && (
                     <NavMain
                         items={settingsNavItems(auth.user?.roles ?? [])}

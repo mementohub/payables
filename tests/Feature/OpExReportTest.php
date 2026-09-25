@@ -5,7 +5,7 @@ use App\Models\User;
 use App\Services\Reports\OpExReportService;
 
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('top_management')->create();
     $this->company = Company::factory()->create(['name' => 'Acme SRL']);
 });
 

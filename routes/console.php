@@ -18,6 +18,11 @@ Schedule::command('erp:sync', ['--days' => (int) config('sync.window_days', 400)
     ->withoutOverlapping(180)
     ->runInBackground();
 Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping();
+Schedule::command('pnl:build')
+    ->dailyAt('05:15')
+    ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping(120)
+    ->runInBackground();
 Schedule::command('cashflow:build')
     ->dailyAt(sprintf('%02d:%02d', (int) config('cashflow.nightly_hour', 4), (int) config('cashflow.nightly_minute', 30)))
     ->timezone((string) config('cashflow.timezone', 'Europe/Bucharest'))

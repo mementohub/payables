@@ -311,18 +311,18 @@ export default function OpExIndex({ companies, filters, report }: Props) {
 
     return (
         <>
-            <Head title={`OpEx ${filters.year}`} />
+            <Head title={`Facturi pe categorii ${filters.year}`} />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                         <h1 className="text-2xl font-semibold">
-                            Cheltuieli operaționale
+                            Facturi pe categorii de cheltuială
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             {isCompare
                                 ? `Comparație ${filters.year} vs ${filters.compare_year}.`
-                                : 'Cheltuielile operaționale grupate ierarhic, pe luni, din baza SeniorERP a companiei.'}
+                                : 'Facturile furnizorilor pe categoria de cheltuială cu care au fost înregistrate în SeniorERP. Include și conturi de bilanț (471 cheltuieli în avans, 408 facturi nesosite) și costul serviciilor vândute; pentru cheltuielile de exploatare propriu-zise, vezi P&L.'}
                         </p>
                     </div>
 
@@ -862,7 +862,7 @@ OpExIndex.layout = (page: React.ReactNode) => (
     <AppLayout
         breadcrumbs={[
             { title: 'Rapoarte', href: opexIndex() },
-            { title: 'OpEx', href: opexIndex() },
+            { title: 'Facturi pe categorii', href: opexIndex() },
         ]}
     >
         {page}
