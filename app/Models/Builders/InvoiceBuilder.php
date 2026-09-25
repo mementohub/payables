@@ -3,6 +3,7 @@
 namespace App\Models\Builders;
 
 use App\Models\Invoice;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -88,6 +89,26 @@ class InvoiceBuilder extends Builder
         return $this->where(fn ($q) => $q
             ->where('department_id', $departmentId)
             ->orWhereHas('departmentApprovals', fn ($a) => $a->where('department_id', $departmentId)));
+    }
+
+    /**
+     * Doar facturile pe care omul are voie să le vadă: ale departamentelor lui,
+     * fie că departamentul le ține acum, le-a ținut la repartizare sau are o
+     * linie pe ele. Cine vede tot (admin, finanțe, trezorerie, Top Management)
+     * trece nefiltrat.
+     */
+    public function visibleTo(User $user): self
+    {
+        if ($user->seesAllDepartments()) {
+            return $this;
+        }
+
+        $ids = $user->departmentIds();
+
+        return $this->where(fn ($q) => $q
+            ->whereIn('department_id', $ids)
+            ->orWhereHas('lineDepartments', fn ($l) => $l->whereIn('department_id', $ids))
+            ->orWhereHas('departmentApprovals', fn ($a) => $a->whereIn('department_id', $ids)));
     }
 
     public function search(?string $term): self

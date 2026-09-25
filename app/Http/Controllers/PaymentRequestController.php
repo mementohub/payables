@@ -79,6 +79,7 @@ class PaymentRequestController extends Controller
         $candidates = $paymentRequest->partner_id === null
             ? collect()
             : Invoice::query()
+                ->visibleTo($request->user())
                 ->where('company_id', $paymentRequest->company_id)
                 ->where('partner_id', $paymentRequest->partner_id)
                 ->furnizor()
@@ -191,7 +192,10 @@ class PaymentRequestController extends Controller
             'invoice_id' => ['required', 'integer', Rule::exists('invoices', 'id')->where('company_id', $paymentRequest->company_id)],
         ]);
 
-        $service->linkInvoice($paymentRequest, $request->user(), Invoice::query()->findOrFail($validated['invoice_id']));
+        // Nu se leagă la o cerere de plată o factură pe care omul n-o vede.
+        $invoice = Invoice::query()->visibleTo($request->user())->findOrFail($validated['invoice_id']);
+
+        $service->linkInvoice($paymentRequest, $request->user(), $invoice);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Factura a fost legată de cerere.']);
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
@@ -23,7 +24,7 @@ it('lets any authenticated user open the AI assistant', function () {
         ->assertOk();
 });
 
-it('shows every received invoice on facturi primite to any user', function () {
+it('shows every received invoice on facturi primite to a user with no department', function () {
     foreach (range(1, 3) as $i) {
         $partner = Partner::factory()->furnizor()->create();
         Invoice::factory()->create(['company_id' => $partner->company_id, 'partner_id' => $partner->id, 'partener_type' => 'furnizor']);
@@ -34,7 +35,7 @@ it('shows every received invoice on facturi primite to any user', function () {
     expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(3);
 });
 
-it('lets any user view a supplier invoice whatever department owns it', function () {
+it('lets a user with no department view a supplier invoice whatever department owns it', function () {
     $partner = Partner::factory()->furnizor()->create();
     $invoice = Invoice::factory()->create(['company_id' => $partner->company_id, 'partner_id' => $partner->id, 'partener_type' => 'furnizor']);
 
@@ -55,4 +56,22 @@ it('lets an admin hand out roles, but never take away the last admin', function 
 
     $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => $admin->name, 'email' => $admin->email, 'roles' => []])->assertRedirect();
     expect($admin->fresh()->isAdmin())->toBeTrue();
+});
+
+it('keeps the reports to Top Management', function (string $url) {
+    // Rapoartele arată venitul, marja și profitul companiei întregi.
+    $this->actingAs(User::factory()->withRoles(['finance', 'treasury'])->create())->get($url)->assertForbidden();
+    $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+
+    $this->actingAs(User::factory()->withRoles('top_management')->create())->get($url)->assertOk();
+    $this->actingAs(User::factory()->withRoles('admin')->create())->get($url)->assertOk();
+})->with(['/reports/pnl', '/reports/opex', '/reports/cash-flow']);
+
+it('guards the report actions too, not just the pages', function () {
+    $company = Company::factory()->create();
+    $outsider = User::factory()->withRoles('finance')->create();
+
+    $this->actingAs($outsider)->post("/reports/pnl/{$company->id}/refresh")->assertForbidden();
+    $this->actingAs($outsider)->get("/reports/pnl/{$company->id}/details?year=2026&saf=4000")->assertForbidden();
+    $this->actingAs($outsider)->post('/reports/cash-flow/build')->assertForbidden();
 });

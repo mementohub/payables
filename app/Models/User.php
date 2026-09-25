@@ -66,6 +66,30 @@ class User extends Authenticatable
     }
 
     /**
+     * Rolurile care văd facturile tuturor departamentelor: administrarea,
+     * finanțele și trezoreria plătesc pentru toată compania, iar Top
+     * Management decide pe tot. Restul văd doar ce e al departamentului lor.
+     */
+    public const ROLES_ACROSS_DEPARTMENTS = [self::ROLE_ADMIN, self::ROLE_FINANCE, self::ROLE_TREASURY, self::ROLE_TOP_MANAGEMENT];
+
+    /**
+     * Whether the user sees every department's invoices, or only their own.
+     *
+     * Un om repartizat pe departamente vede doar departamentele lui; unul fără
+     * niciun departament nu e limitat, fiindcă altfel n-ar mai vedea nimic.
+     */
+    public function seesAllDepartments(): bool
+    {
+        foreach (self::ROLES_ACROSS_DEPARTMENTS as $role) {
+            if (in_array($role, (array) ($this->roles ?? []), true)) {
+                return true;
+            }
+        }
+
+        return $this->departmentIds() === [];
+    }
+
+    /**
      * Whether the user speaks for the department on its invoices.
      */
     public function approvesFor(Department|int $department): bool

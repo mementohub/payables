@@ -91,8 +91,9 @@ class ApprovalController extends Controller
         ]);
 
         $department = Department::query()->findOrFail($validated['department_id']);
+        $this->speaksFor($request, $department);
         $until = isset($validated['until']) ? Carbon::parse($validated['until']) : null;
-        $invoices = Invoice::query()->whereKey($validated['invoice_ids'])->get();
+        $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
         DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decide($invoice, $department, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until)));
 
@@ -114,8 +115,10 @@ class ApprovalController extends Controller
             'until' => ['nullable', 'date'],
         ]);
 
+        abort_unless($request->user()->hasRole(User::ROLE_TOP_MANAGEMENT), 403, 'Decizia finală este a Top Management.');
+
         $until = isset($validated['until']) ? Carbon::parse($validated['until']) : null;
-        $invoices = Invoice::query()->whereKey($validated['invoice_ids'])->get();
+        $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
         DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decideFinal($invoice, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until)));
 
@@ -142,8 +145,9 @@ class ApprovalController extends Controller
         ]);
 
         $from = Department::query()->findOrFail($validated['department_id']);
+        $this->speaksFor($request, $from);
         $to = Department::query()->findOrFail($validated['to_department_id']);
-        $invoices = Invoice::query()->whereKey($validated['invoice_ids'])->get();
+        $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
         DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $assigner->redirect($invoice, $from, $to, $request->user(), $validated['comment'])));
 
@@ -156,12 +160,51 @@ class ApprovalController extends Controller
 
     public function reopen(Request $request, Invoice $invoice, InvoiceWorkflow $workflow): RedirectResponse
     {
+        $user = $request->user();
+
+        abort_unless(
+            $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),
+            403,
+            'Doar Top Management sau finanțele pot redeschide o factură.',
+        );
+        $this->invoicesFor($request, [$invoice->getKey()]);
+
         $validated = $request->validate(['comment' => ['nullable', 'string', 'max:2000']]);
-        $workflow->reopen($invoice, $request->user(), $validated['comment'] ?? null);
+        $workflow->reopen($invoice, $user, $validated['comment'] ?? null);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Factura s-a întors la departamente.']);
 
         return back();
+    }
+
+    /**
+     * Omul decide numai pentru departamentele lui. Pagina îi arată doar
+     * butoanele pe care le are voie, dar cererea se verifică oricum aici:
+     * un formular trimis de mână nu e o autorizare.
+     */
+    private function speaksFor(Request $request, Department $department): void
+    {
+        abort_unless(
+            $request->user()->approvesFor($department),
+            403,
+            "Nu decideți pentru {$department->name}.",
+        );
+    }
+
+    /**
+     * Facturile cerute, dar numai cele pe care omul le poate vedea. Dacă una
+     * nu e a lui, cererea pică întreagă — nu se decide „pe cât se poate”.
+     *
+     * @param  list<int>  $ids
+     * @return Collection<int, Invoice>
+     */
+    private function invoicesFor(Request $request, array $ids)
+    {
+        $invoices = Invoice::query()->whereKey($ids)->visibleTo($request->user())->get();
+
+        abort_unless($invoices->count() === count(array_unique($ids)), 403, 'Una dintre facturi este a altui departament.');
+
+        return $invoices;
     }
 
     /**
