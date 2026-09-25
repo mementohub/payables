@@ -81,6 +81,19 @@ class CharterContract extends Model
         self::TAXES_BEFORE => 'în avans, zile înainte de zbor',
     ];
 
+    /** The deposit is regularised at the last rotations of the programme. */
+    public const SETTLE_LAST = 'last';
+
+    /** The deposit stops the next payments due until it runs out. */
+    public const SETTLE_NEXT = 'next';
+
+    public const SETTLE_ORDERS = [self::SETTLE_LAST, self::SETTLE_NEXT];
+
+    public const SETTLE_ORDER_LABELS = [
+        self::SETTLE_LAST => 'la ultimele rotații',
+        self::SETTLE_NEXT => 'din plățile următoare, până se epuizează',
+    ];
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -128,6 +141,16 @@ class CharterContract extends Model
     public function taxesRideWithRotation(): bool
     {
         return $this->taxes_rule === self::TAXES_WITH_ROTATION;
+    }
+
+    /**
+     * Whether a deposit already paid is spent on the next payments due
+     * instead of the last rotations: the money is with the counterparty, so
+     * nothing is paid again until it is used up.
+     */
+    public function settlesFromNextPayments(): bool
+    {
+        return $this->deposit_settlement_order === self::SETTLE_NEXT;
     }
 
     /**

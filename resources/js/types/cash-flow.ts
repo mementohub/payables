@@ -324,6 +324,7 @@ export type Contract = {
     deposit_due_date: string | null;
     deposit_paid: boolean;
     deposit_settlement: string | null;
+    deposit_settlement_order: 'last' | 'next';
     contract_value: number | null;
     contract_value_with_taxes: number | null;
     invoicing: string | null;

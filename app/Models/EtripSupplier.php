@@ -59,6 +59,18 @@ class EtripSupplier extends Model
         return $query->whereNull('partner_id');
     }
 
+    /**
+     * The suppliers the sync may still link on its own: an unlink made by
+     * hand says the VAT number and the name lead to the wrong partner, so
+     * the next sync must not make the same match again.
+     */
+    public function scopeMatchable(Builder $query): Builder
+    {
+        return $query->unmatched()->where(
+            fn (Builder $query) => $query->whereNull('match_source')->orWhere('match_source', '!=', self::MATCH_MANUAL),
+        );
+    }
+
     public function label(): string
     {
         return "{$this->name} [{$this->code}]";

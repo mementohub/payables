@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\EtripSupplier;
 use App\Models\Partner;
+use App\Models\User;
 use App\Services\Etrip\EtripReader;
 use App\Services\Etrip\EtripSupplierSyncService;
 use Mockery\MockInterface;
@@ -103,4 +104,39 @@ test('suppliers are matched to the partners of the company whose books are in OM
 
     expect($result['matched_cui'])->toBe(1)
         ->and(EtripSupplier::query()->sole())->toMatchArray(['etrip_connection' => 'etrip_vcz', 'company_id' => $this->company->id]);
+});
+
+test('a supplier unlinked by hand is not matched back by the vat number it shares', function () {
+    // eTrip holds a Romanian VAT number on a foreign hotel, so the CUI leads to the wrong partner.
+    $partner = Partner::factory()->for($this->company)->create(['name' => 'MEMENTO INTERNATIONAL SRL', 'cui' => 'RO31370020']);
+    EtripSupplier::factory()->for($this->company)->create([
+        'code' => '4464', 'name' => 'FARANDA LOS TILOS SANTIAGO', 'vat_no' => '31370020',
+        'partner_id' => null, 'match_source' => EtripSupplier::MATCH_MANUAL,
+    ]);
+
+    fakeEtripSuppliers([['code' => '4464', 'name' => 'FARANDA LOS TILOS SANTIAGO', 'vat_no' => '31370020']]);
+
+    $result = app(EtripSupplierSyncService::class)->sync('etrip_chr', $this->company);
+
+    expect($result)->toMatchArray(['matched_cui' => 0, 'unmatched' => 1])
+        ->and(EtripSupplier::where('code', '4464')->first()->partner_id)->toBeNull()
+        ->and($partner->fresh())->not->toBeNull();
+});
+
+test('unlinking a supplier from the partner page keeps it unlinked', function () {
+    $user = User::factory()->create();
+    $partner = Partner::factory()->for($this->company)->create(['name' => 'MEMENTO INTERNATIONAL SRL', 'cui' => 'RO31370020']);
+    $supplier = EtripSupplier::factory()->for($this->company)->create([
+        'code' => '4464', 'name' => 'FARANDA LOS TILOS SANTIAGO', 'vat_no' => '31370020',
+        'partner_id' => $partner->id, 'match_source' => EtripSupplier::MATCH_CUI,
+    ]);
+
+    $this->actingAs($user)->delete('/partners/'.$partner->id.'/etrip-supplier')->assertRedirect();
+
+    expect($supplier->fresh())->toMatchArray(['partner_id' => null, 'match_source' => EtripSupplier::MATCH_MANUAL]);
+
+    fakeEtripSuppliers([['code' => '4464', 'name' => 'FARANDA LOS TILOS SANTIAGO', 'vat_no' => '31370020']]);
+    app(EtripSupplierSyncService::class)->sync('etrip_chr', $this->company);
+
+    expect($supplier->fresh()->partner_id)->toBeNull();
 });

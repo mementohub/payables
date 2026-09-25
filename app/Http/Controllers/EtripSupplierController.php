@@ -138,11 +138,15 @@ class EtripSupplierController extends Controller
         return back();
     }
 
+    /**
+     * Break the link by hand. It stays broken: the supplier keeps the manual
+     * mark so the next sync does not match it back by VAT number or name.
+     */
     public function unlink(Partner $partner): RedirectResponse
     {
-        EtripSupplier::query()->where('partner_id', $partner->id)->update(['partner_id' => null, 'match_source' => null]);
+        EtripSupplier::query()->where('partner_id', $partner->id)->update(['partner_id' => null, 'match_source' => EtripSupplier::MATCH_MANUAL]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Legătura cu furnizorul eTrip a fost ștearsă.']);
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Legătura cu furnizorul eTrip a fost ștearsă și nu va mai fi refăcută automat.']);
 
         return back();
     }

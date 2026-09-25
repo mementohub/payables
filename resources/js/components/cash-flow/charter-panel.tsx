@@ -255,11 +255,20 @@ function ContractFields({
                 ],
                 '0',
             )}
+            {select(
+                'deposit_settlement_order',
+                'Cum se consumă depozitul',
+                [
+                    ['last', 'la ultimele rotații (regula contractelor)'],
+                    ['next', 'din plățile următoare, până se epuizează'],
+                ],
+                'last',
+            )}
             <div className="sm:col-span-2">
                 {field('deposit_settlement', 'Regularizare', {
                     placeholder:
                         'regularizare la plata ultimei rotații (art. 3.5)',
-                    maxLength: 60,
+                    maxLength: 255,
                 })}
             </div>
 

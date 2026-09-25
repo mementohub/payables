@@ -12,7 +12,9 @@ use RuntimeException;
 /**
  * Mirrors the suppliers of an eTrip base locally and ties each one to the
  * ERP partner with the same VAT number or, failing that, the same name.
- * Links made by hand are never overwritten.
+ * Links made by hand are never overwritten, and neither is an unlink made
+ * by hand: two companies sharing a VAT number in eTrip would otherwise be
+ * matched to the same partner again at every sync.
  */
 class EtripSupplierSyncService
 {
@@ -126,7 +128,7 @@ class EtripSupplierSyncService
 
         EtripSupplier::query()
             ->forConnection($connection)
-            ->unmatched()
+            ->matchable()
             ->orderBy('id')
             ->each(function (EtripSupplier $supplier) use (&$byCui, &$byName, &$matched) {
                 $cui = $supplier->vat_no ? PartnerCuiLookup::normalize($supplier->vat_no) : '';

@@ -65,7 +65,8 @@ class CharterContractController extends Controller
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_due_date' => ['nullable', 'date'],
             'deposit_paid' => ['required', 'boolean'],
-            'deposit_settlement' => ['nullable', 'string', 'max:60'],
+            'deposit_settlement' => ['nullable', 'string', 'max:255'],
+            'deposit_settlement_order' => ['nullable', Rule::in(CharterContract::SETTLE_ORDERS)],
             'contract_value' => ['nullable', 'numeric', 'min:0'],
             'contract_value_with_taxes' => ['nullable', 'numeric', 'min:0'],
             'invoicing' => ['nullable', 'string', 'max:255'],
@@ -79,6 +80,7 @@ class CharterContractController extends Controller
         ]);
 
         $validated['currency'] = strtoupper($validated['currency']);
+        $validated['deposit_settlement_order'] ??= CharterContract::SETTLE_LAST;
 
         return $validated;
     }
