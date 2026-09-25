@@ -173,6 +173,7 @@ type Props = {
         mode: string;
         expand: string | null;
         compare: boolean;
+        key: string;
     };
     report: PnlReport | null;
     previous: PnlReport | null;
@@ -458,6 +459,40 @@ export default function Pnl({
                         </ToggleGroup>
                     </div>
 
+                    {filters.expand !== null && (
+                        <div className="grid gap-1.5">
+                            <Label>Cheia de repartizare</Label>
+                            <ToggleGroup
+                                type="single"
+                                value={filters.key}
+                                onValueChange={(value) =>
+                                    value && go({ key: value })
+                                }
+                                variant="outline"
+                            >
+                                <ViewChoice
+                                    value="venit"
+                                    label="Venit net"
+                                    title="Costurile comune se împart după cât vinde fiecare magazin"
+                                    lines={[
+                                        'Cheltuiala care nu se poate lipi de un magazin — publicitate, centrala, sediul — se împarte pe magazine proporțional cu venitul lor net din luna aia.',
+                                        'E cheia implicită a raportului și aceeași cu cea folosită pe canale.',
+                                    ]}
+                                />
+                                <ViewChoice
+                                    value="salarii"
+                                    label="Masă salarială"
+                                    title="Costurile comune se împart după masa salarială a fiecărui magazin"
+                                    lines={[
+                                        'Cheia folosită de Financiar: cât efectiv ține magazinul, nu cât vinde. Un magazin nou sau unul cu sezon slab iese altfel decât pe cheia de venit.',
+                                        'Salariile poartă magazinul în analiticul contabil (".1.Plaza", ".Sun Plaza"), nu în punctul de lucru — acolo scrie sediul central, unde se face statul de plată.',
+                                        'Un magazin cu venit, dar fără salarii identificate, primește o masă estimată din venitul lui, la raportul mediu al canalului.',
+                                    ]}
+                                />
+                            </ToggleGroup>
+                        </div>
+                    )}
+
                     <div className="grid gap-1.5">
                         <Label>Comparație</Label>
                         <ToggleGroup
@@ -490,6 +525,7 @@ export default function Pnl({
                                             basis: filters.basis,
                                             mode: filters.mode,
                                             expand: filters.expand ?? undefined,
+                                            key: filters.key,
                                         },
                                     },
                                 )

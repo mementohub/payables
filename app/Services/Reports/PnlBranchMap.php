@@ -60,6 +60,39 @@ class PnlBranchMap
     }
 
     /**
+     * Magazinul de pe analiticul unui stat de plată: „.1.Plaza”, „.Sun Plaza”,
+     * „.IASI Moldova Mall”.
+     *
+     * Potrivirea e mai largă decât la punctele de lucru fiindcă analiticul are
+     * prefixe de numerotare, dar tot pe nume întreg: se taie cifrele de la
+     * început, apoi se cere fie egalitate, fie ca unul să înceapă cu celălalt
+     * pe cel puțin cinci litere. „.Contabilitate” sau „.Soferi” nu prind nimic,
+     * și e bine: nu sunt magazine.
+     */
+    public function branchForAnalytic(string $analytic): ?string
+    {
+        $key = preg_replace('/^\d+/', '', EtripPnlReader::normalise($analytic));
+
+        if ($key === null || strlen($key) < 4) {
+            return null;
+        }
+
+        $labels = $this->labels();
+
+        if (isset($labels[$key])) {
+            return $labels[$key];
+        }
+
+        foreach ($labels as $branchKey => $name) {
+            if (strlen($branchKey) >= 5 && (str_starts_with($key, $branchKey) || str_starts_with($branchKey, $key))) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Numele sucursalelor, pe cheia lor normalizată.
      *
      * @return array<string, string>

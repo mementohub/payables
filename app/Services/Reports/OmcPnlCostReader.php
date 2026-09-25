@@ -33,6 +33,9 @@ class OmcPnlCostReader
     /** Conturi de clasa 6 care NU sunt cheltuieli de exploatare pentru EBITDA. */
     public const EXCLUDED_ACCOUNTS = ['628', '665', '666', '681', '691'];
 
+    /** Conturile de personal, pentru cheia de repartizare pe masă salarială. */
+    public const PAYROLL_ACCOUNTS = ['641', '642', '645', '646', '647', '621'];
+
     public function __construct(private RemoteConnection $connection) {}
 
     /**
@@ -79,6 +82,47 @@ class OmcPnlCostReader
             'note' => (string) $row->note,
             'month' => (int) $row->month,
             'trip_share' => round((float) $row->trip_share, 6),
+            'lei' => round((float) $row->lei, 2),
+        ], $rows);
+    }
+
+    /**
+     * Masa salarială pe punct de lucru și lună.
+     *
+     * E cheia de repartizare a finanțelor: cât efectiv ține un magazin, nu cât
+     * vinde. Pentru un magazin nou sau unul cu un sezon slab, cele două dau
+     * răspunsuri diferite, și amândouă sunt de discutat.
+     *
+     * Analiticul contabil e cel care poartă magazinul (".1.Plaza", ".Sun
+     * Plaza"); punctul de lucru e aproape întotdeauna sediul central, fiindcă
+     * acolo se face statul de plată.
+     *
+     * @return list<array{sediu: string, analytic: string, month: int, lei: float}>
+     */
+    public function payrollByPlace(Company $company, int $year): array
+    {
+        $accounts = implode(' OR ', array_map(
+            fn (string $prefix) => sprintf("j.conts_db LIKE '%s%%'", $prefix),
+            self::PAYROLL_ACCOUNTS,
+        ));
+
+        $rows = $this->connection->connection($company)->select(<<<SQL
+            SELECT COALESCE(BTRIM(j.eu_punct_lucru), '') AS sediu,
+                   COALESCE(BTRIM(j.conta_db), '') AS analytic,
+                   EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month,
+                   SUM(j.valoare_lei)::numeric(20,2) AS lei
+            FROM reg_jurnal j
+            WHERE j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+              AND ({$accounts})
+            GROUP BY 1, 2, 3
+            SQL,
+            [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)],
+        );
+
+        return array_map(fn ($row) => [
+            'sediu' => (string) $row->sediu,
+            'analytic' => (string) $row->analytic,
+            'month' => (int) $row->month,
             'lei' => round((float) $row->lei, 2),
         ], $rows);
     }

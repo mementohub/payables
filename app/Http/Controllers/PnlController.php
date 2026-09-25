@@ -52,6 +52,9 @@ class PnlController extends Controller
             ? $request->string('mode')->toString()
             : PnlReportService::MODE_OPERATIONAL;
         $expand = $request->string('expand')->toString() ?: null;
+        $key = in_array($request->string('key')->toString(), PnlReportService::KEYS, true)
+            ? $request->string('key')->toString()
+            : PnlReportService::KEY_REVENUE;
         $compare = $request->boolean('compare');
 
         $company = $companyId ? Company::find($companyId) : null;
@@ -71,9 +74,9 @@ class PnlController extends Controller
 
         return Inertia::render('reports/pnl', [
             'companies' => $companies,
-            'filters' => ['company_id' => $companyId, 'year' => $year, 'view' => $view, 'period' => $period, 'basis' => $basis, 'mode' => $mode, 'expand' => $expand, 'compare' => $compare],
-            'report' => $built ? $this->service->view($built, $period, $basis, $mode, $expand) : null,
-            'previous' => $previousBuilt ? $this->service->view($previousBuilt, $period, $basis, $mode, $expand) : null,
+            'filters' => ['company_id' => $companyId, 'year' => $year, 'view' => $view, 'period' => $period, 'basis' => $basis, 'mode' => $mode, 'expand' => $expand, 'compare' => $compare, 'key' => $key],
+            'report' => $built ? $this->service->view($built, $period, $basis, $mode, $expand, $key) : null,
+            'previous' => $previousBuilt ? $this->service->view($previousBuilt, $period, $basis, $mode, $expand, $key) : null,
             'lines' => $this->map->lines(),
             'overrides' => $company ? $this->overrides($company) : [],
             'pending' => $company ? $this->pending($company, $built) : 0,
@@ -95,6 +98,7 @@ class PnlController extends Controller
             'basis' => ['nullable', Rule::in(PnlReportService::BASES)],
             'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
             'expand' => ['nullable', 'string', 'max:40'],
+            'key' => ['nullable', Rule::in(PnlReportService::KEYS)],
         ]);
 
         $built = $this->service->cached($company, (int) $validated['year']);
@@ -113,6 +117,7 @@ class PnlController extends Controller
             $validated['basis'] ?? PnlReportService::BASIS_RAS,
             $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL,
             $validated['expand'] ?? null,
+            $validated['key'] ?? PnlReportService::KEY_REVENUE,
         );
 
         return $exporter->download(

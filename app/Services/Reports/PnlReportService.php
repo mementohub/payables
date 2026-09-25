@@ -61,6 +61,14 @@ class PnlReportService
     /** Conturile de personal: punctul de lucru de pe ele e locul unde se face statul de plată, nu centrul de cost. */
     private const PAYROLL_ACCOUNTS = ['641', '642', '645', '646', '647'];
 
+    /** Cheia implicită de repartizare pe magazine: cât vinde fiecare. */
+    public const KEY_REVENUE = 'venit';
+
+    /** Cheia finanțelor: cât efectiv ține fiecare magazin, prin masa lui salarială. */
+    public const KEY_PAYROLL = 'salarii';
+
+    public const KEYS = [self::KEY_REVENUE, self::KEY_PAYROLL];
+
     /**
      * Diferențele de curs de pe încasările de la client: un comision, nu un
      * rezultat financiar. Se citește din registru ca tot ce e sub EBITDA, dar
@@ -170,7 +178,7 @@ class PnlReportService
      * @param  array<string, mixed>  $report
      * @return array<string, mixed>
      */
-    public function view(array $report, string $period, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null): array
+    public function view(array $report, string $period, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE): array
     {
         if (isset($report['error'])) {
             return $report;
@@ -178,6 +186,10 @@ class PnlReportService
 
         $months = self::months($period);
         $products = $report['products'];
+
+        // Se ține deoparte: `$key` e folosit mai jos ca variabilă de buclă pe
+        // canale și produse, iar până la capătul metodei ar ajunge „Charter”.
+        $allocationKey = $key;
 
         // Un canal desfăcut înlocuiește coloana lui cu sucursalele care îl fac:
         // retailul e suma magazinelor, nu o cutie neagră.
@@ -194,7 +206,13 @@ class PnlReportService
                 $report['branches'][$expand],
                 fn (string $branch) => $this->branchHasActivity($report, $prefix.$branch, $months),
             ));
-        $axis = $expand === null ? 'channel' : 'branch';
+        // Desfăcut pe magazine, costurile comune se împart fie după cât vinde
+        // fiecare, fie după masa lui salarială — cheia finanțelor.
+        $axis = match (true) {
+            $expand === null => 'channel',
+            $allocationKey === self::KEY_PAYROLL => 'branch_payroll',
+            default => 'branch',
+        };
 
         $revenue = [
             'by_channel' => $this->sumMoney($report['revenue']['months'], $months, $axis, $channels, $prefix),
@@ -571,6 +589,7 @@ class PnlReportService
             'period' => $period,
             'basis' => $basis,
             'mode' => $mode,
+            'key' => $expand === null ? self::KEY_REVENUE : $allocationKey,
             'expand' => $expand,
             'expandable' => $expandable,
             'ifrs16' => $leases === null ? null : $leases['summary'],
@@ -954,7 +973,7 @@ class PnlReportService
     {
         // Versiunea crește odată cu forma raportului: un payload vechi, fără
         // cheile noi, s-ar citi tăcut ca zero în loc să fie reconstruit.
-        return sprintf('pnl_report:v9:%d:%d', $company->getKey(), $year);
+        return sprintf('pnl_report:v10:%d:%d', $company->getKey(), $year);
     }
 
     /**
@@ -1050,8 +1069,10 @@ class PnlReportService
         sort($products);
         ksort($revenueMonths);
 
-        [$lines, $trip] = $this->allocate($costRows, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels);
-        $below = $this->allocateBelow($company, $year, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels);
+        $payrollByMonthBranch = $this->payrollKey($company, $year, $netByMonthBranch);
+
+        [$lines, $trip] = $this->allocate($costRows, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels, $payrollByMonthBranch);
+        $below = $this->allocateBelow($company, $year, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels, $payrollByMonthBranch);
         $financial = [];
 
         foreach ($this->costs->revenueAndCogs($company, $year) as $row) {
@@ -1079,6 +1100,7 @@ class PnlReportService
                 'month_channel' => $netByMonthChannel,
                 'month_channel_product' => $netByMonthChannelProduct,
                 'month_branch' => $netByMonthBranch,
+                'month_branch_payroll' => $payrollByMonthBranch,
                 'channel' => $netByChannel,
                 'channels' => $channels,
             ],
@@ -1107,7 +1129,7 @@ class PnlReportService
      * @param  list<string>  $channels
      * @return array<string, array<int, array<string, mixed>>>
      */
-    private function allocateBelow(Company $company, int $year, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels): array
+    private function allocateBelow(Company $company, int $year, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels, array $payrollByMonthBranch = []): array
     {
         $buckets = [];
         $productYear = $this->productTotals($netByMonthChannelProduct);
@@ -1122,8 +1144,7 @@ class PnlReportService
             // o greșeală.
             $buckets[$row['bucket']]['accounts'][$row['account']][$month] =
                 ($buckets[$row['bucket']]['accounts'][$row['account']][$month] ?? 0.0) + $lei;
-            $cell = $buckets[$row['bucket']]['months'][$month] ?? ['total' => 0.0, 'channel' => [], 'product' => [], 'branch' => []];
-            $cell['total'] += $lei;
+            $cell = $buckets[$row['bucket']]['months'][$month] ?? ['total' => 0.0, 'channel' => [], 'product' => [], 'branch' => [], 'branch_payroll' => []];
 
             // Comisionul de curs e venit, deci se împarte pe tot venitul —
             // inclusiv al francizelor, care e al nostru. Cheltuielile sar
@@ -1138,26 +1159,18 @@ class PnlReportService
                 array_values($bearing(array_flip($channels))),
             );
 
-            foreach ($shares as $channelKey => $share) {
-                $channelLei = $lei * $share;
-                $cell['channel'][$channelKey] = ($cell['channel'][$channelKey] ?? 0.0) + $channelLei;
-
-                $productShares = $this->keys($netByMonthChannelProduct[$month][$channelKey] ?? [], $productYear, []);
-
-                foreach ($productShares as $product => $productShare) {
-                    $cell['product'][$product] = ($cell['product'][$product] ?? 0.0) + $channelLei * $productShare;
-                }
-
-                if ($productShares === []) {
-                    $cell['product']['- -'] = ($cell['product']['- -'] ?? 0.0) + $channelLei;
-                }
-
-                foreach ($this->keys($netByMonthBranch[$month][$channelKey] ?? [], [], []) as $branchKey => $branchShare) {
-                    $cell['branch'][$channelKey.'|'.$branchKey] = ($cell['branch'][$channelKey.'|'.$branchKey] ?? 0.0) + $channelLei * $branchShare;
-                }
-            }
-
-            $buckets[$row['bucket']]['months'][$month] = $cell;
+            $buckets[$row['bucket']]['months'][$month] = $this->spread(
+                $cell,
+                $lei,
+                $shares,
+                null,
+                $month,
+                $netByMonthChannelProduct,
+                $productYear,
+                $netByMonthBranch,
+                null,
+                $payrollByMonthBranch,
+            );
         }
 
         return $buckets;
@@ -1214,7 +1227,7 @@ class PnlReportService
      * @param  list<string>  $channels
      * @return list<array<string, mixed>>
      */
-    private function allocate(array $costs, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels): array
+    private function allocate(array $costs, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels, array $payrollByMonthBranch = []): array
     {
         $lines = [];
         $trip = ['months' => [], 'accounts' => []];
@@ -1254,7 +1267,7 @@ class PnlReportService
             if ($tripShare > 0.0) {
                 $tripLei = $lei * $tripShare;
                 $lei -= $tripLei;
-                $trip['months'][$month] ??= ['total' => 0.0, 'channel' => [], 'product' => [], 'branch' => []];
+                $trip['months'][$month] ??= ['total' => 0.0, 'channel' => [], 'product' => [], 'branch' => [], 'branch_payroll' => []];
                 $trip['months'][$month] = $this->spread(
                     $trip['months'][$month],
                     $tripLei,
@@ -1264,6 +1277,8 @@ class PnlReportService
                     $netByMonthChannelProduct,
                     $productYear,
                     $netByMonthBranch,
+                    null,
+                    $payrollByMonthBranch,
                 );
                 $trip['accounts'][$cost['account']] = round(($trip['accounts'][$cost['account']] ?? 0.0) + $tripLei, 2);
 
@@ -1282,7 +1297,7 @@ class PnlReportService
 
             $lines[$saf]['matched_by'][$line['matched_by']] = round(($lines[$saf]['matched_by'][$line['matched_by']] ?? 0.0) + $lei, 2);
 
-            $cell = $lines[$saf]['months'][$month] ?? ['total' => 0.0, 'direct' => 0.0, 'channel' => [], 'product' => [], 'branch' => []];
+            $cell = $lines[$saf]['months'][$month] ?? ['total' => 0.0, 'direct' => 0.0, 'channel' => [], 'product' => [], 'branch' => [], 'branch_payroll' => []];
 
             if ($channel !== null) {
                 $cell['direct'] += $lei;
@@ -1298,6 +1313,7 @@ class PnlReportService
                 $productYear,
                 $netByMonthBranch,
                 $line['product'] ?? null,
+                $payrollByMonthBranch,
             );
         }
 
@@ -1306,6 +1322,71 @@ class PnlReportService
         // la doi bani duc totalul pe canale și cel pe produse la câțiva bani
         // unul de altul, și raportul s-ar declara singur neînchis.
         return [array_values($lines), $trip];
+    }
+
+    /**
+     * Masa salarială pe lună, canal și magazin — cheia de repartizare a
+     * finanțelor, ca alternativă la cea de venit.
+     *
+     * Salariile poartă magazinul în analiticul contabil, nu în punctul de
+     * lucru. Un magazin care are venit dar n-are salarii identificate primește
+     * o masă estimată din venitul lui, la raportul mediu al canalului —
+     * altfel ar ieși din repartizare cu totul și ar apărea fără costuri.
+     *
+     * @param  array<int, array<string, array<string, float>>>  $netByMonthBranch
+     * @return array<int, array<string, array<string, float>>>
+     */
+    private function payrollKey(Company $company, int $year, array $netByMonthBranch): array
+    {
+        $channelOf = [];
+
+        foreach ($netByMonthBranch as $byChannel) {
+            foreach ($byChannel as $channel => $byBranch) {
+                foreach (array_keys($byBranch) as $branch) {
+                    $channelOf[(string) $branch] = (string) $channel;
+                }
+            }
+        }
+
+        $payroll = [];
+
+        foreach ($this->costs->payrollByPlace($company, $year) as $row) {
+            $branch = $this->branches->branchForAnalytic($row['analytic']) ?? $this->branches->branchFor($row['sediu']);
+
+            if ($branch === null || ! isset($channelOf[$branch])) {
+                continue;
+            }
+
+            $channel = $channelOf[$branch];
+            $payroll[$row['month']][$channel][$branch] = ($payroll[$row['month']][$channel][$branch] ?? 0.0) + $row['lei'];
+        }
+
+        // Magazinele fără salarii identificate: masă estimată din venit.
+        foreach ($netByMonthBranch as $month => $byChannel) {
+            foreach ($byChannel as $channel => $byBranch) {
+                $known = $payroll[$month][$channel] ?? [];
+
+                if ($known === []) {
+                    continue;
+                }
+
+                $knownNet = 0.0;
+
+                foreach (array_keys($known) as $branch) {
+                    $knownNet += $byBranch[$branch] ?? 0.0;
+                }
+
+                $ratio = $knownNet > 0 ? array_sum($known) / $knownNet : 0.0;
+
+                foreach ($byBranch as $branch => $net) {
+                    if (! isset($known[$branch]) && $net > 0 && $ratio > 0) {
+                        $payroll[$month][$channel][$branch] = $net * $ratio;
+                    }
+                }
+            }
+        }
+
+        return $payroll;
     }
 
     /**
@@ -1322,7 +1403,7 @@ class PnlReportService
      * @param  array<int, array<string, array<string, float>>>  $netByMonthBranch
      * @return array<string, mixed>
      */
-    private function spread(array $cell, float $lei, array $shares, ?string $branch, int $month, array $netByMonthChannelProduct, array $productYear, array $netByMonthBranch, ?string $product = null): array
+    private function spread(array $cell, float $lei, array $shares, ?string $branch, int $month, array $netByMonthChannelProduct, array $productYear, array $netByMonthBranch, ?string $product = null, array $payrollByMonthBranch = []): array
     {
         $cell['total'] += $lei;
 
@@ -1347,15 +1428,30 @@ class PnlReportService
             }
 
             // Înăuntrul canalului, pe magazinul care a suportat-o: direct
-            // dacă are punctul lui de lucru, altfel pe cheia de vânzare.
-            if ($branch !== null) {
-                $cell['branch'][$channelKey.'|'.$branch] = ($cell['branch'][$channelKey.'|'.$branch] ?? 0.0) + $channelLei;
+            // dacă are punctul lui de lucru, altfel pe o cheie.
+            //
+            // Cheia se alege din raport, așa că se calculează amândouă: după
+            // vânzarea magazinului și după masa lui salarială. A doua e cheia
+            // finanțelor — cât efectiv ține magazinul, nu cât vinde — și dă
+            // alt răspuns pentru un magazin nou sau unul cu sezon slab.
+            foreach (['branch' => $netByMonthBranch, 'branch_payroll' => $payrollByMonthBranch] as $axis => $weights) {
+                if ($branch !== null) {
+                    $cell[$axis][$channelKey.'|'.$branch] = ($cell[$axis][$channelKey.'|'.$branch] ?? 0.0) + $channelLei;
 
-                continue;
-            }
+                    continue;
+                }
 
-            foreach ($this->keys($netByMonthBranch[$month][$channelKey] ?? [], [], []) as $branchKey => $branchShare) {
-                $cell['branch'][$channelKey.'|'.$branchKey] = ($cell['branch'][$channelKey.'|'.$branchKey] ?? 0.0) + $channelLei * $branchShare;
+                // Fără masă salarială pe canalul ăla, cheia de venit ține locul:
+                // banii trebuie să ajungă undeva.
+                $byBranch = $this->keys($weights[$month][$channelKey] ?? [], [], []);
+
+                if ($byBranch === [] && $axis === 'branch_payroll') {
+                    $byBranch = $this->keys($netByMonthBranch[$month][$channelKey] ?? [], [], []);
+                }
+
+                foreach ($byBranch as $branchKey => $branchShare) {
+                    $cell[$axis][$channelKey.'|'.$branchKey] = ($cell[$axis][$channelKey.'|'.$branchKey] ?? 0.0) + $channelLei * $branchShare;
+                }
             }
         }
 

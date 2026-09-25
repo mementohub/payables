@@ -25,26 +25,40 @@ function fakePnlRevenue(array $rows): void
  * @param  list<array<string, mixed>>  $below
  * @param  list<array<string, mixed>>  $documents
  */
-function fakePnlCosts(array $rows, array $below = [], array $documents = []): void
+function fakePnlCosts(array $rows, array $below = [], array $documents = [], array $payroll = []): void
 {
-    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($rows, $below, $documents) {
+    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($rows, $below, $documents, $payroll) {
         $mock->shouldReceive('costs')->andReturn($rows);
         $mock->shouldReceive('belowEbitda')->andReturn($below)->byDefault();
         $mock->shouldReceive('documentsByKey')->andReturn($documents)->byDefault();
         // `details` citește aceleași documente: pe ele se sprijină detaliul unei celule.
         $mock->shouldReceive('details')->andReturn($documents)->byDefault();
         $mock->shouldReceive('revenueAndCogs')->andReturn([])->byDefault();
+        // Masa salarială pe magazin: cheia alternativă de repartizare.
+        $mock->shouldReceive('payrollByPlace')->andReturn($payroll)->byDefault();
     });
 }
 
 /**
  * @param  array<string, string>  $branches
  */
-function fakePnlBranches(array $branches): void
+function fakePnlBranches(array $branches, array $shops = []): void
 {
-    test()->mock(PnlBranchMap::class, function (MockInterface $mock) use ($branches) {
+    test()->mock(PnlBranchMap::class, function (MockInterface $mock) use ($branches, $shops) {
         $mock->shouldReceive('channel')->andReturnUsing(fn (string $sediu) => $branches[$sediu] ?? null);
         $mock->shouldReceive('branchFor')->andReturnUsing(fn (string $sediu) => isset($branches[$sediu]) ? $sediu : null);
+        // Magazinul de pe analiticul unui stat de plată: „.1.Magheru” e Magheru.
+        $mock->shouldReceive('branchForAnalytic')->andReturnUsing(function (string $analytic) use ($shops) {
+            $key = preg_replace('/^\d+/', '', preg_replace('/[^a-z0-9]/', '', mb_strtolower($analytic)));
+
+            foreach ($shops as $shop) {
+                if ($key === preg_replace('/[^a-z0-9]/', '', mb_strtolower($shop))) {
+                    return $shop;
+                }
+            }
+
+            return null;
+        });
     });
 }
 
@@ -486,6 +500,7 @@ test('the financial view takes revenue and COGS from the ledger, not from eTrip'
         $mock->shouldReceive('costs')->andReturn([['account' => '626', 'sediu' => '', 'partner' => '', 'note' => 'Telefonie', 'month' => 1, 'lei' => 100.0]]);
         $mock->shouldReceive('belowEbitda')->andReturn([]);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
         $mock->shouldReceive('revenueAndCogs')->andReturn([
             ['bucket' => 'revenue', 'month' => 1, 'lei' => 2000.0],
             ['bucket' => 'cogs', 'month' => 1, 'lei' => 1600.0],
@@ -528,6 +543,7 @@ test('the financial view follows the period too', function () {
         $mock->shouldReceive('costs')->andReturn([]);
         $mock->shouldReceive('belowEbitda')->andReturn([]);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
         $mock->shouldReceive('revenueAndCogs')->andReturn([
             ['bucket' => 'revenue', 'month' => 2, 'lei' => 500.0],
             ['bucket' => 'revenue', 'month' => 8, 'lei' => 1500.0],
@@ -640,6 +656,7 @@ test('other operating income counts as revenue in the financial view', function 
         $mock->shouldReceive('costs')->andReturn([]);
         $mock->shouldReceive('belowEbitda')->andReturn([]);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
         // Cifra de afaceri, plus subvenții și alte venituri din exploatare.
         $mock->shouldReceive('revenueAndCogs')->andReturn([
             ['bucket' => 'revenue', 'month' => 1, 'lei' => 1000.0],
@@ -812,6 +829,7 @@ test('the financial view splits costs across the columns too, and closes', funct
         ]);
         $mock->shouldReceive('belowEbitda')->andReturn([]);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
         $mock->shouldReceive('revenueAndCogs')->andReturn([
             ['bucket' => 'revenue', 'month' => 1, 'lei' => 5000.0],
             ['bucket' => 'cogs', 'month' => 1, 'lei' => 4000.0],
@@ -1176,4 +1194,61 @@ test('a trip cost is out of the line it would have sat on, detail included', fun
     // Linia de combustibil nu mai are nimic, nici în tabel, nici în panou.
     expect(collect($service->view($service->report($this->company, 2026), 'year')['lines'])->firstWhere('saf', '5010'))->toBeNull()
         ->and($service->costDetails($this->company, 2026, '5010', 'year')['total'])->toEqual(0.0);
+});
+
+test('inside a channel, shared costs can follow payroll instead of revenue', function () {
+    fakePnlRevenue([
+        // Magheru vinde de trei ori cât Plaza, dar are jumătate din oameni.
+        ['channel' => 'retail', 'branch' => 'Magheru', 'product' => 'Charter', 'month' => 1, 'bookings' => 3, 'net' => 750.0, 'margin' => 75.0],
+        ['channel' => 'retail', 'branch' => 'Plaza', 'product' => 'Charter', 'month' => 1, 'bookings' => 1, 'net' => 250.0, 'margin' => 25.0],
+    ]);
+    fakePnlBranches([], ['Magheru', 'Plaza']);
+    fakePnlCosts(
+        [['account' => '626', 'sediu' => '', 'partner' => 'Telekom', 'note' => 'Telefonie', 'month' => 1, 'lei' => 300.0]],
+        [],
+        [],
+        [
+            ['sediu' => 'SEDIUL CENTRAL', 'analytic' => '.1.Magheru', 'month' => 1, 'lei' => 100.0],
+            ['sediu' => 'SEDIUL CENTRAL', 'analytic' => '.Plaza', 'month' => 1, 'lei' => 200.0],
+            // Salariile sediului nu sunt ale niciunui magazin.
+            ['sediu' => 'SEDIUL CENTRAL', 'analytic' => '.Contabilitate', 'month' => 1, 'lei' => 5000.0],
+        ],
+    );
+
+    $service = app(PnlReportService::class);
+    $report = $service->report($this->company, 2026, forceRefresh: true);
+
+    $peVenit = $service->view($report, 'year', expand: 'retail');
+    $peSalarii = $service->view($report, 'year', expand: 'retail', key: PnlReportService::KEY_PAYROLL);
+
+    // Pe venit: 3/4 – 1/4. Pe masă salarială: 1/3 – 2/3.
+    expect($peVenit['totals']['by_channel']['Magheru'])->toEqual(225.0)
+        ->and($peVenit['totals']['by_channel']['Plaza'])->toEqual(75.0)
+        ->and($peSalarii['totals']['by_channel']['Magheru'])->toEqual(100.0)
+        ->and($peSalarii['totals']['by_channel']['Plaza'])->toEqual(200.0)
+        // Oricare ar fi cheia, canalul rămâne cât era.
+        ->and(array_sum($peSalarii['totals']['by_channel']))->toEqual(300.0)
+        ->and($peSalarii['key'])->toBe('salarii');
+});
+
+test('a shop with no payroll of its own still carries its share', function () {
+    fakePnlRevenue([
+        ['channel' => 'retail', 'branch' => 'Magheru', 'product' => 'Charter', 'month' => 1, 'bookings' => 3, 'net' => 750.0, 'margin' => 75.0],
+        ['channel' => 'retail', 'branch' => 'Plaza', 'product' => 'Charter', 'month' => 1, 'bookings' => 1, 'net' => 250.0, 'margin' => 25.0],
+    ]);
+    fakePnlBranches([], ['Magheru', 'Plaza']);
+    fakePnlCosts(
+        [['account' => '626', 'sediu' => '', 'partner' => 'Telekom', 'note' => 'Telefonie', 'month' => 1, 'lei' => 300.0]],
+        [],
+        [],
+        [['sediu' => 'SEDIUL CENTRAL', 'analytic' => '.1.Magheru', 'month' => 1, 'lei' => 150.0]],
+    );
+
+    $service = app(PnlReportService::class);
+    $view = $service->view($service->report($this->company, 2026, forceRefresh: true), 'year', expand: 'retail', key: PnlReportService::KEY_PAYROLL);
+
+    // Plaza n-are salarii identificate: primește o masă estimată din venitul
+    // ei, la raportul lui Magheru (150 la 750), deci 50 — un sfert din cheie.
+    expect($view['totals']['by_channel']['Magheru'])->toEqual(225.0)
+        ->and($view['totals']['by_channel']['Plaza'])->toEqual(75.0);
 });
