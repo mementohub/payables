@@ -9,9 +9,7 @@ import {
     ClipboardCheck,
     DatabaseZap,
     FileCheck2,
-    FileInput,
     FileSearch,
-    FileText,
     Landmark,
     LayoutGrid,
     ListChecks,
@@ -43,7 +41,6 @@ import { index as companiesIndex } from '@/routes/companies';
 import { index as databaseStatusIndex } from '@/routes/database-status';
 import { index as departmentsIndex } from '@/routes/departments';
 import { index as eInvoicesIndex } from '@/routes/e-invoices';
-import { primite as facturiPrimite } from '@/routes/invoices';
 import { index as maintenanceIndex } from '@/routes/maintenance';
 import { furnizori } from '@/routes/partners';
 import { index as paymentChecksIndex } from '@/routes/payment-checks';
@@ -75,21 +72,13 @@ const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
         href: paymentRunsIndex(),
         icon: Banknote,
     },
+    // Facturile se decid într-un singur loc, în Aprobări. „Primite” dubla
+    // lista și acțiunile ei, așa că a ieșit din meniu; pagina rămâne, ca
+    // arhivă căutabilă, legată din factura deschisă și din e-Facturi.
     {
-        title: 'Facturi',
-        icon: FileText,
-        children: [
-            {
-                title: 'Primite',
-                href: facturiPrimite(),
-                icon: FileInput,
-            },
-            {
-                title: 'eFacturi',
-                href: eInvoicesIndex(),
-                icon: FileCheck2,
-            },
-        ],
+        title: 'e-Facturi (ANAF)',
+        href: eInvoicesIndex(),
+        icon: FileCheck2,
     },
     {
         title: 'Furnizori',

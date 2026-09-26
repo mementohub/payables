@@ -32,8 +32,9 @@ class ApprovalController extends Controller
     {
         $user = $request->user();
         $departments = $this->departmentsOf($user);
+        $canRoute = $user->hasRole(User::ROLE_FINANCE);
         $tab = $request->string('tab')->toString();
-        $tab = in_array($tab, ['mine', 'final', 'blocked'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
+        $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
         $departmentId = $request->integer('department') ?: null;
         $search = trim($request->string('search')->toString());
         $dueUntil = $request->string('due_until')->toString() ?: null;
@@ -41,6 +42,9 @@ class ApprovalController extends Controller
         $query = match ($tab) {
             'final' => $this->finalQuery($request->boolean('with_runs')),
             'blocked' => Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]),
+            // Facturile pe care regulile n-au putut să le dea unui departament:
+            // stau aici, unde se și decid, nu într-o listă separată.
+            'routing' => Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING),
             default => $this->mineQuery($departments->pluck('id')->all(), $departmentId),
         };
 
@@ -67,11 +71,13 @@ class ApprovalController extends Controller
                 'mine' => $departments->isEmpty() ? 0 : $this->payable($this->mineQuery($departments->pluck('id')->all(), null))->count(),
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? $this->payable($this->finalQuery(false))->count() : 0,
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
+                'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
             'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'with_runs' => $request->boolean('with_runs')],
             'can' => [
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'reopen' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),
+                'route' => $canRoute,
             ],
         ]);
     }

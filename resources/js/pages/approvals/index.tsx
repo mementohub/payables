@@ -9,6 +9,7 @@ import {
     MessageSquare,
     MoreHorizontal,
     RotateCcw,
+    Route,
     X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -23,6 +24,7 @@ import {
 } from '@/components/filter-field';
 import InputError from '@/components/input-error';
 import Pagination from '@/components/pagination';
+import RouteInvoicesDialog from '@/components/route-invoices-dialog';
 import { SelectionBar, useTableSelection } from '@/components/table-selection';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -193,6 +195,10 @@ export default function ApprovalsIndex({
 }: ApprovalsPageProps) {
     const [search, setSearch] = useState(filters.search);
     const [request, setRequest] = useState<DecisionRequest | null>(null);
+    const [routing, setRouting] = useState<{
+        ids: number[];
+        title: string;
+    } | null>(null);
     const [dialogKey, setDialogKey] = useState(0);
     const [errors, setErrors] = useState<Errors>({});
     const [processing, setProcessing] = useState(false);
@@ -203,7 +209,10 @@ export default function ApprovalsIndex({
     const canDecideMine = tab === 'mine' && departments.length > 0;
     const canDecideFinal = tab === 'final' && can.final;
     const canReopen = tab === 'blocked' && can.reopen;
-    const selectable = canDecideMine || canDecideFinal;
+    // Facturile pe care regulile n-au știut să le împartă se rutează de aici,
+    // din aceeași listă în care se și decid.
+    const canRoute = tab === 'routing' && can.route;
+    const selectable = canDecideMine || canDecideFinal || canRoute;
     const showActions = selectable || canReopen;
     const columnCount = 5 + (selectable ? 1 : 0) + (showActions ? 1 : 0);
     const today = localIsoDate();
@@ -229,6 +238,15 @@ export default function ApprovalsIndex({
             label: 'Contestate / amânate',
             count: counts.blocked,
         },
+        ...(can.route
+            ? [
+                  {
+                      value: 'routing' as const,
+                      label: 'De rutat',
+                      count: counts.routing,
+                  },
+              ]
+            : []),
     ];
 
     const applyFilter = (next: Partial<Query>) => {
@@ -487,75 +505,88 @@ export default function ApprovalsIndex({
         }
     })();
 
-    const bulkActions =
-        tab === 'final' ? (
-            <>
-                <Button
-                    type="button"
-                    size="sm"
-                    disabled={processing}
-                    onClick={() => bulkDecide('approved')}
-                >
-                    <CheckCheck className="size-4" /> Aprobă final
-                </Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={processing}
-                    onClick={() => bulkDecide('disputed')}
-                >
-                    <Ban className="size-4" /> Contestă
-                </Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={processing}
-                    onClick={() => bulkDecide('postponed')}
-                >
-                    <CalendarClock className="size-4" /> Amână
-                </Button>
-            </>
-        ) : (
-            <>
-                <Button
-                    type="button"
-                    size="sm"
-                    disabled={processing}
-                    onClick={() => bulkDecide('approved')}
-                >
-                    <Check className="size-4" /> Aprobă selecția
-                </Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={processing}
-                    onClick={() => bulkDecide('disputed')}
-                >
-                    <Ban className="size-4" /> Contestă
-                </Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={processing}
-                    onClick={() => bulkDecide('postponed')}
-                >
-                    <CalendarClock className="size-4" /> Amână
-                </Button>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={processing}
-                    onClick={() => bulkDecide('redirected')}
-                >
-                    <Forward className="size-4" /> Redirecționează
-                </Button>
-            </>
-        );
+    const bulkActions = canRoute ? (
+        <Button
+            type="button"
+            size="sm"
+            disabled={processing || selection.selectionCount === 0}
+            onClick={() =>
+                setRouting({
+                    ids: Array.from(selection.selected),
+                    title: `Rutează ${selection.selectionCount} ${selection.selectionCount === 1 ? 'factură' : 'facturi'}`,
+                })
+            }
+        >
+            <Route className="size-4" /> Rutează la departament
+        </Button>
+    ) : tab === 'final' ? (
+        <>
+            <Button
+                type="button"
+                size="sm"
+                disabled={processing}
+                onClick={() => bulkDecide('approved')}
+            >
+                <CheckCheck className="size-4" /> Aprobă final
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={processing}
+                onClick={() => bulkDecide('disputed')}
+            >
+                <Ban className="size-4" /> Contestă
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={processing}
+                onClick={() => bulkDecide('postponed')}
+            >
+                <CalendarClock className="size-4" /> Amână
+            </Button>
+        </>
+    ) : (
+        <>
+            <Button
+                type="button"
+                size="sm"
+                disabled={processing}
+                onClick={() => bulkDecide('approved')}
+            >
+                <Check className="size-4" /> Aprobă selecția
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={processing}
+                onClick={() => bulkDecide('disputed')}
+            >
+                <Ban className="size-4" /> Contestă
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={processing}
+                onClick={() => bulkDecide('postponed')}
+            >
+                <CalendarClock className="size-4" /> Amână
+            </Button>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={processing}
+                onClick={() => bulkDecide('redirected')}
+            >
+                <Forward className="size-4" /> Redirecționează
+            </Button>
+        </>
+    );
 
     const renderActions = (invoice: WorkflowInvoice) => {
         if (tab === 'blocked') {
@@ -819,6 +850,16 @@ export default function ApprovalsIndex({
                             ))}
                         </AlertDescription>
                     </Alert>
+                )}
+
+                {routing && (
+                    <RouteInvoicesDialog
+                        invoiceIds={routing.ids}
+                        departments={allDepartments}
+                        title={routing.title}
+                        onClose={() => setRouting(null)}
+                        onDone={() => selection.clear()}
+                    />
                 )}
 
                 {selectable && (

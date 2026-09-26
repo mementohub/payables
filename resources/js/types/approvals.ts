@@ -57,19 +57,19 @@ export type WorkflowInvoice = {
 };
 
 export type ApprovalsPageProps = {
-    tab: 'mine' | 'final' | 'blocked';
+    tab: 'mine' | 'final' | 'blocked' | 'routing';
     rows: Paginated<WorkflowInvoice>;
     departments: { id: number; name: string; pending: number }[];
     /** Every active department: where a share can be redirected. */
     all_departments: DepartmentRef[];
-    counts: { mine: number; final: number; blocked: number };
+    counts: { mine: number; final: number; blocked: number; routing: number };
     filters: {
         department: number | null;
         search: string;
         due_until: string | null;
         with_runs: boolean;
     };
-    can: { final: boolean; reopen: boolean };
+    can: { final: boolean; reopen: boolean; route: boolean };
 };
 
 export type PaymentRunStatus =
