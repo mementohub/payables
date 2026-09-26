@@ -247,6 +247,9 @@ export default function ApprovalsIndex({
                   },
               ]
             : []),
+        // Cozile arată ce e de lucru; asta arată tot ce a intrat, inclusiv
+        // facturile deja achitate — fostul tab „Primite”.
+        { value: 'all', label: 'Toate facturile', count: 0 },
     ];
 
     const applyFilter = (next: Partial<Query>) => {
@@ -258,6 +261,9 @@ export default function ApprovalsIndex({
                 tab: merged.tab,
                 search: merged.search || undefined,
                 due_until: merged.due_until ?? undefined,
+                doc_from: merged.doc_from ?? undefined,
+                doc_to: merged.doc_to ?? undefined,
+                sort: merged.sort === 'due' ? 'due' : undefined,
                 department:
                     merged.tab === 'mine'
                         ? (merged.department ?? undefined)
@@ -750,6 +756,44 @@ export default function ApprovalsIndex({
                             placeholder="Număr factură sau furnizor…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </FilterField>
+
+                    <FilterField
+                        label="Data facturii de la"
+                        active={filters.doc_from !== null}
+                        onClear={() => applyFilter({ doc_from: null })}
+                    >
+                        <Input
+                            type="date"
+                            className={cn(
+                                'min-h-11 w-full sm:w-[170px]',
+                                filterInputClass(filters.doc_from !== null),
+                            )}
+                            value={filters.doc_from ?? ''}
+                            onChange={(e) =>
+                                applyFilter({
+                                    doc_from: e.target.value || null,
+                                })
+                            }
+                        />
+                    </FilterField>
+
+                    <FilterField
+                        label="până la"
+                        active={filters.doc_to !== null}
+                        onClear={() => applyFilter({ doc_to: null })}
+                    >
+                        <Input
+                            type="date"
+                            className={cn(
+                                'min-h-11 w-full sm:w-[170px]',
+                                filterInputClass(filters.doc_to !== null),
+                            )}
+                            value={filters.doc_to ?? ''}
+                            onChange={(e) =>
+                                applyFilter({ doc_to: e.target.value || null })
+                            }
                         />
                     </FilterField>
 

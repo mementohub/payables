@@ -57,7 +57,7 @@ export type WorkflowInvoice = {
 };
 
 export type ApprovalsPageProps = {
-    tab: 'mine' | 'final' | 'blocked' | 'routing';
+    tab: 'mine' | 'final' | 'blocked' | 'routing' | 'all';
     rows: Paginated<WorkflowInvoice>;
     departments: { id: number; name: string; pending: number }[];
     /** Every active department: where a share can be redirected. */
@@ -67,6 +67,11 @@ export type ApprovalsPageProps = {
         department: number | null;
         search: string;
         due_until: string | null;
+        /** Data facturii, de la / până la. */
+        doc_from: string | null;
+        doc_to: string | null;
+        /** „doc”: cele mai noi facturi întâi. „due”: după scadență. */
+        sort: 'doc' | 'due';
         with_runs: boolean;
     };
     can: { final: boolean; reopen: boolean; route: boolean };

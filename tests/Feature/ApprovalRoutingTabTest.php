@@ -49,3 +49,62 @@ test('someone who cannot route does not get the tab', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('can.route', false)->where('counts.routing', 0));
 });
+
+test('the inbox can show every received invoice, paid ones included', function () {
+    $paid = Invoice::factory()->create([
+        'company_id' => $this->company->id,
+        'partner_id' => $this->partner->id,
+        'partener_type' => 'furnizor',
+        'data_doc' => '2026-01-10',
+        'val_mon' => 500,
+        'val_mon_paid' => 500,
+        'approval_status' => InvoiceWorkflow::APPROVED,
+    ]);
+
+    $open = Invoice::factory()->create([
+        'company_id' => $this->company->id,
+        'partner_id' => $this->partner->id,
+        'partener_type' => 'furnizor',
+        'data_doc' => '2026-03-15',
+        'val_mon' => 900,
+        'val_mon_paid' => 0,
+        'approval_status' => InvoiceWorkflow::DEPARTMENT,
+    ]);
+
+    $finance = User::factory()->create(['roles' => [User::ROLE_FINANCE]]);
+
+    // Cozile lasă factura plătită afară; „Toate” o arată, cea mai nouă prima.
+    $this->actingAs($finance)
+        ->get('/approvals?tab=all')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('rows.total', 2)
+            ->where('rows.data.0.id', $open->id)
+            ->where('rows.data.1.id', $paid->id));
+
+    $this->actingAs($finance)
+        ->get('/approvals?tab=all&doc_from=2026-02-01')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('rows.total', 1)->where('rows.data.0.id', $open->id));
+});
+
+test('the queue is sorted by invoice date, newest first, unless you ask for due date', function () {
+    $vechi = Invoice::factory()->create([
+        'company_id' => $this->company->id, 'partner_id' => $this->partner->id, 'partener_type' => 'furnizor',
+        'data_doc' => '2026-01-05', 'data_scadenta' => '2026-02-05', 'val_mon' => 100, 'val_mon_paid' => 0,
+        'approval_status' => InvoiceWorkflow::ROUTING,
+    ]);
+    $nou = Invoice::factory()->create([
+        'company_id' => $this->company->id, 'partner_id' => $this->partner->id, 'partener_type' => 'furnizor',
+        'data_doc' => '2026-06-20', 'data_scadenta' => '2026-12-20', 'val_mon' => 100, 'val_mon_paid' => 0,
+        'approval_status' => InvoiceWorkflow::ROUTING,
+    ]);
+
+    $finance = User::factory()->create(['roles' => [User::ROLE_FINANCE]]);
+
+    $this->actingAs($finance)->get('/approvals?tab=routing')
+        ->assertInertia(fn ($page) => $page->where('rows.data.0.id', $nou->id)->where('filters.sort', 'doc'));
+
+    $this->actingAs($finance)->get('/approvals?tab=routing&sort=due')
+        ->assertInertia(fn ($page) => $page->where('rows.data.0.id', $vechi->id)->where('filters.sort', 'due'));
+});

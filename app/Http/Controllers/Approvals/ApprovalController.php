@@ -34,10 +34,15 @@ class ApprovalController extends Controller
         $departments = $this->departmentsOf($user);
         $canRoute = $user->hasRole(User::ROLE_FINANCE);
         $tab = $request->string('tab')->toString();
-        $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
+        $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing', 'all'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
         $departmentId = $request->integer('department') ?: null;
         $search = trim($request->string('search')->toString());
         $dueUntil = $request->string('due_until')->toString() ?: null;
+        $docFrom = $request->string('doc_from')->toString() ?: null;
+        $docTo = $request->string('doc_to')->toString() ?: null;
+        // Implicit se uită lumea la ce a venit de curând; scadența rămâne o
+        // alegere, pentru zilele în care se pregătește plata.
+        $sort = $request->string('sort')->toString() === 'due' ? 'due' : 'doc';
 
         $query = match ($tab) {
             'final' => $this->finalQuery($request->boolean('with_runs')),
@@ -45,14 +50,24 @@ class ApprovalController extends Controller
             // Facturile pe care regulile n-au putut să le dea unui departament:
             // stau aici, unde se și decid, nu într-o listă separată.
             'routing' => Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING),
+            // Toate facturile primite, plătite sau nu, decise sau nu: cozile
+            // arată ce e de lucru, asta arată ce există.
+            'all' => Invoice::query()->visibleTo($user),
             default => $this->mineQuery($departments->pluck('id')->all(), $departmentId),
         };
 
-        $rows = ApprovalPresenter::load($this->payable($query))
+        // Restul cozilor arată doar ce e de plătit și nedecis; „Toate” arată
+        // tot ce a intrat, inclusiv facturile deja achitate.
+        $rows = ApprovalPresenter::load($tab === 'all' ? $this->received($query) : $this->payable($query))
             ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('nr_doc', 'like', "%{$search}%")->orWhereHas('partner', fn (Builder $p) => $p->where('name', 'like', "%{$search}%"))))
             ->when($dueUntil !== null, fn (Builder $q) => $q->where(fn (Builder $w) => $w->whereNull('data_scadenta')->orWhere('data_scadenta', '<=', $dueUntil)))
-            ->orderByRaw('data_scadenta is null, data_scadenta')
-            ->orderBy('id')
+            ->when($docFrom !== null, fn (Builder $q) => $q->where('data_doc', '>=', $docFrom))
+            ->when($docTo !== null, fn (Builder $q) => $q->where('data_doc', '<=', $docTo))
+            ->when(
+                $sort === 'due',
+                fn (Builder $q) => $q->orderByRaw('data_scadenta is null, data_scadenta')->orderBy('id'),
+                fn (Builder $q) => $q->orderByDesc('data_doc')->orderByDesc('id'),
+            )
             ->paginate(50)
             ->withQueryString()
             ->through(fn (Invoice $invoice) => $this->presenter->invoice($invoice));
@@ -73,7 +88,7 @@ class ApprovalController extends Controller
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
-            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'with_runs' => $request->boolean('with_runs')],
+            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'with_runs' => $request->boolean('with_runs')],
             'can' => [
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'reopen' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),
@@ -249,6 +264,21 @@ class ApprovalController extends Controller
         return Invoice::query()
             ->where('approval_status', InvoiceWorkflow::FINAL)
             ->when(! $withRuns, fn (Builder $q) => $q->where('approval_track', InvoiceWorkflow::TRACK_INVOICE));
+    }
+
+    /**
+     * @param  Builder<Invoice>  $query
+     * @return Builder<Invoice>
+     */
+    /**
+     * Tot ce a venit de la furnizori și nu a fost șters din OMC.
+     *
+     * @param  Builder<Invoice>  $query
+     * @return Builder<Invoice>
+     */
+    private function received(Builder $query): Builder
+    {
+        return $query->where('partener_type', 'furnizor')->whereNull('omc_removed_at');
     }
 
     /**
