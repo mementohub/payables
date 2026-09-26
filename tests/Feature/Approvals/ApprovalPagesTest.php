@@ -182,3 +182,30 @@ test('a department sends a share that is not its own to the right department, wh
     app(DepartmentAssigner::class)->assign(collect([$invoice]));
     expect($invoice->fresh()->department_id)->toBe($this->departments['senior_voyage']->id);
 });
+
+/**
+ * O aprobare fără nume și fără oră nu e o aprobare: cine a semnat și când
+ * trebuie să se vadă în listă, nu doar în istoricul facturii.
+ */
+test('the list says who approved each invoice and when', function () {
+    $invoice = pagesRoutedInvoice($this->company);
+
+    $this->actingAs($this->head)->post('/approvals/decide', [
+        'invoice_ids' => [$invoice->id],
+        'department_id' => $this->departments['charters']->id,
+        'decision' => 'approved',
+    ])->assertRedirect();
+
+    $this->actingAs($this->boss)->post('/approvals/final', [
+        'invoice_ids' => [$invoice->id],
+        'decision' => 'approved',
+    ])->assertRedirect();
+
+    $this->actingAs($this->boss)->get('/approvals?tab=all')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('rows.data.0.final.by', $this->boss->name)
+            ->whereNot('rows.data.0.final.at', null)
+            ->where('rows.data.0.departments.0.by', $this->head->name)
+            ->whereNot('rows.data.0.departments.0.at', null));
+});

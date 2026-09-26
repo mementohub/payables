@@ -72,6 +72,8 @@ export type ApprovalsPageProps = {
         doc_to: string | null;
         /** „doc”: cele mai noi facturi întâi. „due”: după scadență. */
         sort: 'doc' | 'due';
+        /** Doar pe „Toate facturile”: plătite, parțial sau neplătite. */
+        payment: 'paid' | 'partial' | 'unpaid' | null;
     };
     can: { final: boolean; reopen: boolean; route: boolean };
 };

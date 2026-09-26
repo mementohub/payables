@@ -63,9 +63,10 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import PaymentStatusBadge from '@/components/payment-status-badge';
 import WorkflowStatusBadge from '@/components/workflow-status-badge';
 import AppLayout from '@/layouts/app-layout';
-import { formatDate, formatMoney } from '@/lib/money';
+import { formatDate, formatDateTime, formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { index as approvalsIndex } from '@/routes/approvals';
 import { show as invoicesShow } from '@/routes/invoices';
@@ -262,6 +263,7 @@ export default function ApprovalsIndex({
                 due_until: merged.due_until ?? undefined,
                 doc_from: merged.doc_from ?? undefined,
                 doc_to: merged.doc_to ?? undefined,
+                payment: merged.payment ?? undefined,
                 sort: merged.sort === 'due' ? 'due' : undefined,
                 department:
                     merged.tab === 'mine'
@@ -792,6 +794,52 @@ export default function ApprovalsIndex({
                         />
                     </FilterField>
 
+                    {tab === 'all' && (
+                        <FilterField
+                            label="Plată"
+                            active={filters.payment !== null}
+                            onClear={() => applyFilter({ payment: null })}
+                        >
+                            <Select
+                                value={filters.payment ?? 'all'}
+                                onValueChange={(value) =>
+                                    applyFilter({
+                                        payment:
+                                            value === 'all'
+                                                ? null
+                                                : (value as
+                                                      | 'paid'
+                                                      | 'partial'
+                                                      | 'unpaid'),
+                                    })
+                                }
+                            >
+                                <SelectTrigger
+                                    className={cn(
+                                        'min-h-11 w-full sm:w-[170px]',
+                                        filterInputClass(
+                                            filters.payment !== null,
+                                        ),
+                                    )}
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Oricare</SelectItem>
+                                    <SelectItem value="unpaid">
+                                        Neplătite
+                                    </SelectItem>
+                                    <SelectItem value="partial">
+                                        Parțial plătite
+                                    </SelectItem>
+                                    <SelectItem value="paid">
+                                        Plătite
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FilterField>
+                    )}
+
                     <FilterField
                         label="Scadență până la"
                         active={filters.due_until !== null}
@@ -1030,6 +1078,22 @@ export default function ApprovalsIndex({
                                             <WorkflowStatusBadge
                                                 status={invoice.approval_status}
                                             />
+                                            {/* În cozi totul e neplătit, deci
+                                                insigna de plată apare doar
+                                                unde spune ceva: pe „Toate
+                                                facturile” și când s-a plătit
+                                                măcar în parte. */}
+                                            {(tab === 'all' ||
+                                                invoice.payment_status !==
+                                                    'unpaid') && (
+                                                <div className="mt-1">
+                                                    <PaymentStatusBadge
+                                                        status={
+                                                            invoice.payment_status
+                                                        }
+                                                    />
+                                                </div>
+                                            )}
                                             {invoice.approval_status ===
                                                 'postponed' &&
                                                 invoice.postponed_until && (
@@ -1040,20 +1104,22 @@ export default function ApprovalsIndex({
                                                         )}
                                                     </div>
                                                 )}
-                                            {invoice.approval_track ===
-                                                'run' && (
+                                            {/* Decizia finală: cine a dat-o și
+                                                când, nu doar că există. */}
+                                            {invoice.final && (
                                                 <div className="mt-1 text-xs text-muted-foreground">
-                                                    În rulaj de plată
+                                                    Final:{' '}
+                                                    {invoice.final.by ?? '—'} ·{' '}
+                                                    {formatDateTime(
+                                                        invoice.final.at,
+                                                    )}
                                                 </div>
                                             )}
                                             {invoice.final?.comment && (
                                                 <div
                                                     className="mt-1 line-clamp-2 max-w-[220px] text-xs text-muted-foreground italic"
                                                     title={
-                                                        invoice.final.by
-                                                            ? `${invoice.final.comment} — ${invoice.final.by}`
-                                                            : invoice.final
-                                                                  .comment
+                                                        invoice.final.comment
                                                     }
                                                 >
                                                     „{invoice.final.comment}”

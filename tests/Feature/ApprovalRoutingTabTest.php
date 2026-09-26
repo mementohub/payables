@@ -108,3 +108,31 @@ test('the queue is sorted by invoice date, newest first, unless you ask for due 
     $this->actingAs($finance)->get('/approvals?tab=routing&sort=due')
         ->assertInertia(fn ($page) => $page->where('rows.data.0.id', $vechi->id)->where('filters.sort', 'due'));
 });
+
+test('every invoice shows whether it is paid, and the list can be filtered by it', function () {
+    $achitata = Invoice::factory()->create([
+        'company_id' => $this->company->id, 'partner_id' => $this->partner->id, 'partener_type' => 'furnizor',
+        'data_doc' => '2026-02-01', 'val_mon' => 500, 'val_mon_paid' => 500,
+        'approval_status' => InvoiceWorkflow::APPROVED,
+    ]);
+    $partiala = Invoice::factory()->create([
+        'company_id' => $this->company->id, 'partner_id' => $this->partner->id, 'partener_type' => 'furnizor',
+        'data_doc' => '2026-03-01', 'val_mon' => 800, 'val_mon_paid' => 300,
+        'approval_status' => InvoiceWorkflow::DEPARTMENT,
+    ]);
+
+    $finance = User::factory()->create(['roles' => [User::ROLE_FINANCE]]);
+
+    $this->actingAs($finance)->get('/approvals?tab=all')
+        ->assertInertia(fn ($page) => $page
+            ->where('rows.data.0.payment_status', 'partial')
+            ->where('rows.data.1.payment_status', 'paid'));
+
+    $this->actingAs($finance)->get('/approvals?tab=all&payment=paid')
+        ->assertInertia(fn ($page) => $page
+            ->where('rows.total', 1)
+            ->where('rows.data.0.id', $achitata->id));
+
+    $this->actingAs($finance)->get('/approvals?tab=all&payment=partial')
+        ->assertInertia(fn ($page) => $page->where('rows.data.0.id', $partiala->id));
+});

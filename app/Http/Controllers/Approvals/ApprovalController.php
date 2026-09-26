@@ -43,6 +43,9 @@ class ApprovalController extends Controller
         // Implicit se uită lumea la ce a venit de curând; scadența rămâne o
         // alegere, pentru zilele în care se pregătește plata.
         $sort = $request->string('sort')->toString() === 'due' ? 'due' : 'doc';
+        $payment = in_array($request->string('payment')->toString(), ['paid', 'partial', 'unpaid'], true)
+            ? $request->string('payment')->toString()
+            : null;
 
         $query = match ($tab) {
             'final' => $this->finalQuery(),
@@ -63,6 +66,7 @@ class ApprovalController extends Controller
             ->when($dueUntil !== null, fn (Builder $q) => $q->where(fn (Builder $w) => $w->whereNull('data_scadenta')->orWhere('data_scadenta', '<=', $dueUntil)))
             ->when($docFrom !== null, fn (Builder $q) => $q->where('data_doc', '>=', $docFrom))
             ->when($docTo !== null, fn (Builder $q) => $q->where('data_doc', '<=', $docTo))
+            ->when($payment !== null, fn (Builder $q) => $q->paymentStatus($payment))
             ->when(
                 $sort === 'due',
                 fn (Builder $q) => $q->orderByRaw('data_scadenta is null, data_scadenta')->orderBy('id'),
@@ -88,7 +92,7 @@ class ApprovalController extends Controller
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
-            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort],
+            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment],
             'can' => [
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'reopen' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),

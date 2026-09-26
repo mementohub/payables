@@ -49,7 +49,12 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import WorkflowStatusBadge from '@/components/workflow-status-badge';
 import AppLayout from '@/layouts/app-layout';
-import { formatByCurrency, formatDate, formatMoney } from '@/lib/money';
+import {
+    formatByCurrency,
+    formatDate,
+    formatDateTime,
+    formatMoney,
+} from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { BtPaymentDialog } from '@/pages/invoices/bt-payment-dialog';
 import { show as invoicesShow } from '@/routes/invoices';
@@ -85,20 +90,6 @@ type ItemGroup = {
     includedCount: number;
     totals: Record<string, number>;
 };
-
-function formatDateTime(value: string | null): string {
-    if (!value) {
-        return '—';
-    }
-
-    return new Intl.DateTimeFormat('ro-RO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value));
-}
 
 /** Today as YYYY-MM-DD in the user's time zone. */
 function localToday(): string {
@@ -745,6 +736,7 @@ function DepartmentGroup({
                             <TableHead className="text-right">Suma</TableHead>
                             <TableHead>Departamente</TableHead>
                             <TableHead>Stare</TableHead>
+                            <TableHead>Aprobat de</TableHead>
                             <TableHead className="text-right">
                                 Acțiuni
                             </TableHead>
@@ -931,6 +923,19 @@ function RunItemRow({
                     <WorkflowStatusBadge
                         status={invoice?.approval_status ?? null}
                     />
+                )}
+            </TableCell>
+            {/* Semnătura pe care plătește Trezoreria: cine a aprobat și când. */}
+            <TableCell className="text-xs whitespace-nowrap">
+                {invoice?.final ? (
+                    <div className="flex flex-col">
+                        <span>{invoice.final.by ?? '—'}</span>
+                        <span className="text-muted-foreground">
+                            {formatDateTime(invoice.final.at)}
+                        </span>
+                    </div>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
                 )}
             </TableCell>
             <TableCell>

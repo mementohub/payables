@@ -113,7 +113,8 @@ class PaymentRunController extends Controller
             'my_departments' => $myDepartments,
             'can' => [
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
-                'edit' => ($user->hasRole(User::ROLE_FINANCE) || $user->hasRole(User::ROLE_TOP_MANAGEMENT)) && in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL], true),
+                // Lista se poate ajusta cât timp n-a plecat la bancă.
+                'edit' => ($user->hasRole(User::ROLE_FINANCE) || $user->hasRole(User::ROLE_TOP_MANAGEMENT)) && in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL, PaymentRun::APPROVED], true),
                 'export' => $user->hasRole(User::ROLE_TREASURY) && in_array($run->status, [PaymentRun::APPROVED, PaymentRun::EXPORTED], true),
                 'close' => $user->hasRole(User::ROLE_FINANCE) && $run->isActive(),
             ],

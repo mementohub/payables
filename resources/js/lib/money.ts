@@ -24,6 +24,21 @@ export function formatByCurrency(byCurrency: Record<string, number>): string {
     return parts.length > 0 ? parts.join(' + ') : '—';
 }
 
+/** Ziua și ora unei decizii: „24.09.2026, 14:20”. */
+export function formatDateTime(value: string | null | undefined): string {
+    if (!value) {
+        return '—';
+    }
+
+    return new Intl.DateTimeFormat('ro-RO', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(new Date(value));
+}
+
 export function formatDate(value: string | null | undefined): string {
     if (!value) {
         return '—';

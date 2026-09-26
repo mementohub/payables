@@ -1,5 +1,5 @@
 import { DecisionBadge } from '@/components/workflow-status-badge';
-import { formatDate, formatMoney } from '@/lib/money';
+import { formatDate, formatDateTime, formatMoney } from '@/lib/money';
 import type { DepartmentShare } from '@/types/approvals';
 
 /**
@@ -49,6 +49,13 @@ export default function DepartmentShares({
                         decision={share.status}
                         className="px-1.5 py-0 text-[10px]"
                     />
+                    {/* Cine a decis și când: pe hârtie, o aprobare fără nume
+                        și fără oră nu e o aprobare. */}
+                    {share.by && share.at && (
+                        <span className="text-muted-foreground">
+                            {share.by} · {formatDateTime(share.at)}
+                        </span>
+                    )}
                 </div>
             ))}
         </div>
