@@ -79,28 +79,35 @@ test('Top Management gives the final approval to overhead invoices from the inbo
     expect($overhead->fresh()->approval_status)->toBe('approved');
 });
 
-test('a payment run is created, shown with its cash position, approved and marked as sent', function () {
+test('a payment run lists what is already approved and goes to the bank', function () {
     $invoice = pagesRoutedInvoice($this->company);
     $this->actingAs($this->head)->post('/approvals/decide', ['invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id, 'decision' => 'approved']);
 
     $this->actingAs($this->head)->post('/payment-runs', ['pay_date' => '2026-09-23', 'due_until' => '2026-09-25'])->assertForbidden();
+
+    // Departamentul și-a dat aprobarea, Top Management nu: n-are ce intra încă.
     $this->actingAs($this->boss)->withSession(['active_company_id' => $this->company->id])
         ->post('/payment-runs', ['pay_date' => '2026-09-23', 'due_until' => '2026-09-25'])
         ->assertRedirect();
 
-    $run = PaymentRun::query()->sole();
+    expect(PaymentRun::query()->latest('id')->first()->items()->count())->toBe(0);
+
+    $this->actingAs($this->boss)->post('/approvals/final', ['invoice_ids' => [$invoice->id], 'decision' => 'approved'])->assertRedirect();
+    $this->actingAs($this->boss)->withSession(['active_company_id' => $this->company->id])
+        ->post('/payment-runs', ['pay_date' => '2026-09-30', 'due_until' => '2026-09-25'])
+        ->assertRedirect();
+
+    $run = PaymentRun::query()->latest('id')->first();
 
     $this->actingAs($this->boss)->get("/payment-runs/{$run->id}")
         ->assertInertia(fn ($page) => $page
             ->component('payment-runs/show')
-            ->where('run.status', 'final')
+            ->where('run.status', 'approved')
             ->has('items', 1)
             ->where('items.0.invoice.id', $invoice->id)
-            ->where('can.approve', true)
+            ->where('payable_invoice_ids', [$invoice->id])
             ->has('cash'));
 
-    $this->actingAs($this->boss)->post("/payment-runs/{$run->id}/approve")->assertRedirect();
-    $this->actingAs($this->boss)->get("/payment-runs/{$run->id}")->assertInertia(fn ($page) => $page->where('payable_invoice_ids', [$invoice->id])->where('can.export', true));
     $this->actingAs($this->boss)->post("/payment-runs/{$run->id}/exported")->assertRedirect();
 
     expect($run->fresh()->status)->toBe('exported');

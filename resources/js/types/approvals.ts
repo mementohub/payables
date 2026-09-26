@@ -72,7 +72,6 @@ export type ApprovalsPageProps = {
         doc_to: string | null;
         /** „doc”: cele mai noi facturi întâi. „due”: după scadență. */
         sort: 'doc' | 'due';
-        with_runs: boolean;
     };
     can: { final: boolean; reopen: boolean; route: boolean };
 };
@@ -137,7 +136,6 @@ export type PaymentRunPageProps = {
     /** Department ids the user approves for; null for an admin (all). */
     my_departments: number[] | null;
     can: {
-        approve: boolean;
         final: boolean;
         edit: boolean;
         export: boolean;

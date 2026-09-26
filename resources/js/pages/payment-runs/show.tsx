@@ -2,7 +2,6 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     Ban,
     Check,
-    CheckCheck,
     Download,
     Lock,
     MoreHorizontal,
@@ -222,8 +221,6 @@ export default function PaymentRunShow({
     can,
     payable_invoice_ids: payableInvoiceIds,
 }: PaymentRunPageProps) {
-    const [approveOpen, setApproveOpen] = useState(false);
-    const [approveComment, setApproveComment] = useState('');
     const [btOpen, setBtOpen] = useState(false);
     const [closeMode, setCloseMode] = useState<'close' | 'cancel' | null>(null);
     const [pending, setPending] = useState<PendingDecision | null>(null);
@@ -280,17 +277,6 @@ export default function PaymentRunShow({
         );
     };
 
-    const approveRun = () => {
-        router.post(
-            PaymentRunController.approve(run.id).url,
-            { comment: approveComment.trim() || null },
-            requestOptions(() => {
-                setApproveOpen(false);
-                setApproveComment('');
-            }),
-        );
-    };
-
     const closeRun = (cancel: boolean) => {
         router.post(
             PaymentRunController.close(run.id).url,
@@ -307,7 +293,7 @@ export default function PaymentRunShow({
         );
     };
 
-    const hasActions = can.approve || can.export || can.close;
+    const hasActions = can.export || can.close;
 
     return (
         <>
@@ -329,15 +315,6 @@ export default function PaymentRunShow({
 
                     {hasActions && (
                         <div className="flex flex-wrap gap-2">
-                            {can.approve && (
-                                <Button
-                                    onClick={() => setApproveOpen(true)}
-                                    disabled={busy}
-                                >
-                                    <CheckCheck />
-                                    Aprobă rulajul
-                                </Button>
-                            )}
                             {can.export && (
                                 <Button
                                     onClick={() => setBtOpen(true)}
@@ -394,42 +371,6 @@ export default function PaymentRunShow({
                     ))
                 )}
             </div>
-
-            <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Aprobă {run.reference}</DialogTitle>
-                        <DialogDescription>
-                            Facturile din rulaj primesc aprobarea finală, iar
-                            Trezoreria poate trimite plata la bancă. Total:{' '}
-                            {formatByCurrency(run.totals.by_currency)}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-2">
-                        <Label htmlFor="approve-comment">
-                            Comentariu (opțional)
-                        </Label>
-                        <Textarea
-                            id="approve-comment"
-                            rows={3}
-                            value={approveComment}
-                            onChange={(e) => setApproveComment(e.target.value)}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            variant="ghost"
-                            onClick={() => setApproveOpen(false)}
-                        >
-                            Renunță
-                        </Button>
-                        <Button onClick={approveRun} disabled={busy}>
-                            <CheckCheck />
-                            Aprobă rulajul
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             <Dialog
                 open={closeMode !== null}

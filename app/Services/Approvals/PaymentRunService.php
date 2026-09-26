@@ -5,7 +5,6 @@ namespace App\Services\Approvals;
 use App\Models\CashFlowSnapshot;
 use App\Models\Company;
 use App\Models\Invoice;
-use App\Models\InvoiceDepartmentApproval;
 use App\Models\InvoiceEvent;
 use App\Models\PaymentRun;
 use App\Models\PaymentRunItem;
@@ -17,14 +16,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * The weekly payment run: every open invoice due by a date that is not
- * disputed, not postponed past the payment day and not in another run.
+ * The weekly payment run: the list Treasury pays.
  *
- *   review    departments are still deciding on some of its invoices;
- *   final     every department approved its part; Top Management decides;
- *   approved  Top Management approved it: its invoices are good to pay;
+ * It takes only invoices Top Management has already approved, due by the
+ * date asked for and not in another run. Nothing is decided here — the
+ * approval happens in Aprobări, invoice by invoice; a run that could also
+ * approve meant the same decision had two doors.
+ *
+ *   approved  the list is ready: every invoice in it is approved;
  *   exported  Treasury sent it to the bank;
  *   closed    every invoice in it is paid in OMC (or it was closed by hand).
+ *
+ * `review` and `final` survive for the runs built under the old rules.
  */
 class PaymentRunService
 {
@@ -40,7 +43,7 @@ class PaymentRunService
                 'reference' => $this->reference($payDate),
                 'pay_date' => $payDate->toDateString(),
                 'due_until' => $dueUntil->toDateString(),
-                'status' => PaymentRun::REVIEW,
+                'status' => PaymentRun::APPROVED,
                 'note' => $note,
                 'created_by_id' => $user->id,
             ]);
@@ -57,7 +60,9 @@ class PaymentRunService
                 ->where('val_mon', '>', 0)
                 ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
                 ->where(fn ($q) => $q->whereNull('data_scadenta')->orWhere('data_scadenta', '<=', $dueUntil->toDateString()))
-                ->where(fn ($q) => $q->whereNull('approval_status')->orWhereNotIn('approval_status', [InvoiceWorkflow::DISPUTED]))
+                // Doar ce a primit aprobarea finală: rulajul e lista de plată,
+                // nu încă un loc unde se decide.
+                ->where('approval_status', InvoiceWorkflow::APPROVED)
                 ->where(fn ($q) => $q->whereNull('postponed_until')->orWhere('postponed_until', '<=', $payDate->toDateString()))
                 ->whereNotIn('id', $busy->all())
                 ->get(['id', 'department_id', 'moneda', 'val_mon', 'val_mon_paid', 'val_mon_storno']);
@@ -102,8 +107,10 @@ class PaymentRunService
             return $run;
         }
 
-        $ready = $statuses->every(fn (Invoice $invoice) => in_array($invoice->approval_status, [InvoiceWorkflow::FINAL, InvoiceWorkflow::APPROVED], true));
-        $run->forceFill(['status' => $ready && $statuses->isNotEmpty() ? PaymentRun::FINAL : PaymentRun::REVIEW])->save();
+        // Rulajele vechi, construite când se mai aproba din ele, se așază
+        // singure: dacă tot ce a rămas în ele e aprobat, sunt gata de plată.
+        $ready = $statuses->isNotEmpty() && $statuses->every(fn (Invoice $invoice) => $invoice->approval_status === InvoiceWorkflow::APPROVED);
+        $run->forceFill(['status' => $ready ? PaymentRun::APPROVED : PaymentRun::REVIEW])->save();
 
         return $run;
     }
@@ -126,30 +133,6 @@ class PaymentRunService
 
         $this->event($item->invoice_id, $user, $included ? 'run_included' : 'run_excluded', $comment, $run);
         $this->recompute($run);
-    }
-
-    /**
-     * Top Management approves the run: every invoice in it that its
-     * departments approved gets its final approval.
-     */
-    public function approve(PaymentRun $run, User $user, ?string $comment = null): void
-    {
-        $this->authorize($user, User::ROLE_TOP_MANAGEMENT, 'Rulajul îl aprobă Top Management.');
-        $this->recompute($run);
-
-        if ($run->status !== PaymentRun::FINAL) {
-            throw ValidationException::withMessages(['run' => 'Rulajul se aprobă după ce departamentele își aprobă toate facturile din el.']);
-        }
-
-        DB::transaction(function () use ($run, $user, $comment) {
-            Invoice::query()
-                ->whereIn('id', $run->items()->where('status', PaymentRunItem::INCLUDED)->select('invoice_id'))
-                ->where('approval_status', InvoiceWorkflow::FINAL)
-                ->get()
-                ->each(fn (Invoice $invoice) => $this->workflow->decideFinal($invoice, $user, InvoiceDepartmentApproval::APPROVED, $comment, via: $run->reference));
-
-            $run->forceFill(['status' => PaymentRun::APPROVED, 'approved_by_id' => $user->id, 'approved_at' => now()])->save();
-        });
     }
 
     /**
@@ -253,10 +236,15 @@ class PaymentRunService
         return $reference;
     }
 
+    /**
+     * Cât timp lista n-a plecat la bancă, se poate scoate ceva din ea — o
+     * factură pe care se așteaptă o notă de credit, una pe care se vrea plata
+     * săptămâna viitoare. După trimitere, nu se mai umblă la ea.
+     */
     private function ensureOpen(PaymentRun $run): void
     {
-        if (! in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL], true)) {
-            throw ValidationException::withMessages(['run' => 'Rulajul este deja aprobat; conținutul lui nu se mai schimbă.']);
+        if (! in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL, PaymentRun::APPROVED], true)) {
+            throw ValidationException::withMessages(['run' => 'Rulajul a plecat la bancă; conținutul lui nu se mai schimbă.']);
         }
     }
 

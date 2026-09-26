@@ -112,7 +112,6 @@ class PaymentRunController extends Controller
             ]),
             'my_departments' => $myDepartments,
             'can' => [
-                'approve' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) && $run->status === PaymentRun::FINAL,
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'edit' => ($user->hasRole(User::ROLE_FINANCE) || $user->hasRole(User::ROLE_TOP_MANAGEMENT)) && in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL], true),
                 'export' => $user->hasRole(User::ROLE_TREASURY) && in_array($run->status, [PaymentRun::APPROVED, PaymentRun::EXPORTED], true),
@@ -120,16 +119,6 @@ class PaymentRunController extends Controller
             ],
             'payable_invoice_ids' => $this->runs->payableInvoiceIds($run),
         ]);
-    }
-
-    public function approve(Request $request, PaymentRun $run): RedirectResponse
-    {
-        $validated = $request->validate(['comment' => ['nullable', 'string', 'max:2000']]);
-        $this->runs->approve($run, $request->user(), $validated['comment'] ?? null);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => "{$run->reference} a fost aprobat; Trezoreria îl poate trimite la bancă."]);
-
-        return back();
     }
 
     public function toggle(Request $request, PaymentRun $run, PaymentRunItem $item): RedirectResponse

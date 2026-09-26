@@ -214,7 +214,11 @@ class InvoiceWorkflow
             InvoiceDepartmentApproval::query()->whereKey($gone->all())->delete();
         }
 
-        $invoice->approval_track = $invoice->department?->group === Department::GROUP_PRODUCT ? self::TRACK_RUN : self::TRACK_INVOICE;
+        // Aprobarea finală e a Aprobărilor, pentru orice factură. Înainte,
+        // facturile departamentelor de produs o primeau prin rulajul de plată,
+        // iar rulajul ajunsese să fie și el un loc de aprobat — două uși spre
+        // aceeași decizie. Rulajul strânge acum doar ce e deja aprobat.
+        $invoice->approval_track = self::TRACK_INVOICE;
         $this->recompute($invoice);
     }
 

@@ -53,7 +53,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import {
     Table,
     TableBody,
@@ -268,8 +267,6 @@ export default function ApprovalsIndex({
                     merged.tab === 'mine'
                         ? (merged.department ?? undefined)
                         : undefined,
-                with_runs:
-                    merged.tab === 'final' && merged.with_runs ? 1 : undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -503,9 +500,7 @@ export default function ApprovalsIndex({
             case 'mine':
                 return 'Nicio factură nu așteaptă aprobarea departamentelor dumneavoastră.';
             case 'final':
-                return filters.with_runs
-                    ? 'Nicio factură nu așteaptă aprobarea finală.'
-                    : 'Nicio factură nu așteaptă aprobarea finală. Facturile din rulajele de plată apar dacă includeți rulajele.';
+                return 'Nicio factură nu așteaptă aprobarea finală.';
             case 'blocked':
                 return 'Nicio factură contestată sau amânată.';
         }
@@ -866,21 +861,6 @@ export default function ApprovalsIndex({
                                 </SelectContent>
                             </Select>
                         </FilterField>
-                    )}
-
-                    {tab === 'final' && (
-                        <div className="flex min-h-11 items-center gap-2">
-                            <Switch
-                                id="with-runs"
-                                checked={filters.with_runs}
-                                onCheckedChange={(checked) =>
-                                    applyFilter({ with_runs: checked })
-                                }
-                            />
-                            <Label htmlFor="with-runs" className="text-sm">
-                                Include facturile din rulajele de plată
-                            </Label>
-                        </div>
                     )}
                 </form>
 

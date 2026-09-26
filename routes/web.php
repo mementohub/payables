@@ -72,7 +72,6 @@ Route::middleware('auth')->group(function () {
     Route::get('payment-runs', [PaymentRunController::class, 'index'])->name('payment-runs.index');
     Route::post('payment-runs', [PaymentRunController::class, 'store'])->name('payment-runs.store');
     Route::get('payment-runs/{run}', [PaymentRunController::class, 'show'])->name('payment-runs.show');
-    Route::post('payment-runs/{run}/approve', [PaymentRunController::class, 'approve'])->name('payment-runs.approve');
     Route::post('payment-runs/{run}/items/{item}', [PaymentRunController::class, 'toggle'])->name('payment-runs.items.toggle');
     Route::post('payment-runs/{run}/exported', [PaymentRunController::class, 'exported'])->name('payment-runs.exported');
     Route::post('payment-runs/{run}/close', [PaymentRunController::class, 'close'])->name('payment-runs.close');

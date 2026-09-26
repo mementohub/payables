@@ -45,7 +45,7 @@ class ApprovalController extends Controller
         $sort = $request->string('sort')->toString() === 'due' ? 'due' : 'doc';
 
         $query = match ($tab) {
-            'final' => $this->finalQuery($request->boolean('with_runs')),
+            'final' => $this->finalQuery(),
             'blocked' => Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]),
             // Facturile pe care regulile n-au putut să le dea unui departament:
             // stau aici, unde se și decid, nu într-o listă separată.
@@ -88,7 +88,7 @@ class ApprovalController extends Controller
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
-            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'with_runs' => $request->boolean('with_runs')],
+            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort],
             'can' => [
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'reopen' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),
@@ -254,16 +254,13 @@ class ApprovalController extends Controller
     }
 
     /**
-     * Invoices every department approved, waiting for Top Management: the
-     * overhead ones, and with `$withRuns` the ones a payment run will carry.
+     * Invoices every department approved, waiting for Top Management.
      *
      * @return Builder<Invoice>
      */
-    private function finalQuery(bool $withRuns): Builder
+    private function finalQuery(): Builder
     {
-        return Invoice::query()
-            ->where('approval_status', InvoiceWorkflow::FINAL)
-            ->when(! $withRuns, fn (Builder $q) => $q->where('approval_track', InvoiceWorkflow::TRACK_INVOICE));
+        return Invoice::query()->where('approval_status', InvoiceWorkflow::FINAL);
     }
 
     /**

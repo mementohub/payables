@@ -48,7 +48,8 @@ test('an invoice waits for every department that owns part of it, then for Top M
     $workflow = app(InvoiceWorkflow::class);
 
     expect($invoice->approval_status)->toBe('department')
-        ->and($invoice->approval_track)->toBe('run')
+        // Aprobarea finală e una singură, în Aprobări, pentru orice factură.
+        ->and($invoice->approval_track)->toBe('invoice')
         ->and(InvoiceDepartmentApproval::query()->where('invoice_id', $invoice->id)->pluck('amount', 'department_id')->all())
         ->toEqual([$this->departments['charters']->id => 700, $this->departments['senior_voyage']->id => 300]);
 

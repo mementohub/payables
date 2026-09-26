@@ -12,7 +12,6 @@ use App\Services\Routing\BookingResolver;
 use App\Services\Routing\DepartmentAssigner;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
-use Illuminate\Validation\ValidationException;
 use Mockery\MockInterface;
 
 beforeEach(function () {
@@ -40,49 +39,55 @@ function runDueInvoice(Company $company, array $attributes = []): Invoice
     return $invoice->fresh();
 }
 
-test('a run gathers the open invoices due, goes through the departments and Top Management, then to the bank', function () {
-    $due = runDueInvoice($this->company);
-    $partlyPaid = runDueInvoice($this->company, ['val_mon_paid' => 400]);
-    runDueInvoice($this->company, ['data_scadenta' => '2026-10-30']);
-    runDueInvoice($this->company, ['val_mon_paid' => 1000]);
+/**
+ * O factură dusă până la capătul fluxului: departamentul și-a aprobat partea,
+ * Top Management a aprobat-o. Abia așa intră într-un rulaj de plată.
+ */
+function runApprovedInvoice(Company $company, array $attributes = []): Invoice
+{
+    $invoice = runDueInvoice($company, $attributes);
+    $workflow = app(InvoiceWorkflow::class);
+    $workflow->decide($invoice, test()->departments['charters'], test()->head, 'approved');
+    $workflow->decideFinal($invoice->fresh(), test()->boss, 'approved');
+
+    return $invoice->fresh();
+}
+
+test('a run gathers only what Top Management has approved, and goes straight to the bank', function () {
+    $due = runApprovedInvoice($this->company);
+    $partlyPaid = runApprovedInvoice($this->company, ['val_mon_paid' => 400]);
+    // Aprobată, dar scadentă peste orizontul rulajului.
+    runApprovedInvoice($this->company, ['data_scadenta' => '2026-10-30']);
+    // Scadentă, dar încă la departament: nu e treaba rulajului s-o aprobe.
+    $waiting = runDueInvoice($this->company);
     $service = app(PaymentRunService::class);
 
     expect(fn () => $service->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->head))->toThrow(AuthorizationException::class);
 
     $run = $service->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->finance);
 
+    // Lista e gata din clipa în care s-a făcut: nu mai are ce să aștepte.
     expect($run->reference)->toBe('Plăți 2026 S39')
-        ->and($run->status)->toBe('review')
+        ->and($run->status)->toBe('approved')
         ->and($run->items()->pluck('amount', 'invoice_id')->all())->toEqual([$due->id => 1000, $partlyPaid->id => 600])
-        ->and(fn () => $service->approve($run, $this->boss))->toThrow(ValidationException::class);
-
-    $workflow = app(InvoiceWorkflow::class);
-    $workflow->decide($due, $this->departments['charters'], $this->head, 'approved');
-    $workflow->decide($partlyPaid, $this->departments['charters'], $this->head, 'approved');
-
-    expect($service->recompute($run->fresh())->status)->toBe('final');
-
-    $service->approve($run->fresh(), $this->boss, 'Aprobat pe cash-flow');
-
-    expect($run->fresh()->status)->toBe('approved')
-        ->and($due->fresh()->approval_status)->toBe('approved')
-        ->and($service->payableInvoiceIds($run->fresh()))->toEqualCanonicalizing([$due->id, $partlyPaid->id])
+        ->and($run->items()->pluck('invoice_id')->all())->not->toContain($waiting->id)
+        ->and($service->payableInvoiceIds($run))->toEqualCanonicalizing([$due->id, $partlyPaid->id])
         ->and(fn () => $service->markExported($run->fresh(), $this->finance))->toThrow(AuthorizationException::class);
 
     $service->markExported($run->fresh(), $this->treasury);
     expect($run->fresh()->status)->toBe('exported');
 
-    // OMC records the payments: the run closes.
+    // OMC înregistrează plățile: rulajul se închide.
     Invoice::query()->whereKey([$due->id, $partlyPaid->id])->update(['val_mon_paid' => DB::raw('val_mon')]);
     expect($service->recompute($run->fresh())->status)->toBe('closed');
 });
 
-test('disputed, postponed and already planned invoices stay out of a new run; an excluded one waits for the next', function () {
+test('what is not approved stays out of a run; an excluded invoice waits for the next', function () {
     $disputed = runDueInvoice($this->company);
     app(InvoiceWorkflow::class)->decide($disputed, $this->departments['charters'], $this->head, 'disputed', 'Serviciu neprestat');
     $postponed = runDueInvoice($this->company);
     app(InvoiceWorkflow::class)->decide($postponed, $this->departments['charters'], $this->head, 'postponed', until: Carbon::parse('2026-10-15'));
-    $planned = runDueInvoice($this->company);
+    $planned = runApprovedInvoice($this->company);
     $service = app(PaymentRunService::class);
 
     $first = $service->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->finance);
@@ -102,8 +107,8 @@ test('the run is shown against the balance the WCFR forecast expects that week',
         'params' => ['thresholds' => ['minimum' => 3_000_000]],
         'lines' => [['code' => 'E2', 'values' => [5_000_000, 4_200_000, 4_000_000]]],
     ]]);
-    runDueInvoice($this->company);
-    runDueInvoice($this->company, ['moneda' => 'EUR', 'val_mon' => 100]);
+    runApprovedInvoice($this->company);
+    runApprovedInvoice($this->company, ['moneda' => 'EUR', 'val_mon' => 100]);
 
     $run = app(PaymentRunService::class)->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->finance);
     $position = app(PaymentRunService::class)->cashPosition($run);
