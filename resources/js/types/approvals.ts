@@ -74,8 +74,14 @@ export type ApprovalsPageProps = {
         sort: 'doc' | 'due';
         /** Doar pe „Toate facturile”: plătite, parțial sau neplătite. */
         payment: 'paid' | 'partial' | 'unpaid' | null;
+        /** Omul cu ochii căruia se uită un administrator, dacă e cazul. */
+        as: number | null;
     };
     can: { final: boolean; reopen: boolean; route: boolean };
+    /** Cine e privit peste umăr; null când te uiți cu ochii tăi. */
+    preview: { id: number; name: string } | null;
+    /** Oamenii între care poate comuta un administrator. */
+    people: { id: number; name: string; roles: string[] }[];
 };
 
 export type PaymentRunStatus =

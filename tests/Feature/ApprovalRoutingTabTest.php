@@ -136,3 +136,38 @@ test('every invoice shows whether it is paid, and the list can be filtered by it
     $this->actingAs($finance)->get('/approvals?tab=all&payment=partial')
         ->assertInertia(fn ($page) => $page->where('rows.data.0.id', $partiala->id));
 });
+
+/**
+ * „Vezi ca”: un administrator se uită la căsuța altcuiva fără să se
+ * dezlogheze. Contul rămâne al lui, deci butoanele de decizie dispar — altfel
+ * ar aproba în numele omului pe care tocmai îl verifică.
+ */
+test('an admin can look at the inbox through someone else eyes', function () {
+    $department = Department::query()->create(['name' => 'Marketing', 'code' => 'mkt-view']);
+    $omul = User::factory()->create(['name' => 'Om de departament', 'roles' => []]);
+    $omul->departments()->attach($department->id);
+
+    $admin = User::factory()->create(['roles' => [User::ROLE_ADMIN]]);
+
+    $this->actingAs($admin)->get('/approvals?as='.$omul->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('preview.name', 'Om de departament')
+            ->where('departments.0.name', 'Marketing')
+            ->where('can.final', false)
+            ->where('can.route', false)
+            ->where('filters.as', $omul->id));
+});
+
+test('only an admin gets the list of people, and only an admin can look', function () {
+    $omul = User::factory()->create(['roles' => []]);
+    $altcineva = User::factory()->create(['roles' => [User::ROLE_FINANCE]]);
+
+    // Cine nu e administrator nu primește nici lista, nici privirea.
+    $this->actingAs($altcineva)->get('/approvals?as='.$omul->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('preview', null)
+            ->where('people', [])
+            ->where('can.route', true));
+});

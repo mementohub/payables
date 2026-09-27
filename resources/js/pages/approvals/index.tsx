@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import {
     Ban,
+    Eye,
     CalendarClock,
     Check,
     CheckCheck,
@@ -192,6 +193,8 @@ export default function ApprovalsIndex({
     counts,
     filters,
     can,
+    preview,
+    people,
 }: ApprovalsPageProps) {
     const [search, setSearch] = useState(filters.search);
     const [request, setRequest] = useState<DecisionRequest | null>(null);
@@ -264,6 +267,7 @@ export default function ApprovalsIndex({
                 doc_from: merged.doc_from ?? undefined,
                 doc_to: merged.doc_to ?? undefined,
                 payment: merged.payment ?? undefined,
+                as: merged.as ?? undefined,
                 sort: merged.sort === 'due' ? 'due' : undefined,
                 department:
                     merged.tab === 'mine'
@@ -728,6 +732,45 @@ export default function ApprovalsIndex({
                         ))}
                     </TabsList>
                 </Tabs>
+
+                {people.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                        <Eye className="size-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Vezi ca:</span>
+                        <Select
+                            value={String(preview?.id ?? 'me')}
+                            onValueChange={(value) =>
+                                applyFilter({
+                                    as: value === 'me' ? null : Number(value),
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-9 w-[260px]">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="me">Contul meu</SelectItem>
+                                {people.map((person) => (
+                                    <SelectItem
+                                        key={person.id}
+                                        value={String(person.id)}
+                                    >
+                                        {person.name}
+                                        {person.roles.length > 0 &&
+                                            ` · ${person.roles.join(', ')}`}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {preview && (
+                            <span className="text-muted-foreground">
+                                Te uiți prin ochii lui {preview.name}; deciziile
+                                rămân ale contului tău, deci butoanele sunt
+                                ascunse.
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 <form
                     aria-label="Filtre aprobări"

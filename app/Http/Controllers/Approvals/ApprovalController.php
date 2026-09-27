@@ -30,9 +30,20 @@ class ApprovalController extends Controller
 
     public function index(Request $request): Response
     {
-        $user = $request->user();
+        $actor = $request->user();
+
+        // „Vezi ca”: căsuța se desenează cu ochii altcuiva, ca un administrator
+        // să poată verifica ce are omul de făcut, fără să se dezlogheze și să
+        // intre cu contul lui. Contul rămâne al administratorului — cât timp
+        // se uită prin ochii altuia, butoanele de decizie dispar, ca să nu
+        // apese nimeni în numele cuiva.
+        $preview = $actor->isAdmin() && $request->integer('as') !== 0
+            ? User::query()->find($request->integer('as'))
+            : null;
+
+        $user = $preview ?? $actor;
         $departments = $this->departmentsOf($user);
-        $canRoute = $user->hasRole(User::ROLE_FINANCE);
+        $canRoute = $preview === null && $user->hasRole(User::ROLE_FINANCE);
         $tab = $request->string('tab')->toString();
         $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing', 'all'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
         $departmentId = $request->integer('department') ?: null;
@@ -88,16 +99,25 @@ class ApprovalController extends Controller
             'all_departments' => Department::query()->whereNotNull('code')->where('is_active', true)->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
             'counts' => [
                 'mine' => $departments->isEmpty() ? 0 : $this->payable($this->mineQuery($departments->pluck('id')->all(), null))->count(),
-                'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? $this->payable($this->finalQuery(false))->count() : 0,
+                'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? $this->payable($this->finalQuery())->count() : 0,
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
-            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment],
+            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment, 'as' => $preview?->id],
             'can' => [
-                'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
-                'reopen' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE),
+                'final' => $preview === null && $user->hasRole(User::ROLE_TOP_MANAGEMENT),
+                'reopen' => $preview === null && ($user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE)),
                 'route' => $canRoute,
             ],
+            'preview' => $preview !== null ? ['id' => $preview->id, 'name' => $preview->name] : null,
+            // Cine poate fi privit peste umăr; lista o vede doar un administrator.
+            'people' => $actor->isAdmin()
+                ? User::query()->orderBy('name')->get(['id', 'name', 'roles'])->map(fn (User $person) => [
+                    'id' => $person->id,
+                    'name' => $person->name,
+                    'roles' => array_values((array) ($person->roles ?? [])),
+                ])->all()
+                : [],
         ]);
     }
 
