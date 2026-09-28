@@ -49,6 +49,7 @@ import { index as invoiceChecksIndex } from '@/routes/payment-checks/invoices';
 import { index as paymentRequestsIndex } from '@/routes/payment-requests';
 import { index as paymentRunsIndex } from '@/routes/payment-runs';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
+import { index as dueIndex } from '@/routes/reports/due';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as routingIndex } from '@/routes/routing';
@@ -181,6 +182,11 @@ const mainNavItems = (
                           title: 'WCFR 52 Weeks',
                           href: cashFlowIndex(),
                           icon: CalendarRange,
+                      },
+                      {
+                          title: 'Scadențar',
+                          href: dueIndex(),
+                          icon: CalendarCheck,
                       },
                   ],
               },

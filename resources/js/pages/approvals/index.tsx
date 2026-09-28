@@ -273,6 +273,9 @@ export default function ApprovalsIndex({
                 payment: merged.payment ?? undefined,
                 as: merged.as ?? undefined,
                 sort: merged.sort === 'due' ? 'due' : undefined,
+                // Fără asta, comutatorul de coadă nu pleca în cerere și
+                // pagina se întorcea mereu la coada implicită.
+                scope: merged.scope === 'mine' ? 'mine' : undefined,
                 department:
                     merged.tab === 'mine'
                         ? (merged.department ?? undefined)

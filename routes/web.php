@@ -13,6 +13,7 @@ use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\DueInvoicesController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
 use App\Http\Controllers\InvoiceCheckController;
@@ -172,6 +173,9 @@ Route::middleware('auth')->group(function () {
         Route::get('reports/pnl/{company}/export', [PnlController::class, 'export'])->name('reports.pnl.export');
         Route::post('reports/pnl/{company}/move', [PnlController::class, 'move'])->name('reports.pnl.move');
         Route::delete('reports/pnl/{company}/overrides/{override}', [PnlController::class, 'forget'])->name('reports.pnl.overrides.forget');
+        // Scadențarul: ce e de plătit de azi înainte, factură cu factură.
+        Route::get('reports/due', [DueInvoicesController::class, 'index'])->name('reports.due.index');
+        Route::get('reports/due/export', [DueInvoicesController::class, 'export'])->name('reports.due.export');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
         Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');
