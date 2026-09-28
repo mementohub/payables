@@ -174,9 +174,12 @@ test('the bus fleet, the school trips and the internal tourism have their own de
         5 => ['Hello', 'hello_romania_intern'],
         6 => ['Turism intern', 'hello_romania_intern'],
         7 => ['Romania', 'hello_romania_intern'],
+        // Echipajele merg cu autocarul, „opt” e turism intern.
+        8 => ['Diurna&cazare', 'transport_bus_scolar'],
+        9 => ['Ghizi', 'transport_bus_scolar'],
+        15 => ['OPT', 'hello_romania_intern'],
         // Ce a rămas acolo unde era.
-        8 => ['M. Rooms (cazari)', 'cazari_individuale'],
-        9 => ['Diurna&cazare', 'administration'],
+        16 => ['M. Rooms (cazari)', 'cazari_individuale'],
         10 => ['Masina personala', 'administration'],
         11 => ['ASM Moldova', 'administration'],
         12 => ['Mark', 'marketing'],
