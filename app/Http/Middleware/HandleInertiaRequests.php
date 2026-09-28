@@ -95,7 +95,9 @@ class HandleInertiaRequests extends Middleware
             ->where('val_mon', '>', 0)
             ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01');
 
-        $departmentIds = $user->isAdmin() ? [] : $user->departmentIds();
+        // Insigna spune ce are omul de semnat, nu tot ce i se arată în
+        // căsuță: departamentele lui, administrator sau nu.
+        $departmentIds = $user->departmentIds();
         $count = $departmentIds === [] ? 0 : $payable(Invoice::query())
             ->where('approval_status', InvoiceWorkflow::DEPARTMENT)
             ->whereHas('departmentApprovals', fn ($q) => $q->whereIn('department_id', $departmentIds)->where('status', 'pending'))
