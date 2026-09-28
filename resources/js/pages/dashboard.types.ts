@@ -43,4 +43,6 @@ export type Props = {
     agingBuckets?: AgingBucket[];
     topOverdueSuppliers?: TopSupplier[];
     cashflow?: CashflowSeries;
+    /** Cifrele de trezorerie sunt ale WCFR-ului: se văd după aceeași regulă. */
+    canSeeCashflow: boolean;
 };

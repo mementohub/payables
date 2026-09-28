@@ -139,11 +139,17 @@ const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
               },
           ]
         : []),
-    {
-        title: 'Asistent AI',
-        href: aiChatIndex(),
-        icon: Sparkles,
-    },
+    // Asistentul răspunde cu cifrele companiei, deci stă sub aceeași regulă
+    // ca Rapoartele.
+    ...(roles.includes('top_management') || roles.includes('admin')
+        ? [
+              {
+                  title: 'Asistent AI',
+                  href: aiChatIndex(),
+                  icon: Sparkles,
+              },
+          ]
+        : []),
 ];
 
 /** Settings: all of them for an admin, the routing rules for Finance. */

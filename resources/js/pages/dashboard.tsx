@@ -74,6 +74,7 @@ export default function Dashboard({
     agingBuckets,
     topOverdueSuppliers,
     cashflow,
+    canSeeCashflow,
 }: Props) {
     const moneda = 'Lei';
 
@@ -162,19 +163,23 @@ export default function Dashboard({
                     </Deferred>
                 </div>
 
-                <Deferred
-                    data="cashflow"
-                    fallback={
-                        <ChartSkeleton
-                            title="Flux de numerar săptămânal"
-                            wide
+                {/* Cifrele de trezorerie sunt ale WCFR-ului, deci se văd
+                    după aceeași regulă ca raportul. */}
+                {canSeeCashflow && (
+                    <Deferred
+                        data="cashflow"
+                        fallback={
+                            <ChartSkeleton
+                                title="Flux de numerar săptămânal"
+                                wide
+                            />
+                        }
+                    >
+                        <CashflowCard
+                            data={cashflow ?? { built_at: null, points: [] }}
                         />
-                    }
-                >
-                    <CashflowCard
-                        data={cashflow ?? { built_at: null, points: [] }}
-                    />
-                </Deferred>
+                    </Deferred>
+                )}
             </div>
         </>
     );

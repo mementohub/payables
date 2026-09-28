@@ -144,10 +144,15 @@ Route::middleware('auth')->group(function () {
         Route::delete('reports/cash-flow/flights/{flight}', [CharterFlightController::class, 'destroy'])->name('reports.cash-flow.flights.destroy');
     });
 
-    Route::get('ai-assistant', [AiChatController::class, 'index'])->name('ai-chat.index');
-    Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');
-    Route::post('ai-assistant/stream', [AiChatController::class, 'stream'])->name('ai-chat.stream');
-    Route::delete('ai-assistant/{conversation}', [AiChatController::class, 'destroy'])->name('ai-chat.destroy');
+    // Asistentul interoghează baza și răspunde cu cifrele companiei — venit,
+    // marjă, solduri. E un raport care vorbește, deci ține de aceeași regulă
+    // ca tabul Rapoarte: Top Management și administratorii.
+    Route::middleware('role:'.User::ROLE_TOP_MANAGEMENT)->group(function () {
+        Route::get('ai-assistant', [AiChatController::class, 'index'])->name('ai-chat.index');
+        Route::get('ai-assistant/{conversation}', [AiChatController::class, 'index'])->name('ai-chat.show');
+        Route::post('ai-assistant/stream', [AiChatController::class, 'stream'])->name('ai-chat.stream');
+        Route::delete('ai-assistant/{conversation}', [AiChatController::class, 'destroy'])->name('ai-chat.destroy');
+    });
 
     Route::get('database-status', [DatabaseStatusController::class, 'index'])->name('database-status.index')->middleware('role:admin');
     Route::get('maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index')->middleware('role:admin');

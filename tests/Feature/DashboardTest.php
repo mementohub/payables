@@ -90,7 +90,8 @@ test('the weekly cash flow shows the recent OMC weeks and the WCFR forecast', fu
         ],
     ]);
 
-    $this->actingAs(User::factory()->create());
+    // Cifrele de trezorerie se văd după aceeași regulă ca raportul din care vin.
+    $this->actingAs(User::factory()->create(['roles' => [User::ROLE_TOP_MANAGEMENT]]));
 
     dashboardWidgets('/dashboard', ['cashflow'])
         ->assertOk()

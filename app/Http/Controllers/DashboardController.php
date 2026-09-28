@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CashFlowSnapshot;
 use App\Models\Invoice;
+use App\Models\User;
 use App\Services\CashFlow\CashFlowOverrides;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class DashboardController extends Controller
     {
         $from = $this->parseDate($request->string('from')->toString());
         $to = $this->parseDate($request->string('to')->toString());
+        $treasury = (bool) $request->user()?->hasRole(User::ROLE_TOP_MANAGEMENT);
 
         return Inertia::render('dashboard', [
             'filters' => [
@@ -44,7 +46,11 @@ class DashboardController extends Controller
             'paymentBreakdown' => Inertia::defer(fn () => $this->paymentBreakdown($from, $to)),
             'agingBuckets' => Inertia::defer(fn () => $this->agingBuckets($from, $to)),
             'topOverdueSuppliers' => Inertia::defer(fn () => $this->topOverdueSuppliers($from, $to)),
-            'cashflow' => Inertia::defer(fn () => $this->weeklyCashflow($overrides)),
+            // Graficul de trezorerie sunt cifrele WCFR-ului: aceeași regulă ca
+            // raportul din care vin, altfel ocolește ușa pe care tocmai am
+            // închis-o.
+            'canSeeCashflow' => $treasury,
+            'cashflow' => Inertia::defer(fn () => $treasury ? $this->weeklyCashflow($overrides) : ['built_at' => null, 'points' => []]),
         ]);
     }
 

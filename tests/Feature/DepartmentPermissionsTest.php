@@ -18,10 +18,16 @@ it('sends the old issued-invoices and clients pages to their supplier counterpar
         ->assertRedirect('/suppliers');
 });
 
-it('lets any authenticated user open the AI assistant', function () {
-    $this->actingAs(User::factory()->create())
+// Asistentul interoghează baza și răspunde cu cifrele companiei, deci ține de
+// aceeași regulă ca Rapoartele: Top Management și administratorii.
+it('keeps the AI assistant for the people who may see the company figures', function () {
+    $this->actingAs(User::factory()->create(['roles' => [User::ROLE_TOP_MANAGEMENT]]))
         ->get('/ai-assistant')
         ->assertOk();
+
+    $this->actingAs(User::factory()->create(['roles' => [User::ROLE_FINANCE]]))
+        ->get('/ai-assistant')
+        ->assertForbidden();
 });
 
 it('shows every received invoice on facturi primite to a user with no department', function () {
