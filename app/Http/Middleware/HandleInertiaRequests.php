@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Approvals\InvoiceWorkflow;
+use App\Support\ViewAs;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -39,7 +40,11 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        $user = $request->user();
+        $actor = $request->user();
+        // Cât timp un administrator se uită prin ochii altuia, meniul și
+        // insigna se desenează după drepturile aceluia; contul rămâne al lui.
+        $preview = ViewAs::user($request);
+        $user = $preview ?? $actor;
         $companies = $user
             ? Company::query()->orderBy('name')->get(['id', 'name'])->all()
             : [];
@@ -48,10 +53,13 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $user ? array_merge($user->toArray(), [
-                    'roles' => array_values((array) ($user->roles ?? [])),
-                    'is_ordonator' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
+                'user' => $actor ? array_merge($actor->toArray(), [
+                    'roles' => array_values((array) ($actor->roles ?? [])),
+                    'is_ordonator' => $actor->hasRole(User::ROLE_TOP_MANAGEMENT),
                 ]) : null,
+                // Omul prin ochii căruia se uită administratorul, pentru banda
+                // de sus și pentru butonul de ieșire.
+                'preview' => $preview ? ['id' => $preview->id, 'name' => $preview->name, 'roles' => array_values((array) ($preview->roles ?? []))] : null,
                 // Meniul ascunde ce nu e al omului, pe aceleași reguli după
                 // care rutele refuză — scrise o singură dată, pe `User`.
                 'can' => $user ? [

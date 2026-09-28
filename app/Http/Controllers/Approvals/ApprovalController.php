@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Approvals\InvoiceWorkflow;
 use App\Services\Routing\DepartmentAssigner;
+use App\Support\ViewAs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,10 +37,10 @@ class ApprovalController extends Controller
         // să poată verifica ce are omul de făcut, fără să se dezlogheze și să
         // intre cu contul lui. Contul rămâne al administratorului — cât timp
         // se uită prin ochii altuia, butoanele de decizie dispar, ca să nu
-        // apese nimeni în numele cuiva.
-        $preview = $actor->isAdmin() && $request->integer('as') !== 0
-            ? User::query()->find($request->integer('as'))
-            : null;
+        // apese nimeni în numele cuiva. Alegerea se ține în sesiune, ca să se
+        // vadă și în meniu, nu doar în lista asta (`ApplyViewAs` ține minte
+        // alegerea venită prin `?as=`).
+        $preview = ViewAs::user($request);
 
         $user = $preview ?? $actor;
         $departments = $this->departmentsOf($user);

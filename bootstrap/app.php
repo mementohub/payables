@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ApplyViewAs;
 use App\Http\Middleware\EnsureUserCanSee;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\HandleAppearance;
@@ -39,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // the head as <link rel="modulepreload">, so the header bought us
         // nothing that the document does not already say.
         $middleware->web(append: [
+            ApplyViewAs::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             KickErpSync::class,
