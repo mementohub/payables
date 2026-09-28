@@ -218,4 +218,6 @@ export type ShowProps = {
     activeCompany: { id: number; name: string };
     currentUser: CurrentUser;
     departments: DepartmentRef[];
+    /** Pagina de unde s-a intrat pe factură: acolo duce săgeata înapoi. */
+    back: { url: string; label: string };
 };

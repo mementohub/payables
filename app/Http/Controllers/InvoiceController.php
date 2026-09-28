@@ -262,7 +262,52 @@ class InvoiceController extends Controller
             'activeCompany' => ['id' => (int) $invoice->company->id, 'name' => $invoice->company->name],
             'currentUser' => $this->currentUserContext($request),
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
+            'back' => $this->backTo($request),
         ]);
+    }
+
+    /**
+     * Unde duce săgeata din colțul fișei: înapoi de unde a venit omul.
+     *
+     * Până acum trimitea mereu la „Facturi primite”, oriunde ar fi fost
+     * apăsată — iar cine intră pe o factură din Aprobări nu numai că pierdea
+     * lista și filtrele, dar putea să nici n-aibă voie pe pagina aia.
+     *
+     * @return array{url: string, label: string}
+     */
+    private function backTo(Request $request): array
+    {
+        /** Paginile de la care se poate ajunge pe o factură, cu numele lor. */
+        $known = [
+            '#^/approvals#' => 'aprobări',
+            '#^/payment-runs/\d+#' => 'rulajul de plată',
+            '#^/payment-runs#' => 'rulaje de plată',
+            '#^/invoices/received#' => 'facturi primite',
+            '#^/partners/\d+#' => 'furnizor',
+            '#^/payment-checks#' => 'verificarea plăților',
+            '#^/e-invoices#' => 'e-Facturi',
+            '#^/routing#' => 'rutare',
+            '#^/dashboard#' => 'panoul principal',
+        ];
+
+        $previous = (string) url()->previous();
+        $host = parse_url($previous, PHP_URL_HOST);
+        $path = (string) parse_url($previous, PHP_URL_PATH);
+        $query = parse_url($previous, PHP_URL_QUERY);
+
+        if ($host === null || $host === $request->getHost()) {
+            foreach ($known as $pattern => $label) {
+                if (preg_match($pattern, $path) === 1) {
+                    return ['url' => $path.($query !== null ? '?'.$query : ''), 'label' => $label];
+                }
+            }
+        }
+
+        // Venit de altundeva (un semn de carte, un link primit): lista pe care
+        // omul chiar o poate deschide.
+        return $request->user()?->canSeeInvoices()
+            ? ['url' => route('invoices.primite', absolute: false), 'label' => 'facturi primite']
+            : ['url' => route('approvals.index', absolute: false), 'label' => 'aprobări'];
     }
 
     public function comment(Request $request, Invoice $invoice): RedirectResponse

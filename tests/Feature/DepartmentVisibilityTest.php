@@ -188,3 +188,33 @@ test('a batch holding one foreign invoice is refused whole, not in part', functi
     // Nici măcar cea proprie nu s-a aprobat: lotul pică întreg.
     expect($mine->fresh()->departmentApprovals()->where('status', 'approved')->count())->toBe(0);
 });
+
+/**
+ * Săgeata din colțul fișei trimitea mereu la „Facturi primite”, oricât de
+ * departe ar fi fost omul de lista aia: cine intra dintr-o coadă de aprobări
+ * își pierdea filtrele, iar un operațional ajungea pe o pagină la care n-are
+ * acces.
+ */
+test('the invoice page sends you back where you came from', function () {
+    $invoice = visibilityInvoice($this->company);
+
+    $this->actingAs($this->head)
+        ->get("/invoices/{$invoice->id}", ['referer' => url('/approvals?tab=mine&sort=due')])
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('back.url', '/approvals?tab=mine&sort=due')
+            ->where('back.label', 'aprobări'));
+
+    $finance = User::factory()->withRoles('finance')->create();
+
+    $this->actingAs($finance)
+        ->get("/invoices/{$invoice->id}", ['referer' => url('/invoices/received?partner_id=3')])
+        ->assertInertia(fn ($page) => $page->where('back.url', '/invoices/received?partner_id=3'));
+
+    // Fără o pagină de dinainte, fiecare primește lista pe care o poate vedea.
+    $this->actingAs($finance)->get("/invoices/{$invoice->id}")
+        ->assertInertia(fn ($page) => $page->where('back.url', '/invoices/received'));
+
+    $this->actingAs($this->head)->get("/invoices/{$invoice->id}")
+        ->assertInertia(fn ($page) => $page->where('back.url', '/approvals'));
+});

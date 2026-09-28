@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import { show as bankStatementShow } from '@/routes/bank-statements';
-import { primite as facturiPrimite } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
 import { InvoiceTimeline } from './invoice-timeline';
@@ -21,6 +20,7 @@ export default function InvoiceShow({
     invoice,
     currentUser,
     departments,
+    back,
 }: ShowProps) {
     const isFurnizor = invoice.partener_type === 'furnizor';
 
@@ -31,18 +31,9 @@ export default function InvoiceShow({
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div>
                     <Button asChild variant="ghost" size="sm">
-                        <Link
-                            href={
-                                invoice.partener_type === 'furnizor'
-                                    ? facturiPrimite()
-                                    : facturiPrimite()
-                            }
-                        >
+                        <Link href={back.url}>
                             <ArrowLeft />
-                            Înapoi la{' '}
-                            {invoice.partener_type === 'furnizor'
-                                ? 'facturi primite'
-                                : 'facturi emise'}
+                            Înapoi la {back.label}
                         </Link>
                     </Button>
                 </div>
@@ -779,15 +770,18 @@ export default function InvoiceShow({
 }
 
 function InvoiceShowLayout({ children }: { children: React.ReactNode }) {
-    const { invoice } = usePage<{ invoice: Invoice }>().props;
-    const isFurnizor = invoice.partener_type === 'furnizor';
+    // Firimitura duce tot de unde s-a venit: altfel îi arăta unui om de
+    // departament o listă pe care n-are voie s-o deschidă.
+    const { back } = usePage<{ back: ShowProps['back'] }>().props;
 
     return (
         <AppLayout
             breadcrumbs={[
                 {
-                    title: isFurnizor ? 'Facturi primite' : 'Facturi emise',
-                    href: isFurnizor ? facturiPrimite() : facturiPrimite(),
+                    title:
+                        back.label.charAt(0).toUpperCase() +
+                        back.label.slice(1),
+                    href: back.url,
                 },
             ]}
         >
