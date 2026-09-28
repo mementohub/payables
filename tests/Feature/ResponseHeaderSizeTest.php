@@ -32,7 +32,7 @@ function headerBytes(TestResponse $response): int
 }
 
 test('a page answers with a header small enough for the gateway to pass on', function (string $path) {
-    $response = $this->actingAs(User::factory()->create())->get($path);
+    $response = $this->actingAs(User::factory()->withRoles('finance')->create())->get($path);
 
     expect($response->status())->toBeLessThan(500)
         // Half the buffer, so the cookies and whatever a future header adds

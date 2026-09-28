@@ -229,8 +229,10 @@ class ApprovalController extends Controller
      */
     private function speaksFor(Request $request, Department $department): void
     {
+        // Cine poate decide ceva pentru departament trece; ce anume poate
+        // decide — aprobare sau doar contestare — spune fluxul.
         abort_unless(
-            $request->user()->approvesFor($department),
+            $request->user()->decidesFor($department),
             403,
             "Nu decideți pentru {$department->name}.",
         );

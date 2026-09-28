@@ -11,7 +11,7 @@ use Mockery\MockInterface;
 beforeEach(function () {
     Carbon::setTestNow('2026-09-18 10:00:00');
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('finance')->create();
 });
 
 function reconciliationCoverage(string $month, int $type, string $currency, float $cost, float $invoiced, bool $done = true, ?string $source = null, int $unbilled = 0, float $unbilledCost = 0): array

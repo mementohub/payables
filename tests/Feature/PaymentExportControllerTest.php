@@ -8,7 +8,7 @@ use App\Models\PartnerBankAccount;
 use App\Models\User;
 
 it('prepares only fully approved invoices and includes default supplier IBAN', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $company = Company::factory()->create();
     $partner = Partner::factory()->for($company)->create([
         'name' => 'Furnizor SRL',
@@ -64,7 +64,7 @@ it('prepares only fully approved invoices and includes default supplier IBAN', f
 });
 
 it('downloads BT xlsx with correct headers', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
 
     $response = $this->actingAs($user)
         ->post('/payments/bt/download', [

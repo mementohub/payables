@@ -82,7 +82,7 @@ it('exposes baza.invoice.real_supplier on the /invoices/primite Inertia payload'
         'partener_type' => 'furnizor',
     ]);
 
-    $response = $this->actingAs(User::factory()->create())
+    $response = $this->actingAs(User::factory()->withRoles('finance')->create())
         ->get('/invoices/received')
         ->assertOk();
 

@@ -43,7 +43,7 @@ test('guests are redirected to the login page', function () {
 test('the endpoint returns the check as json for a supplier', function () {
     supplierInvoice($this->supplier, ['nr_doc' => 'F1', 'val_mon' => 500]);
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
         ->assertOk()
         ->assertJsonPath('requested.verdict', 'exact')
@@ -54,13 +54,13 @@ test('the endpoint returns the check as json for a supplier', function () {
 test('the endpoint is not available for clients', function () {
     $client = Partner::factory()->for($this->company)->create(['is_furnizor' => false, 'is_client' => true]);
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$client->id}/payment-check")
         ->assertNotFound();
 });
 
 test('the endpoint validates the requested amount', function () {
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=abc")
         ->assertUnprocessable()
         ->assertJsonValidationErrors('amount');
@@ -196,7 +196,7 @@ test('the supplier page check reads live from omc for the company mirrored from 
         ]]);
     });
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
         ->assertOk()
         ->assertJsonPath('source', 'omc')
@@ -213,7 +213,7 @@ test('the supplier page check stays on the synced invoices for other companies',
         $mock->shouldNotReceive('supplierInvoices');
     });
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
         ->assertOk()
         ->assertJsonPath('source', 'local')
@@ -227,7 +227,7 @@ test('an unreachable omc database falls through to a 503 on the supplier page', 
         $mock->shouldReceive('supplier')->andThrow(new RuntimeException('connection refused'));
     });
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check")
         ->assertStatus(503)
         ->assertJsonPath('message', 'Baza OMC nu poate fi accesată: connection refused');
@@ -255,7 +255,7 @@ test('the live check matches the synced copies without reading them as models', 
         $hydrated++;
     });
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->getJson("/suppliers/{$this->supplier->id}/payment-check?amount=500&currency=Lei")
         ->assertOk()
         // The OMC row and the synced copy are the same document, whichever

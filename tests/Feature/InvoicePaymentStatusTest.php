@@ -105,7 +105,7 @@ test('the payments department marks a payment the ERP does not have yet, and can
 });
 
 test('the list, the invoice page and the export all read the same status', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $invoice = furnizorInvoice(['nr_doc' => 'PAID1', 'val_mon_paid' => 1000]);
 
     $row = (new InvoicePresenter)->listRow($invoice->load('company', 'partner'), 'primite');

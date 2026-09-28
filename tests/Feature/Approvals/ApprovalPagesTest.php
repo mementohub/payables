@@ -138,13 +138,15 @@ test('Facturi primite filters by supplier, found by name or CUI', function () {
     pagesRoutedInvoice($this->company);
     $wanted->partner->update(['name' => 'HOTEL PARADIS SRL', 'cui' => 'RO123456']);
 
-    $this->actingAs($this->head)->getJson('/suppliers/search?q=paradis')
+    // Evidența facturilor e a Financiarului; omul unui departament are doar
+    // căsuța lui de aprobări.
+    $this->actingAs($this->boss)->getJson('/suppliers/search?q=paradis')
         ->assertOk()
         ->assertJsonPath('suppliers.0.id', $wanted->partner_id)
         ->assertJsonCount(1, 'suppliers');
-    $this->actingAs($this->head)->getJson('/suppliers/search?q=RO1234')->assertJsonPath('suppliers.0.name', 'HOTEL PARADIS SRL');
+    $this->actingAs($this->boss)->getJson('/suppliers/search?q=RO1234')->assertJsonPath('suppliers.0.name', 'HOTEL PARADIS SRL');
 
-    $this->actingAs($this->head)->get("/invoices/received?partner_id={$wanted->partner_id}")
+    $this->actingAs($this->boss)->get("/invoices/received?partner_id={$wanted->partner_id}")
         ->assertInertia(fn ($page) => $page->has('invoices.data', 1)->where('invoices.data.0.id', $wanted->id)->where('selectedPartner.name', 'HOTEL PARADIS SRL'));
 });
 

@@ -48,17 +48,21 @@ function visibilityInvoice(Company $company, array $attributes = []): Invoice
     return $invoice->fresh();
 }
 
-test('facturi primite shows a department user only their own department\'s invoices', function () {
-    $mine = visibilityInvoice($this->company);
+test('the inbox shows a department user only their own department\'s invoices', function () {
+    visibilityInvoice($this->company);
 
-    $response = $this->actingAs($this->head)->get('/invoices/received')->assertOk();
-    expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(1);
+    // Omul unui departament nu mai are lista de facturi a companiei; are
+    // căsuța lui, iar în ea „Toate facturile” arată doar ce e al lui.
+    $this->actingAs($this->head)->get('/approvals?tab=all')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->has('rows.data', 1));
 
-    // Celălalt departament nu vede nimic din ce nu e al lui.
-    $response = $this->actingAs($this->stranger)->get('/invoices/received')->assertOk();
-    expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(0);
+    $this->actingAs($this->stranger)->get('/approvals?tab=all')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->has('rows.data', 0));
 
-    expect($mine->department_id)->toBe($this->charters->id);
+    // Și nici nu ajunge la lista Financiarului.
+    $this->actingAs($this->head)->get('/invoices/received')->assertForbidden();
 });
 
 test('a direct link to another department\'s invoice is refused', function () {
@@ -88,12 +92,12 @@ test('finance, treasury and top management keep seeing every department', functi
 
     $response = $this->actingAs($user)->get('/invoices/received')->assertOk();
     expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(1);
-})->with([[['finance']], [['treasury']], [['top_management']], [['admin']]]);
+})->with([[['finance']], [['top_management']], [['admin']]]);
 
-test('a user with no department at all is not locked out', function () {
+test('a user with no department of their own is not locked out of the list', function () {
     visibilityInvoice($this->company);
 
-    $response = $this->actingAs(User::factory()->create())->get('/invoices/received')->assertOk();
+    $response = $this->actingAs(User::factory()->withRoles('finance')->create())->get('/invoices/received')->assertOk();
     expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(1);
 });
 

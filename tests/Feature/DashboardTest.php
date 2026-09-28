@@ -35,7 +35,7 @@ test('guests are redirected to the login page', function () {
 });
 
 test('authenticated users can visit the dashboard', function () {
-    $this->actingAs($user = User::factory()->create());
+    $this->actingAs($user = User::factory()->withRoles('finance')->create());
 
     $this->get('/dashboard')->assertOk();
 });
@@ -47,7 +47,7 @@ test('received invoices of every currency are counted, in lei at the document ra
     Invoice::factory()->for($company)->for($partner)->create(['partener_type' => 'furnizor', 'moneda' => 'Lei', 'curs' => 1, 'val_mon' => 300, 'val_mon_paid' => 300, 'data_doc' => '2026-09-11', 'data_scadenta' => '2026-09-30']);
     Invoice::factory()->for($company)->for($partner)->create(['partener_type' => 'furnizor', 'moneda' => 'Lei', 'curs' => 1, 'val_mon' => 100, 'val_mon_paid' => 0, 'data_doc' => '2026-08-01', 'data_scadenta' => '2026-08-31']);
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->get('/dashboard?from=2026-09-01&to=2026-09-30')
         ->assertOk()
         ->assertInertia(fn ($page) => $page
@@ -104,7 +104,7 @@ test('the weekly cash flow shows the recent OMC weeks and the WCFR forecast', fu
 });
 
 test('without a snapshot the cash flow card is empty', function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->withRoles('finance')->create());
 
     dashboardWidgets('/dashboard', ['cashflow'])
         ->assertOk()

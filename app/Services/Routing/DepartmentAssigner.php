@@ -146,7 +146,10 @@ class DepartmentAssigner
      */
     public function redirect(Invoice $invoice, Department $from, Department $to, User $user, string $reason): void
     {
-        if (! $user->approvesFor($from)) {
+        // Mutarea unei facturi între departamente e treabă de evidență, nu de
+        // aprobare: o face și departamentul care a primit-o din greșeală, și
+        // Financiarul care vede unde trebuia să ajungă.
+        if (! $user->decidesFor($from)) {
             throw new AuthorizationException('Nu decideți pentru departamentul '.$from->name.'.');
         }
 

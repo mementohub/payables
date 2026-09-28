@@ -40,7 +40,112 @@ class User extends Authenticatable
 
     public const ROLE_TREASURY = 'treasury';
 
-    public const ROLES = [self::ROLE_ADMIN, self::ROLE_TOP_MANAGEMENT, self::ROLE_FINANCE, self::ROLE_TREASURY];
+    /** Omul unui departament: aprobă ce e al lui și atât. */
+    public const ROLE_OPERATIONAL = 'operational';
+
+    public const ROLES = [self::ROLE_ADMIN, self::ROLE_TOP_MANAGEMENT, self::ROLE_FINANCE, self::ROLE_TREASURY, self::ROLE_OPERATIONAL];
+
+    /**
+     * Cine ce vede și ce poate face.
+     *
+     *   Administrator    tot, peste tot;
+     *   Top Management   tot; el dă aprobarea finală;
+     *   Financiar        tot în afară de Rapoarte; nu aprobă nimic, dar poate
+     *                    contesta o factură, o poate muta între departamente
+     *                    și pregătește rulajele de plată;
+     *   Trezorerie       rulajele de plată, e-Facturi, verificările de plăți
+     *                    și extrasele bancare — atât;
+     *   Operațional      doar Aprobări, pentru departamentul lui.
+     *
+     * Regulile stau aici, într-un singur loc: meniul le citește ca să ascundă
+     * ce nu e al omului, iar rutele ca să refuze ce n-a fost ascuns.
+     */
+    public function canSeeReports(): bool
+    {
+        return $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /** Aprobarea finală a plăților. */
+    public function canApproveFinal(): bool
+    {
+        return $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /** Rutarea pe departamente și regulile ei: le face Financiarul. */
+    public function canRoute(): bool
+    {
+        return $this->hasRole(self::ROLE_FINANCE);
+    }
+
+    /** Pagina de rutare se și vede de sus, chiar dacă butoanele sunt ale Financiarului. */
+    public function canSeeRouting(): bool
+    {
+        return $this->canRoute() || $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /**
+     * Își poate face echipa: adaugă colegi pe departamentul lui, tot
+     * operaționali. Nu poate da alte roluri și nu poate scoate pe nimeni.
+     */
+    public function canManageOwnTeam(): bool
+    {
+        return $this->isAdmin() || $this->departmentIds() !== [];
+    }
+
+    /**
+     * Poate contesta sau muta orice factură, fără să fie al departamentului
+     * ei: Financiarul ține evidența, deci poate opri o plată și o poate
+     * trimite unde trebuie — dar nu poate aproba în locul nimănui.
+     */
+    public function canDisputeAnyInvoice(): bool
+    {
+        return $this->canRoute();
+    }
+
+    /** Facturile, furnizorii, partenerii — evidența de zi cu zi. */
+    public function canSeeInvoices(): bool
+    {
+        return $this->hasRole(self::ROLE_FINANCE) || $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /** Rulajele de plată, e-Facturile, verificările și extrasele. */
+    public function canSeePayments(): bool
+    {
+        return $this->canSeeInvoices() || $this->hasRole(self::ROLE_TREASURY);
+    }
+
+    /**
+     * Fișa unei facturi: o deschide oricine are treabă cu ea — omul care o
+     * aprobă, Financiarul care o ține, Trezoreria care o plătește. Ce vede
+     * fiecare rămâne limitat la departamentele lui.
+     */
+    public function canOpenInvoice(): bool
+    {
+        return $this->canSeeApprovals() || $this->canSeePayments();
+    }
+
+    /** Căsuța de aprobări: toată lumea în afară de trezorerie. */
+    public function canSeeApprovals(): bool
+    {
+        return ! $this->isOnly(self::ROLE_TREASURY);
+    }
+
+    /** Panoul principal: cine are o privire de ansamblu asupra facturilor. */
+    public function canSeeDashboard(): bool
+    {
+        return $this->canSeeInvoices();
+    }
+
+    /**
+     * Omul are exact rolul ăsta și nimic altceva — de aici încep restricțiile
+     * trezoreriei și ale operaționalului.
+     */
+    private function isOnly(string $role): bool
+    {
+        $roles = array_values((array) ($this->roles ?? []));
+
+        return $roles === [$role];
+    }
 
     /**
      * The departments whose invoices the user approves.
@@ -72,6 +177,16 @@ class User extends Authenticatable
      */
     public const ROLES_ACROSS_DEPARTMENTS = [self::ROLE_ADMIN, self::ROLE_FINANCE, self::ROLE_TREASURY, self::ROLE_TOP_MANAGEMENT];
 
+    /** Ce vede omul când intră: fiecare rol are altă casă. */
+    public function home(): string
+    {
+        return match (true) {
+            $this->canSeeDashboard() => 'dashboard',
+            $this->hasRole(self::ROLE_TREASURY) => 'payment-runs.index',
+            default => 'approvals.index',
+        };
+    }
+
     /**
      * Whether the user sees every department's invoices, or only their own.
      *
@@ -97,6 +212,15 @@ class User extends Authenticatable
         $id = $department instanceof Department ? $department->id : $department;
 
         return $this->isAdmin() || in_array($id, $this->departmentIds(), true);
+    }
+
+    /**
+     * Poate decide pentru departament, dar nu neapărat aproba: Financiarul
+     * poate opri o factură sau o poate muta oriunde, fără să aprobe nimic.
+     */
+    public function decidesFor(Department|int $department): bool
+    {
+        return $this->approvesFor($department) || $this->canDisputeAnyInvoice();
     }
 
     /**

@@ -25,6 +25,7 @@ use App\Http\Controllers\PaymentExportController;
 use App\Http\Controllers\PaymentRequestController;
 use App\Http\Controllers\PnlController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UserController;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
@@ -33,7 +34,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', fn () => Auth::check() ? redirect()->route('dashboard') : redirect()->route('login'))->name('home');
 
 Route::middleware('auth')->group(function () {
-    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    // Panoul principal adună facturile companiei, deci e al celor care le țin.
+    Route::middleware('area:dashboard')->group(function () {
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    });
 
     Route::resource('companies', CompanyController::class)->except('show')->middleware('role:admin');
     Route::get('users/import', [UserController::class, 'importForm'])->name('users.import')->middleware('role:admin');
@@ -46,71 +50,113 @@ Route::middleware('auth')->group(function () {
     Route::post('etrip-suppliers/sync', [EtripSupplierController::class, 'syncAll'])->name('etrip-suppliers.sync-all');
 
     // Only the supplier side of OMC is mirrored: the old addresses land on it.
-    Route::redirect('invoices/issued', 'invoices/received');
-    Route::get('invoices/received', [InvoiceController::class, 'primite'])->name('invoices.primite');
-    Route::post('invoices/received/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
-    Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
-    Route::post('invoices/{invoice}/comments', [InvoiceController::class, 'comment'])->name('invoices.comments.store');
-    Route::post('invoices/{invoice}/payment-status', [InvoiceController::class, 'updatePaymentStatus'])->name('invoices.payment-status.update');
+    // Facturile primite și fișa unei facturi: evidența Financiarului.
+    Route::middleware('area:invoices')->group(function () {
+        Route::redirect('invoices/issued', 'invoices/received');
+        Route::get('invoices/received', [InvoiceController::class, 'primite'])->name('invoices.primite');
+        Route::post('invoices/received/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
 
-    Route::post('payments/bt/prepare', [PaymentExportController::class, 'btPrepare'])->name('payments.bt.prepare');
-    Route::post('payments/bt/download', [PaymentExportController::class, 'btDownload'])->name('payments.bt.download');
+    });
 
-    Route::get('e-invoices', [EInvoiceController::class, 'index'])->name('e-invoices.index');
-    Route::post('e-invoices/export', [EInvoiceController::class, 'export'])->name('e-invoices.export');
+    // Fișierul de bancă.
+    Route::middleware('area:payments')->group(function () {
+        Route::post('payments/bt/prepare', [PaymentExportController::class, 'btPrepare'])->name('payments.bt.prepare');
+        Route::post('payments/bt/download', [PaymentExportController::class, 'btDownload'])->name('payments.bt.download');
+    });
+
+    // Fișa unei facturi: o deschide oricine are treabă cu ea — omul care o
+    // aprobă, Financiarul care o ține, Trezoreria care marchează plata. Ce
+    // vede fiecare rămâne limitat la departamentele lui. Lista întreagă a
+    // facturilor rămâne la Financiar.
+    Route::middleware('area:invoice')->group(function () {
+        Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+        Route::post('invoices/{invoice}/comments', [InvoiceController::class, 'comment'])->name('invoices.comments.store');
+        Route::post('invoices/{invoice}/payment-status', [InvoiceController::class, 'updatePaymentStatus'])->name('invoices.payment-status.update');
+    });
+
+    // e-Facturile ANAF: controlul că ce s-a trimis a ajuns în contabilitate.
+    Route::middleware('area:payments')->group(function () {
+        Route::get('e-invoices', [EInvoiceController::class, 'index'])->name('e-invoices.index');
+        Route::post('e-invoices/export', [EInvoiceController::class, 'export'])->name('e-invoices.export');
+    });
     Route::get('e-invoices/{eInvoice}/detail', [EInvoiceController::class, 'detail'])->name('e-invoices.detail');
     Route::get('e-invoices/{eInvoice}/parsed', [EInvoiceController::class, 'parsed'])->name('e-invoices.parsed');
     Route::get('e-invoices/{eInvoice}/candidates', [EInvoiceController::class, 'candidates'])->name('e-invoices.candidates');
     Route::post('e-invoices/{eInvoice}/match', [EInvoiceController::class, 'match'])->name('e-invoices.match');
 
-    Route::get('approvals', [ApprovalController::class, 'index'])->name('approvals.index');
-    Route::post('approvals/decide', [ApprovalController::class, 'decide'])->name('approvals.decide');
-    Route::post('approvals/final', [ApprovalController::class, 'decideFinal'])->name('approvals.final');
-    Route::post('approvals/invoices/{invoice}/reopen', [ApprovalController::class, 'reopen'])->name('approvals.reopen');
-    Route::post('approvals/redirect', [ApprovalController::class, 'redirect'])->name('approvals.redirect');
+    // Căsuța de aprobări: toată lumea în afară de trezorerie, care plătește
+    // ce s-a aprobat deja.
+    Route::middleware('area:approvals')->group(function () {
+        Route::get('approvals', [ApprovalController::class, 'index'])->name('approvals.index');
+        Route::post('approvals/decide', [ApprovalController::class, 'decide'])->name('approvals.decide');
+        Route::post('approvals/final', [ApprovalController::class, 'decideFinal'])->name('approvals.final');
+        Route::post('approvals/invoices/{invoice}/reopen', [ApprovalController::class, 'reopen'])->name('approvals.reopen');
+        Route::post('approvals/redirect', [ApprovalController::class, 'redirect'])->name('approvals.redirect');
+    });
 
-    Route::get('payment-runs', [PaymentRunController::class, 'index'])->name('payment-runs.index');
-    Route::post('payment-runs', [PaymentRunController::class, 'store'])->name('payment-runs.store');
-    Route::get('payment-runs/{run}', [PaymentRunController::class, 'show'])->name('payment-runs.show');
-    Route::post('payment-runs/{run}/items/{item}', [PaymentRunController::class, 'toggle'])->name('payment-runs.items.toggle');
-    Route::post('payment-runs/{run}/exported', [PaymentRunController::class, 'exported'])->name('payment-runs.exported');
-    Route::post('payment-runs/{run}/close', [PaymentRunController::class, 'close'])->name('payment-runs.close');
+    // Rulajele de plată: Financiar le pregătește, Trezoreria le plătește.
+    Route::middleware('area:payments')->group(function () {
+        Route::get('payment-runs', [PaymentRunController::class, 'index'])->name('payment-runs.index');
+        Route::post('payment-runs', [PaymentRunController::class, 'store'])->name('payment-runs.store');
+        Route::get('payment-runs/{run}', [PaymentRunController::class, 'show'])->name('payment-runs.show');
+        Route::post('payment-runs/{run}/items/{item}', [PaymentRunController::class, 'toggle'])->name('payment-runs.items.toggle');
+        Route::post('payment-runs/{run}/exported', [PaymentRunController::class, 'exported'])->name('payment-runs.exported');
+        Route::post('payment-runs/{run}/close', [PaymentRunController::class, 'close'])->name('payment-runs.close');
+    });
 
-    Route::get('routing', [RoutingController::class, 'index'])->name('routing.index');
-    Route::post('routing/invoices/{invoice}/assign', [RoutingController::class, 'assign'])->name('routing.assign');
-    Route::post('routing/assign', [RoutingController::class, 'assignMany'])->name('routing.assign-many');
-    Route::post('routing/invoices/{invoice}/release', [RoutingController::class, 'release'])->name('routing.release');
-    Route::post('routing/rules', [RoutingController::class, 'storeRule'])->name('routing.rules.store');
-    Route::put('routing/rules/{rule}', [RoutingController::class, 'updateRule'])->name('routing.rules.update');
-    Route::delete('routing/rules/{rule}', [RoutingController::class, 'destroyRule'])->name('routing.rules.destroy');
-    Route::post('routing/rerun', [RoutingController::class, 'rerun'])->name('routing.rerun');
+    // Echipa proprie: un om operațional își aduce colegii pe departamentul lui.
+    Route::middleware('area:team')->group(function () {
+        Route::get('team', [TeamController::class, 'index'])->name('team.index');
+        Route::post('team', [TeamController::class, 'store'])->name('team.store');
+    });
 
-    Route::get('bank-statements', [BankStatementController::class, 'index'])->name('bank-statements.index');
-    Route::get('bank-statements/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
+    // Rutarea pe departamente și regulile ei sunt ale Financiarului.
+    Route::middleware('area:routing')->group(function () {
+        Route::get('routing', [RoutingController::class, 'index'])->name('routing.index');
+        Route::post('routing/invoices/{invoice}/assign', [RoutingController::class, 'assign'])->name('routing.assign');
+        Route::post('routing/assign', [RoutingController::class, 'assignMany'])->name('routing.assign-many');
+        Route::post('routing/invoices/{invoice}/release', [RoutingController::class, 'release'])->name('routing.release');
+        Route::post('routing/rules', [RoutingController::class, 'storeRule'])->name('routing.rules.store');
+        Route::put('routing/rules/{rule}', [RoutingController::class, 'updateRule'])->name('routing.rules.update');
+        Route::delete('routing/rules/{rule}', [RoutingController::class, 'destroyRule'])->name('routing.rules.destroy');
+        Route::post('routing/rerun', [RoutingController::class, 'rerun'])->name('routing.rerun');
+    });
 
-    Route::get('suppliers', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
-    Route::get('suppliers/search', [PartnerController::class, 'search'])->name('partners.search');
-    Route::get('suppliers/{partner}', [PartnerController::class, 'show'])->name('partners.show');
-    Route::get('suppliers/{partner}/payment-check', [PartnerController::class, 'paymentCheck'])->name('partners.payment-check');
-    Route::post('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'link'])->name('partners.etrip-supplier.link');
-    Route::delete('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'unlink'])->name('partners.etrip-supplier.unlink');
+    // Extrasele bancare sunt tot ale plăților.
+    Route::middleware('area:payments')->group(function () {
+        Route::get('bank-statements', [BankStatementController::class, 'index'])->name('bank-statements.index');
+        Route::get('bank-statements/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
+    });
 
-    Route::get('payment-checks', [PaymentCheckController::class, 'index'])->name('payment-checks.index');
-    Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
-    Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
-    Route::get('payment-checks/reconcile', [PaymentCheckController::class, 'reconcile'])->name('payment-checks.reconcile');
-    Route::get('payment-checks/invoices', [InvoiceCheckController::class, 'index'])->name('payment-checks.invoices.index');
-    Route::get('payment-checks/invoices/suppliers', [InvoiceCheckController::class, 'suppliers'])->name('payment-checks.invoices.suppliers');
-    Route::get('payment-checks/invoices/check', [InvoiceCheckController::class, 'check'])->name('payment-checks.invoices.check');
-    Route::get('payment-checks/invoices/open', [InvoiceCheckController::class, 'open'])->name('payment-checks.invoices.open');
+    // Furnizorii și legăturile lor țin de evidența facturilor.
+    Route::middleware('area:invoices')->group(function () {
+        Route::get('suppliers', [PartnerController::class, 'furnizori'])->name('partners.furnizori');
+        Route::get('suppliers/search', [PartnerController::class, 'search'])->name('partners.search');
+        Route::get('suppliers/{partner}', [PartnerController::class, 'show'])->name('partners.show');
+        Route::get('suppliers/{partner}/payment-check', [PartnerController::class, 'paymentCheck'])->name('partners.payment-check');
+        Route::post('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'link'])->name('partners.etrip-supplier.link');
+        Route::delete('partners/{partner}/etrip-supplier', [EtripSupplierController::class, 'unlink'])->name('partners.etrip-supplier.unlink');
+    });
 
-    Route::get('payment-requests', [PaymentRequestController::class, 'index'])->name('payment-requests.index');
-    Route::post('payment-requests', [PaymentRequestController::class, 'store'])->name('payment-requests.store');
-    Route::get('payment-requests/{paymentRequest}', [PaymentRequestController::class, 'show'])->name('payment-requests.show');
-    Route::post('payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus'])->name('payment-requests.status.update');
-    Route::post('payment-requests/{paymentRequest}/comments', [PaymentRequestController::class, 'comment'])->name('payment-requests.comments.store');
-    Route::post('payment-requests/{paymentRequest}/invoices', [PaymentRequestController::class, 'linkInvoice'])->name('payment-requests.invoices.link');
-    Route::delete('payment-requests/{paymentRequest}/invoices/{invoice}', [PaymentRequestController::class, 'unlinkInvoice'])->name('payment-requests.invoices.unlink');
+    // Verificările de plăți și registrul de cereri: Financiar și Trezorerie.
+    Route::middleware('area:payments')->group(function () {
+        Route::get('payment-checks', [PaymentCheckController::class, 'index'])->name('payment-checks.index');
+        Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
+        Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
+        Route::get('payment-checks/reconcile', [PaymentCheckController::class, 'reconcile'])->name('payment-checks.reconcile');
+        Route::get('payment-checks/invoices', [InvoiceCheckController::class, 'index'])->name('payment-checks.invoices.index');
+        Route::get('payment-checks/invoices/suppliers', [InvoiceCheckController::class, 'suppliers'])->name('payment-checks.invoices.suppliers');
+        Route::get('payment-checks/invoices/check', [InvoiceCheckController::class, 'check'])->name('payment-checks.invoices.check');
+        Route::get('payment-checks/invoices/open', [InvoiceCheckController::class, 'open'])->name('payment-checks.invoices.open');
+
+        Route::get('payment-requests', [PaymentRequestController::class, 'index'])->name('payment-requests.index');
+        Route::post('payment-requests', [PaymentRequestController::class, 'store'])->name('payment-requests.store');
+        Route::get('payment-requests/{paymentRequest}', [PaymentRequestController::class, 'show'])->name('payment-requests.show');
+        Route::post('payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus'])->name('payment-requests.status.update');
+        Route::post('payment-requests/{paymentRequest}/comments', [PaymentRequestController::class, 'comment'])->name('payment-requests.comments.store');
+        Route::post('payment-requests/{paymentRequest}/invoices', [PaymentRequestController::class, 'linkInvoice'])->name('payment-requests.invoices.link');
+        Route::delete('payment-requests/{paymentRequest}/invoices/{invoice}', [PaymentRequestController::class, 'unlinkInvoice'])->name('payment-requests.invoices.unlink');
+    });
     Route::redirect('clients', 'suppliers');
 
     // Rapoartele arată cifrele companiei întregi — venit, marjă, costuri,

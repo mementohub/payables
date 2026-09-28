@@ -23,7 +23,7 @@ function makeFurnizorInvoiceForTimeline(): Invoice
 }
 
 it('stores comments as events visible to anyone with access', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $invoice = makeFurnizorInvoiceForTimeline();
 
     $this->actingAs($user)
@@ -38,7 +38,7 @@ it('stores comments as events visible to anyone with access', function () {
 });
 
 it('rejects empty comments', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $invoice = makeFurnizorInvoiceForTimeline();
 
     $this->actingAs($user)
@@ -90,7 +90,7 @@ it('rejects unknown payment statuses', function () {
 
 it('returns the timeline ordered most-recent-first on the show endpoint', function () {
     $department = Department::query()->where('code', 'marketing')->sole();
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $user->departments()->attach($department);
     $treasury = User::factory()->withRoles('treasury')->create();
     $invoice = makeFurnizorInvoiceForTimeline();

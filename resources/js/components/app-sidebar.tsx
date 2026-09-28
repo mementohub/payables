@@ -18,6 +18,7 @@ import {
     ShieldCheck,
     Sparkles,
     Truck,
+    Users,
     UserCog,
     Wrench,
 } from 'lucide-react';
@@ -51,70 +52,116 @@ import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as routingIndex } from '@/routes/routing';
+import { index as teamIndex } from '@/routes/team';
 import { index as usersIndex } from '@/routes/users';
-import type { Auth } from '@/types/auth';
+import type { Auth, Capabilities } from '@/types/auth';
 import type { NavItemOrGroup } from '@/types/navigation';
 
-const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
-    {
-        title: 'Panou principal',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Aprobări',
-        href: approvalsIndex(),
-        icon: CheckCheck,
-        badge: pending,
-    },
-    {
-        title: 'Rulaje de plată',
-        href: paymentRunsIndex(),
-        icon: Banknote,
-    },
+/**
+ * Meniul se desenează după ce are voie omul să vadă — aceleași reguli după
+ * care rutele refuză, trimise din server. Ascunderea e pentru ordine, nu în
+ * loc de autorizare.
+ */
+const mainNavItems = (
+    pending: number,
+    can: Partial<Capabilities>,
+): NavItemOrGroup[] => [
+    ...(can.dashboard
+        ? [
+              {
+                  title: 'Panou principal',
+                  href: dashboard(),
+                  icon: LayoutGrid,
+              },
+          ]
+        : []),
+    ...(can.approvals
+        ? [
+              {
+                  title: 'Aprobări',
+                  href: approvalsIndex(),
+                  icon: CheckCheck,
+                  badge: pending,
+              },
+          ]
+        : []),
+    ...(can.payments
+        ? [
+              {
+                  title: 'Rulaje de plată',
+                  href: paymentRunsIndex(),
+                  icon: Banknote,
+              },
+          ]
+        : []),
     // Facturile se decid într-un singur loc, în Aprobări. „Primite” dubla
     // lista și acțiunile ei, așa că a ieșit din meniu; pagina rămâne, ca
     // arhivă căutabilă, legată din factura deschisă și din e-Facturi.
-    {
-        title: 'e-Facturi (ANAF)',
-        href: eInvoicesIndex(),
-        icon: FileCheck2,
-    },
-    {
-        title: 'Furnizori',
-        href: furnizori(),
-        icon: Truck,
-    },
-    {
-        title: 'Verificare plăți',
-        icon: ClipboardCheck,
-        children: [
-            {
-                title: 'Check-in (eTrip)',
-                href: paymentChecksIndex(),
-                icon: CalendarCheck,
-            },
-            {
-                title: 'Facturi (OMC)',
-                href: invoiceChecksIndex(),
-                icon: FileSearch,
-            },
-            {
-                title: 'Registru cereri',
-                href: paymentRequestsIndex(),
-                icon: ListChecks,
-            },
-        ],
-    },
-    {
-        title: 'Extrase bancare',
-        href: bankStatementsIndex(),
-        icon: Landmark,
-    },
+    ...(can.payments
+        ? [
+              {
+                  title: 'e-Facturi (ANAF)',
+                  href: eInvoicesIndex(),
+                  icon: FileCheck2,
+              },
+          ]
+        : []),
+    ...(can.invoices
+        ? [
+              {
+                  title: 'Furnizori',
+                  href: furnizori(),
+                  icon: Truck,
+              },
+          ]
+        : []),
+    ...(can.payments
+        ? [
+              {
+                  title: 'Verificare plăți',
+                  icon: ClipboardCheck,
+                  children: [
+                      {
+                          title: 'Check-in (eTrip)',
+                          href: paymentChecksIndex(),
+                          icon: CalendarCheck,
+                      },
+                      {
+                          title: 'Facturi (OMC)',
+                          href: invoiceChecksIndex(),
+                          icon: FileSearch,
+                      },
+                      {
+                          title: 'Registru cereri',
+                          href: paymentRequestsIndex(),
+                          icon: ListChecks,
+                      },
+                  ],
+              },
+          ]
+        : []),
+    ...(can.payments
+        ? [
+              {
+                  title: 'Extrase bancare',
+                  href: bankStatementsIndex(),
+                  icon: Landmark,
+              },
+          ]
+        : []),
+    ...(can.team
+        ? [
+              {
+                  title: 'Echipa mea',
+                  href: teamIndex(),
+                  icon: Users,
+              },
+          ]
+        : []),
     // Rapoartele arată cifrele companiei întregi, deci sunt ale Top
     // Management-ului. Rutele verifică același rol: ascunderea meniului e
     // pentru ordine, nu în loc de autorizare.
-    ...(roles.includes('top_management') || roles.includes('admin')
+    ...(can.reports
         ? [
               {
                   title: 'Rapoarte',
@@ -141,7 +188,7 @@ const mainNavItems = (pending: number, roles: string[]): NavItemOrGroup[] => [
         : []),
     // Asistentul răspunde cu cifrele companiei, deci stă sub aceeași regulă
     // ca Rapoartele.
-    ...(roles.includes('top_management') || roles.includes('admin')
+    ...(can.reports
         ? [
               {
                   title: 'Asistent AI',
@@ -215,10 +262,7 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain
-                    items={mainNavItems(
-                        auth.pending ?? 0,
-                        auth.user?.roles ?? [],
-                    )}
+                    items={mainNavItems(auth.pending ?? 0, auth.can ?? {})}
                 />
                 {settingsNavItems(auth.user?.roles ?? []).length > 0 && (
                     <NavMain

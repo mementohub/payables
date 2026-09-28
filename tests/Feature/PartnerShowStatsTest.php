@@ -24,7 +24,7 @@ test('supplier stats treat credit notes offset in the erp as settled amounts', f
         'data_scadenta' => '2025-12-01',
     ]);
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(User::factory()->withRoles('finance')->create())
         ->get("/suppliers/{$supplier->id}")
         ->assertOk()
         ->assertInertia(fn ($page) => $page

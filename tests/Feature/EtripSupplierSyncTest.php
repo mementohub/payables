@@ -124,7 +124,7 @@ test('a supplier unlinked by hand is not matched back by the vat number it share
 });
 
 test('unlinking a supplier from the partner page keeps it unlinked', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->withRoles('finance')->create();
     $partner = Partner::factory()->for($this->company)->create(['name' => 'MEMENTO INTERNATIONAL SRL', 'cui' => 'RO31370020']);
     $supplier = EtripSupplier::factory()->for($this->company)->create([
         'code' => '4464', 'name' => 'FARANDA LOS TILOS SANTIAGO', 'vat_no' => '31370020',

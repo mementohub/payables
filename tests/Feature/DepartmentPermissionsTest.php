@@ -9,11 +9,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 it('sends the old issued-invoices and clients pages to their supplier counterparts', function () {
-    $this->actingAs(User::factory()->create())
+    $user = User::factory()->withRoles('finance')->create();
+
+    $this->actingAs($user)
         ->get('/invoices/issued')
         ->assertRedirect('/invoices/received');
 
-    $this->actingAs(User::factory()->create())
+    $this->actingAs($user)
         ->get('/clients')
         ->assertRedirect('/suppliers');
 });
@@ -36,7 +38,8 @@ it('shows every received invoice on facturi primite to a user with no department
         Invoice::factory()->create(['company_id' => $partner->company_id, 'partner_id' => $partner->id, 'partener_type' => 'furnizor']);
     }
 
-    $response = $this->actingAs(User::factory()->create())->get('/invoices/received')->assertOk();
+    // Lista întreagă a facturilor e a Financiarului.
+    $response = $this->actingAs(User::factory()->withRoles('finance')->create())->get('/invoices/received')->assertOk();
 
     expect($response->viewData('page')['props']['invoices']['data'])->toHaveCount(3);
 });

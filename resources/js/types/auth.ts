@@ -12,10 +12,23 @@ export type User = {
     [key: string]: unknown;
 };
 
+/** Ce are voie omul să vadă; meniul se desenează după asta. */
+export type Capabilities = {
+    dashboard: boolean;
+    approvals: boolean;
+    payments: boolean;
+    invoices: boolean;
+    routing: boolean;
+    reports: boolean;
+    team: boolean;
+    admin: boolean;
+};
+
 export type Auth = {
     user: User;
     /** Invoices waiting for the user's decision. */
     pending?: number;
+    can?: Partial<Capabilities>;
 };
 
 export type TwoFactorSetupData = {

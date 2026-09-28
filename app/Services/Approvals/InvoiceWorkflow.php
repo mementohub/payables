@@ -82,8 +82,17 @@ class InvoiceWorkflow
      */
     public function decide(Invoice $invoice, Department $department, User $user, string $decision, ?string $comment = null, ?CarbonInterface $until = null): void
     {
-        if (! $user->approvesFor($department)) {
-            throw new AuthorizationException('Nu aprobați pentru departamentul '.$department->name.'.');
+        // Aprobarea e a departamentului: o dă cine face parte din el.
+        // Contestarea și amânarea sunt altceva — Financiarul poate opri orice
+        // factură, fiindcă el ține evidența, dar nu aprobă în locul nimănui.
+        $allowed = $decision === InvoiceDepartmentApproval::APPROVED
+            ? $user->approvesFor($department)
+            : $user->decidesFor($department);
+
+        if (! $allowed) {
+            throw new AuthorizationException($decision === InvoiceDepartmentApproval::APPROVED
+                ? 'Nu aprobați pentru departamentul '.$department->name.'.'
+                : 'Nu decideți pentru departamentul '.$department->name.'.');
         }
 
         $this->validateDecision($decision, $comment, $until);

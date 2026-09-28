@@ -52,6 +52,18 @@ class HandleInertiaRequests extends Middleware
                     'roles' => array_values((array) ($user->roles ?? [])),
                     'is_ordonator' => $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 ]) : null,
+                // Meniul ascunde ce nu e al omului, pe aceleași reguli după
+                // care rutele refuză — scrise o singură dată, pe `User`.
+                'can' => $user ? [
+                    'dashboard' => $user->canSeeDashboard(),
+                    'approvals' => $user->canSeeApprovals(),
+                    'payments' => $user->canSeePayments(),
+                    'invoices' => $user->canSeeInvoices(),
+                    'routing' => $user->canSeeRouting(),
+                    'reports' => $user->canSeeReports(),
+                    'team' => $user->canManageOwnTeam(),
+                    'admin' => $user->isAdmin(),
+                ] : [],
                 // What waits for the user, for the menu badge.
                 'pending' => fn () => $user ? $this->pendingFor($user) : 0,
             ],

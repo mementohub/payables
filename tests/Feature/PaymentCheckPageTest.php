@@ -13,7 +13,7 @@ beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
     Cache::flush();
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('finance')->create();
     $this->company = Company::factory()->create(['name' => 'Christian Tour', 'etrip_connection' => 'etrip_chr']);
     Company::factory()->create(['name' => 'Fara eTrip', 'etrip_connection' => null]);
 });

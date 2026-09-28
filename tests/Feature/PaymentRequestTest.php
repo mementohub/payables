@@ -15,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 beforeEach(function () {
     Carbon::setTestNow('2026-09-16 10:00:00');
 
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withRoles('finance')->create();
     $this->company = Company::factory()->create(['etrip_connection' => 'etrip_chr']);
     $this->supplier = Partner::factory()->for($this->company)->create(['name' => 'VODAFONE ROMANIA S.A.']);
 });
