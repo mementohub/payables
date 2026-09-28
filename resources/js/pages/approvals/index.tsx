@@ -209,6 +209,10 @@ export default function ApprovalsIndex({
 
     const activeDepartment =
         departments.find((d) => d.id === filters.department) ?? null;
+    // Cu coada tuturor departamentelor deschisă, filtrul alege dintre toate,
+    // nu doar dintre ale mele.
+    const departmentOptions: { id: number; name: string; pending?: number }[] =
+        filters.scope === 'all' ? allDepartments : departments;
     const canDecideMine = tab === 'mine' && departments.length > 0;
     const canDecideFinal = tab === 'final' && can.final;
     const canReopen = tab === 'blocked' && can.reopen;
@@ -682,7 +686,7 @@ export default function ApprovalsIndex({
                     title={
                         rowDepartment
                             ? `Aprobă pentru ${rowDepartment.name}`
-                            : undefined
+                            : 'Partea e a altui departament: o aprobă oamenii lui.'
                     }
                     onClick={() => {
                         if (tab === 'final') {
@@ -791,6 +795,37 @@ export default function ApprovalsIndex({
                         ))}
                     </TabsList>
                 </Tabs>
+
+                {tab === 'mine' && can.scope && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">Coada:</span>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant={
+                                filters.scope === 'all' ? 'default' : 'outline'
+                            }
+                            onClick={() => applyFilter({ scope: 'all' })}
+                        >
+                            Toate departamentele
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant={
+                                filters.scope === 'mine' ? 'default' : 'outline'
+                            }
+                            onClick={() => applyFilter({ scope: 'mine' })}
+                        >
+                            Doar ale mele
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                            {filters.scope === 'all'
+                                ? 'Toate facturile care așteaptă o semnătură. Aprobi doar părțile departamentelor tale; restul se văd, ca să știi unde stau.'
+                                : 'Doar facturile departamentelor tale.'}
+                        </span>
+                    </div>
+                )}
 
                 {people.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
@@ -962,16 +997,16 @@ export default function ApprovalsIndex({
                         />
                     </FilterField>
 
-                    {tab === 'mine' && departments.length > 1 && (
+                    {tab === 'mine' && departmentOptions.length > 1 && (
                         <FilterField
                             label="Departament"
-                            active={activeDepartment !== null}
+                            active={filters.department !== null}
                             onClear={() => applyFilter({ department: null })}
                         >
                             <Select
                                 value={
-                                    activeDepartment
-                                        ? String(activeDepartment.id)
+                                    filters.department !== null
+                                        ? String(filters.department)
                                         : 'all'
                                 }
                                 onValueChange={(value) =>
@@ -987,7 +1022,7 @@ export default function ApprovalsIndex({
                                     className={cn(
                                         'min-h-11 w-full sm:w-[240px]',
                                         filterTriggerClass(
-                                            activeDepartment !== null,
+                                            filters.department !== null,
                                         ),
                                     )}
                                 >
@@ -995,17 +1030,22 @@ export default function ApprovalsIndex({
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">
-                                        Toate departamentele mele
+                                        {filters.scope === 'all'
+                                            ? 'Toate departamentele'
+                                            : 'Toate departamentele mele'}
                                     </SelectItem>
-                                    {departments.map((department) => (
+                                    {departmentOptions.map((department) => (
                                         <SelectItem
                                             key={department.id}
                                             value={String(department.id)}
                                         >
                                             {department.name}
-                                            <span className="text-muted-foreground tabular-nums">
-                                                ({department.pending})
-                                            </span>
+                                            {department.pending !==
+                                                undefined && (
+                                                <span className="text-muted-foreground tabular-nums">
+                                                    ({department.pending})
+                                                </span>
+                                            )}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

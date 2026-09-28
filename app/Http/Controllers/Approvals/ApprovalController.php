@@ -45,6 +45,15 @@ class ApprovalController extends Controller
         $user = $preview ?? $actor;
         $departments = $this->departmentsOf($user);
         $canRoute = $preview === null && $user->hasRole(User::ROLE_FINANCE);
+        // Cine răspunde de toate departamentele (administrare, finanțe,
+        // trezorerie, Top Management) vede în „De aprobat” tot ce așteaptă o
+        // semnătură, nu doar ce e al lui — aprobă tot numai ce e al lui, dar
+        // altfel n-ar avea de unde ști ce stă pe loc. Restul își văd coada.
+        $seesAll = $user->seesEveryQueue();
+        $scope = $request->string('scope')->toString() === 'mine' ? 'mine' : ($seesAll ? 'all' : 'mine');
+        $queueIds = $scope === 'all'
+            ? Department::query()->whereNotNull('code')->pluck('id')->all()
+            : $departments->pluck('id')->all();
         $tab = $request->string('tab')->toString();
         $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing', 'all'], true) ? $tab : ($departments->isEmpty() && $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? 'final' : 'mine');
         $departmentId = $request->integer('department') ?: null;
@@ -68,7 +77,7 @@ class ApprovalController extends Controller
             // Toate facturile primite, plătite sau nu, decise sau nu: cozile
             // arată ce e de lucru, asta arată ce există.
             'all' => Invoice::query()->visibleTo($user),
-            default => $this->mineQuery($departments->pluck('id')->all(), $departmentId),
+            default => $this->mineQuery($queueIds, $departmentId),
         };
 
         // Restul cozilor arată doar ce e de plătit și nedecis; „Toate” arată
@@ -99,16 +108,18 @@ class ApprovalController extends Controller
             // Where a share that landed on the wrong department can be sent.
             'all_departments' => Department::query()->whereNotNull('code')->where('is_active', true)->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
             'counts' => [
-                'mine' => $departments->isEmpty() ? 0 : $this->payable($this->mineQuery($departments->pluck('id')->all(), null))->count(),
+                'mine' => $queueIds === [] ? 0 : $this->payable($this->mineQuery($queueIds, null))->count(),
                 'final' => $user->hasRole(User::ROLE_TOP_MANAGEMENT) ? $this->payable($this->finalQuery())->count() : 0,
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
-            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment, 'as' => $preview?->id],
+            'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment, 'as' => $preview?->id, 'scope' => $scope],
             'can' => [
                 'final' => $preview === null && $user->hasRole(User::ROLE_TOP_MANAGEMENT),
                 'reopen' => $preview === null && ($user->hasRole(User::ROLE_TOP_MANAGEMENT) || $user->hasRole(User::ROLE_FINANCE)),
                 'route' => $canRoute,
+                // Poate privi coada tuturor departamentelor, nu doar pe a lui.
+                'scope' => $seesAll,
             ],
             'preview' => $preview !== null ? ['id' => $preview->id, 'name' => $preview->name] : null,
             // Cine poate fi privit peste umăr; lista o vede doar un administrator.

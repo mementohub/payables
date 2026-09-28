@@ -248,3 +248,39 @@ test('the share of a department is approved only by that department', function (
 
     expect($invoice->fresh()->approval_status)->toBe('final');
 });
+
+/**
+ * Financiarul și Top Management-ul văd în „De aprobat” tot ce așteaptă o
+ * semnătură, nu doar partea lor: altfel o factură oprită la un departament
+ * nu se vede de nicăieri. Aprobă tot numai ce e al lor — butonul de pe
+ * rândurile străine rămâne închis, iar serverul refuză oricum.
+ */
+test('the inbox can show every departments queue, not only your own', function () {
+    $mine = pagesRoutedInvoice($this->company);
+    $other = pagesRoutedInvoice($this->company);
+    app(DepartmentAssigner::class)->assignManually($other, $this->departments['marketing'], null);
+
+    $this->actingAs($this->boss)->get('/approvals?tab=mine')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.scope', 'all')
+            ->where('can.scope', true)
+            ->where('counts.mine', 2));
+
+    // Și poate strânge lista la ale lui — n-are niciun departament, deci zero.
+    $this->actingAs($this->boss)->get('/approvals?tab=mine&scope=mine')
+        ->assertInertia(fn ($page) => $page->where('counts.mine', 0));
+
+    // Omul unui departament rămâne cu coada lui.
+    $this->actingAs($this->head)->get('/approvals?tab=mine')
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.scope', 'mine')
+            ->where('can.scope', false)
+            ->where('counts.mine', 1)
+            ->where('rows.data.0.id', $mine->id));
+
+    // Iar ce se vede nu înseamnă că se și poate semna.
+    $this->actingAs($this->boss)
+        ->post('/approvals/decide', ['invoice_ids' => [$other->id], 'department_id' => $this->departments['marketing']->id, 'decision' => 'approved'])
+        ->assertForbidden();
+});

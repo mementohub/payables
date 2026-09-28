@@ -76,8 +76,10 @@ export type ApprovalsPageProps = {
         payment: 'paid' | 'partial' | 'unpaid' | null;
         /** Omul cu ochii căruia se uită un administrator, dacă e cazul. */
         as: number | null;
+        /** „all”: coada tuturor departamentelor. „mine”: doar ale mele. */
+        scope: 'all' | 'mine';
     };
-    can: { final: boolean; reopen: boolean; route: boolean };
+    can: { final: boolean; reopen: boolean; route: boolean; scope: boolean };
     /** Cine e privit peste umăr; null când te uiți cu ochii tăi. */
     preview: { id: number; name: string } | null;
     /** Oamenii între care poate comuta un administrator. */

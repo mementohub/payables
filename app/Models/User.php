@@ -102,6 +102,19 @@ class User extends Authenticatable
         return $this->canRoute();
     }
 
+    /**
+     * Vede în „De aprobat” tot ce așteaptă o semnătură, nu doar partea lui.
+     *
+     * Financiarul ține evidența plăților, Top Management răspunde de ele:
+     * aprobă tot numai ce e al departamentelor lor, dar trebuie să vadă unde
+     * s-a oprit o factură fără să intre pe rând în fiecare cont. Omul unui
+     * departament își vede coada lui.
+     */
+    public function seesEveryQueue(): bool
+    {
+        return $this->hasRole(self::ROLE_FINANCE) || $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
     /** Facturile, furnizorii, partenerii — evidența de zi cu zi. */
     public function canSeeInvoices(): bool
     {
