@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
+use App\Models\InvoiceDetail;
 use App\Models\Partner;
 use App\Models\User;
 use App\Services\Approvals\InvoiceWorkflow;
@@ -170,4 +171,43 @@ test('only an admin gets the list of people, and only an admin can look', functi
             ->where('preview', null)
             ->where('people', [])
             ->where('can.route', true));
+});
+
+/**
+ * Rutarea se putea face doar bifând rânduri: bara de acțiuni apare abia după
+ * prima bifă, deci pe tabul „De rutat” nu se vedea nimic de apăsat. Butonul e
+ * acum pe fiecare rând, iar pagina trebuie să vină cu tot ce-i trebuie lui:
+ * dreptul de rutare și lista de departamente.
+ */
+test('the routing tab carries what a single-invoice routing needs', function () {
+    $invoice = Invoice::factory()->create([
+        'company_id' => $this->company->id,
+        'partner_id' => $this->partner->id,
+        'partener_type' => 'furnizor',
+        'val_mon' => 1000,
+        'val_mon_paid' => 0,
+        'approval_status' => InvoiceWorkflow::ROUTING,
+    ]);
+    InvoiceDetail::factory()->create(['invoice_id' => $invoice->id, 'scv' => 1, 'cant' => 1, 'pret' => 1000]);
+
+    $finance = User::factory()->create(['roles' => [User::ROLE_FINANCE]]);
+
+    $this->actingAs($finance)->get('/approvals?tab=routing')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('can.route', true)
+            ->has('all_departments.0.name'));
+
+    // Și o singură factură se rutează, nu doar o selecție.
+    $marketing = Department::query()->where('code', 'marketing')->sole();
+
+    $this->actingAs($finance)
+        ->post('/routing/assign', ['invoice_ids' => [$invoice->id], 'department_id' => $marketing->id])
+        ->assertRedirect();
+
+    expect($invoice->fresh()->department_id)->toBe($marketing->id)
+        ->and($invoice->fresh()->approval_status)->toBe(InvoiceWorkflow::DEPARTMENT);
+
+    $this->actingAs($finance)->get('/approvals?tab=routing')
+        ->assertInertia(fn ($page) => $page->where('counts.routing', 0));
 });

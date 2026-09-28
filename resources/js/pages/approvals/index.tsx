@@ -610,6 +610,65 @@ export default function ApprovalsIndex({
             );
         }
 
+        // „De rutat” e coada facturilor fără departament: acolo butonul de pe
+        // rând deschide rutarea, nu aprobarea — n-ar avea cine să aprobe.
+        // Contestarea și amânarea rămân, dar numai dacă a rămas vreun
+        // departament care le poate purta.
+        if (canRoute) {
+            const pending = pendingDepartmentsOf(invoice);
+
+            return (
+                <div className="flex items-center justify-end gap-1">
+                    <Button
+                        type="button"
+                        size="sm"
+                        disabled={processing}
+                        onClick={() =>
+                            setRouting({
+                                ids: [invoice.id],
+                                title: `Rutează ${invoice.nr_doc}`,
+                            })
+                        }
+                    >
+                        <Route className="size-4" /> Rutează
+                    </Button>
+                    {pending.length > 0 && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8"
+                                    disabled={processing}
+                                    aria-label={`Alte decizii pentru ${invoice.nr_doc}`}
+                                >
+                                    <MoreHorizontal className="size-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                        openRowDialog(invoice, 'disputed')
+                                    }
+                                >
+                                    <Ban /> Contestă
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onSelect={() =>
+                                        openRowDialog(invoice, 'postponed')
+                                    }
+                                >
+                                    <CalendarClock /> Amână
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                </div>
+            );
+        }
+
         const rowDepartment =
             tab === 'mine' ? (pendingDepartmentsOf(invoice)[0] ?? null) : null;
         const blocked = tab === 'mine' && rowDepartment === null;
