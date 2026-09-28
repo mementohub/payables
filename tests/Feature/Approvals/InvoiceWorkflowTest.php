@@ -76,8 +76,12 @@ test('only the members of a department decide for it, and only Top Management de
         // Not before every department approved.
         ->and(fn () => $workflow->decideFinal($invoice, $this->boss, 'approved'))->toThrow(ValidationException::class);
 
-    // An admin speaks for every department.
-    $workflow->decide($invoice, $this->departments['charters'], User::factory()->withRoles('admin')->create(), 'approved');
+    // Nici administratorul nu semnează pentru un departament pe care nu e:
+    // aprobarea ține de repartizare, nu de rol.
+    expect(fn () => $workflow->decide($invoice, $this->departments['charters'], User::factory()->withRoles('admin')->create(), 'approved'))
+        ->toThrow(AuthorizationException::class);
+
+    $workflow->decide($invoice, $this->departments['charters'], $this->charters, 'approved');
     expect(InvoiceDepartmentApproval::query()->where('invoice_id', $invoice->id)->where('status', 'approved')->count())->toBe(1);
 });
 

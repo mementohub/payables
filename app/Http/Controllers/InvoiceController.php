@@ -13,7 +13,6 @@ use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Invoices\InvoiceCommentService;
 use App\Services\Invoices\InvoiceListQuery;
-use App\Services\Invoices\InvoicePaymentService;
 use App\Services\Invoices\InvoicePresenter;
 use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Xlsx\XlsxWriter;
@@ -28,7 +27,6 @@ class InvoiceController extends Controller
     public function __construct(
         private readonly InvoicePresenter $presenter,
         private readonly InvoiceCommentService $commentService,
-        private readonly InvoicePaymentService $paymentService,
     ) {}
 
     public function primite(Request $request): Response
@@ -190,9 +188,6 @@ class InvoiceController extends Controller
                 'val_mon_paid' => (float) $invoice->val_mon_paid,
                 'val_mon_storno' => (float) $invoice->val_mon_storno,
                 'payment_status' => $invoice->paymentStatus(),
-                'payment_status_erp' => $invoice->erpPaymentStatus(),
-                'payment_status_manual' => $invoice->payment_status_manual,
-                'payment_status_updated_at' => $invoice->payment_status_updated_at?->toIso8601String(),
                 'data_scadenta' => $invoice->data_scadenta?->toDateString(),
                 'data_inchidere' => $invoice->data_inchidere?->toDateString(),
                 'emitent' => $invoice->emitent,
@@ -288,27 +283,6 @@ class InvoiceController extends Controller
         return back();
     }
 
-    public function updatePaymentStatus(Request $request, Invoice $invoice): RedirectResponse
-    {
-        $this->seeable($request, $invoice);
-
-        $user = $request->user();
-        abort_unless($user, 403);
-
-        $validated = $request->validate([
-            'status' => ['required', 'string', 'in:'.implode(',', [...Invoice::PAYMENT_STATUSES, InvoicePaymentService::AUTO])],
-            'note' => ['nullable', 'string', 'max:2000'],
-        ]);
-
-        $this->paymentService->updateStatus($invoice, $user, $validated['status'], $validated['note'] ?? null);
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => $validated['status'] === InvoicePaymentService::AUTO
-            ? 'Marcajul manual a fost eliminat; statusul urmează ERP-ul.'
-            : 'Status plată actualizat.']);
-
-        return back();
-    }
-
     private function authorizeShow(Request $request, Invoice $invoice): void
     {
         // Authorization temporarily disabled — all data visible to every authenticated user.
@@ -316,6 +290,10 @@ class InvoiceController extends Controller
 
     /**
      * Who is looking, and what they may do on an invoice.
+     *
+     * Departamentele sunt cele pe care e repartizat omul, inclusiv pentru un
+     * administrator: butoanele de aprobare apar doar la partea lui, ca pagina
+     * să spună același lucru pe care îl cere și serverul.
      *
      * @return array{id: ?int, name: ?string, department_ids: list<int>, roles: list<string>}
      */
@@ -326,7 +304,7 @@ class InvoiceController extends Controller
         return [
             'id' => $user?->id,
             'name' => $user?->name,
-            'department_ids' => $user ? ($user->isAdmin() ? Department::query()->whereNotNull('code')->pluck('id')->all() : $user->departmentIds()) : [],
+            'department_ids' => $user ? $user->departmentIds() : [],
             'roles' => $user ? array_values((array) ($user->roles ?? [])) : [],
         ];
     }

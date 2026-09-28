@@ -33,7 +33,6 @@ class InvoicePresenter
             'val_mon_paid' => (float) $invoice->val_mon_paid,
             'val_mon_storno' => (float) $invoice->val_mon_storno,
             'payment_status' => $invoice->paymentStatus(),
-            'payment_status_manual' => $invoice->payment_status_manual,
             'comments_count' => (int) ($invoice->comments_count ?? 0),
             'has_com_int_counterpart' => (bool) ($invoice->has_com_int_counterpart ?? false),
             'source_invoice' => $this->sourceInvoicePayload($invoice),
@@ -189,7 +188,7 @@ class InvoicePresenter
             ->get([
                 'id', 'data_doc', 'tip_doc', 'nr_doc', 'partner_id',
                 'moneda', 'val_mon', 'val_mon_tva', 'val_mon_paid', 'val_mon_storno',
-                'payment_status_manual', 'data_inchidere',
+                'data_inchidere',
             ])
             ->map(fn (Invoice $match) => [
                 'id' => $match->id,

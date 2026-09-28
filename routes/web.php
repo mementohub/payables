@@ -65,13 +65,13 @@ Route::middleware('auth')->group(function () {
     });
 
     // Fișa unei facturi: o deschide oricine are treabă cu ea — omul care o
-    // aprobă, Financiarul care o ține, Trezoreria care marchează plata. Ce
-    // vede fiecare rămâne limitat la departamentele lui. Lista întreagă a
-    // facturilor rămâne la Financiar.
+    // aprobă, Financiarul care o ține, Trezoreria care o plătește. Ce vede
+    // fiecare rămâne limitat la departamentele lui. Lista întreagă a
+    // facturilor rămâne la Financiar. Statusul plății vine din OMC și nu se
+    // marchează de aici, deci nu are rută.
     Route::middleware('area:invoice')->group(function () {
         Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
         Route::post('invoices/{invoice}/comments', [InvoiceController::class, 'comment'])->name('invoices.comments.store');
-        Route::post('invoices/{invoice}/payment-status', [InvoiceController::class, 'updatePaymentStatus'])->name('invoices.payment-status.update');
     });
 
     // e-Facturile ANAF: controlul că ce s-a trimis a ajuns în contabilitate.

@@ -23,7 +23,6 @@ final readonly class InvoiceRow
         public float $valMon,
         public float $valMonPaid,
         public float $valMonStorno,
-        public ?string $paymentStatus = null,
         public ?string $description = null,
         public ?CarbonInterface $paidAt = null,
         public ?string $accounts = null,
@@ -44,7 +43,6 @@ final readonly class InvoiceRow
             valMon: (float) $invoice->val_mon,
             valMonPaid: (float) $invoice->val_mon_paid,
             valMonStorno: (float) $invoice->val_mon_storno,
-            paymentStatus: $invoice->payment_status_manual,
         );
     }
 
@@ -104,8 +102,7 @@ final readonly class InvoiceRow
     }
 
     /**
-     * What the ERP settled decides, except while it still shows the document
-     * as open and the payments department marked it by hand.
+     * Ce a decontat ERP-ul, atât: plata se stinge în OMC, nu în aplicație.
      */
     public function status(): string
     {
@@ -113,10 +110,6 @@ final readonly class InvoiceRow
 
         if ($settled + Invoice::PAYMENT_TOLERANCE >= abs($this->valMon)) {
             return Invoice::PAYMENT_PAID;
-        }
-
-        if ($this->paymentStatus !== null) {
-            return $this->paymentStatus;
         }
 
         return $settled <= Invoice::PAYMENT_TOLERANCE - 0.001 ? Invoice::PAYMENT_UNPAID : Invoice::PAYMENT_PARTIAL;

@@ -256,13 +256,17 @@ class ApprovalController extends Controller
     }
 
     /**
+     * Departamentele pentru care omul semnează: cele pe care e repartizat, și
+     * atât. Nici administratorul nu le are pe toate, fiindcă aprobarea ține de
+     * departament, nu de rol.
+     *
      * @return Collection<int, Department>
      */
     private function departmentsOf(User $user)
     {
         return Department::query()
             ->whereNotNull('code')
-            ->when(! $user->isAdmin(), fn (Builder $q) => $q->whereIn('id', $user->departmentIds()))
+            ->whereIn('id', $user->departmentIds())
             ->orderBy('sort')
             ->get(['id', 'name']);
     }

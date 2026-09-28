@@ -62,7 +62,6 @@ class Invoice extends Model
             'val_mon_tva' => 'decimal:4',
             'val_mon_paid' => 'decimal:4',
             'val_mon_storno' => 'decimal:4',
-            'payment_status_updated_at' => 'datetime',
             'omc_modified_at' => 'datetime',
             'omc_removed_at' => 'datetime',
             'assigned_at' => 'datetime',
@@ -198,30 +197,15 @@ class Invoice extends Model
     }
 
     /**
-     * The status shown everywhere: what the ERP settled, and while it still
-     * shows the document as open, the override the payments department set
-     * by hand for a payment the ERP has not recorded yet.
+     * The status shown everywhere: what the ERP settled, and nimic altceva.
+     *
+     * Plata se face și se stinge în OMC, deci statusul se citește de acolo.
+     * A existat și un marcaj manual, în aplicație; s-a scos, fiindcă două
+     * adevăruri despre aceeași plată înseamnă, în practică, niciunul.
      */
     public function paymentStatus(): string
     {
-        $erp = $this->erpPaymentStatus();
-
-        if ($erp === self::PAYMENT_PAID) {
-            return $erp;
-        }
-
-        return $this->payment_status_manual ?? $erp;
-    }
-
-    /**
-     * Whether the status shown comes from the manual override rather than
-     * from the amounts the ERP settled.
-     */
-    public function hasPaymentOverride(): bool
-    {
-        return $this->payment_status_manual !== null
-            && $this->erpPaymentStatus() !== self::PAYMENT_PAID
-            && $this->payment_status_manual !== $this->erpPaymentStatus();
+        return $this->erpPaymentStatus();
     }
 
     /**
@@ -237,7 +221,6 @@ class Invoice extends Model
         return <<<SQL
             case
                 when {$settled} + {$tolerance} >= abs({$prefix}val_mon) then 'paid'
-                when {$prefix}payment_status_manual is not null then {$prefix}payment_status_manual
                 when {$settled} <= {$tolerance} - 0.001 then 'unpaid'
                 else 'partial'
             end

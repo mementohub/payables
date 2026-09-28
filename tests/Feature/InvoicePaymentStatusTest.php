@@ -30,13 +30,11 @@ function furnizorInvoice(array $attributes = []): Invoice
     ]);
 }
 
-test('the status follows what the ERP settled, with nothing marked by hand', function (float $paid, float $storno, string $expected) {
+test('the status follows what the ERP settled, and nothing else', function (float $paid, float $storno, string $expected) {
     $invoice = furnizorInvoice(['val_mon_paid' => $paid, 'val_mon_storno' => $storno]);
 
-    expect($invoice->payment_status_manual)->toBeNull()
-        ->and($invoice->erpPaymentStatus())->toBe($expected)
-        ->and($invoice->paymentStatus())->toBe($expected)
-        ->and($invoice->hasPaymentOverride())->toBeFalse();
+    expect($invoice->erpPaymentStatus())->toBe($expected)
+        ->and($invoice->paymentStatus())->toBe($expected);
 })->with([
     'nothing paid' => [0.0, 0.0, Invoice::PAYMENT_UNPAID],
     'part paid' => [400.0, 0.0, Invoice::PAYMENT_PARTIAL],
@@ -51,13 +49,12 @@ test('the filter returns exactly the invoices whose status the page shows', func
     $partial = furnizorInvoice(['nr_doc' => 'A2', 'val_mon_paid' => 400]);
     $paid = furnizorInvoice(['nr_doc' => 'A3', 'val_mon_paid' => 1000]);
     $credited = furnizorInvoice(['nr_doc' => 'A4', 'val_mon_storno' => 1000]);
-    $marked = furnizorInvoice(['nr_doc' => 'A5', 'payment_status_manual' => Invoice::PAYMENT_PAID, 'payment_status_updated_at' => now()]);
 
     $ids = fn (string $status) => Invoice::query()->paymentStatus($status)->orderBy('id')->pluck('id')->all();
 
     expect($ids('unpaid'))->toBe([$unpaid->id])
         ->and($ids('partial'))->toBe([$partial->id])
-        ->and($ids('paid'))->toBe([$paid->id, $credited->id, $marked->id]);
+        ->and($ids('paid'))->toBe([$paid->id, $credited->id]);
 
     // Every invoice lands in the bucket its own status names.
     foreach (Invoice::all() as $invoice) {
@@ -65,43 +62,19 @@ test('the filter returns exactly the invoices whose status the page shows', func
     }
 });
 
-test('an invoice the ERP already settled is paid however it was marked by hand', function () {
-    $invoice = furnizorInvoice([
-        'val_mon_paid' => 1000,
-        'payment_status_manual' => Invoice::PAYMENT_UNPAID,
-        'payment_status_updated_at' => now(),
-    ]);
-
-    expect($invoice->paymentStatus())->toBe(Invoice::PAYMENT_PAID)
-        ->and($invoice->hasPaymentOverride())->toBeFalse()
-        ->and(Invoice::query()->paymentStatus('paid')->pluck('id')->all())->toBe([$invoice->id]);
-});
-
-test('the payments department marks a payment the ERP does not have yet, and can hand the invoice back to the ERP', function () {
-    $user = User::factory()->withRoles('treasury')->create();
-
+/**
+ * Statusul plății se citește din OMC și nu se scrie din aplicație: marcajul
+ * manual a fost scos, cu tot cu ruta lui, ca despre aceeași plată să nu se
+ * poată spune două lucruri diferite.
+ */
+test('the payment status cannot be marked by hand any more', function () {
     $invoice = furnizorInvoice();
 
-    $this->actingAs($user)
-        ->post("/invoices/{$invoice->id}/payment-status", ['status' => 'paid', 'note' => 'OP 4471'])
-        ->assertRedirect();
+    $this->actingAs(User::factory()->withRoles('treasury')->create())
+        ->post("/invoices/{$invoice->id}/payment-status", ['status' => 'paid'])
+        ->assertNotFound();
 
-    $invoice->refresh();
-    expect($invoice->paymentStatus())->toBe(Invoice::PAYMENT_PAID)
-        ->and($invoice->erpPaymentStatus())->toBe(Invoice::PAYMENT_UNPAID)
-        ->and($invoice->hasPaymentOverride())->toBeTrue()
-        ->and($invoice->payment_status_updated_by_id)->toBe($user->id)
-        ->and(Invoice::query()->paymentStatus('paid')->pluck('id')->all())->toBe([$invoice->id]);
-
-    $this->actingAs($user)
-        ->post("/invoices/{$invoice->id}/payment-status", ['status' => 'auto'])
-        ->assertRedirect();
-
-    $invoice->refresh();
-    expect($invoice->payment_status_manual)->toBeNull()
-        ->and($invoice->paymentStatus())->toBe(Invoice::PAYMENT_UNPAID)
-        ->and($invoice->payment_status_updated_at)->toBeNull()
-        ->and($invoice->payment_status_updated_by_id)->toBeNull();
+    expect($invoice->fresh()->paymentStatus())->toBe(Invoice::PAYMENT_UNPAID);
 });
 
 test('the list, the invoice page and the export all read the same status', function () {
@@ -110,13 +83,11 @@ test('the list, the invoice page and the export all read the same status', funct
 
     $row = (new InvoicePresenter)->listRow($invoice->load('company', 'partner'), 'primite');
 
-    expect($row['payment_status'])->toBe(Invoice::PAYMENT_PAID)
-        ->and($row['payment_status_manual'])->toBeNull();
+    expect($row['payment_status'])->toBe(Invoice::PAYMENT_PAID);
 
     $response = $this->actingAs($user)->get("/invoices/{$invoice->id}")->assertOk();
     $payload = data_get($response->viewData('page'), 'props.invoice');
 
     expect($payload['payment_status'])->toBe(Invoice::PAYMENT_PAID)
-        ->and($payload['payment_status_erp'])->toBe(Invoice::PAYMENT_PAID)
-        ->and($payload['payment_status_manual'])->toBeNull();
+        ->and($payload)->not->toHaveKey('payment_status_manual');
 });

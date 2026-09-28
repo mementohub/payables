@@ -206,12 +206,18 @@ class User extends Authenticatable
 
     /**
      * Whether the user speaks for the department on its invoices.
+     *
+     * Aprobarea unei părți de factură e a departamentului care o poartă, deci
+     * ține strict de repartizare — nici administratorul nu aprobă în locul
+     * altui departament, fiindcă o factură împărțită între trei departamente
+     * are trei semnături de dat, nu una. Cine trebuie să aprobe se pune pe
+     * departament; o parte căzută greșit se mută („Nu e al nostru”).
      */
     public function approvesFor(Department|int $department): bool
     {
         $id = $department instanceof Department ? $department->id : $department;
 
-        return $this->isAdmin() || in_array($id, $this->departmentIds(), true);
+        return in_array($id, $this->departmentIds(), true);
     }
 
     /**

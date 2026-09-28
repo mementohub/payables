@@ -211,3 +211,40 @@ test('the list says who approved each invoice and when', function () {
             ->where('rows.data.0.departments.0.by', $this->head->name)
             ->whereNot('rows.data.0.departments.0.at', null));
 });
+
+/**
+ * O factură împărțită între departamente are câte o semnătură de dat pentru
+ * fiecare parte. Nimeni nu semnează în locul altui departament — nici omul
+ * repartizat pe unul singur, nici administratorul, care nu e pe niciunul.
+ */
+test('the share of a department is approved only by that department', function () {
+    $invoice = pagesRoutedInvoice($this->company);
+    $admin = User::factory()->withRoles('admin')->create();
+    $senior = User::factory()->create();
+    $senior->departments()->attach($this->departments['senior_voyage']);
+
+    // Fișa facturii nu scoate butoanele altcuiva: ele apar după repartizare.
+    $this->actingAs($admin)->get("/invoices/{$invoice->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('currentUser.department_ids', []));
+
+    $this->actingAs($this->head)->get("/invoices/{$invoice->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('currentUser.department_ids', [$this->departments['charters']->id]));
+
+    // Iar dacă tot se încearcă, serverul refuză — și pentru administrator.
+    foreach ([$admin, $senior] as $user) {
+        $this->actingAs($user)
+            ->post('/approvals/decide', ['invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id, 'decision' => 'approved'])
+            ->assertForbidden();
+    }
+
+    expect($invoice->fresh()->approval_status)->toBe('department');
+
+    // Omul departamentului semnează partea lui, și atât.
+    $this->actingAs($this->head)
+        ->post('/approvals/decide', ['invoice_ids' => [$invoice->id], 'department_id' => $this->departments['charters']->id, 'decision' => 'approved'])
+        ->assertRedirect();
+
+    expect($invoice->fresh()->approval_status)->toBe('final');
+});

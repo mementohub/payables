@@ -9,7 +9,6 @@ import { show as bankStatementShow } from '@/routes/bank-statements';
 import { primite as facturiPrimite } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
-import { InvoicePaymentCard } from './invoice-payment-card';
 import { InvoiceTimeline } from './invoice-timeline';
 import { InvoiceWorkflowCard } from './invoice-workflow-card';
 import type { Invoice, ShowProps } from './types';
@@ -458,17 +457,6 @@ export default function InvoiceShow({
                                 routing={invoice.routing}
                                 currentUser={currentUser}
                                 departments={departments}
-                            />
-                        )}
-
-                        {isFurnizor && (
-                            <InvoicePaymentCard
-                                invoiceId={invoice.id}
-                                status={invoice.payment_status}
-                                erpStatus={invoice.payment_status_erp}
-                                manualStatus={invoice.payment_status_manual}
-                                updatedAt={invoice.payment_status_updated_at}
-                                currentUser={currentUser}
                             />
                         )}
 

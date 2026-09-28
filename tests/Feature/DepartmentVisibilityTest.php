@@ -78,10 +78,6 @@ test('writing on another department\'s invoice is refused too', function () {
     $this->actingAs($this->stranger)
         ->post("/invoices/{$invoice->id}/comments", ['body' => 'nu e al meu'])
         ->assertForbidden();
-
-    $this->actingAs($this->stranger)
-        ->post("/invoices/{$invoice->id}/payment-status", ['status' => 'paid'])
-        ->assertForbidden();
 });
 
 test('finance, treasury and top management keep seeing every department', function (array $roles) {
