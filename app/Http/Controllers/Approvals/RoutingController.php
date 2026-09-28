@@ -165,6 +165,7 @@ class RoutingController extends Controller
             ->with(['department:id,name', 'createdBy:id,name'])
             ->orderBy('kind')
             ->orderByRaw("case when pattern like '~%' then 1 else 0 end")
+            ->orderBy('sort')
             ->orderBy('id')
             ->get()
             ->map(fn (AssignmentRule $rule) => [

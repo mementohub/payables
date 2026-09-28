@@ -370,7 +370,17 @@ class DepartmentAssigner
     private function load(): void
     {
         $this->departments = Department::idsByCode();
-        $this->rules = AssignmentRule::query()->orderByRaw("case when pattern like '~%' then 1 else 0 end")->orderBy('id')->get()->groupBy('kind')->all();
+        // Numele exacte întâi, apoi tiparele, în ordinea lor: `sort` ține
+        // prinzătoarea de la urmă („~.”, agențiile proprii) chiar dacă între
+        // timp s-au adăugat reguli noi, care altfel ar fi venit după ea și
+        // nu s-ar fi aplicat niciodată.
+        $this->rules = AssignmentRule::query()
+            ->orderByRaw("case when pattern like '~%' then 1 else 0 end")
+            ->orderBy('sort')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('kind')
+            ->all();
         $this->charterPartners = CharterContract::query()->pluck('counterparty')->filter()
             ->mapWithKeys(fn (string $name) => [ActualCashFlowClassifier::normalize($name) => true])
             ->all();

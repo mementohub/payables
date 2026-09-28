@@ -51,7 +51,7 @@ class PaymentRunController extends Controller
                     'exported_at' => $run->exported_at?->toIso8601String(),
                 ]),
             'defaults' => ['pay_date' => $payDate->toDateString(), 'due_until' => $payDate->copy()->addDays(6)->toDateString()],
-            'can' => ['create' => $user->hasRole(User::ROLE_FINANCE)],
+            'can' => ['create' => $user->hasRole(User::ROLE_FINANCE), 'delete' => $user->isAdmin()],
         ]);
     }
 
@@ -117,6 +117,7 @@ class PaymentRunController extends Controller
                 'edit' => ($user->hasRole(User::ROLE_FINANCE) || $user->hasRole(User::ROLE_TOP_MANAGEMENT)) && in_array($run->status, [PaymentRun::REVIEW, PaymentRun::FINAL, PaymentRun::APPROVED], true),
                 'export' => $user->hasRole(User::ROLE_TREASURY) && in_array($run->status, [PaymentRun::APPROVED, PaymentRun::EXPORTED], true),
                 'close' => $user->hasRole(User::ROLE_FINANCE) && $run->isActive(),
+                'delete' => $user->isAdmin(),
             ],
             'payable_invoice_ids' => $this->runs->payableInvoiceIds($run),
         ]);
@@ -143,6 +144,25 @@ class PaymentRunController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => "{$run->reference} a fost trimis la bancă. Se închide singur când OMC înregistrează plățile."]);
 
         return back();
+    }
+
+    /**
+     * Șterge un rulaj greșit, cu tot cu liniile lui.
+     *
+     * Rulajul e doar lista pe care o primește Trezoreria: strânge facturi
+     * deja aprobate și nu decide nimic despre ele, deci ștergerea lui nu
+     * atinge nici aprobările, nici plățile — doar lista. Rămâne totuși a
+     * administratorului, fiindcă un rulaj trimis la bancă e o urmă pe care
+     * nimeni nu trebuie s-o poată șterge din reflex.
+     */
+    public function destroy(Request $request, PaymentRun $run): RedirectResponse
+    {
+        $reference = $run->reference;
+        $run->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => "{$reference} a fost șters. Facturile rămân aprobate, pot intra în alt rulaj."]);
+
+        return redirect()->route('payment-runs.index');
     }
 
     public function close(Request $request, PaymentRun $run): RedirectResponse

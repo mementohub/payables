@@ -71,7 +71,7 @@ test('the cost centre decides an overhead line, and what the other rules said is
     expect(assignedLine($invoice, 1)->only(['department_id', 'predicted_department_id', 'rule']))->toBe(['department_id' => $this->ids['administration'], 'predicted_department_id' => $this->ids['marketing'], 'rule' => 'loc'])
         ->and(assignedLine($invoice, 2)->department_id)->toBe($this->ids['marketing'])
         // A bus plate is the fleet, an agency name one of the own shops.
-        ->and(assignedLine($invoice, 3)->department_id)->toBe($this->ids['administration'])
+        ->and(assignedLine($invoice, 3)->department_id)->toBe($this->ids['transport_bus_scolar'])
         ->and(assignedLine($invoice, 4)->department_id)->toBe($this->ids['b2c_retail']);
 });
 
@@ -157,4 +157,40 @@ test('only invoices never routed, or changed in OMC since, are routed again', fu
 
     expect($assigner->assignPending()['invoices'])->toBe(1)
         ->and($removed->fresh()->assigned_at)->toBeNull();
+});
+
+/**
+ * Locurile de cheltuială ale celor două departamente noi. Testul ține și
+ * ordinea regulilor: prinzătoarea „~.” (agențiile proprii) prinde orice loc,
+ * deci o regulă adăugată după ea n-ar mai apuca să se aplice niciodată.
+ */
+test('the bus fleet, the school trips and the internal tourism have their own departments', function () {
+    $invoice = assignerInvoice();
+    $locs = [
+        1 => ['trans', 'transport_bus_scolar'],
+        2 => ['B 146 CHR', 'transport_bus_scolar'],
+        3 => ['Taxa DKV', 'transport_bus_scolar'],
+        4 => ['Turism scolar', 'transport_bus_scolar'],
+        5 => ['Hello', 'hello_romania_intern'],
+        6 => ['Turism intern', 'hello_romania_intern'],
+        7 => ['Romania', 'hello_romania_intern'],
+        // Ce a rămas acolo unde era.
+        8 => ['M. Rooms (cazari)', 'cazari_individuale'],
+        9 => ['Diurna&cazare', 'administration'],
+        10 => ['Masina personala', 'administration'],
+        11 => ['ASM Moldova', 'administration'],
+        12 => ['Mark', 'marketing'],
+        13 => ['Targ Turism 2026', 'marketing'],
+        14 => ['Agentia Ploiesti', 'b2c_retail'],
+    ];
+
+    foreach ($locs as $scv => [$loc, $department]) {
+        assignerLine($invoice, $scv, ['account' => '628', 'loc' => $loc]);
+    }
+
+    app(DepartmentAssigner::class)->assign(collect([$invoice]));
+
+    foreach ($locs as $scv => [$loc, $department]) {
+        expect(assignedLine($invoice, $scv)->department_id)->toBe($this->ids[$department], "locul „{$loc}”");
+    }
 });

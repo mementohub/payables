@@ -102,6 +102,9 @@ Route::middleware('auth')->group(function () {
         Route::post('payment-runs/{run}/items/{item}', [PaymentRunController::class, 'toggle'])->name('payment-runs.items.toggle');
         Route::post('payment-runs/{run}/exported', [PaymentRunController::class, 'exported'])->name('payment-runs.exported');
         Route::post('payment-runs/{run}/close', [PaymentRunController::class, 'close'])->name('payment-runs.close');
+        // Ștergerea unui rulaj e pentru greșeli, nu pentru evidență: o face
+        // doar administratorul.
+        Route::delete('payment-runs/{run}', [PaymentRunController::class, 'destroy'])->name('payment-runs.destroy')->middleware('role:admin');
     });
 
     // Echipa proprie: un om operațional își aduce colegii pe departamentul lui.

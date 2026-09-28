@@ -5,6 +5,8 @@ use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceDetail;
+use App\Models\PaymentRun;
+use App\Models\PaymentRunItem;
 use App\Models\User;
 use App\Services\Approvals\InvoiceWorkflow;
 use App\Services\Approvals\PaymentRunService;
@@ -114,4 +116,42 @@ test('the run is shown against the balance the WCFR forecast expects that week',
     $position = app(PaymentRunService::class)->cashPosition($run);
 
     expect($position)->toMatchArray(['total_lei' => 1500.0, 'by_currency' => ['RON' => 1000.0, 'EUR' => 100.0], 'week' => '2026-09-21', 'closing' => 4_200_000.0, 'minimum' => 3_000_000.0, 'margin' => 1_200_000.0]);
+});
+
+/**
+ * Un rulaj greșit se șterge, dar numai de administrator: rulajul e lista
+ * Trezoreriei, nu decizia, deci ștergerea lui lasă facturile aprobate, gata
+ * să intre în următorul.
+ */
+test('an administrator deletes a payment run; the invoices stay approved', function () {
+    $invoice = runApprovedInvoice($this->company);
+    $run = app(PaymentRunService::class)->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->finance);
+
+    expect($run->items()->count())->toBe(1);
+
+    foreach ([$this->finance, $this->boss, $this->treasury, $this->head] as $user) {
+        $this->actingAs($user)->delete("/payment-runs/{$run->id}")->assertForbidden();
+    }
+
+    $this->actingAs(User::factory()->withRoles('admin')->create())
+        ->delete("/payment-runs/{$run->id}")
+        ->assertRedirect('/payment-runs');
+
+    expect(PaymentRun::query()->whereKey($run->id)->exists())->toBeFalse()
+        ->and(PaymentRunItem::query()->where('payment_run_id', $run->id)->count())->toBe(0)
+        ->and($invoice->fresh()->approval_status)->toBe('approved');
+
+    // Și poate intra într-un rulaj nou, ca și cum primul n-ar fi fost.
+    $next = app(PaymentRunService::class)->create($this->company, Carbon::parse('2026-09-24'), Carbon::parse('2026-09-25'), $this->finance);
+    expect($next->items()->pluck('invoice_id')->all())->toBe([$invoice->id]);
+});
+
+test('the list offers the delete only to an administrator', function () {
+    app(PaymentRunService::class)->create($this->company, Carbon::parse('2026-09-23'), Carbon::parse('2026-09-25'), $this->finance);
+
+    $this->actingAs(User::factory()->withRoles('admin')->create())->get('/payment-runs')
+        ->assertInertia(fn ($page) => $page->where('can.delete', true));
+
+    $this->actingAs($this->finance)->get('/payment-runs')
+        ->assertInertia(fn ($page) => $page->where('can.delete', false));
 });

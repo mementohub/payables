@@ -112,7 +112,7 @@ export type PaymentRunSummary = {
 export type PaymentRunsPageProps = {
     runs: Paginated<PaymentRunSummary>;
     defaults: { pay_date: string; due_until: string };
-    can: { create: boolean };
+    can: { create: boolean; delete: boolean };
 };
 
 export type CashPosition = {
@@ -148,6 +148,7 @@ export type PaymentRunPageProps = {
         edit: boolean;
         export: boolean;
         close: boolean;
+        delete: boolean;
     };
     payable_invoice_ids: number[];
 };

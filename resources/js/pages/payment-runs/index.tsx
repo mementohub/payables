@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { CalendarClock, Plus } from 'lucide-react';
+import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import PaymentRunController from '@/actions/App/Http/Controllers/Approvals/PaymentRunController';
 import Pagination from '@/components/pagination';
@@ -130,13 +130,14 @@ export default function PaymentRunsIndex({
                                 <TableHead>Stare</TableHead>
                                 <TableHead>Aprobat de</TableHead>
                                 <TableHead>Trimis de</TableHead>
+                                <TableHead className="w-10" />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {runs.data.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={8}
+                                        colSpan={9}
                                         className="py-12 text-center text-muted-foreground"
                                     >
                                         <div className="flex flex-col items-center gap-2">
@@ -202,6 +203,11 @@ export default function PaymentRunsIndex({
                                                 at={run.exported_at}
                                             />
                                         </TableCell>
+                                        <TableCell className="text-right">
+                                            {can.delete && (
+                                                <DeleteRunDialog run={run} />
+                                            )}
+                                        </TableCell>
                                     </TableRow>
                                 ))
                             )}
@@ -214,6 +220,64 @@ export default function PaymentRunsIndex({
                 </div>
             </div>
         </>
+    );
+}
+
+/**
+ * Ștergerea unui rulaj greșit. Rulajul e doar lista Trezoreriei, deci
+ * ștergerea lui nu atinge aprobările facturilor — se spune asta în dialog,
+ * ca nimeni să nu creadă că șterge și deciziile.
+ */
+function DeleteRunDialog({ run }: { run: PaymentRunsPageProps['runs']['data'][number] }) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-muted-foreground hover:text-destructive"
+                    aria-label={`Șterge rulajul ${run.reference}`}
+                >
+                    <Trash2 className="size-4" />
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Ștergi {run.reference}?</DialogTitle>
+                    <DialogDescription>
+                        Dispare lista, cu tot cu liniile ei. Facturile rămân
+                        aprobate și pot intra într-un alt rulaj; plățile deja
+                        făcute nu se schimbă.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    {...PaymentRunController.destroy.form(run.id)}
+                    onSuccess={() => setOpen(false)}
+                >
+                    {({ processing }) => (
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setOpen(false)}
+                            >
+                                Renunță
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={processing}
+                            >
+                                <Trash2 />
+                                Șterge rulajul
+                            </Button>
+                        </DialogFooter>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
     );
 }
 
