@@ -12,21 +12,28 @@ import type { EditUser as User } from './types';
 
 const roleOptions = [
     {
+        value: 'operational',
+        label: 'Operațional',
+        description:
+            'Aprobă facturile departamentelor lui, din Aprobări. Poate aduce colegi pe aceleași departamente.',
+    },
+    {
         value: 'top_management',
         label: 'Top Management',
         description:
-            'Aprobarea finală a facturilor și a rulajelor de plată; contestă sau amână.',
+            'Vede tot. Dă aprobarea finală a facturilor; contestă sau amână.',
     },
     {
         value: 'finance',
         label: 'Financiar',
         description:
-            'Rutează facturile pe departamente, gestionează regulile și pregătește rulajele de plată.',
+            'Vede tot în afară de Rapoarte. Nu aprobă, dar contestă și mută facturi, le rutează pe departamente și pregătește rulajele de plată.',
     },
     {
         value: 'treasury',
         label: 'Trezorerie',
-        description: 'Trimite rulajele aprobate la bancă (fișierul BT).',
+        description:
+            'Rulajele de plată, e-Facturi, verificările de plăți și extrasele bancare. Trimite plata la bancă (fișierul BT).',
     },
     {
         value: 'admin',

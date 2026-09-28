@@ -120,3 +120,20 @@ test('someone without a department has no team to build', function () {
         ->get('/team')
         ->assertForbidden();
 });
+
+test('the operational role can be given from the users screen', function () {
+    $admin = User::factory()->create(['roles' => [User::ROLE_ADMIN]]);
+    $om = User::factory()->create(['roles' => []]);
+
+    $this->actingAs($admin)
+        ->put("/users/{$om->id}", ['name' => $om->name, 'email' => $om->email, 'roles' => [User::ROLE_OPERATIONAL]])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($om->fresh()->roles)->toBe([User::ROLE_OPERATIONAL]);
+
+    // Și se vede în ecranul de modificare, ca să poată fi bifat.
+    $this->actingAs($admin)->get("/users/{$om->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('user.roles', [User::ROLE_OPERATIONAL]));
+});
