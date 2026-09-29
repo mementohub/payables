@@ -10,6 +10,7 @@ import { show as partnerShow } from '@/routes/partners';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
 import { InvoiceTimeline } from './invoice-timeline';
 import { InvoiceWorkflowCard } from './invoice-workflow-card';
+import { SupplierHistoryCard } from './supplier-history-card';
 import type { Invoice, ShowProps } from './types';
 
 function formatAmount(value: number, currency: string | null) {
@@ -21,6 +22,7 @@ export default function InvoiceShow({
     currentUser,
     departments,
     back,
+    supplier,
 }: ShowProps) {
     const isFurnizor = invoice.partener_type === 'furnizor';
     // Ce a decis rutarea pentru fiecare linie, ca să stea lângă linia ei, nu
@@ -479,6 +481,13 @@ export default function InvoiceShow({
                                 </table>
                             </div>
                         </div>
+
+                        {isFurnizor && supplier && (
+                            <SupplierHistoryCard
+                                supplier={supplier}
+                                currentInvoiceId={invoice.id}
+                            />
+                        )}
 
                         {isFurnizor && (
                             <InvoiceWorkflowCard

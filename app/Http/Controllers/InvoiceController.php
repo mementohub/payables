@@ -18,6 +18,7 @@ use App\Services\Maintenance\ArtisanRunner;
 use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -270,7 +271,75 @@ class InvoiceController extends Controller
             'currentUser' => $this->currentUserContext($request),
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
             'back' => $this->backTo($request),
+            'supplier' => $this->supplierHistory($request, $invoice),
         ]);
+    }
+
+    /**
+     * Istoricul furnizorului, lângă factura lui: ultimele facturi primite de
+     * la el, cât a rămas neplătit în total și de când lucrăm cu el.
+     *
+     * Fișa furnizorului e a Financiarului, iar omul care aprobă n-are acces
+     * acolo — dar are nevoie să vadă dacă factura din față e una obișnuită
+     * pentru furnizorul ăsta sau o excepție.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function supplierHistory(Request $request, Invoice $invoice): ?array
+    {
+        $partner = $invoice->partner;
+
+        if ($partner === null || $invoice->partener_type !== 'furnizor') {
+            return null;
+        }
+
+        $lei = '(case when curs is null or curs = 0 then 1 else curs end)';
+        $rest = '(val_mon - val_mon_paid - val_mon_storno)';
+
+        $history = fn () => Invoice::query()
+            ->where('partner_id', $partner->id)
+            ->where('partener_type', 'furnizor')
+            ->whereNull('omc_removed_at');
+
+        $totals = $history()
+            ->selectRaw("count(*) as invoices, min(data_doc) as first_doc, max(data_doc) as last_doc, sum(val_mon * {$lei}) as billed_lei, sum(case when {$rest} > 0.01 then {$rest} * {$lei} else 0 end) as unpaid_lei")
+            ->first();
+
+        $rows = $history()
+            ->whereKeyNot($invoice->id)
+            ->orderByDesc('data_doc')
+            ->orderByDesc('id')
+            ->limit(12)
+            ->get(['id', 'data_doc', 'data_scadenta', 'tip_doc', 'nr_doc', 'moneda', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'approval_status'])
+            ->map(fn (Invoice $row) => [
+                'id' => $row->id,
+                'data_doc' => $row->data_doc?->toDateString(),
+                'data_scadenta' => $row->data_scadenta?->toDateString(),
+                'tip_doc' => $row->tip_doc,
+                'nr_doc' => $row->nr_doc,
+                'moneda' => $row->moneda,
+                'val_mon' => (float) $row->val_mon,
+                'outstanding' => $row->outstandingAmount(),
+                'payment_status' => $row->paymentStatus(),
+                'approval_status' => $row->approval_status,
+            ])
+            ->all();
+
+        return [
+            'id' => $partner->id,
+            'name' => $partner->name,
+            'cui' => $partner->cui,
+            // Fișa completă a furnizorului: doar pentru cine are voie la ea.
+            'url' => $request->user()?->canSeeInvoices() ? route('partners.show', $partner, false) : null,
+            'totals' => [
+                'invoices' => (int) ($totals->invoices ?? 0),
+                'billed_lei' => round((float) ($totals->billed_lei ?? 0), 2),
+                'unpaid_lei' => round((float) ($totals->unpaid_lei ?? 0), 2),
+                'first_doc' => $totals->first_doc !== null ? Carbon::parse($totals->first_doc)->toDateString() : null,
+                'last_doc' => $totals->last_doc !== null ? Carbon::parse($totals->last_doc)->toDateString() : null,
+            ],
+            'invoices' => $rows,
+        ];
     }
 
     /**

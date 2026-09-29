@@ -218,3 +218,50 @@ test('the invoice page sends you back where you came from', function () {
     $this->actingAs($this->head)->get("/invoices/{$invoice->id}")
         ->assertInertia(fn ($page) => $page->where('back.url', '/approvals'));
 });
+
+/**
+ * Fișa furnizorului e a Financiarului, iar omul care aprobă n-are acces la
+ * ea: are nevoie totuși să vadă ce a mai trimis furnizorul, ca să știe dacă
+ * factura din față e una obișnuită sau o excepție.
+ */
+test('the invoice page carries the history of its supplier', function () {
+    $invoice = visibilityInvoice($this->company);
+    $partner = $invoice->partner;
+
+    $older = Invoice::factory()->for($this->company)->create([
+        'partner_id' => $partner->id,
+        'partener_type' => 'furnizor',
+        'data_doc' => '2026-01-10',
+        'moneda' => 'RON',
+        'curs' => 1,
+        'val_mon' => 500,
+        'val_mon_paid' => 500,
+    ]);
+    $unpaid = Invoice::factory()->for($this->company)->create([
+        'partner_id' => $partner->id,
+        'partener_type' => 'furnizor',
+        'data_doc' => '2026-02-20',
+        'moneda' => 'EUR',
+        'curs' => 5,
+        'val_mon' => 100,
+        'val_mon_paid' => 0,
+    ]);
+    // A altui furnizor: n-are ce căuta în istoric.
+    Invoice::factory()->for($this->company)->create(['partener_type' => 'furnizor', 'val_mon' => 999]);
+
+    $response = $this->actingAs($this->head)->get("/invoices/{$invoice->id}")->assertOk();
+    $supplier = data_get($response->viewData('page'), 'props.supplier');
+
+    expect($supplier['id'])->toBe($partner->id)
+        ->and($supplier['totals']['invoices'])->toBe(3)
+        // 100 EUR × 5 rămase de plată din factura în valută.
+        ->and($supplier['totals']['unpaid_lei'])->toBeGreaterThanOrEqual(500.0)
+        ->and(collect($supplier['invoices'])->pluck('id')->all())->toBe([$unpaid->id, $older->id])
+        // Fișa completă rămâne a Financiarului.
+        ->and($supplier['url'])->toBeNull();
+
+    $finance = User::factory()->withRoles('finance')->create();
+    $seen = $this->actingAs($finance)->get("/invoices/{$invoice->id}")->assertOk();
+
+    expect(data_get($seen->viewData('page'), 'props.supplier.url'))->toBe("/suppliers/{$partner->id}");
+});

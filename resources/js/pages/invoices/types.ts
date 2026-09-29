@@ -222,8 +222,38 @@ export type Invoice = {
     timeline: TimelineEvent[];
 };
 
+/** Furnizorul facturii, cu ce a mai trimis până acum. */
+export type SupplierHistory = {
+    id: number;
+    name: string;
+    cui: string | null;
+    /** Fișa lui completă, dacă omul are voie s-o deschidă. */
+    url: string | null;
+    totals: {
+        invoices: number;
+        billed_lei: number;
+        unpaid_lei: number;
+        first_doc: string | null;
+        last_doc: string | null;
+    };
+    invoices: {
+        id: number;
+        data_doc: string | null;
+        data_scadenta: string | null;
+        tip_doc: string | null;
+        nr_doc: string;
+        moneda: string | null;
+        val_mon: number;
+        outstanding: number;
+        payment_status: PaymentStatus;
+        approval_status: WorkflowStatus | null;
+    }[];
+};
+
 export type ShowProps = {
     invoice: Invoice;
+    /** Istoricul furnizorului; lipsește la facturile emise. */
+    supplier: SupplierHistory | null;
     activeCompany: { id: number; name: string };
     currentUser: CurrentUser;
     departments: DepartmentRef[];
