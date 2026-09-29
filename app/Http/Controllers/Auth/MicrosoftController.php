@@ -17,6 +17,9 @@ class MicrosoftController extends Controller
         return Socialite::driver('microsoft')->redirect();
     }
 
+    /** Peste atât, o poză nu mai e o adresă, ci un fișier pus în coloană. */
+    private const MAX_AVATAR = 2048;
+
     public function callback(): RedirectResponse
     {
         try {
@@ -44,7 +47,7 @@ class MicrosoftController extends Controller
         $user->forceFill([
             'name' => $microsoftUser->getName() ?: $user->name,
             'microsoft_id' => $microsoftUser->getId(),
-            'avatar' => $microsoftUser->getAvatar() ?: $user->avatar,
+            'avatar' => $this->avatarUrl($microsoftUser->getAvatar()) ?? $user->avatar,
             'email_verified_at' => $user->email_verified_at ?? now(),
         ])->save();
 
@@ -53,5 +56,26 @@ class MicrosoftController extends Controller
         request()->session()->regenerate();
 
         return redirect()->intended(route($user->home()));
+    }
+
+    /**
+     * Doar o adresă de poză, nu poza însăși.
+     *
+     * Microsoft întoarce uneori fotografia ca `data:image/jpeg;base64,…`, de
+     * zeci de kilobytes. Aia nu încape în coloană (de aici un 500 la
+     * autentificare, pentru oamenii cu poza mai mare) și, chiar dacă ar
+     * încăpea, ar călători cu fiecare pagină, fiindcă `auth.user` se trimite
+     * la fiecare cerere. Păstrăm doar adresele http(s) scurte; pentru rest
+     * rămân inițialele.
+     */
+    private function avatarUrl(?string $avatar): ?string
+    {
+        $avatar = trim((string) $avatar);
+
+        if ($avatar === '' || ! str_starts_with($avatar, 'http') || mb_strlen($avatar) > self::MAX_AVATAR) {
+            return null;
+        }
+
+        return $avatar;
     }
 }
