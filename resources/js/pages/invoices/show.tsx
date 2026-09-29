@@ -23,6 +23,11 @@ export default function InvoiceShow({
     back,
 }: ShowProps) {
     const isFurnizor = invoice.partener_type === 'furnizor';
+    // Ce a decis rutarea pentru fiecare linie, ca să stea lângă linia ei, nu
+    // doar jos, în cartonașul de aprobare.
+    const routedLines = new Map(
+        (invoice.routing ?? []).map((line) => [line.scv, line]),
+    );
 
     return (
         <>
@@ -213,6 +218,20 @@ export default function InvoiceShow({
                                             </tr>
                                         )}
                                         {invoice.details.map((row) => {
+                                            const routed = routedLines.get(
+                                                row.scv,
+                                            );
+                                            const source = [
+                                                row.account
+                                                    ? `cont ${row.account}${row.analytic ? `.${row.analytic}` : ''}`
+                                                    : null,
+                                                row.loc ? `loc ${row.loc}` : null,
+                                                row.com_int
+                                                    ? `ref. ${row.com_int}`
+                                                    : null,
+                                            ]
+                                                .filter(Boolean)
+                                                .join(' · ');
                                             const lineNet = row.cant * row.pret;
                                             const lineVat =
                                                 (lineNet *
@@ -242,6 +261,27 @@ export default function InvoiceShow({
                                                         ) : (
                                                             <div className="font-medium">
                                                                 {row.articol}
+                                                            </div>
+                                                        )}
+                                                        {source !== '' && (
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {source}
+                                                            </div>
+                                                        )}
+                                                        {routed && (
+                                                            <div className="text-xs text-muted-foreground">
+                                                                <span className="font-medium text-foreground/80">
+                                                                    {routed.department ??
+                                                                        'Fără departament'}
+                                                                </span>
+                                                                {routed.channel
+                                                                    ? ` · ${routed.channel}`
+                                                                    : ''}
+                                                                {routed.manual_by
+                                                                    ? ` — rutată manual de ${routed.manual_by}`
+                                                                    : routed.detail
+                                                                      ? ` — ${routed.detail}`
+                                                                      : ''}
                                                             </div>
                                                         )}
                                                     </td>

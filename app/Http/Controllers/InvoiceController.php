@@ -202,6 +202,9 @@ class InvoiceController extends Controller
                     'is_furnizor' => $invoice->partner->is_furnizor,
                 ] : null,
                 'company' => ['id' => $invoice->company->id, 'name' => $invoice->company->name],
+                // Contul, locul de cheltuială și referința sunt ale liniei, așa
+                // cum le trimite OMC: se văd lângă articol, nu doar jos, în
+                // rutare.
                 'details' => $invoice->details->map(fn ($row) => [
                     'id' => $row->id,
                     'scv' => $row->scv,
@@ -211,6 +214,10 @@ class InvoiceController extends Controller
                     'um' => $row->um,
                     'pret' => (float) $row->pret,
                     'proc_tva' => (float) $row->proc_tva,
+                    'account' => $row->account,
+                    'analytic' => $row->analytic,
+                    'loc' => $row->loc,
+                    'com_int' => $row->com_int,
                 ]),
                 'payments' => $invoice->payments->map(function ($payment) {
                     $statement = $payment->bankStatementLine?->statement;

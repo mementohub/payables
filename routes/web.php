@@ -16,6 +16,7 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\DueInvoicesController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceCheckController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MaintenanceController;
@@ -29,10 +30,11 @@ use App\Http\Controllers\SyncController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UserController;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => Auth::check() ? redirect()->route('dashboard') : redirect()->route('login'))->name('home');
+// Fiecare intră în casa lui: panoul principal e al celor care țin facturile
+// companiei, deci cine n-are voie acolo ar fi fost întâmpinat de un refuz.
+Route::get('/', HomeController::class)->name('home');
 
 Route::middleware('auth')->group(function () {
     // Panoul principal adună facturile companiei, deci e al celor care le țin.

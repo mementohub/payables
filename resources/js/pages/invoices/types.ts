@@ -139,6 +139,12 @@ export type Detail = {
     um: string | null;
     pret: number;
     proc_tva: number;
+    /** Contul contabil al liniei, analiticul, locul de cheltuială și
+     *  referința (rezervare, bilet) — așa cum vin din OMC. */
+    account: string | null;
+    analytic: string | null;
+    loc: string | null;
+    com_int: string | null;
 };
 
 export type Payment = {

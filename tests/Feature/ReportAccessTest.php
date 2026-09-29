@@ -137,3 +137,25 @@ test('the operational role can be given from the users screen', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('user.roles', [User::ROLE_OPERATIONAL]));
 });
+
+/**
+ * Intrarea în aplicație ducea toată lumea la panoul principal, care e al
+ * celor ce țin facturile companiei: un operațional era întâmpinat de un
+ * refuz, în loc de lista lui de aprobat.
+ */
+test('everyone lands where they have something to do', function () {
+    $case = [
+        User::ROLE_ADMIN => '/dashboard',
+        User::ROLE_TOP_MANAGEMENT => '/dashboard',
+        User::ROLE_FINANCE => '/dashboard',
+        User::ROLE_TREASURY => '/payment-runs',
+        User::ROLE_OPERATIONAL => '/approvals',
+    ];
+
+    foreach ($case as $role => $landing) {
+        $user = User::factory()->create(['roles' => [$role]]);
+
+        $this->actingAs($user)->get('/')->assertRedirect($landing);
+        $this->actingAs($user)->get($landing)->assertSuccessful();
+    }
+});
