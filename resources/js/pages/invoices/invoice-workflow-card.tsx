@@ -3,6 +3,7 @@ import {
     Ban,
     Check,
     Clock,
+    Coins,
     Forward,
     RotateCcw,
     Route,
@@ -52,6 +53,8 @@ type Pending = {
     /** null: Top Management's final decision. */
     departmentId: number | null;
     title: string;
+    /** La aprobare: cât se poate aproba cel mult (partea sau restul de plată). */
+    max?: number;
 } | null;
 
 const ruleLabels: Record<string, string> = {
@@ -103,6 +106,7 @@ export function InvoiceWorkflowCard({
     const [pending, setPending] = useState<Pending>(null);
     const [comment, setComment] = useState('');
     const [until, setUntil] = useState('');
+    const [amount, setAmount] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
     const [routeTo, setRouteTo] = useState('');
@@ -128,6 +132,7 @@ export function InvoiceWorkflowCard({
         setPending(next);
         setComment('');
         setUntil('');
+        setAmount('');
         setErrors({});
     };
 
@@ -228,6 +233,21 @@ export function InvoiceWorkflowCard({
                                             />
                                         </span>
                                     </div>
+                                    {share.approved_amount !== null &&
+                                        share.status === 'approved' && (
+                                            <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                                Aprobat doar{' '}
+                                                {formatMoney(
+                                                    share.approved_amount,
+                                                    currency,
+                                                )}{' '}
+                                                din{' '}
+                                                {formatMoney(
+                                                    share.share,
+                                                    currency,
+                                                )}
+                                            </p>
+                                        )}
                                     {(share.by || share.comment) && (
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {share.by}
@@ -253,6 +273,21 @@ export function InvoiceWorkflowCard({
                                             >
                                                 <Check />
                                                 Aprobă
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() =>
+                                                    open({
+                                                        decision: 'approved',
+                                                        departmentId: share.id,
+                                                        title: `Aprobă o parte din ${share.name}`,
+                                                        max: share.share,
+                                                    })
+                                                }
+                                            >
+                                                <Coins />
+                                                Aprobă parțial
                                             </Button>
                                             <Button
                                                 size="sm"
@@ -319,14 +354,31 @@ export function InvoiceWorkflowCard({
                 {isTop && inFlow && status !== 'approved' && (
                     <div className="flex flex-wrap gap-2 border-t border-sidebar-border/70 pt-3 dark:border-sidebar-border">
                         {status === 'final' && (
-                            <Button
-                                size="sm"
-                                disabled={processing}
-                                onClick={() => decide('approved', null)}
-                            >
-                                <ShieldCheck />
-                                Aprobă final
-                            </Button>
+                            <>
+                                <Button
+                                    size="sm"
+                                    disabled={processing}
+                                    onClick={() => decide('approved', null)}
+                                >
+                                    <ShieldCheck />
+                                    Aprobă final
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                        open({
+                                            decision: 'approved',
+                                            departmentId: null,
+                                            title: 'Aprobă final o parte din sumă',
+                                            max: workflow.outstanding,
+                                        })
+                                    }
+                                >
+                                    <Coins />
+                                    Aprobă parțial
+                                </Button>
+                            </>
                         )}
                         {status !== 'disputed' && (
                             <Button
@@ -504,12 +556,41 @@ export function InvoiceWorkflowCard({
                     <DialogHeader>
                         <DialogTitle>{pending?.title}</DialogTitle>
                         <DialogDescription>
-                            {pending?.decision === 'disputed'
-                                ? 'Factura nu se plătește până nu e redeschisă. Spuneți de ce.'
-                                : 'Factura nu intră în rulajele de plată de dinaintea datei alese.'}
+                            {pending?.decision === 'approved'
+                                ? 'Intră în rulajul de plată doar suma aprobată; restul rămâne neaprobat.'
+                                : pending?.decision === 'disputed'
+                                  ? 'Factura nu se plătește până nu e redeschisă. Spuneți de ce.'
+                                  : 'Factura nu intră în rulajele de plată de dinaintea datei alese.'}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-3">
+                        {pending?.decision === 'approved' && (
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="approve-amount">
+                                    Suma aprobată la plată
+                                </Label>
+                                <Input
+                                    id="approve-amount"
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    max={pending.max}
+                                    placeholder={`tot: ${formatMoney(pending.max ?? 0, currency)}`}
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Cel mult{' '}
+                                    {formatMoney(pending.max ?? 0, currency)}.
+                                    Gol înseamnă tot.
+                                </p>
+                                {errors.amount && (
+                                    <p className="text-xs text-red-600">
+                                        {errors.amount}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                         {pending?.decision === 'postponed' && (
                             <div className="grid gap-1.5">
                                 <Label htmlFor="postpone-until">
@@ -568,7 +649,12 @@ export function InvoiceWorkflowCard({
                                 (pending?.decision === 'disputed' &&
                                     comment.trim() === '') ||
                                 (pending?.decision === 'postponed' &&
-                                    until === '')
+                                    until === '') ||
+                                (pending?.decision === 'approved' &&
+                                    (amount.trim() === '' ||
+                                        Number(amount) <= 0 ||
+                                        Number(amount) >
+                                            (pending.max ?? 0) + 0.005))
                             }
                             onClick={() =>
                                 pending &&
@@ -578,12 +664,18 @@ export function InvoiceWorkflowCard({
                                         pending.decision === 'postponed'
                                             ? until
                                             : undefined,
+                                    amount:
+                                        pending.decision === 'approved'
+                                            ? Number(amount)
+                                            : undefined,
                                 })
                             }
                         >
-                            {pending?.decision === 'disputed'
-                                ? 'Contestă'
-                                : 'Amână'}
+                            {pending?.decision === 'approved'
+                                ? 'Aprobă suma'
+                                : pending?.decision === 'disputed'
+                                  ? 'Contestă'
+                                  : 'Amână'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

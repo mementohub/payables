@@ -67,6 +67,7 @@ class Invoice extends Model
             'assigned_at' => 'datetime',
             'postponed_until' => 'date',
             'final_decided_at' => 'datetime',
+            'approved_amount' => 'float',
         ];
     }
 
@@ -167,6 +168,60 @@ class Invoice extends Model
     public function outstandingAmount(): float
     {
         return round((float) $this->val_mon - (float) $this->val_mon_paid - (float) $this->val_mon_storno, 2);
+    }
+
+    /**
+     * Cât s-a aprobat la plată din factură — atât intră în rulaj.
+     *
+     * Aprobarea poate fi și pe o parte: fiecare departament spune cât din
+     * partea lui e bună de plată, iar Top Management poate tăia și el suma
+     * finală. Nespus înseamnă „tot”, iar totul înseamnă restul de plată, așa
+     * cum îl știe ERP-ul. Părțile departamentelor sunt fără TVA, deci se
+     * cântăresc proporțional din restul de plată, care e cu TVA.
+     */
+    public function approvedForPayment(): float
+    {
+        $outstanding = $this->outstandingAmount();
+
+        if ($this->approved_amount !== null) {
+            return round(min($outstanding, (float) $this->approved_amount), 2);
+        }
+
+        $approvals = $this->relationLoaded('departmentApprovals')
+            ? $this->departmentApprovals
+            : $this->departmentApprovals()->get();
+
+        if ($approvals->isEmpty()) {
+            return $outstanding;
+        }
+
+        $shares = (float) $approvals->sum('amount');
+        $approved = 0.0;
+
+        foreach ($approvals as $approval) {
+            if ($approval->status !== InvoiceDepartmentApproval::APPROVED) {
+                continue;
+            }
+
+            $approved += $approval->approved_amount !== null
+                ? (float) $approval->approved_amount
+                : ($shares > 0 ? $outstanding * ((float) $approval->amount / $shares) : $outstanding);
+        }
+
+        return round(min($outstanding, $approved), 2);
+    }
+
+    /**
+     * Partea departamentului, în bani de plată (cu TVA): din ea se aprobă.
+     */
+    public function grossShareOf(InvoiceDepartmentApproval $approval): float
+    {
+        $outstanding = $this->outstandingAmount();
+        $shares = (float) ($this->relationLoaded('departmentApprovals')
+            ? $this->departmentApprovals->sum('amount')
+            : $this->departmentApprovals()->sum('amount'));
+
+        return round($shares > 0 ? $outstanding * ((float) $approval->amount / $shares) : $outstanding, 2);
     }
 
     /**

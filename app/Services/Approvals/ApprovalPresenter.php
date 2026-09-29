@@ -56,6 +56,9 @@ class ApprovalPresenter
             'approval_track' => $invoice->approval_track,
             'approval_status' => $invoice->approval_status,
             'postponed_until' => $invoice->postponed_until?->toDateString(),
+            // Cât s-a aprobat la plată: atât se duce în rulaj, chiar dacă
+            // factura e mai mare.
+            'approved_for_payment' => $invoice->approvedForPayment(),
             'final' => $invoice->final_decided_at !== null ? [
                 'by' => $invoice->finalDecidedBy?->name,
                 'at' => $invoice->final_decided_at->toIso8601String(),
@@ -66,6 +69,10 @@ class ApprovalPresenter
                     'id' => $approval->department_id,
                     'name' => $approval->department?->name,
                     'amount' => $approval->amount,
+                    // Partea în bani de plată (cu TVA) și cât s-a aprobat din
+                    // ea; `approved_amount` gol înseamnă toată partea.
+                    'share' => $invoice->grossShareOf($approval),
+                    'approved_amount' => $approval->approved_amount,
                     'status' => $approval->status,
                     'comment' => $approval->comment,
                     'postponed_until' => $approval->postponed_until?->toDateString(),

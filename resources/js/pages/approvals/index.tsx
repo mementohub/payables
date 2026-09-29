@@ -103,6 +103,8 @@ type DecisionValues = {
     until: string;
     departmentId: number | null;
     toDepartmentId: number | null;
+    /** Suma aprobată la plată; gol înseamnă toată partea. */
+    amount: string;
 };
 
 /** YYYY-MM-DD in the browser's time zone, `offsetDays` from today. */
@@ -342,6 +344,7 @@ export default function ApprovalsIndex({
         decision: Decision,
         comment: string | null = null,
         until: string | null = null,
+        amount: number | null = null,
     ) => {
         const pendingIds = idsPendingAt(invoices, departmentId);
 
@@ -354,6 +357,7 @@ export default function ApprovalsIndex({
             decision,
             comment,
             until,
+            amount,
         });
     };
 
@@ -362,12 +366,14 @@ export default function ApprovalsIndex({
         decision: Decision,
         comment: string | null = null,
         until: string | null = null,
+        amount: number | null = null,
     ) => {
         post(ApprovalController.decideFinal().url, {
             invoice_ids: invoices.map((invoice) => invoice.id),
             decision,
             comment,
             until,
+            amount,
         });
     };
 
@@ -452,9 +458,17 @@ export default function ApprovalsIndex({
         }
 
         const until = request.decision === 'postponed' ? values.until : null;
+        // Gol înseamnă „tot”: suma se trimite doar când omul a scris una.
+        const amount = values.amount.trim() !== '' ? Number(values.amount) : null;
 
         if (request.kind === 'final') {
-            decideFinal(request.invoices, request.decision, comment, until);
+            decideFinal(
+                request.invoices,
+                request.decision,
+                comment,
+                until,
+                amount,
+            );
 
             return;
         }
@@ -489,6 +503,7 @@ export default function ApprovalsIndex({
                 request.decision,
                 comment,
                 until,
+                amount,
             );
         }
     };
@@ -730,7 +745,7 @@ export default function ApprovalsIndex({
                         <DropdownMenuItem
                             onSelect={() => openRowDialog(invoice, 'approved')}
                         >
-                            <MessageSquare /> Aprobă cu comentariu
+                            <MessageSquare /> Aprobă parțial sau cu comentariu
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1334,6 +1349,7 @@ function DecisionForm({
 }) {
     const [comment, setComment] = useState('');
     const [until, setUntil] = useState('');
+    const [amount, setAmount] = useState('');
     const [departmentId, setDepartmentId] = useState<number | null>(
         request.kind === 'department' ? request.departmentId : null,
     );
@@ -1353,6 +1369,26 @@ function DecisionForm({
     const coveredCount =
         departmentId !== null ? idsPendingAt(invoices, departmentId).length : 0;
 
+    // O sumă parțială are înțeles doar pe o factură anume: pe un teanc n-ar
+    // ști a cui e. Plafonul e partea departamentului, respectiv restul de
+    // plată la aprobarea finală.
+    const singleInvoice = invoices.length === 1 ? invoices[0] : null;
+    const maxAmount =
+        singleInvoice === null
+            ? null
+            : request.kind === 'final'
+              ? singleInvoice.outstanding
+              : (singleInvoice.departments.find((d) => d.id === departmentId)
+                    ?.share ?? null);
+    const canSetAmount = decision === 'approved' && maxAmount !== null;
+    const amountValue = amount.trim() !== '' ? Number(amount) : null;
+    const amountValid =
+        amountValue === null ||
+        (Number.isFinite(amountValue) &&
+            amountValue > 0 &&
+            maxAmount !== null &&
+            amountValue <= maxAmount + 0.005);
+
     const otherErrors = [
         ...new Set(
             Object.entries(errors)
@@ -1371,7 +1407,8 @@ function DecisionForm({
         (!needsComment || comment.trim() !== '') &&
         (!needsDate || until >= tomorrow) &&
         (request.kind !== 'department' || departmentId !== null) &&
-        (!redirecting || toDepartmentId !== null);
+        (!redirecting || toDepartmentId !== null) &&
+        amountValid;
 
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -1382,6 +1419,7 @@ function DecisionForm({
                 until,
                 departmentId,
                 toDepartmentId,
+                amount: canSetAmount ? amount.trim() : '',
             });
         }
     };
@@ -1484,6 +1522,40 @@ function DecisionForm({
                         className="w-full sm:w-[200px]"
                     />
                     <InputError message={errors.until} />
+                </div>
+            )}
+
+            {canSetAmount && singleInvoice !== null && (
+                <div className="grid gap-2">
+                    <Label htmlFor="decision-amount">
+                        Suma aprobată la plată
+                    </Label>
+                    <Input
+                        id="decision-amount"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={maxAmount ?? undefined}
+                        placeholder={`tot: ${formatMoney(maxAmount ?? 0, singleInvoice.moneda)}`}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="w-full sm:w-[220px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Lasă gol ca să aprobi tot
+                        {request.kind === 'final'
+                            ? ' restul de plată'
+                            : ' partea departamentului'}{' '}
+                        ({formatMoney(maxAmount ?? 0, singleInvoice.moneda)}).
+                        Ce nu aprobi acum nu intră în rulajul de plată.
+                    </p>
+                    <InputError
+                        message={
+                            amountValid
+                                ? errors.amount
+                                : 'Suma trebuie să fie între 0 și plafonul de mai sus.'
+                        }
+                    />
                 </div>
             )}
 

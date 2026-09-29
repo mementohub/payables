@@ -80,7 +80,7 @@ class InvoiceWorkflow
     /**
      * A department's decision on its share of the invoice.
      */
-    public function decide(Invoice $invoice, Department $department, User $user, string $decision, ?string $comment = null, ?CarbonInterface $until = null): void
+    public function decide(Invoice $invoice, Department $department, User $user, string $decision, ?string $comment = null, ?CarbonInterface $until = null, ?float $amount = null): void
     {
         // Aprobarea e a departamentului: o dă cine face parte din el.
         // Contestarea și amânarea sunt altceva — Financiarul poate opri orice
@@ -103,9 +103,15 @@ class InvoiceWorkflow
             throw ValidationException::withMessages(['department' => 'Factura nu are nicio parte la departamentul '.$department->name.'.']);
         }
 
-        DB::transaction(function () use ($invoice, $department, $user, $decision, $comment, $until, $approval) {
+        // O parte se poate aproba și pe o sumă mai mică: atâta intră în plată,
+        // restul rămâne neaprobat. Suma e în banii facturii, cu TVA — adică
+        // exact cât se plătește.
+        $approved = $decision === InvoiceDepartmentApproval::APPROVED ? $this->approvedAmount($invoice, $approval, $amount) : null;
+
+        DB::transaction(function () use ($invoice, $department, $user, $decision, $comment, $until, $approval, $approved) {
             $approval->forceFill([
                 'status' => $decision,
+                'approved_amount' => $approved,
                 'comment' => $comment,
                 'postponed_until' => $decision === InvoiceDepartmentApproval::POSTPONED ? $until?->toDateString() : null,
                 'decided_by_id' => $user->id,
@@ -120,7 +126,7 @@ class InvoiceWorkflow
     /**
      * Top Management's decision on the whole invoice.
      */
-    public function decideFinal(Invoice $invoice, User $user, string $decision, ?string $comment = null, ?CarbonInterface $until = null, ?string $via = null): void
+    public function decideFinal(Invoice $invoice, User $user, string $decision, ?string $comment = null, ?CarbonInterface $until = null, ?string $via = null, ?float $amount = null): void
     {
         if (! $user->hasRole(User::ROLE_TOP_MANAGEMENT)) {
             throw new AuthorizationException('Aprobarea finală aparține Top Management.');
@@ -132,17 +138,52 @@ class InvoiceWorkflow
             throw ValidationException::withMessages(['decision' => 'Factura se aprobă final după ce o aprobă toate departamentele ei.']);
         }
 
-        DB::transaction(function () use ($invoice, $user, $decision, $comment, $until, $via) {
+        $approved = null;
+
+        if ($decision === self::APPROVED && $amount !== null) {
+            $outstanding = $invoice->outstandingAmount();
+
+            if ($amount <= 0 || $amount > $outstanding + 0.005) {
+                throw ValidationException::withMessages(['amount' => 'Suma aprobată trebuie să fie între 0 și restul de plată ('.number_format($outstanding, 2, ',', '.').').']);
+            }
+
+            $approved = round($amount, 2) >= round($outstanding, 2) ? null : round($amount, 2);
+        }
+
+        DB::transaction(function () use ($invoice, $user, $decision, $comment, $until, $via, $approved) {
             $invoice->forceFill([
                 'approval_status' => $decision,
                 'postponed_until' => $decision === self::POSTPONED ? $until?->toDateString() : null,
                 'final_decided_by_id' => $user->id,
                 'final_decided_at' => now(),
                 'final_comment' => $comment,
+                'approved_amount' => $approved,
             ])->save();
 
             $this->event($invoice, $user, 'final_'.$decision, $comment, null, $until, $via !== null ? ['via' => $via] : []);
         });
+    }
+
+    /**
+     * Suma pe care o aprobă un departament din partea lui, în banii facturii.
+     *
+     * Nespusă, sau cât toată partea, înseamnă „tot” și se ține goală, ca
+     * aprobarea să rămână valabilă dacă mai intră o plată parțială și restul
+     * se schimbă.
+     */
+    private function approvedAmount(Invoice $invoice, InvoiceDepartmentApproval $approval, ?float $amount): ?float
+    {
+        if ($amount === null) {
+            return null;
+        }
+
+        $share = $invoice->grossShareOf($approval);
+
+        if ($amount <= 0 || $amount > $share + 0.005) {
+            throw ValidationException::withMessages(['amount' => 'Suma aprobată trebuie să fie între 0 și partea departamentului ('.number_format($share, 2, ',', '.').').']);
+        }
+
+        return round($amount, 2) >= round($share, 2) ? null : round($amount, 2);
     }
 
     /**
@@ -159,9 +200,11 @@ class InvoiceWorkflow
             InvoiceDepartmentApproval::query()
                 ->where('invoice_id', $invoice->id)
                 ->whereIn('status', [InvoiceDepartmentApproval::DISPUTED, InvoiceDepartmentApproval::POSTPONED])
-                ->update(['status' => InvoiceDepartmentApproval::PENDING, 'postponed_until' => null, 'decided_by_id' => null, 'decided_at' => null]);
+                ->update(['status' => InvoiceDepartmentApproval::PENDING, 'approved_amount' => null, 'postponed_until' => null, 'decided_by_id' => null, 'decided_at' => null]);
 
-            $invoice->forceFill(['final_decided_by_id' => null, 'final_decided_at' => null, 'final_comment' => null, 'postponed_until' => null])->save();
+            // Redeschisă, factura se aprobă din nou pe toată suma: o tăiere de
+            // sumă ține de decizia care tocmai a căzut.
+            $invoice->forceFill(['final_decided_by_id' => null, 'final_decided_at' => null, 'final_comment' => null, 'postponed_until' => null, 'approved_amount' => null])->save();
             $this->event($invoice, $user, 'reopened', $comment);
             $this->recompute($invoice->fresh());
         });

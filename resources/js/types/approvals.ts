@@ -28,7 +28,12 @@ export type DepartmentRef = {
 export type DepartmentShare = {
     id: number;
     name: string | null;
+    /** Partea departamentului, fără TVA, așa cum vine din rutare. */
     amount: number;
+    /** Aceeași parte în bani de plată (cu TVA): din ea se aprobă. */
+    share: number;
+    /** Cât s-a aprobat din ea; gol înseamnă toată partea. */
+    approved_amount: number | null;
     status: DepartmentDecision;
     comment: string | null;
     postponed_until: string | null;
@@ -54,6 +59,8 @@ export type WorkflowInvoice = {
     postponed_until: string | null;
     final: { by: string | null; at: string; comment: string | null } | null;
     departments: DepartmentShare[];
+    /** Cât s-a aprobat la plată: atât intră în rulaj. */
+    approved_for_payment: number;
 };
 
 export type ApprovalsPageProps = {

@@ -49,6 +49,14 @@ export default function DepartmentShares({
                         decision={share.status}
                         className="px-1.5 py-0 text-[10px]"
                     />
+                    {/* Aprobare pe o parte din sumă: se spune cât, altfel
+                        „aprobată” ar părea aprobată pe tot. */}
+                    {share.approved_amount !== null &&
+                        share.status === 'approved' && (
+                            <span className="font-medium text-amber-700 tabular-nums dark:text-amber-300">
+                                doar {formatMoney(share.approved_amount, currency)}
+                            </span>
+                        )}
                     {/* Cine a decis și când: pe hârtie, o aprobare fără nume
                         și fără oră nu e o aprobare. */}
                     {share.by && share.at && (

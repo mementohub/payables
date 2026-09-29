@@ -25,6 +25,7 @@ class InvoiceDepartmentApproval extends Model
     {
         return [
             'amount' => 'float',
+            'approved_amount' => 'float',
             'postponed_until' => 'date',
             'decided_at' => 'datetime',
         ];

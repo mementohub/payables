@@ -65,7 +65,8 @@ class PaymentRunService
                 ->where('approval_status', InvoiceWorkflow::APPROVED)
                 ->where(fn ($q) => $q->whereNull('postponed_until')->orWhere('postponed_until', '<=', $payDate->toDateString()))
                 ->whereNotIn('id', $busy->all())
-                ->get(['id', 'department_id', 'moneda', 'val_mon', 'val_mon_paid', 'val_mon_storno']);
+                ->with('departmentApprovals:id,invoice_id,department_id,amount,approved_amount,status')
+                ->get(['id', 'department_id', 'moneda', 'val_mon', 'val_mon_paid', 'val_mon_storno', 'approved_amount']);
 
             $now = now();
 
@@ -74,7 +75,9 @@ class PaymentRunService
                     'payment_run_id' => $run->id,
                     'invoice_id' => $invoice->id,
                     'department_id' => $invoice->department_id,
-                    'amount' => $invoice->outstandingAmount(),
+                    // Cât s-a aprobat, nu cât e factura: o aprobare parțială
+                    // trimite la bancă doar partea bună de plată.
+                    'amount' => $invoice->approvedForPayment(),
                     'currency' => $invoice->moneda,
                     'status' => PaymentRunItem::INCLUDED,
                     'created_at' => $now,

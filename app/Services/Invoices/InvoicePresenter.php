@@ -440,6 +440,8 @@ class InvoicePresenter
             'assignment_state' => $summary['assignment_state'],
             'department' => $summary['department'],
             'departments' => $summary['departments'],
+            'approved_for_payment' => $summary['approved_for_payment'],
+            'outstanding' => $summary['outstanding'],
             'final' => $summary['final'],
         ];
     }

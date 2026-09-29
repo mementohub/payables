@@ -25,6 +25,9 @@ export type Workflow = {
     department: DepartmentRef | null;
     departments: DepartmentShare[];
     final: { by: string | null; at: string; comment: string | null } | null;
+    /** Restul de plată și cât s-a aprobat din el. */
+    outstanding: number;
+    approved_for_payment: number;
 };
 
 /** One invoice line with the department it was routed to, and why. */

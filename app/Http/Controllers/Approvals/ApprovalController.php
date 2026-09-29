@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -145,6 +146,9 @@ class ApprovalController extends Controller
             'decision' => ['required', Rule::in(['approved', 'disputed', 'postponed'])],
             'comment' => ['nullable', 'string', 'max:2000'],
             'until' => ['nullable', 'date'],
+            // Se poate aproba și o parte din sumă, dar numai factură cu
+            // factură: pe un teanc n-ar avea ce să însemne.
+            'amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         $department = Department::query()->findOrFail($validated['department_id']);
@@ -152,7 +156,9 @@ class ApprovalController extends Controller
         $until = isset($validated['until']) ? Carbon::parse($validated['until']) : null;
         $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
-        DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decide($invoice, $department, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until)));
+        $amount = $this->amountFor($validated, $invoices->count());
+
+        DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decide($invoice, $department, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until, $amount)));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $this->message($validated['decision'], $invoices->count(), $department->name)]);
 
@@ -170,6 +176,7 @@ class ApprovalController extends Controller
             'decision' => ['required', Rule::in(['approved', 'disputed', 'postponed'])],
             'comment' => ['nullable', 'string', 'max:2000'],
             'until' => ['nullable', 'date'],
+            'amount' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
         abort_unless($request->user()->hasRole(User::ROLE_TOP_MANAGEMENT), 403, 'Decizia finală este a Top Management.');
@@ -177,11 +184,38 @@ class ApprovalController extends Controller
         $until = isset($validated['until']) ? Carbon::parse($validated['until']) : null;
         $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
-        DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decideFinal($invoice, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until)));
+        $amount = $this->amountFor($validated, $invoices->count());
+
+        DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $workflow->decideFinal($invoice, $request->user(), $validated['decision'], $validated['comment'] ?? null, $until, null, $amount)));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $this->message($validated['decision'], $invoices->count(), null)]);
 
         return back();
+    }
+
+    /**
+     * Suma aprobată, dacă s-a cerut una: numai la o singură factură și numai
+     * la aprobare. Pe mai multe facturi deodată o sumă n-ar ști a cui e.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function amountFor(array $validated, int $invoices): ?float
+    {
+        $amount = isset($validated['amount']) ? (float) $validated['amount'] : null;
+
+        if ($amount === null) {
+            return null;
+        }
+
+        if ($validated['decision'] !== 'approved') {
+            throw ValidationException::withMessages(['amount' => 'O sumă se poate pune doar la aprobare.']);
+        }
+
+        if ($invoices !== 1) {
+            throw ValidationException::withMessages(['amount' => 'Suma se aprobă factură cu factură.']);
+        }
+
+        return $amount;
     }
 
     /**
