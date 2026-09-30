@@ -20,6 +20,8 @@ export type IndexFilters = {
     from: string | null;
     to: string | null;
     only_unallocated: boolean;
+    /** De la cine am încasat sau cui i-am plătit. */
+    partner: string | null;
 };
 
 export type IndexProps = {
@@ -73,10 +75,14 @@ export type Line = {
 export type ShowFilters = {
     only_unallocated: boolean;
     direction: string | null;
+    /** De la cine am încasat sau cui i-am plătit. */
+    partner: string | null;
 };
 
 export type ShowProps = {
     statement: Statement;
     lines: Line[];
     filters: ShowFilters;
+    /** Cât face ce s-a filtrat, nu tot extrasul. */
+    shown: { lines: number; incoming: number; outgoing: number };
 };

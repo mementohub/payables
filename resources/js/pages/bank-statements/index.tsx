@@ -5,6 +5,7 @@ import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
     Table,
@@ -29,6 +30,7 @@ function formatAmount(value: number, currency: string | null) {
 export default function BankStatementsIndex({ statements, filters }: Props) {
     const [from, setFrom] = useState(filters.from ?? '');
     const [to, setTo] = useState(filters.to ?? '');
+    const [partner, setPartner] = useState(filters.partner ?? '');
 
     const applyFilter = (next: Partial<Props['filters']>) => {
         router.get(
@@ -41,6 +43,8 @@ export default function BankStatementsIndex({ statements, filters }: Props) {
                     (next.only_unallocated ?? filters.only_unallocated)
                         ? 1
                         : undefined,
+                partner:
+                    (next.partner ?? filters.partner ?? '') || undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -64,7 +68,7 @@ export default function BankStatementsIndex({ statements, filters }: Props) {
                     className="flex flex-wrap items-end gap-2"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        applyFilter({ from, to });
+                        applyFilter({ from, to, partner: partner.trim() });
                     }}
                 >
                     <div className="grid gap-1">
@@ -83,6 +87,18 @@ export default function BankStatementsIndex({ statements, filters }: Props) {
                             value={to}
                             onChange={setTo}
                             placeholder="yyyy-mm-dd"
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <Label className="text-xs" htmlFor="statement-partner">
+                            Partener
+                        </Label>
+                        <Input
+                            id="statement-partner"
+                            className="min-h-11 w-[240px]"
+                            placeholder="De la cine sau cui..."
+                            value={partner}
+                            onChange={(e) => setPartner(e.target.value)}
                         />
                     </div>
                     <Button

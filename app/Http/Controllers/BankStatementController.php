@@ -19,6 +19,9 @@ class BankStatementController extends Controller
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
         $onlyUnallocated = $request->boolean('only_unallocated');
+        // De la cine am încasat sau cui i-am plătit: numele partenerului, așa
+        // cum apare pe operațiune.
+        $partner = trim($request->string('partner')->toString());
 
         $statements = BankStatement::query()
             ->with('company:id,name')
@@ -26,6 +29,7 @@ class BankStatementController extends Controller
             ->when($from, fn ($q, $d) => $q->where('data_extras', '>=', $d))
             ->when($to, fn ($q, $d) => $q->where('data_extras', '<=', $d))
             ->when($onlyUnallocated, fn ($q) => $q->where('unallocated_count', '>', 0))
+            ->when($partner !== '', fn ($q) => $q->whereHas('lines', fn ($lines) => $lines->forPartner($partner)))
             ->orderByDesc('data_extras')
             ->orderBy('company_id')
             ->orderBy('iban')
@@ -58,6 +62,7 @@ class BankStatementController extends Controller
                 'from' => $from ?: null,
                 'to' => $to ?: null,
                 'only_unallocated' => $onlyUnallocated,
+                'partner' => $partner ?: null,
             ],
             'companies' => $companies,
             'activeCompany' => $activeCompany
@@ -72,6 +77,7 @@ class BankStatementController extends Controller
 
         $onlyUnallocated = $request->boolean('only_unallocated');
         $direction = $request->string('direction')->toString();
+        $partner = trim($request->string('partner')->toString());
 
         $lines = $bankStatement->lines()
             ->with([
@@ -81,6 +87,7 @@ class BankStatementController extends Controller
                 'allocations.invoice.partner:id,name',
             ])
             ->when($direction === 'incoming' || $direction === 'outgoing', fn ($q) => $q->where('direction', $direction))
+            ->when($partner !== '', fn ($q) => $q->forPartner($partner))
             ->orderBy('data_doc')
             ->orderBy('tip_doc')
             ->orderBy('nr_doc')
@@ -149,6 +156,14 @@ class BankStatementController extends Controller
             'filters' => [
                 'only_unallocated' => $onlyUnallocated,
                 'direction' => $direction ?: null,
+                'partner' => $partner ?: null,
+            ],
+            // Cât face ce s-a filtrat: altfel omul care caută un furnizor
+            // vede liniile, dar trebuie să le adune singur.
+            'shown' => [
+                'lines' => $mappedLines->count(),
+                'incoming' => round($mappedLines->where('direction', 'incoming')->sum('val_mon'), 2),
+                'outgoing' => round($mappedLines->where('direction', 'outgoing')->sum('val_mon'), 2),
             ],
             'activeCompany' => ['id' => (int) $bankStatement->company->id, 'name' => $bankStatement->company->name],
         ]);

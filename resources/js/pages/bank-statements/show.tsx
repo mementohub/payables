@@ -13,6 +13,7 @@ import type { PaymentStatus } from '@/components/payment-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -69,10 +70,12 @@ export default function BankStatementShow({
     statement,
     lines,
     filters,
+    shown,
 }: Props) {
     const [expandedLines, setExpandedLines] = useState<Set<number>>(
         () => new Set(),
     );
+    const [partner, setPartner] = useState(filters.partner ?? '');
 
     const toggleLine = (id: number) => {
         setExpandedLines((prev) => {
@@ -97,6 +100,8 @@ export default function BankStatementShow({
                         ? 1
                         : undefined,
                 direction: next.direction ?? filters.direction ?? undefined,
+                partner:
+                    (next.partner ?? filters.partner ?? '') || undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -201,7 +206,23 @@ export default function BankStatementShow({
                     </Card>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <form
+                    className="flex flex-wrap items-center gap-2"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        applyFilter({ partner: partner.trim() });
+                    }}
+                >
+                    <Input
+                        className="w-[260px]"
+                        placeholder="Partener: de la cine sau cui..."
+                        value={partner}
+                        onChange={(e) => setPartner(e.target.value)}
+                        aria-label="Partener"
+                    />
+                    <Button type="submit" variant="secondary">
+                        Caută
+                    </Button>
                     <Select
                         value={filters.direction ?? 'all'}
                         onValueChange={(v) =>
@@ -235,7 +256,23 @@ export default function BankStatementShow({
                             ? 'Doar nealocate'
                             : 'Toate tranzacțiile'}
                     </Button>
-                </div>
+                    {/* Cât face ce s-a filtrat: altfel liniile se adună cu
+                        ochiul. */}
+                    {(filters.partner ||
+                        filters.direction ||
+                        filters.only_unallocated) && (
+                        <span className="text-sm text-muted-foreground">
+                            {shown.lines}{' '}
+                            {shown.lines === 1 ? 'tranzacție' : 'tranzacții'}
+                            {shown.incoming > 0
+                                ? ` · încasat ${formatAmount(shown.incoming, statement.moneda)}`
+                                : ''}
+                            {shown.outgoing > 0
+                                ? ` · plătit ${formatAmount(shown.outgoing, statement.moneda)}`
+                                : ''}
+                        </span>
+                    )}
+                </form>
 
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                     <Table>
