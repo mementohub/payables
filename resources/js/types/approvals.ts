@@ -70,6 +70,12 @@ export type ApprovalsPageProps = {
     /** Every active department: where a share can be redirected. */
     all_departments: DepartmentRef[];
     counts: { mine: number; final: number; blocked: number; routing: number };
+    /** Cât e de plată în toată lista, nu doar pe pagina deschisă. */
+    totals: {
+        invoices: number;
+        lei: number;
+        by_currency: Record<string, number>;
+    };
     filters: {
         department: number | null;
         search: string;

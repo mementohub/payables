@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Approvals\InvoiceWorkflow;
 use App\Services\Routing\DepartmentAssigner;
+use App\Services\Xlsx\XlsxWriter;
 use App\Support\ViewAs;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +22,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The approvals inbox: what the user's departments still have to decide,
@@ -83,17 +85,10 @@ class ApprovalController extends Controller
 
         // Restul cozilor arată doar ce e de plătit și nedecis; „Toate” arată
         // tot ce a intrat, inclusiv facturile deja achitate.
-        $rows = ApprovalPresenter::load($tab === 'all' ? $this->received($query) : $this->payable($query))
-            ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('nr_doc', 'like', "%{$search}%")->orWhereHas('partner', fn (Builder $p) => $p->where('name', 'like', "%{$search}%"))))
-            ->when($dueUntil !== null, fn (Builder $q) => $q->where(fn (Builder $w) => $w->whereNull('data_scadenta')->orWhere('data_scadenta', '<=', $dueUntil)))
-            ->when($docFrom !== null, fn (Builder $q) => $q->where('data_doc', '>=', $docFrom))
-            ->when($docTo !== null, fn (Builder $q) => $q->where('data_doc', '<=', $docTo))
-            ->when($payment !== null, fn (Builder $q) => $q->paymentStatus($payment))
-            ->when(
-                $sort === 'due',
-                fn (Builder $q) => $q->orderByRaw('data_scadenta is null, data_scadenta')->orderBy('id'),
-                fn (Builder $q) => $q->orderByDesc('data_doc')->orderByDesc('id'),
-            )
+        $filters = compact('search', 'dueUntil', 'docFrom', 'docTo', 'payment', 'sort');
+        $listed = $this->filtered($tab === 'all' ? $this->received($query) : $this->payable($query), $filters);
+
+        $rows = ApprovalPresenter::load(clone $listed)
             ->paginate(50)
             ->withQueryString()
             ->through(fn (Invoice $invoice) => $this->presenter->invoice($invoice));
@@ -114,6 +109,7 @@ class ApprovalController extends Controller
                 'blocked' => $this->payable(Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]))->count(),
                 'routing' => $canRoute ? $this->payable(Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING))->count() : 0,
             ],
+            'totals' => $this->totals(clone $listed),
             'filters' => ['department' => $departmentId, 'search' => $search, 'due_until' => $dueUntil, 'doc_from' => $docFrom, 'doc_to' => $docTo, 'sort' => $sort, 'payment' => $payment, 'as' => $preview?->id, 'scope' => $scope],
             'can' => [
                 'final' => $preview === null && $user->hasRole(User::ROLE_TOP_MANAGEMENT),
@@ -191,6 +187,135 @@ class ApprovalController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => $this->message($validated['decision'], $invoices->count(), null)]);
 
         return back();
+    }
+
+    /**
+     * Lista de facturi a cererii, gata filtrată: același drum pentru pagină,
+     * pentru totaluri și pentru export.
+     *
+     * @return array{query: Builder<Invoice>, tab: string, filters: array<string, mixed>}
+     */
+    private function listing(Request $request): array
+    {
+        $user = ViewAs::effective($request);
+        $departments = $this->departmentsOf($user);
+        $queueIds = ($request->string('scope')->toString() === 'mine' || ! $user->seesEveryQueue())
+            ? $departments->pluck('id')->all()
+            : Department::query()->whereNotNull('code')->pluck('id')->all();
+
+        $tab = $request->string('tab')->toString();
+        $tab = in_array($tab, ['mine', 'final', 'blocked', 'routing', 'all'], true) ? $tab : 'mine';
+        $departmentId = $request->integer('department') ?: null;
+
+        $base = match ($tab) {
+            'final' => $this->finalQuery(),
+            'blocked' => Invoice::query()->whereIn('approval_status', [InvoiceWorkflow::DISPUTED, InvoiceWorkflow::POSTPONED]),
+            'routing' => Invoice::query()->where('approval_status', InvoiceWorkflow::ROUTING),
+            'all' => Invoice::query()->visibleTo($user),
+            default => $this->mineQuery($queueIds, $departmentId),
+        };
+
+        $filters = [
+            'search' => trim($request->string('search')->toString()),
+            'dueUntil' => $request->string('due_until')->toString() ?: null,
+            'docFrom' => $request->string('doc_from')->toString() ?: null,
+            'docTo' => $request->string('doc_to')->toString() ?: null,
+            'payment' => in_array($request->string('payment')->toString(), ['paid', 'partial', 'unpaid'], true) ? $request->string('payment')->toString() : null,
+            'sort' => $request->string('sort')->toString() === 'due' ? 'due' : 'doc',
+        ];
+
+        return [
+            'query' => $this->filtered($tab === 'all' ? $this->received($base) : $this->payable($base), $filters),
+            'tab' => $tab,
+            'filters' => $filters,
+        ];
+    }
+
+    /**
+     * Lista, așa cum se vede, într-un fișier de calcul.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        ['query' => $query, 'tab' => $tab] = $this->listing($request);
+
+        $rows = function () use ($query) {
+            foreach ($query->with(['partner:id,name,cui', 'company:id,name', 'departmentApprovals.department:id,name'])->cursor() as $invoice) {
+                yield [
+                    $invoice->company?->name,
+                    $invoice->partner?->name,
+                    $invoice->partner?->cui,
+                    $invoice->tip_doc,
+                    $invoice->nr_doc,
+                    $invoice->data_doc?->toDateString(),
+                    $invoice->data_scadenta?->toDateString(),
+                    $invoice->moneda,
+                    round((float) $invoice->val_mon, 2),
+                    $invoice->outstandingAmount(),
+                    round($invoice->outstandingAmount() * ((float) ($invoice->curs ?: 0) ?: 1), 2),
+                    $invoice->departmentApprovals->map(fn ($approval) => $approval->department?->name)->filter()->implode(', '),
+                    $invoice->approval_status,
+                    $invoice->paymentStatus(),
+                ];
+            }
+        };
+
+        return XlsxWriter::streamDownload(
+            'aprobari-'.$tab.'-'.now()->toDateString().'.xlsx',
+            ['Companie', 'Furnizor', 'CUI', 'Tip', 'Număr', 'Data facturii', 'Scadență', 'Monedă', 'Valoare', 'De plată', 'De plată (lei)', 'Departamente', 'Aprobare', 'Plată'],
+            $rows(),
+            'Aprobari',
+        );
+    }
+
+    /**
+     * Filtrele listei, într-un singur loc: le folosesc și pagina, și
+     * totalurile, și exportul, ca să nu numere fiecare altceva.
+     *
+     * @param  Builder<Invoice>  $query
+     * @param  array<string, mixed>  $filters
+     * @return Builder<Invoice>
+     */
+    private function filtered(Builder $query, array $filters): Builder
+    {
+        $search = (string) ($filters['search'] ?? '');
+
+        return $query
+            ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('nr_doc', 'like', "%{$search}%")->orWhereHas('partner', fn (Builder $p) => $p->where('name', 'like', "%{$search}%"))))
+            ->when($filters['dueUntil'] ?? null, fn (Builder $q, $d) => $q->where(fn (Builder $w) => $w->whereNull('data_scadenta')->orWhere('data_scadenta', '<=', $d)))
+            ->when($filters['docFrom'] ?? null, fn (Builder $q, $d) => $q->where('data_doc', '>=', $d))
+            ->when($filters['docTo'] ?? null, fn (Builder $q, $d) => $q->where('data_doc', '<=', $d))
+            ->when($filters['payment'] ?? null, fn (Builder $q, $p) => $q->paymentStatus($p))
+            ->when(
+                ($filters['sort'] ?? 'doc') === 'due',
+                fn (Builder $q) => $q->orderByRaw('data_scadenta is null, data_scadenta')->orderBy('id'),
+                fn (Builder $q) => $q->orderByDesc('data_doc')->orderByDesc('id'),
+            );
+    }
+
+    /**
+     * Cât e de plată în toată lista, nu doar pe pagina deschisă: pe monede,
+     * fiindcă facturile vin în lei și în valută, plus echivalentul în lei.
+     *
+     * @param  Builder<Invoice>  $query
+     * @return array<string, mixed>
+     */
+    private function totals(Builder $query): array
+    {
+        $rest = '(val_mon - val_mon_paid - val_mon_storno)';
+        $lei = '(case when curs is null or curs = 0 then 1 else curs end)';
+
+        $rows = $query->reorder()
+            ->selectRaw("moneda, count(*) as invoices, sum({$rest}) as rest, sum({$rest} * {$lei}) as rest_lei")
+            ->groupBy('moneda')
+            ->get();
+
+        return [
+            'invoices' => (int) $rows->sum('invoices'),
+            'lei' => round((float) $rows->sum('rest_lei'), 2),
+            'by_currency' => $rows
+                ->mapWithKeys(fn ($row) => [mb_strtoupper((string) ($row->moneda ?: 'RON')) => round((float) $row->rest, 2)])
+                ->all(),
+        ];
     }
 
     /**

@@ -6,6 +6,7 @@ import {
     Check,
     CheckCheck,
     CircleAlert,
+    Download,
     Forward,
     MessageSquare,
     MoreHorizontal,
@@ -193,6 +194,7 @@ export default function ApprovalsIndex({
     departments,
     all_departments: allDepartments,
     counts,
+    totals,
     filters,
     can,
     preview,
@@ -260,6 +262,22 @@ export default function ApprovalsIndex({
         // facturile deja achitate — fostul tab „Primite”.
         { value: 'all', label: 'Toate facturile', count: 0 },
     ];
+
+    // Exportul pleacă cu filtrele de pe ecran, ca fișierul să fie lista care
+    // se vede.
+    const exportUrl = ApprovalController.export({
+        query: {
+            tab,
+            search: filters.search || undefined,
+            due_until: filters.due_until ?? undefined,
+            doc_from: filters.doc_from ?? undefined,
+            doc_to: filters.doc_to ?? undefined,
+            payment: filters.payment ?? undefined,
+            sort: filters.sort === 'due' ? 'due' : undefined,
+            department: filters.department ?? undefined,
+            scope: filters.scope === 'mine' ? 'mine' : undefined,
+        },
+    }).url;
 
     const applyFilter = (next: Partial<Query>) => {
         const merged: Query = { ...filters, tab, ...next };
@@ -1102,6 +1120,37 @@ export default function ApprovalsIndex({
                         actions={bulkActions}
                     />
                 )}
+
+                {/* Cât e de plată în toată lista, nu doar pe pagina asta. */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sidebar-border/70 bg-muted/30 px-3 py-2 text-sm dark:border-sidebar-border">
+                    <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+                        <span className="text-muted-foreground">
+                            {totals.invoices}{' '}
+                            {totals.invoices === 1 ? 'factură' : 'facturi'}
+                        </span>
+                        {Object.entries(totals.by_currency).map(
+                            ([currency, value]) => (
+                                <span
+                                    key={currency}
+                                    className="font-semibold tabular-nums"
+                                >
+                                    {formatMoney(value, currency)}
+                                </span>
+                            ),
+                        )}
+                        {Object.keys(totals.by_currency).length > 1 && (
+                            <span className="text-muted-foreground tabular-nums">
+                                ≈ {formatMoney(totals.lei, 'RON')}
+                            </span>
+                        )}
+                    </div>
+                    <Button asChild variant="outline" size="sm">
+                        <a href={exportUrl}>
+                            <Download className="size-4" />
+                            Descarcă xlsx
+                        </a>
+                    </Button>
+                </div>
 
                 <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                     <Table>

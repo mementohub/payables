@@ -284,3 +284,32 @@ test('the inbox can show every departments queue, not only your own', function (
         ->post('/approvals/decide', ['invoice_ids' => [$other->id], 'department_id' => $this->departments['marketing']->id, 'decision' => 'approved'])
         ->assertForbidden();
 });
+
+/**
+ * Lista spune și cât e de plată, peste tot ce s-a filtrat, nu doar pe pagina
+ * deschisă — și se poate lua ca fișier, cu aceleași filtre.
+ */
+test('the inbox totals what is due and hands out the same list as a file', function () {
+    $lei = pagesRoutedInvoice($this->company, ['val_mon' => 1000, 'moneda' => 'RON', 'curs' => 1]);
+    pagesRoutedInvoice($this->company, ['val_mon' => 200, 'moneda' => 'EUR', 'curs' => 5]);
+
+    $this->actingAs($this->head)->get('/approvals?tab=mine')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('totals.invoices', 2)
+            ->where('totals.by_currency.RON', 1000)
+            ->where('totals.by_currency.EUR', 200)
+            // 1000 lei + 200 EUR × 5
+            ->where('totals.lei', 2000));
+
+    // Filtrele se văd și în totaluri.
+    $this->actingAs($this->head)->get('/approvals?tab=mine&search='.$lei->nr_doc)
+        ->assertInertia(fn ($page) => $page->where('totals.invoices', 1)->where('totals.lei', 1000));
+
+    $file = $this->actingAs($this->head)->get('/approvals/export?tab=mine');
+
+    $file->assertOk()
+        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+    expect(strlen($file->streamedContent()))->toBeGreaterThan(0);
+});

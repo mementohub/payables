@@ -91,6 +91,7 @@ Route::middleware('auth')->group(function () {
     // ce s-a aprobat deja.
     Route::middleware('area:approvals')->group(function () {
         Route::get('approvals', [ApprovalController::class, 'index'])->name('approvals.index');
+        Route::get('approvals/export', [ApprovalController::class, 'export'])->name('approvals.export');
         Route::post('approvals/decide', [ApprovalController::class, 'decide'])->name('approvals.decide');
         Route::post('approvals/final', [ApprovalController::class, 'decideFinal'])->name('approvals.final');
         Route::post('approvals/invoices/{invoice}/reopen', [ApprovalController::class, 'reopen'])->name('approvals.reopen');
