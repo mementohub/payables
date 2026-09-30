@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { formatDate } from '@/lib/money';
+import { cn } from '@/lib/utils';
 import { show as invoiceShow } from '@/routes/invoices';
 import {
     index as bankStatementsIndex,
@@ -102,6 +103,11 @@ export default function BankTransactions({
     const [partner, setPartner] = useState(filters.partner ?? '');
     const [from, setFrom] = useState(filters.from ?? '');
     const [to, setTo] = useState(filters.to ?? '');
+    const everything =
+        !filters.partner &&
+        !filters.iban &&
+        !filters.direction &&
+        !filters.company_id;
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
@@ -134,6 +140,12 @@ export default function BankTransactions({
                             Toate operațiunile din extrase, căutate după
                             partener: ce i-am plătit, ce am încasat de la el și
                             din ce cont.
+                            {everything && (
+                                <>
+                                    {' '}
+                                    Fără o căutare se arată ultimele trei luni.
+                                </>
+                            )}
                         </p>
                     </div>
                     <Button asChild variant="outline">
@@ -276,10 +288,26 @@ export default function BankTransactions({
 
                 {byBank.length > 0 && (
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {/* Fiecare bancă în parte: apasă pe ea și rămân doar
+                            operațiunile din contul ăla. */}
                         {byBank.map((row) => (
-                            <div
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    applyFilter({
+                                        iban:
+                                            filters.iban === row.iban
+                                                ? null
+                                                : row.iban,
+                                    })
+                                }
                                 key={`${row.iban}-${row.moneda}-${row.direction}`}
-                                className="rounded-xl border border-sidebar-border/70 p-3 dark:border-sidebar-border"
+                                className={cn(
+                                    'rounded-xl border p-3 text-left transition hover:border-primary/50',
+                                    filters.iban === row.iban
+                                        ? 'border-primary bg-primary/5'
+                                        : 'border-sidebar-border/70 dark:border-sidebar-border',
+                                )}
                             >
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <Landmark className="size-3.5" />
@@ -304,7 +332,7 @@ export default function BankTransactions({
                                             : 'tranzacții'}
                                     </span>
                                 </div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 )}

@@ -90,6 +90,14 @@ class BankStatementController extends Controller
         $companyId = $request->integer('company_id') ?: null;
         $iban = trim($request->string('iban')->toString());
 
+        // Extrasele au peste un milion de linii: fără nicio căutare, pagina ar
+        // aduna toată istoria la fiecare deschidere. Când nu se caută nimic
+        // anume, se uită la ultimele trei luni — și o spune în filtru, ca omul
+        // să poată lărgi.
+        if ($from === '' && $to === '' && $partner === '' && $iban === '') {
+            $from = now()->subMonths(3)->startOfMonth()->toDateString();
+        }
+
         $lines = fn () => BankStatementLine::query()
             ->whereHas('statement', fn ($statement) => $statement
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
@@ -144,7 +152,9 @@ class BankStatementController extends Controller
         // Totalurile pe bancă: din ce cont au plecat banii și cât.
         $byBank = $lines()
             ->join('bank_statements as s', 's.id', '=', 'bank_statement_lines.bank_statement_id')
-            ->selectRaw('s.banca, s.iban, bank_statement_lines.moneda, bank_statement_lines.direction, count(*) as lines, sum(bank_statement_lines.val_mon) as total')
+            // `lines` e cuvânt rezervat în MySQL; de aici un 500 pe server,
+            // deși sqlite îl accepta în teste.
+            ->selectRaw('s.banca, s.iban, bank_statement_lines.moneda, bank_statement_lines.direction, count(*) as lines_count, sum(bank_statement_lines.val_mon) as total')
             ->groupBy('s.banca', 's.iban', 'bank_statement_lines.moneda', 'bank_statement_lines.direction')
             ->orderBy('s.banca')
             ->orderBy('s.iban')
@@ -154,7 +164,7 @@ class BankStatementController extends Controller
                 'iban' => $row->iban,
                 'moneda' => $row->moneda,
                 'direction' => $row->direction,
-                'lines' => (int) $row->lines,
+                'lines' => (int) $row->lines_count,
                 'total' => round((float) $row->total, 2),
             ])
             ->all();

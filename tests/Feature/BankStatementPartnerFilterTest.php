@@ -131,6 +131,8 @@ test('the transactions page finds every payment to a supplier, by bank', functio
             ->component('bank-statements/transactions')
             ->has('lines.data', 2)
             // Totalurile se strâng pe cont, ca să se vadă din ce bancă a plecat.
+            // (Aliasul e `lines_count`, nu `lines`: `lines` e cuvânt rezervat
+            // în MySQL și pica interogarea pe server, deși sqlite o accepta.)
             ->has('by_bank', 2)
             ->where('by_bank.0.banca', 'BT')
             ->where('by_bank.0.total', 700)
