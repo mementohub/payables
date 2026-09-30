@@ -143,16 +143,14 @@ test('the transactions page finds every payment to a supplier, by bank', functio
             // Și totalul peste tot ce s-a filtrat.
             ->where('totals.lines', 2)
             ->where('totals.by_currency.0.total', 1000)
-            // Conturile se desfac abia când e aleasă o bancă.
-            ->has('by_account', 0));
+            // În filtru merg băncile, nu sutele de IBAN-uri.
+            ->where('banks', ['BT', 'ING']));
 
     $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&banca=ING')
         ->assertInertia(fn ($page) => $page
-            ->has('by_account', 1)
-            ->where('by_account.0.iban', 'RO49CCCC1B31007593840000')
-            ->has('lines.data', 1));
+            ->has('by_bank', 1)
+            ->where('by_bank.0.banca', 'ING')
+            ->has('lines.data', 1)
+            ->where('lines.data.0.statement.banca', 'ING'));
 
-    // Contul se poate alege, iar atunci rămâne doar ce a plecat din el.
-    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&iban='.$alt->iban)
-        ->assertInertia(fn ($page) => $page->has('lines.data', 1)->where('lines.data.0.statement.banca', 'ING'));
 });

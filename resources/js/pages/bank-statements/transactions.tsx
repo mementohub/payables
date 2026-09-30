@@ -39,7 +39,6 @@ type Filters = {
     from: string | null;
     to: string | null;
     company_id: number | null;
-    iban: string | null;
 };
 
 type Line = {
@@ -86,15 +85,9 @@ type Props = {
         lines: number;
         totals: Sums;
     }[];
-    by_account: {
-        iban: string;
-        banca: string | null;
-        lines: number;
-        totals: Sums;
-    }[];
     filters: Filters;
     companies: { id: number; name: string }[];
-    ibans: { iban: string; banca: string | null }[];
+    banks: string[];
 };
 
 /** Plătit și încasat, pe monede, într-un rând. */
@@ -138,17 +131,16 @@ export default function BankTransactions({
     lines,
     totals,
     by_bank: byBank,
-    by_account: byAccount,
     filters,
     companies,
-    ibans,
+    banks,
 }: Props) {
     const [partner, setPartner] = useState(filters.partner ?? '');
     const [from, setFrom] = useState(filters.from ?? '');
     const [to, setTo] = useState(filters.to ?? '');
     const everything =
         !filters.partner &&
-        !filters.iban &&
+        !filters.banca &&
         !filters.direction &&
         !filters.company_id;
 
@@ -164,7 +156,6 @@ export default function BankTransactions({
                 from: merged.from ?? undefined,
                 to: merged.to ?? undefined,
                 company_id: merged.company_id ?? undefined,
-                iban: merged.iban ?? undefined,
             },
             { preserveState: true, preserveScroll: true, replace: true },
         );
@@ -282,7 +273,7 @@ export default function BankTransactions({
                             onValueChange={(v) =>
                                 applyFilter({
                                     company_id: v === 'all' ? null : Number(v),
-                                    iban: null,
+                                    banca: null,
                                 })
                             }
                         >
@@ -303,26 +294,23 @@ export default function BankTransactions({
                         </Select>
                     </div>
                     <div className="grid gap-1">
-                        <Label className="text-xs">Cont</Label>
+                        <Label className="text-xs">Bancă</Label>
                         <Select
-                            value={filters.iban ?? 'all'}
+                            value={filters.banca ?? 'all'}
                             onValueChange={(v) =>
-                                applyFilter({ iban: v === 'all' ? null : v })
+                                applyFilter({ banca: v === 'all' ? null : v })
                             }
                         >
-                            <SelectTrigger className="min-h-11 w-[280px]">
+                            <SelectTrigger className="min-h-11 w-[240px]">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">
-                                    Toate conturile
+                                    Toate băncile
                                 </SelectItem>
-                                {ibans.map((account) => (
-                                    <SelectItem
-                                        key={account.iban}
-                                        value={account.iban}
-                                    >
-                                        {account.banca ?? '—'} · {account.iban}
+                                {banks.map((bank) => (
+                                    <SelectItem key={bank} value={bank}>
+                                        {bank}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -357,7 +345,6 @@ export default function BankTransactions({
                                                 filters.banca === bank.banca
                                                     ? null
                                                     : bank.banca,
-                                            iban: null,
                                         })
                                     }
                                     className={cn(
@@ -385,42 +372,6 @@ export default function BankTransactions({
                             ))}
                         </div>
 
-                        {/* Conturile băncii alese. */}
-                        {byAccount.length > 0 && (
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                {byAccount.map((account) => (
-                                    <button
-                                        type="button"
-                                        key={account.iban}
-                                        onClick={() =>
-                                            applyFilter({
-                                                iban:
-                                                    filters.iban ===
-                                                    account.iban
-                                                        ? null
-                                                        : account.iban,
-                                            })
-                                        }
-                                        className={cn(
-                                            'rounded-lg border border-dashed p-2.5 text-left transition hover:border-primary/50',
-                                            filters.iban === account.iban
-                                                ? 'border-primary bg-primary/5'
-                                                : 'border-sidebar-border/70 dark:border-sidebar-border',
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                            <span className="font-mono">
-                                                {account.iban}
-                                            </span>
-                                            <span>
-                                                {account.lines} tranz.
-                                            </span>
-                                        </div>
-                                        <Sums totals={account.totals} />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 )}
 

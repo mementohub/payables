@@ -88,14 +88,13 @@ class BankStatementController extends Controller
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
         $companyId = $request->integer('company_id') ?: null;
-        $iban = trim($request->string('iban')->toString());
         $banca = trim($request->string('banca')->toString());
 
         // Extrasele au peste un milion de linii: fără nicio căutare, pagina ar
         // aduna toată istoria la fiecare deschidere. Când nu se caută nimic
         // anume, se uită la ultimele trei luni — și o spune în filtru, ca omul
         // să poată lărgi.
-        if ($from === '' && $to === '' && $partner === '' && $iban === '' && $banca === '') {
+        if ($from === '' && $to === '' && $partner === '' && $banca === '') {
             $from = now()->subMonths(3)->startOfMonth()->toDateString();
         }
 
@@ -104,7 +103,6 @@ class BankStatementController extends Controller
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
                 ->when($from !== '', fn ($q) => $q->where('data_extras', '>=', $from))
                 ->when($to !== '', fn ($q) => $q->where('data_extras', '<=', $to))
-                ->when($iban !== '', fn ($q) => $q->where('iban', $iban))
                 ->when($banca !== '', fn ($q) => $q->where('banca', $banca)))
             ->when($partner !== '', fn ($q) => $q->forPartner($partner))
             ->when($direction !== null, fn ($q) => $q->where('direction', $direction));
@@ -173,24 +171,13 @@ class BankStatementController extends Controller
             ->values()
             ->all();
 
+        // Aceeași bancă e scrisă când cu majuscule, când nu: se strâng la un
+        // loc, cu ortografia cea mai des întâlnită.
         $byBank = $sums
-            ->groupBy(fn ($row) => (string) $row->banca)
+            ->groupBy(fn ($row) => mb_strtoupper(trim((string) $row->banca)))
             ->map(fn ($rows, $bank) => [
-                'banca' => $bank !== '' ? $bank : null,
+                'banca' => $bank !== '' ? trim((string) $rows->first()->banca) : null,
                 'accounts' => $rows->pluck('iban')->unique()->count(),
-                'lines' => (int) $rows->sum('lines_count'),
-                'totals' => $fold($rows),
-            ])
-            ->sortByDesc('lines')
-            ->values()
-            ->all();
-
-        // Conturile băncii alese, pentru cine vrea să coboare mai jos.
-        $byAccount = $banca === '' ? [] : $sums
-            ->groupBy('iban')
-            ->map(fn ($rows, $account) => [
-                'iban' => $account,
-                'banca' => $rows->first()->banca,
                 'lines' => (int) $rows->sum('lines_count'),
                 'totals' => $fold($rows),
             ])
@@ -211,25 +198,23 @@ class BankStatementController extends Controller
                 ])),
             ],
             'by_bank' => $byBank,
-            'by_account' => $byAccount,
             'filters' => [
                 'partner' => $partner ?: null,
                 'direction' => $direction,
                 'from' => $from ?: null,
                 'to' => $to ?: null,
                 'company_id' => $companyId,
-                'iban' => $iban ?: null,
                 'banca' => $banca ?: null,
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
-            'ibans' => BankStatement::query()
+            // În filtru merg băncile, nu conturile: sunt sute de IBAN-uri, iar
+            // omul întreabă „din ce bancă”, nu „din ce cont”.
+            'banks' => BankStatement::query()
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
-                ->selectRaw('iban, max(banca) as banca')
-                ->groupBy('iban')
+                ->whereNotNull('banca')
+                ->distinct()
                 ->orderBy('banca')
-                ->orderBy('iban')
-                ->get()
-                ->map(fn ($row) => ['iban' => $row->iban, 'banca' => $row->banca])
+                ->pluck('banca')
                 ->all(),
         ]);
     }
