@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { CalendarCheck, Download, Search } from 'lucide-react';
+import { CalendarCheck, Download, History, Search } from 'lucide-react';
 import { useState } from 'react';
 import Pagination from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
@@ -53,6 +53,8 @@ type Row = {
 type Filters = {
     today: string;
     until: string | null;
+    /** Cu restanțele înăuntru: tot ce e de plată până la data aleasă. */
+    overdue: boolean;
     company_id: number | null;
     department: number | null;
     search: string;
@@ -65,7 +67,10 @@ type Props = {
         count: number;
         lei: number;
         by_currency: Record<string, number>;
-        buckets: Record<'week' | 'month' | 'later', { count: number; lei: number }>;
+        buckets: Record<
+            'overdue' | 'week' | 'month' | 'later',
+            { count: number; lei: number }
+        >;
     };
     filters: Filters;
     companies: { id: number; name: string }[];
@@ -89,6 +94,10 @@ function dueLabel(days: number | null): string {
 
     if (days === 0) {
         return 'azi';
+    }
+
+    if (days < 0) {
+        return days === -1 ? 'de ieri' : `de ${Math.abs(days)} zile`;
     }
 
     return days === 1 ? 'mâine' : `în ${days} zile`;
@@ -115,6 +124,7 @@ export default function DueReport({
             dueIndex().url,
             {
                 until: merged.until ?? undefined,
+                overdue: merged.overdue ? 1 : undefined,
                 company_id: merged.company_id ?? undefined,
                 department: merged.department ?? undefined,
                 status: merged.status ?? undefined,
@@ -127,6 +137,7 @@ export default function DueReport({
     const exportUrl = dueExport({
         query: {
             until: filters.until ?? undefined,
+            overdue: filters.overdue ? 1 : undefined,
             company_id: filters.company_id ?? undefined,
             department: filters.department ?? undefined,
             status: filters.status ?? undefined,
@@ -134,7 +145,13 @@ export default function DueReport({
         },
     }).url;
 
-    const buckets: { key: 'week' | 'month' | 'later'; label: string }[] = [
+    const buckets: {
+        key: 'overdue' | 'week' | 'month' | 'later';
+        label: string;
+    }[] = [
+        ...(filters.overdue
+            ? ([{ key: 'overdue', label: 'restante' }] as const)
+            : []),
         { key: 'week', label: 'în 7 zile' },
         { key: 'month', label: 'în 8–30 de zile' },
         { key: 'later', label: 'peste 30 de zile' },
@@ -149,19 +166,37 @@ export default function DueReport({
                     <div>
                         <h1 className="text-xl font-semibold">Scadențar</h1>
                         <p className="max-w-3xl text-sm text-muted-foreground">
-                            Facturile de furnizor cu rest de plată și scadența
-                            de azi ({formatDate(filters.today)}) înainte. Sumele
-                            sunt ce a mai rămas de plătit, nu valoarea
+                            Facturile de furnizor cu rest de plată{' '}
+                            {filters.overdue
+                                ? 'cu tot cu restanțe'
+                                : `și scadența de azi (${formatDate(filters.today)}) înainte`}
+                            . Sumele sunt ce a mai rămas de plătit, nu valoarea
                             facturii.
                         </p>
                     </div>
 
-                    <Button asChild variant="outline">
-                        <a href={exportUrl}>
-                            <Download />
-                            Descarcă xlsx
-                        </a>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Scadențarul spune ce urmează; cu restanțele înăuntru
+                            spune tot ce e de plată până la data aleasă. */}
+                        <Button
+                            type="button"
+                            variant={filters.overdue ? 'default' : 'outline'}
+                            onClick={() =>
+                                applyFilter({ overdue: !filters.overdue })
+                            }
+                        >
+                            <History />
+                            {filters.overdue
+                                ? 'Cu restanțe'
+                                : 'Include restanțele'}
+                        </Button>
+                        <Button asChild variant="outline">
+                            <a href={exportUrl}>
+                                <Download />
+                                Descarcă xlsx
+                            </a>
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -399,7 +434,13 @@ export default function DueReport({
                                             {formatDate(row.data_doc)}
                                             <div className="text-xs font-medium">
                                                 {formatDate(row.data_scadenta)}
-                                                <span className="ml-1 font-normal text-muted-foreground">
+                                                <span
+                                                    className={
+                                                        (row.days ?? 0) < 0
+                                                            ? 'ml-1 font-medium text-red-600 dark:text-red-400'
+                                                            : 'ml-1 font-normal text-muted-foreground'
+                                                    }
+                                                >
                                                     ({dueLabel(row.days)})
                                                 </span>
                                             </div>

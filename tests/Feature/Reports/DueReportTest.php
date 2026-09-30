@@ -103,3 +103,28 @@ test('the report downloads as a spreadsheet', function () {
 
     expect(strlen($response->streamedContent()))->toBeGreaterThan(0);
 });
+
+/**
+ * Scadențarul spune ce urmează, deci lasă restanțele afară — dar întrebarea
+ * „cât e de plată până la data X” le vrea înăuntru, ca în lista de aprobări.
+ */
+test('the overdue invoices can be brought in', function () {
+    $restanta = dueInvoice(['nr_doc' => 'RESTANTA', 'data_scadenta' => '2026-09-01']);
+    dueInvoice(['nr_doc' => 'AZI', 'data_scadenta' => '2026-09-28']);
+
+    $this->actingAs($this->boss)->get('/reports/due?until=2026-09-29')
+        ->assertInertia(fn ($page) => $page
+            ->has('rows.data', 1)
+            ->where('totals.count', 1)
+            ->where('filters.overdue', false));
+
+    $this->actingAs($this->boss)->get('/reports/due?until=2026-09-29&overdue=1')
+        ->assertInertia(fn ($page) => $page
+            ->has('rows.data', 2)
+            ->where('rows.data.0.nr_doc', $restanta->nr_doc)
+            // Restanța se numără separat, ca să se vadă cât e întârziat.
+            ->where('totals.count', 2)
+            ->where('totals.buckets.overdue.count', 1)
+            ->where('totals.buckets.week.count', 1)
+            ->where('filters.overdue', true));
+});

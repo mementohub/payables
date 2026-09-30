@@ -84,7 +84,7 @@ class DueInvoicesController extends Controller
     }
 
     /**
-     * @return array{today: string, until: ?string, company_id: ?int, department: ?int, search: string, status: ?string}
+     * @return array{today: string, until: ?string, overdue: bool, company_id: ?int, department: ?int, search: string, status: ?string}
      */
     private function filters(Request $request): array
     {
@@ -93,6 +93,10 @@ class DueInvoicesController extends Controller
         return [
             'today' => Carbon::today()->toDateString(),
             'until' => $request->date('until')?->toDateString(),
+            // Restanțele stau în afara scadențarului: el spune ce urmează. Se
+            // pot aduce înăuntru, ca să iasă „tot ce e de plată până la data
+            // X”, cum arată și lista de aprobări.
+            'overdue' => $request->boolean('overdue'),
             'company_id' => $request->integer('company_id') ?: null,
             'department' => $request->integer('department') ?: null,
             'search' => trim($request->string('search')->toString()),
@@ -101,7 +105,7 @@ class DueInvoicesController extends Controller
     }
 
     /**
-     * @param  array{today: string, until: ?string, company_id: ?int, department: ?int, search: string, status: ?string}  $filters
+     * @param  array{today: string, until: ?string, overdue: bool, company_id: ?int, department: ?int, search: string, status: ?string}  $filters
      * @return Builder<Invoice>
      */
     private function query(array $filters): Builder
@@ -113,7 +117,7 @@ class DueInvoicesController extends Controller
             ->where('val_mon', '>', 0)
             ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
             ->whereNotNull('data_scadenta')
-            ->where('data_scadenta', '>=', $filters['today'])
+            ->when(! $filters['overdue'], fn (Builder $q) => $q->where('data_scadenta', '>=', $filters['today']))
             ->when($filters['until'] !== null, fn (Builder $q) => $q->where('data_scadenta', '<=', $filters['until']))
             ->when($filters['company_id'] !== null, fn (Builder $q) => $q->where('company_id', $filters['company_id']))
             ->when($filters['department'] !== null, fn (Builder $q) => $q->where('department_id', $filters['department']))
@@ -155,7 +159,7 @@ class DueInvoicesController extends Controller
     /**
      * Cât e de plătit: pe total, pe monedă și pe intervalele de scadență.
      *
-     * @param  array{today: string, until: ?string, company_id: ?int, department: ?int, search: string, status: ?string}  $filters
+     * @param  array{today: string, until: ?string, overdue: bool, company_id: ?int, department: ?int, search: string, status: ?string}  $filters
      * @return array<string, mixed>
      */
     private function totals(array $filters): array
@@ -173,6 +177,7 @@ class DueInvoicesController extends Controller
             $days = (int) $today->diffInDays($invoice->data_scadenta, false);
 
             $bucket = match (true) {
+                $days < 0 => 'overdue',
                 $days <= self::BUCKETS[0] => 'week',
                 $days <= self::BUCKETS[1] => 'month',
                 default => 'later',
@@ -189,6 +194,7 @@ class DueInvoicesController extends Controller
             'lei' => round($lei, 2),
             'by_currency' => $byCurrency,
             'buckets' => [
+                'overdue' => $buckets['overdue'] ?? ['count' => 0, 'lei' => 0],
                 'week' => $buckets['week'] ?? ['count' => 0, 'lei' => 0],
                 'month' => $buckets['month'] ?? ['count' => 0, 'lei' => 0],
                 'later' => $buckets['later'] ?? ['count' => 0, 'lei' => 0],
