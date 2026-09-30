@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ArrowDownLeft, ArrowUpRight, Landmark, Search } from 'lucide-react';
+import { Landmark, Search } from 'lucide-react';
 import { useState } from 'react';
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
@@ -34,6 +34,7 @@ import type { Paginated } from '@/types/pagination';
 
 type Filters = {
     partner: string | null;
+    banca: string | null;
     direction: 'incoming' | 'outgoing' | null;
     from: string | null;
     to: string | null;
@@ -68,20 +69,60 @@ type Line = {
     }[];
 };
 
+/** Cât s-a plătit și cât s-a încasat, pe monedă. */
+type Sums = {
+    moneda: string | null;
+    direction: 'incoming' | 'outgoing' | null;
+    lines: number;
+    total: number;
+}[];
+
 type Props = {
     lines: Paginated<Line>;
+    totals: { lines: number; by_currency: Sums };
     by_bank: {
         banca: string | null;
-        iban: string;
-        moneda: string | null;
-        direction: 'incoming' | 'outgoing' | null;
+        accounts: number;
         lines: number;
-        total: number;
+        totals: Sums;
+    }[];
+    by_account: {
+        iban: string;
+        banca: string | null;
+        lines: number;
+        totals: Sums;
     }[];
     filters: Filters;
     companies: { id: number; name: string }[];
     ibans: { iban: string; banca: string | null }[];
 };
+
+/** Plătit și încasat, pe monede, într-un rând. */
+function Sums({ totals, big = false }: { totals: Sums; big?: boolean }) {
+    if (totals.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+            {totals.map((row) => (
+                <span
+                    key={`${row.direction}-${row.moneda}`}
+                    className={cn(
+                        'inline-flex items-baseline gap-1 tabular-nums',
+                        big ? 'text-base font-semibold' : 'text-sm font-medium',
+                        row.direction === 'outgoing'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-green-700 dark:text-green-400',
+                    )}
+                >
+                    {row.direction === 'outgoing' ? 'plătit' : 'încasat'}
+                    <span>{amount(row.total, row.moneda)}</span>
+                </span>
+            ))}
+        </div>
+    );
+}
 
 function amount(value: number, currency: string | null) {
     return `${new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} ${currency ?? ''}`.trim();
@@ -95,7 +136,9 @@ function amount(value: number, currency: string | null) {
  */
 export default function BankTransactions({
     lines,
+    totals,
     by_bank: byBank,
+    by_account: byAccount,
     filters,
     companies,
     ibans,
@@ -116,6 +159,7 @@ export default function BankTransactions({
             bankTransactions().url,
             {
                 partner: merged.partner || undefined,
+                banca: merged.banca ?? undefined,
                 direction: merged.direction ?? undefined,
                 from: merged.from ?? undefined,
                 to: merged.to ?? undefined,
@@ -286,54 +330,97 @@ export default function BankTransactions({
                     </div>
                 </form>
 
-                {byBank.length > 0 && (
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {/* Fiecare bancă în parte: apasă pe ea și rămân doar
-                            operațiunile din contul ăla. */}
-                        {byBank.map((row) => (
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    applyFilter({
-                                        iban:
-                                            filters.iban === row.iban
-                                                ? null
-                                                : row.iban,
-                                    })
-                                }
-                                key={`${row.iban}-${row.moneda}-${row.direction}`}
-                                className={cn(
-                                    'rounded-xl border p-3 text-left transition hover:border-primary/50',
-                                    filters.iban === row.iban
-                                        ? 'border-primary bg-primary/5'
-                                        : 'border-sidebar-border/70 dark:border-sidebar-border',
-                                )}
-                            >
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <Landmark className="size-3.5" />
-                                    {row.banca ?? '—'}
-                                    <span className="font-mono">
-                                        {row.iban}
-                                    </span>
-                                </div>
-                                <div className="mt-1 flex items-baseline gap-2">
-                                    {row.direction === 'outgoing' ? (
-                                        <ArrowUpRight className="size-4 text-red-600" />
-                                    ) : (
-                                        <ArrowDownLeft className="size-4 text-green-600" />
+                {totals.lines > 0 && (
+                    <div className="space-y-3">
+                        {/* Totalul a tot ce s-a filtrat. */}
+                        <div className="rounded-xl border border-sidebar-border/70 bg-muted/30 p-3 dark:border-sidebar-border">
+                            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                                <span className="text-xs text-muted-foreground uppercase">
+                                    Total · {totals.lines}{' '}
+                                    {totals.lines === 1
+                                        ? 'tranzacție'
+                                        : 'tranzacții'}
+                                </span>
+                                <Sums totals={totals.by_currency} big />
+                            </div>
+                        </div>
+
+                        {/* O bancă, un card. Conturile ei se desfac la click. */}
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {byBank.map((bank) => (
+                                <button
+                                    type="button"
+                                    key={bank.banca ?? 'fara-banca'}
+                                    onClick={() =>
+                                        applyFilter({
+                                            banca:
+                                                filters.banca === bank.banca
+                                                    ? null
+                                                    : bank.banca,
+                                            iban: null,
+                                        })
+                                    }
+                                    className={cn(
+                                        'rounded-xl border p-3 text-left transition hover:border-primary/50',
+                                        filters.banca === bank.banca
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-sidebar-border/70 dark:border-sidebar-border',
                                     )}
-                                    <span className="text-lg font-semibold tabular-nums">
-                                        {amount(row.total, row.moneda)}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                        {row.lines}{' '}
-                                        {row.lines === 1
-                                            ? 'tranzacție'
-                                            : 'tranzacții'}
-                                    </span>
-                                </div>
-                            </button>
-                        ))}
+                                >
+                                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1.5 font-medium text-foreground">
+                                            <Landmark className="size-3.5" />
+                                            {bank.banca ?? 'Fără bancă'}
+                                        </span>
+                                        <span>
+                                            {bank.accounts}{' '}
+                                            {bank.accounts === 1
+                                                ? 'cont'
+                                                : 'conturi'}{' '}
+                                            · {bank.lines} tranz.
+                                        </span>
+                                    </div>
+                                    <Sums totals={bank.totals} />
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Conturile băncii alese. */}
+                        {byAccount.length > 0 && (
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {byAccount.map((account) => (
+                                    <button
+                                        type="button"
+                                        key={account.iban}
+                                        onClick={() =>
+                                            applyFilter({
+                                                iban:
+                                                    filters.iban ===
+                                                    account.iban
+                                                        ? null
+                                                        : account.iban,
+                                            })
+                                        }
+                                        className={cn(
+                                            'rounded-lg border border-dashed p-2.5 text-left transition hover:border-primary/50',
+                                            filters.iban === account.iban
+                                                ? 'border-primary bg-primary/5'
+                                                : 'border-sidebar-border/70 dark:border-sidebar-border',
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                            <span className="font-mono">
+                                                {account.iban}
+                                            </span>
+                                            <span>
+                                                {account.lines} tranz.
+                                            </span>
+                                        </div>
+                                        <Sums totals={account.totals} />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 

@@ -89,12 +89,13 @@ class BankStatementController extends Controller
         $to = $request->string('to')->toString();
         $companyId = $request->integer('company_id') ?: null;
         $iban = trim($request->string('iban')->toString());
+        $banca = trim($request->string('banca')->toString());
 
         // Extrasele au peste un milion de linii: fără nicio căutare, pagina ar
         // aduna toată istoria la fiecare deschidere. Când nu se caută nimic
         // anume, se uită la ultimele trei luni — și o spune în filtru, ca omul
         // să poată lărgi.
-        if ($from === '' && $to === '' && $partner === '' && $iban === '') {
+        if ($from === '' && $to === '' && $partner === '' && $iban === '' && $banca === '') {
             $from = now()->subMonths(3)->startOfMonth()->toDateString();
         }
 
@@ -103,7 +104,8 @@ class BankStatementController extends Controller
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
                 ->when($from !== '', fn ($q) => $q->where('data_extras', '>=', $from))
                 ->when($to !== '', fn ($q) => $q->where('data_extras', '<=', $to))
-                ->when($iban !== '', fn ($q) => $q->where('iban', $iban)))
+                ->when($iban !== '', fn ($q) => $q->where('iban', $iban))
+                ->when($banca !== '', fn ($q) => $q->where('banca', $banca)))
             ->when($partner !== '', fn ($q) => $q->forPartner($partner))
             ->when($direction !== null, fn ($q) => $q->where('direction', $direction));
 
@@ -149,29 +151,67 @@ class BankStatementController extends Controller
                     ->all(),
             ]);
 
-        // Totalurile pe bancă: din ce cont au plecat banii și cât.
-        $byBank = $lines()
+        // Cât s-a plătit și cât s-a încasat, strâns întâi pe bancă. Conturile
+        // se desfac abia când e aleasă o bancă: un furnizor mare apare pe zeci
+        // de IBAN-uri și monede, iar un card pentru fiecare combinație nu mai
+        // e un sumar.
+        // (`lines` e cuvânt rezervat în MySQL, de aici aliasul.)
+        $sums = $lines()
             ->join('bank_statements as s', 's.id', '=', 'bank_statement_lines.bank_statement_id')
-            // `lines` e cuvânt rezervat în MySQL; de aici un 500 pe server,
-            // deși sqlite îl accepta în teste.
             ->selectRaw('s.banca, s.iban, bank_statement_lines.moneda, bank_statement_lines.direction, count(*) as lines_count, sum(bank_statement_lines.val_mon) as total')
             ->groupBy('s.banca', 's.iban', 'bank_statement_lines.moneda', 'bank_statement_lines.direction')
-            ->orderBy('s.banca')
-            ->orderBy('s.iban')
-            ->get()
+            ->get();
+
+        $fold = fn (iterable $rows) => collect($rows)
             ->map(fn ($row) => [
-                'banca' => $row->banca,
-                'iban' => $row->iban,
                 'moneda' => $row->moneda,
                 'direction' => $row->direction,
                 'lines' => (int) $row->lines_count,
                 'total' => round((float) $row->total, 2),
             ])
+            ->sortBy([['direction', 'asc'], ['moneda', 'asc']])
+            ->values()
+            ->all();
+
+        $byBank = $sums
+            ->groupBy(fn ($row) => (string) $row->banca)
+            ->map(fn ($rows, $bank) => [
+                'banca' => $bank !== '' ? $bank : null,
+                'accounts' => $rows->pluck('iban')->unique()->count(),
+                'lines' => (int) $rows->sum('lines_count'),
+                'totals' => $fold($rows),
+            ])
+            ->sortByDesc('lines')
+            ->values()
+            ->all();
+
+        // Conturile băncii alese, pentru cine vrea să coboare mai jos.
+        $byAccount = $banca === '' ? [] : $sums
+            ->groupBy('iban')
+            ->map(fn ($rows, $account) => [
+                'iban' => $account,
+                'banca' => $rows->first()->banca,
+                'lines' => (int) $rows->sum('lines_count'),
+                'totals' => $fold($rows),
+            ])
+            ->sortByDesc('lines')
+            ->values()
             ->all();
 
         return Inertia::render('bank-statements/transactions', [
             'lines' => $rows,
+            // Totalul a tot ce s-a filtrat, pe monedă și pe sens.
+            'totals' => [
+                'lines' => (int) $sums->sum('lines_count'),
+                'by_currency' => $fold($sums->groupBy(fn ($row) => $row->moneda.'|'.$row->direction)->map(fn ($rows) => (object) [
+                    'moneda' => $rows->first()->moneda,
+                    'direction' => $rows->first()->direction,
+                    'lines_count' => $rows->sum('lines_count'),
+                    'total' => $rows->sum('total'),
+                ])),
+            ],
             'by_bank' => $byBank,
+            'by_account' => $byAccount,
             'filters' => [
                 'partner' => $partner ?: null,
                 'direction' => $direction,
@@ -179,6 +219,7 @@ class BankStatementController extends Controller
                 'to' => $to ?: null,
                 'company_id' => $companyId,
                 'iban' => $iban ?: null,
+                'banca' => $banca ?: null,
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
             'ibans' => BankStatement::query()

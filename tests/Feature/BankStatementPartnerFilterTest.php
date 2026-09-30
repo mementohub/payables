@@ -130,14 +130,27 @@ test('the transactions page finds every payment to a supplier, by bank', functio
         ->assertInertia(fn ($page) => $page
             ->component('bank-statements/transactions')
             ->has('lines.data', 2)
-            // Totalurile se strâng pe cont, ca să se vadă din ce bancă a plecat.
-            // (Aliasul e `lines_count`, nu `lines`: `lines` e cuvânt rezervat
-            // în MySQL și pica interogarea pe server, deși sqlite o accepta.)
+            // Sumarul se strânge pe bancă, nu pe fiecare combinație de cont,
+            // monedă și sens: un furnizor mare apare pe zeci de IBAN-uri.
+            // (Aliasul din interogare e `lines_count`: `lines` e cuvânt
+            // rezervat în MySQL și pica pe server, deși sqlite îl accepta.)
             ->has('by_bank', 2)
             ->where('by_bank.0.banca', 'BT')
-            ->where('by_bank.0.total', 700)
+            ->where('by_bank.0.accounts', 1)
+            ->where('by_bank.0.totals.0.total', 700)
             ->where('by_bank.1.banca', 'ING')
-            ->where('by_bank.1.total', 300));
+            ->where('by_bank.1.totals.0.total', 300)
+            // Și totalul peste tot ce s-a filtrat.
+            ->where('totals.lines', 2)
+            ->where('totals.by_currency.0.total', 1000)
+            // Conturile se desfac abia când e aleasă o bancă.
+            ->has('by_account', 0));
+
+    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&banca=ING')
+        ->assertInertia(fn ($page) => $page
+            ->has('by_account', 1)
+            ->where('by_account.0.iban', 'RO49CCCC1B31007593840000')
+            ->has('lines.data', 1));
 
     // Contul se poate alege, iar atunci rămâne doar ce a plecat din el.
     $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&iban='.$alt->iban)
