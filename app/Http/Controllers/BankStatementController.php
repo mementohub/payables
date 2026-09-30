@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankStatement;
+use App\Models\BankStatementLine;
 use App\Models\Company;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -68,6 +69,117 @@ class BankStatementController extends Controller
             'activeCompany' => $activeCompany
                 ? ['id' => (int) $activeCompany->id, 'name' => $activeCompany->name]
                 : null,
+        ]);
+    }
+
+    /**
+     * Tranzacțiile din toate extrasele, nu dintr-unul singur.
+     *
+     * Întrebarea obișnuită a Trezoreriei — „ce i-am plătit furnizorului ăsta
+     * și din ce bancă” — trece peste extrase: un furnizor e plătit din mai
+     * multe conturi, în luni diferite. Aici se caută după el, cu totalurile
+     * strânse pe bancă.
+     */
+    public function transactions(Request $request): Response
+    {
+        $partner = trim($request->string('partner')->toString());
+        $direction = $request->string('direction')->toString();
+        $direction = in_array($direction, ['incoming', 'outgoing'], true) ? $direction : null;
+        $from = $request->string('from')->toString();
+        $to = $request->string('to')->toString();
+        $companyId = $request->integer('company_id') ?: null;
+        $iban = trim($request->string('iban')->toString());
+
+        $lines = fn () => BankStatementLine::query()
+            ->whereHas('statement', fn ($statement) => $statement
+                ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
+                ->when($from !== '', fn ($q) => $q->where('data_extras', '>=', $from))
+                ->when($to !== '', fn ($q) => $q->where('data_extras', '<=', $to))
+                ->when($iban !== '', fn ($q) => $q->where('iban', $iban)))
+            ->when($partner !== '', fn ($q) => $q->forPartner($partner))
+            ->when($direction !== null, fn ($q) => $q->where('direction', $direction));
+
+        $rows = $lines()
+            ->with([
+                'statement:id,company_id,data_extras,banca,iban',
+                'statement.company:id,name',
+                'partner:id,name',
+                'allocations:id,bank_statement_line_id,tip_doc_com,nr_doc_com,invoice_id,val_fin',
+                'allocations.invoice:id,nr_doc,tip_doc',
+            ])
+            ->orderByDesc('data_doc')
+            ->orderByDesc('id')
+            ->paginate(100)
+            ->withQueryString()
+            ->through(fn (BankStatementLine $line) => [
+                'id' => $line->id,
+                'data_doc' => $line->data_doc?->toDateString(),
+                'tip_doc' => $line->tip_doc,
+                'nr_doc' => $line->nr_doc,
+                'direction' => $line->direction,
+                'moneda' => $line->moneda,
+                'val_mon' => (float) $line->val_mon,
+                'unallocated' => $line->unallocated,
+                'partner' => $line->partner?->name ?? $line->partener_name,
+                'counterparty' => $line->direction === 'incoming' ? $line->cine_preda : $line->cine_primeste,
+                'obs_txt' => $line->obs_txt,
+                'statement' => $line->statement ? [
+                    'id' => $line->statement->id,
+                    'data_extras' => $line->statement->data_extras?->toDateString(),
+                    'banca' => $line->statement->banca,
+                    'iban' => $line->statement->iban,
+                    'company' => $line->statement->company?->name,
+                ] : null,
+                'invoices' => $line->allocations
+                    ->map(fn ($allocation) => [
+                        'id' => $allocation->invoice?->id,
+                        'nr_doc' => $allocation->invoice?->nr_doc ?? $allocation->nr_doc_com,
+                        'tip_doc' => $allocation->invoice?->tip_doc ?? $allocation->tip_doc_com,
+                        'val_fin' => (float) $allocation->val_fin,
+                    ])
+                    ->values()
+                    ->all(),
+            ]);
+
+        // Totalurile pe bancă: din ce cont au plecat banii și cât.
+        $byBank = $lines()
+            ->join('bank_statements as s', 's.id', '=', 'bank_statement_lines.bank_statement_id')
+            ->selectRaw('s.banca, s.iban, bank_statement_lines.moneda, bank_statement_lines.direction, count(*) as lines, sum(bank_statement_lines.val_mon) as total')
+            ->groupBy('s.banca', 's.iban', 'bank_statement_lines.moneda', 'bank_statement_lines.direction')
+            ->orderBy('s.banca')
+            ->orderBy('s.iban')
+            ->get()
+            ->map(fn ($row) => [
+                'banca' => $row->banca,
+                'iban' => $row->iban,
+                'moneda' => $row->moneda,
+                'direction' => $row->direction,
+                'lines' => (int) $row->lines,
+                'total' => round((float) $row->total, 2),
+            ])
+            ->all();
+
+        return Inertia::render('bank-statements/transactions', [
+            'lines' => $rows,
+            'by_bank' => $byBank,
+            'filters' => [
+                'partner' => $partner ?: null,
+                'direction' => $direction,
+                'from' => $from ?: null,
+                'to' => $to ?: null,
+                'company_id' => $companyId,
+                'iban' => $iban ?: null,
+            ],
+            'companies' => Company::orderBy('name')->get(['id', 'name']),
+            'ibans' => BankStatement::query()
+                ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
+                ->selectRaw('iban, max(banca) as banca')
+                ->groupBy('iban')
+                ->orderBy('banca')
+                ->orderBy('iban')
+                ->get()
+                ->map(fn ($row) => ['iban' => $row->iban, 'banca' => $row->banca])
+                ->all(),
         ]);
     }
 

@@ -94,3 +94,50 @@ test('the list of statements keeps only those that touch the partner', function 
 
     expect($gol->id)->not->toBeNull();
 });
+
+/**
+ * Un furnizor e plătit din mai multe conturi, în luni diferite: întrebarea
+ * „ce i-am plătit și din ce bancă” nu încape într-un singur extras.
+ */
+test('the transactions page finds every payment to a supplier, by bank', function () {
+    $alt = BankStatement::query()->create([
+        'company_id' => $this->company->id,
+        'data_extras' => '2026-08-05',
+        'banca' => 'ING',
+        'iban' => 'RO49CCCC1B31007593840000',
+        'moneda' => 'RON',
+        'lines_count' => 1,
+        'unallocated_count' => 0,
+        'total_incoming' => 0,
+        'total_outgoing' => 300,
+        'total_unallocated' => 0,
+    ]);
+
+    BankStatementLine::query()->create([
+        'bank_statement_id' => $alt->id,
+        'data_doc' => '2026-08-05',
+        'tip_doc' => 'OP',
+        'nr_doc' => '9',
+        'direction' => 'outgoing',
+        'partener_name' => 'HOTEL PARADIS SRL',
+        'moneda' => 'RON',
+        'val_mon' => 300,
+        'val_allocated' => 300,
+    ]);
+
+    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&direction=outgoing')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('bank-statements/transactions')
+            ->has('lines.data', 2)
+            // Totalurile se strâng pe cont, ca să se vadă din ce bancă a plecat.
+            ->has('by_bank', 2)
+            ->where('by_bank.0.banca', 'BT')
+            ->where('by_bank.0.total', 700)
+            ->where('by_bank.1.banca', 'ING')
+            ->where('by_bank.1.total', 300));
+
+    // Contul se poate alege, iar atunci rămâne doar ce a plecat din el.
+    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&iban='.$alt->iban)
+        ->assertInertia(fn ($page) => $page->has('lines.data', 1)->where('lines.data.0.statement.banca', 'ING'));
+});

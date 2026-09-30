@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { useState } from 'react';
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
@@ -20,6 +20,7 @@ import AppLayout from '@/layouts/app-layout';
 import {
     index as bankStatementsIndex,
     show as bankStatementsShow,
+    transactions as bankTransactions,
 } from '@/routes/bank-statements';
 import type { IndexProps as Props } from './types';
 
@@ -55,12 +56,24 @@ export default function BankStatementsIndex({ statements, filters }: Props) {
             <Head title="Extrase bancare" />
 
             <div className="flex flex-1 flex-col gap-4 p-4">
-                <div>
-                    <h1 className="text-2xl font-semibold">Extrase bancare</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Alocă încasările pe facturi emise și plățile pe facturi
-                        primite.
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-semibold">
+                            Extrase bancare
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                            Alocă încasările pe facturi emise și plățile pe
+                            facturi primite.
+                        </p>
+                    </div>
+                    {/* Căutarea după partener trece peste extrase: un furnizor
+                        e plătit din mai multe conturi, în luni diferite. */}
+                    <Button asChild variant="outline" className="min-h-11">
+                        <Link href={bankTransactions()}>
+                            <Search />
+                            Caută plăți pe partener
+                        </Link>
+                    </Button>
                 </div>
 
                 <form

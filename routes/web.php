@@ -131,6 +131,9 @@ Route::middleware('auth')->group(function () {
     // Extrasele bancare sunt tot ale plăților.
     Route::middleware('area:payments')->group(function () {
         Route::get('bank-statements', [BankStatementController::class, 'index'])->name('bank-statements.index');
+        // Înaintea rutei cu parametru, altfel „transactions” ar fi luat drept
+        // numărul unui extras.
+        Route::get('bank-statements/transactions', [BankStatementController::class, 'transactions'])->name('bank-statements.transactions');
         Route::get('bank-statements/{bankStatement}', [BankStatementController::class, 'show'])->name('bank-statements.show');
     });
 
