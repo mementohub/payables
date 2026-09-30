@@ -113,6 +113,21 @@ test('the transactions page finds every payment to a supplier, by bank', functio
         'total_unallocated' => 0,
     ]);
 
+    // Numele băncii vine din extrase umplut cu spații care nu se rup și
+    // scris cum apucă: în filtru trebuie să apară o singură dată.
+    BankStatement::query()->create([
+        'company_id' => $this->company->id,
+        'data_extras' => '2026-07-01',
+        'banca' => "ing\u{00A0}\u{00A0}",
+        'iban' => 'RO49DDDD1B31007593840000',
+        'moneda' => 'RON',
+        'lines_count' => 0,
+        'unallocated_count' => 0,
+        'total_incoming' => 0,
+        'total_outgoing' => 0,
+        'total_unallocated' => 0,
+    ]);
+
     BankStatementLine::query()->create([
         'bank_statement_id' => $alt->id,
         'data_doc' => '2026-08-05',
@@ -143,14 +158,20 @@ test('the transactions page finds every payment to a supplier, by bank', functio
             // Și totalul peste tot ce s-a filtrat.
             ->where('totals.lines', 2)
             ->where('totals.by_currency.0.total', 1000)
-            // În filtru merg băncile, nu sutele de IBAN-uri.
+            // În filtru merg băncile, nu sutele de IBAN-uri — iar aceeași
+            // bancă scrisă în două feluri apare o singură dată.
             ->where('banks', ['BT', 'ING']));
 
-    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&banca=ING')
+    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&banca[]=ING')
         ->assertInertia(fn ($page) => $page
             ->has('by_bank', 1)
             ->where('by_bank.0.banca', 'ING')
+            ->where('filters.banca', ['ING'])
             ->has('lines.data', 1)
             ->where('lines.data.0.statement.banca', 'ING'));
+
+    // Se pot alege mai multe deodată.
+    $this->actingAs($this->treasury)->get('/bank-statements/transactions?partner=paradis&banca[]=ING&banca[]=BT')
+        ->assertInertia(fn ($page) => $page->has('by_bank', 2)->has('lines.data', 2));
 
 });

@@ -1,11 +1,17 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Landmark, Search } from 'lucide-react';
+import { ChevronDown, Landmark, Search } from 'lucide-react';
 import { useState } from 'react';
 import DatePicker from '@/components/date-picker';
 import Pagination from '@/components/pagination';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import {
     Select,
     SelectContent,
@@ -34,7 +40,8 @@ import type { Paginated } from '@/types/pagination';
 
 type Filters = {
     partner: string | null;
-    banca: string | null;
+    /** Băncile alese; gol înseamnă toate. */
+    banca: string[];
     direction: 'incoming' | 'outgoing' | null;
     from: string | null;
     to: string | null;
@@ -140,9 +147,22 @@ export default function BankTransactions({
     const [to, setTo] = useState(filters.to ?? '');
     const everything =
         !filters.partner &&
-        !filters.banca &&
+        filters.banca.length === 0 &&
         !filters.direction &&
         !filters.company_id;
+
+    /** Bifează sau debifează o bancă, păstrându-le pe celelalte. */
+    const toggleBank = (bank: string | null) => {
+        if (bank === null) {
+            return;
+        }
+
+        applyFilter({
+            banca: filters.banca.includes(bank)
+                ? filters.banca.filter((name) => name !== bank)
+                : [...filters.banca, bank],
+        });
+    };
 
     const applyFilter = (next: Partial<Filters>) => {
         const merged = { ...filters, ...next };
@@ -151,7 +171,7 @@ export default function BankTransactions({
             bankTransactions().url,
             {
                 partner: merged.partner || undefined,
-                banca: merged.banca ?? undefined,
+                banca: merged.banca.length > 0 ? merged.banca : undefined,
                 direction: merged.direction ?? undefined,
                 from: merged.from ?? undefined,
                 to: merged.to ?? undefined,
@@ -273,7 +293,7 @@ export default function BankTransactions({
                             onValueChange={(v) =>
                                 applyFilter({
                                     company_id: v === 'all' ? null : Number(v),
-                                    banca: null,
+                                    banca: [],
                                 })
                             }
                         >
@@ -294,27 +314,57 @@ export default function BankTransactions({
                         </Select>
                     </div>
                     <div className="grid gap-1">
-                        <Label className="text-xs">Bancă</Label>
-                        <Select
-                            value={filters.banca ?? 'all'}
-                            onValueChange={(v) =>
-                                applyFilter({ banca: v === 'all' ? null : v })
-                            }
-                        >
-                            <SelectTrigger className="min-h-11 w-[240px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">
-                                    Toate băncile
-                                </SelectItem>
+                        <Label className="text-xs">Bănci</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="min-h-11 w-[240px] justify-between font-normal"
+                                >
+                                    <span className="truncate">
+                                        {filters.banca.length === 0
+                                            ? 'Toate băncile'
+                                            : filters.banca.length === 1
+                                              ? filters.banca[0]
+                                              : `${filters.banca.length} bănci`}
+                                    </span>
+                                    <ChevronDown className="size-4 opacity-60" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                                align="start"
+                                className="max-h-[320px] w-[280px] overflow-y-auto p-1"
+                            >
+                                {filters.banca.length > 0 && (
+                                    <button
+                                        type="button"
+                                        className="w-full rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
+                                        onClick={() =>
+                                            applyFilter({ banca: [] })
+                                        }
+                                    >
+                                        Toate băncile
+                                    </button>
+                                )}
                                 {banks.map((bank) => (
-                                    <SelectItem key={bank} value={bank}>
+                                    <label
+                                        key={bank}
+                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                                    >
+                                        <Checkbox
+                                            checked={filters.banca.includes(
+                                                bank,
+                                            )}
+                                            onCheckedChange={() =>
+                                                toggleBank(bank)
+                                            }
+                                        />
                                         {bank}
-                                    </SelectItem>
+                                    </label>
                                 ))}
-                            </SelectContent>
-                        </Select>
+                            </PopoverContent>
+                        </Popover>
                     </div>
                 </form>
 
@@ -339,17 +389,11 @@ export default function BankTransactions({
                                 <button
                                     type="button"
                                     key={bank.banca ?? 'fara-banca'}
-                                    onClick={() =>
-                                        applyFilter({
-                                            banca:
-                                                filters.banca === bank.banca
-                                                    ? null
-                                                    : bank.banca,
-                                        })
-                                    }
+                                    onClick={() => toggleBank(bank.banca)}
                                     className={cn(
                                         'rounded-xl border p-3 text-left transition hover:border-primary/50',
-                                        filters.banca === bank.banca
+                                        bank.banca !== null &&
+                                            filters.banca.includes(bank.banca)
                                             ? 'border-primary bg-primary/5'
                                             : 'border-sidebar-border/70 dark:border-sidebar-border',
                                     )}

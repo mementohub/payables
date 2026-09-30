@@ -88,13 +88,30 @@ class BankStatementController extends Controller
         $from = $request->string('from')->toString();
         $to = $request->string('to')->toString();
         $companyId = $request->integer('company_id') ?: null;
-        $banca = trim($request->string('banca')->toString());
+        // Băncile alese; una singură venită ca text merge la fel, pentru
+        // linkurile vechi.
+        $banks = collect($request->input('banca', []))
+            ->flatten()
+            ->map(fn ($name) => self::bankName((string) $name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        // Numele e scris în extrase cum apucă: cu majuscule sau nu, umplut cu
+        // spații care nu se rup. Filtrul caută valorile brute care, curățate,
+        // dau banca aleasă.
+        $raw = $banks->isEmpty() ? collect() : BankStatement::query()
+            ->whereNotNull('banca')
+            ->distinct()
+            ->pluck('banca')
+            ->filter(fn ($name) => $banks->contains(self::bankName((string) $name)))
+            ->values();
 
         // Extrasele au peste un milion de linii: fără nicio căutare, pagina ar
         // aduna toată istoria la fiecare deschidere. Când nu se caută nimic
         // anume, se uită la ultimele trei luni — și o spune în filtru, ca omul
         // să poată lărgi.
-        if ($from === '' && $to === '' && $partner === '' && $banca === '') {
+        if ($from === '' && $to === '' && $partner === '' && $banks->isEmpty()) {
             $from = now()->subMonths(3)->startOfMonth()->toDateString();
         }
 
@@ -103,7 +120,7 @@ class BankStatementController extends Controller
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
                 ->when($from !== '', fn ($q) => $q->where('data_extras', '>=', $from))
                 ->when($to !== '', fn ($q) => $q->where('data_extras', '<=', $to))
-                ->when($banca !== '', fn ($q) => $q->where('banca', $banca)))
+                ->when($raw->isNotEmpty(), fn ($q) => $q->whereIn('banca', $raw->all())))
             ->when($partner !== '', fn ($q) => $q->forPartner($partner))
             ->when($direction !== null, fn ($q) => $q->where('direction', $direction));
 
@@ -174,9 +191,9 @@ class BankStatementController extends Controller
         // Aceeași bancă e scrisă când cu majuscule, când nu: se strâng la un
         // loc, cu ortografia cea mai des întâlnită.
         $byBank = $sums
-            ->groupBy(fn ($row) => mb_strtoupper(trim((string) $row->banca)))
+            ->groupBy(fn ($row) => self::bankName((string) $row->banca))
             ->map(fn ($rows, $bank) => [
-                'banca' => $bank !== '' ? trim((string) $rows->first()->banca) : null,
+                'banca' => $bank !== '' ? $bank : null,
                 'accounts' => $rows->pluck('iban')->unique()->count(),
                 'lines' => (int) $rows->sum('lines_count'),
                 'totals' => $fold($rows),
@@ -204,7 +221,7 @@ class BankStatementController extends Controller
                 'from' => $from ?: null,
                 'to' => $to ?: null,
                 'company_id' => $companyId,
-                'banca' => $banca ?: null,
+                'banca' => $banks->all(),
             ],
             'companies' => Company::orderBy('name')->get(['id', 'name']),
             // În filtru merg băncile, nu conturile: sunt sute de IBAN-uri, iar
@@ -213,10 +230,26 @@ class BankStatementController extends Controller
                 ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
                 ->whereNotNull('banca')
                 ->distinct()
-                ->orderBy('banca')
                 ->pluck('banca')
+                ->map(fn ($name) => self::bankName((string) $name))
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values()
                 ->all(),
         ]);
+    }
+
+    /**
+     * Numele băncii, curățat.
+     *
+     * În extrase apare cum apucă: cu majuscule sau nu, umplut la coadă cu
+     * spații care nu se rup (U+00A0), așa că aceeași bancă ieșea de două ori
+     * în filtru și cu sumele rupte în sumar.
+     */
+    private static function bankName(string $name): string
+    {
+        return mb_strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00A0}", ' ', $name)) ?? ''));
     }
 
     public function show(Request $request, BankStatement $bankStatement): Response
