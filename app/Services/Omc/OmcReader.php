@@ -21,6 +21,25 @@ use Illuminate\Support\Facades\DB;
 class OmcReader
 {
     /**
+     * Ce s-a întâmplat, spus omului care deschide raportul.
+     *
+     * Mesajul brut al driverului e o pagină de SQL în care se pierde singura
+     * informație care contează: că n-am ajuns la OMC și de ce. Textul lung
+     * rămâne în log, pentru cine repară.
+     */
+    public static function friendlyMessage(\Throwable $e): string
+    {
+        $message = $e->getMessage();
+
+        return match (true) {
+            str_contains($message, 'password authentication failed') => 'OMC a refuzat conexiunea: parola contului de citire nu mai e bună. Raportul se încarcă singur după ce se repune.',
+            str_contains($message, 'could not connect') || str_contains($message, 'Connection refused') || str_contains($message, 'timeout') => 'OMC nu răspunde acum. Reîncercați peste câteva minute.',
+            str_contains($message, 'SQLSTATE[08') => 'Legătura cu OMC a căzut în timpul citirii. Reîncercați.',
+            default => 'OMC nu a putut fi citit: '.mb_substr($message, 0, 160),
+        };
+    }
+
+    /**
      * Suppliers with invoices since a date whose name or VAT number contains
      * the term, the most recently invoiced first. The date range is the
      * leading column of the doc primary key, so this is an index range scan.

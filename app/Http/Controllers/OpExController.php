@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Services\Omc\OmcReader;
 use App\Services\Reports\OpExReportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class OpExController extends Controller
 {
@@ -25,15 +27,25 @@ class OpExController extends Controller
         }
 
         $report = null;
+        $error = null;
+
         if ($companyId) {
             $company = Company::find($companyId);
             if ($company) {
-                $current = $this->service->report($company, $year);
-                if ($compareYear) {
-                    $previous = $this->service->report($company, $compareYear);
-                    $report = $this->service->compareReports($current, $previous);
-                } else {
-                    $report = $current;
+                // Raportul se citește direct din OMC. Când OMC nu răspunde,
+                // pagina spune asta: un 500 arată ca o aplicație stricată,
+                // deși stricată e legătura.
+                try {
+                    $current = $this->service->report($company, $year);
+                    if ($compareYear) {
+                        $previous = $this->service->report($company, $compareYear);
+                        $report = $this->service->compareReports($current, $previous);
+                    } else {
+                        $report = $current;
+                    }
+                } catch (Throwable $e) {
+                    report($e);
+                    $error = OmcReader::friendlyMessage($e);
                 }
             }
         }
@@ -46,6 +58,7 @@ class OpExController extends Controller
                 'compare_year' => $compareYear,
             ],
             'report' => $report,
+            'error' => $error,
         ]);
     }
 

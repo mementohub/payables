@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\User;
 use App\Services\Reports\OpExReportService;
+use Illuminate\Database\QueryException;
 
 beforeEach(function () {
     $this->user = User::factory()->withRoles('top_management')->create();
@@ -148,4 +149,29 @@ test('invoices page applies month and tip_doc filters', function () {
             ->where('summary.count_filtered', 1)
             ->where('summary.count_total', 2)
         );
+});
+
+/**
+ * Raportul se citește direct din OMC. Când OMC nu răspunde — parolă schimbată,
+ * pgbouncer picat — pagina trebuie să spună asta: un 500 arată ca o aplicație
+ * stricată, deși stricată e legătura.
+ */
+test('the page says it plainly when OMC cannot be read', function () {
+    $this->mock(OpExReportService::class, function ($mock) {
+        $mock->shouldReceive('report')->andThrow(new QueryException(
+            'omc',
+            'select 1',
+            [],
+            new PDOException('SQLSTATE[08006] [7] connection to server failed: FATAL:  password authentication failed'),
+        ));
+    });
+
+    Company::factory()->create();
+
+    $this->actingAs(User::factory()->create(['roles' => [User::ROLE_TOP_MANAGEMENT]]))
+        ->get('/reports/opex')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('report', null)
+            ->where('error', 'OMC a refuzat conexiunea: parola contului de citire nu mai e bună. Raportul se încarcă singur după ce se repune.'));
 });

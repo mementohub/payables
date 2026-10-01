@@ -972,12 +972,12 @@ function PnlBuilding({ run }: { run: Run | null }) {
                 </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
+                {/* O construcție căzută arată altfel decât una în curs: altfel
+                    omul reîncarcă pagina o oră, degeaba. */}
                 <p className="text-muted-foreground">
-                    Citirea din eTrip a unui an întreg trece de un minut, deci
-                    raportul se face în fundal și se ține în cache o oră. Se
-                    construiește automat în fiecare noapte la 05:15; pentru un
-                    an mai vechi, pornirea se face la prima deschidere.
-                    Reîncarcă pagina în câteva minute.
+                    {failed
+                        ? 'Construcția s-a oprit cu o eroare, deci raportul a rămas cel dinainte (sau niciunul). Pornește-o din nou după ce se rezolvă cauza de mai jos.'
+                        : 'Citirea din eTrip a unui an întreg trece de un minut, deci raportul se face în fundal și se ține în cache o oră. Se construiește automat în fiecare noapte la 05:15; pentru un an mai vechi, pornirea se face la prima deschidere. Reîncarcă pagina în câteva minute.'}
                 </p>
                 {run?.log && (
                     <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-xs">

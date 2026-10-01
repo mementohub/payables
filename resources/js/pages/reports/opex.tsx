@@ -88,6 +88,8 @@ type Props = {
     companies: Company[];
     filters: Filters;
     report: OpExReport | null;
+    /** Ce s-a întâmplat, dacă OMC n-a putut fi citit. */
+    error: string | null;
 };
 
 const MONTH_LABELS = [
@@ -254,7 +256,12 @@ function buildInvoicesHref(
     return `${url}?${params.toString()}`;
 }
 
-export default function OpExIndex({ companies, filters, report }: Props) {
+export default function OpExIndex({
+    companies,
+    filters,
+    report,
+    error,
+}: Props) {
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
     const [compareMode, setCompareMode] = useState<CompareMode>('pct');
 
@@ -452,8 +459,22 @@ export default function OpExIndex({ companies, filters, report }: Props) {
 
                 {!report && (
                     <Card>
-                        <CardContent className="py-12 text-center text-muted-foreground">
-                            Selectează o companie pentru a vedea raportul.
+                        <CardContent className="py-12 text-center">
+                            {error ? (
+                                <div className="space-y-1">
+                                    <div className="font-medium text-destructive">
+                                        Raportul nu a putut fi citit
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                        {error}
+                                    </div>
+                                </div>
+                            ) : (
+                                <span className="text-muted-foreground">
+                                    Selectează o companie pentru a vedea
+                                    raportul.
+                                </span>
+                            )}
                         </CardContent>
                     </Card>
                 )}
