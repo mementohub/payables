@@ -104,6 +104,14 @@ return [
         'internal_coresp' => ['5081', '5121', '5124', '5125', '581', '5311', '5314', '5191', '1621', '1622', '167', '5186'],
         'salary_tax_coresp' => ['421', '425', '4315', '4316', '436', '444', '447', '4411', '4423', '446', '462', '457', '427', '426', '423'],
         'deposit_account' => '5081',
+
+        /*
+         * Măturarea de seară a contului curent în depozitul overnight, așa cum
+         * o scrie banca pe extras. Documentele astea pleacă din cont, dar până
+         * se dă ziua în contabilitate n-au cont corespondent, deci poziția ar
+         * pierde banii peste noapte.
+         */
+        'overnight_pattern' => env('CASHFLOW_OVERNIGHT_PATTERN', 'AUTO O/N%'),
         'supplier_tip_doc' => ['FactFI', 'FactFE'],
         /** Months of history the OPEX averages are taken from. */
         'opex_months' => 12,

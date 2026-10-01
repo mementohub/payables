@@ -156,6 +156,7 @@ class OmcCashFlowReader
     {
         $connection = $this->omc->connection();
         $deposit = (string) config('cashflow.omc.deposit_account', '5081');
+        $overnight = (string) config('cashflow.omc.overnight_pattern', 'AUTO O/N%');
         $to = CarbonImmutable::instance($asOf)->toDateString();
         $balancesAt = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? '1900-01-01';
         // Without a closed balance there is nothing to roll from, so the
@@ -258,14 +259,30 @@ class OmcCashFlowReader
                 group by 1
             ),
             dep as (
-                select d.moneda,
-                       sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as dep_net
-                from doc d
-                where d.data_doc > ?::date and d.data_doc <= ?::date
-                  and d.tip_doc in ('OP_PL', 'OP_INC')
-                  and d.conts_direct_coresp = ?
-                  and d.data_anulare is null
-                group by 1
+                select moneda, sum(net) as dep_net from (
+                    select d.moneda,
+                           sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as net
+                    from doc d
+                    where d.data_doc > ?::date and d.data_doc <= ?::date
+                      and d.tip_doc in ('OP_PL', 'OP_INC')
+                      and d.conts_direct_coresp = ?
+                      and d.data_anulare is null
+                    group by 1
+                    union all
+                    -- Măturarea de seară a contului în depozitul overnight, cât
+                    -- timp ziua nu e dată încă în contabilitate: banii au plecat
+                    -- din cont, iar fără cont corespondent n-ar ajunge nicăieri,
+                    -- deci poziția i-ar pierde până se contează ziua.
+                    select d.moneda,
+                           sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as net
+                    from doc d
+                    where d.data_doc > ?::date and d.data_doc <= ?::date
+                      and d.tip_doc in ('OP_PL', 'OP_INC')
+                      and coalesce(trim(d.conts_direct_coresp), '') = ''
+                      and d.obs_txt ilike ?
+                      and d.data_anulare is null
+                    group by 1
+                ) x group by 1
             ),
             currencies as (
                 select moneda from bank
@@ -287,6 +304,7 @@ class OmcCashFlowReader
             $balancesAt($anchors['bank']), $movesAfter($anchors['bank']), $to,
             $balancesAt($anchors['cash']), $movesAfter($anchors['cash']), $to,
             $movesAfter($anchors['deposits']), $to, $deposit,
+            $movesAfter($anchors['deposits']), $to, $overnight,
         ]);
 
         $deposits = $connection->select(<<<'SQL'
@@ -348,6 +366,7 @@ class OmcCashFlowReader
     public function depositBreakdown(array $anchors, CarbonInterface $asOf): array
     {
         $deposit = (string) config('cashflow.omc.deposit_account', '5081');
+        $overnight = (string) config('cashflow.omc.overnight_pattern', 'AUTO O/N%');
         $to = CarbonImmutable::instance($asOf)->toDateString();
         $from = $anchors['deposits']?->toDateString() ?? $to;
 
@@ -371,6 +390,17 @@ class OmcCashFlowReader
                   and d.conts_direct_coresp = ?
                   and d.data_anulare is null
                 group by 1, 2
+                union all
+                select 'overnight, încă necontat' as conta,
+                       d.moneda,
+                       sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as net
+                from doc d
+                where d.data_doc > ?::date and d.data_doc <= ?::date
+                  and d.tip_doc in ('OP_PL', 'OP_INC')
+                  and coalesce(trim(d.conts_direct_coresp), '') = ''
+                  and d.obs_txt ilike ?
+                  and d.data_anulare is null
+                group by 1, 2
             )
             select coalesce(b.conta, m.conta) as conta,
                    coalesce(b.moneda, m.moneda) as moneda,
@@ -379,7 +409,7 @@ class OmcCashFlowReader
             from baza b
             full outer join misc m on trim(m.conta) = trim(b.conta) and m.moneda = b.moneda
             order by 3 + 4 desc
-            SQL, [$deposit, $from, $from, $to, $deposit]);
+            SQL, [$deposit, $from, $from, $to, $deposit, $from, $to, $overnight]);
 
         return collect($rows)
             ->map(fn ($row) => [
