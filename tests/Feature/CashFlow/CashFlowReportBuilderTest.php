@@ -85,6 +85,14 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
             ['week' => '2026-09-07', 'kind' => 'out', 'partner' => 'Cineva Necunoscut SRL', 'coresp' => '401', 'lei' => 5000],
         ]);
         $mock->shouldReceive('partnerMainAccounts')->andReturn(['Agentia Media SRL' => '6231']);
+        // Depozitele pe tranșe și conturile pe minus: poziția le arată ca să
+        // poată fi confruntate cu extrasul.
+        $mock->shouldReceive('depositBreakdown')->andReturn([
+            ['account' => '.134', 'currency' => 'RON', 'opening' => 5000000, 'change' => 300000, 'amount' => 5300000],
+        ]);
+        $mock->shouldReceive('negativeAccounts')->andReturn([
+            ['bank' => 'UNICREDIT', 'account' => 'RO49BACX0000002661784001', 'currency' => 'EUR', 'amount' => -10000],
+        ]);
         $mock->shouldReceive('openingPosition')->with(Mockery::type('array'), Mockery::type(CarbonInterface::class))->andReturn([
             ['currency' => 'EUR', 'bank_open' => 100000, 'bank_in' => 0, 'bank_out' => 10000, 'cash_open' => 0, 'cash_in' => 0, 'cash_out' => 0, 'deposits_open' => 0, 'deposits_open_lei' => 0, 'deposits_change' => 0],
             ['currency' => 'RON', 'bank_open' => 1000000, 'bank_in' => 200000, 'bank_out' => 300000, 'cash_open' => 10000, 'cash_in' => 5000, 'cash_out' => 0, 'deposits_open' => 5000000, 'deposits_open_lei' => 5000000, 'deposits_change' => 300000],

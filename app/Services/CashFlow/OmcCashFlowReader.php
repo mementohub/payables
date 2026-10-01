@@ -334,6 +334,97 @@ class OmcCashFlowReader
     }
 
     /**
+     * Depozitele 5081 pe conturi analitice, la aceeași dată cu poziția.
+     *
+     * Trezoreria ține minte depozitele în tranșe („opt de câte zece
+     * milioane”), nu ca o sumă. Suma singură nu se poate verifica: la fel de
+     * bine ar lipsi o tranșă și ar fi în plus niște garanții. Fiecare analitic
+     * pornește din ultima închidere contabilă și e rulat cu documentele de
+     * după ea, exact ca totalul.
+     *
+     * @param  array{deposits: ?CarbonInterface}  $anchors
+     * @return list<array{account: string, currency: string, opening: float, change: float, amount: float}>
+     */
+    public function depositBreakdown(array $anchors, CarbonInterface $asOf): array
+    {
+        $deposit = (string) config('cashflow.omc.deposit_account', '5081');
+        $to = CarbonImmutable::instance($asOf)->toDateString();
+        $from = $anchors['deposits']?->toDateString() ?? $to;
+
+        $rows = $this->omc->connection()->select(<<<'SQL'
+            with baza as (
+                select distinct on (s.conta) s.conta,
+                       coalesce(c.moneda, 'Lei') as moneda,
+                       s.sold_db - coalesce(s.sold_cr, 0) as sold
+                from conta_sold s
+                left join conta c on c.conts = s.conts and c.conta = s.conta
+                where s.conts = ? and s.data_sold <= ?::date
+                order by s.conta, s.data_sold desc
+            ),
+            misc as (
+                select coalesce(nullif(trim(d.conta_direct_coresp), ''), '(fără analitic)') as conta,
+                       d.moneda,
+                       sum(case when d.tip_doc = 'OP_PL' then d.val_mon else -d.val_mon end) as net
+                from doc d
+                where d.data_doc > ?::date and d.data_doc <= ?::date
+                  and d.tip_doc in ('OP_PL', 'OP_INC')
+                  and d.conts_direct_coresp = ?
+                  and d.data_anulare is null
+                group by 1, 2
+            )
+            select coalesce(b.conta, m.conta) as conta,
+                   coalesce(b.moneda, m.moneda) as moneda,
+                   coalesce(b.sold, 0) as sold,
+                   coalesce(m.net, 0) as net
+            from baza b
+            full outer join misc m on trim(m.conta) = trim(b.conta) and m.moneda = b.moneda
+            order by 3 + 4 desc
+            SQL, [$deposit, $from, $from, $to, $deposit]);
+
+        return collect($rows)
+            ->map(fn ($row) => [
+                'account' => trim((string) $row->conta),
+                'currency' => self::currency((string) $row->moneda),
+                'opening' => round((float) $row->sold, 2),
+                'change' => round((float) $row->net, 2),
+                'amount' => round((float) $row->sold + (float) $row->net, 2),
+            ])
+            ->filter(fn (array $row) => abs($row['amount']) >= 0.5 || abs($row['opening']) >= 0.5)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Conturile bancare pe minus la data poziției: linii de credit trase sau
+     * conturi din care s-a constituit un depozit. Scad din poziție, așa cum
+     * trebuie, dar trezoreria le ține minte separat — altfel „banii din bănci”
+     * din raport nu seamănă cu extrasul.
+     *
+     * @return list<array{bank: string, account: string, currency: string, amount: float}>
+     */
+    public function negativeAccounts(CarbonInterface $asOf): array
+    {
+        $rows = $this->omc->connection()->select(<<<'SQL'
+            select distinct on (v.cont_banca) v.banca, v.cont_banca, v.moneda, v.sold_final_zi as sold
+            from view_banca_sold_final_zi v
+            where v.data_contab <= ?::date
+            order by v.cont_banca, v.data_contab desc
+            SQL, [CarbonImmutable::instance($asOf)->toDateString()]);
+
+        return collect($rows)
+            ->filter(fn ($row) => (float) $row->sold < -0.01)
+            ->map(fn ($row) => [
+                'bank' => trim((string) $row->banca),
+                'account' => trim((string) $row->cont_banca),
+                'currency' => self::currency((string) $row->moneda),
+                'amount' => round((float) $row->sold, 2),
+            ])
+            ->sortBy('amount')
+            ->values()
+            ->all();
+    }
+
+    /**
      * Receipts and payments per day and currency (document currency and
      * lei), recognised by the tip_doc flags, classed as internal (moves
      * between the company's own accounts: cash to bank, deposits, credit

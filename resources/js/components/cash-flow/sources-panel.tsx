@@ -119,6 +119,67 @@ function OpeningTable({ opening }: { opening: OpeningDetail }) {
                 </span>
             </div>
 
+            {(opening.deposits?.length || opening.negative?.length) && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                    {opening.deposits && opening.deposits.length > 0 && (
+                        <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
+                            <div className="text-xs font-semibold text-muted-foreground uppercase">
+                                Depozite 5081, pe conturi
+                            </div>
+                            <ul className="mt-1.5 space-y-0.5 text-sm">
+                                {opening.deposits.map((row) => (
+                                    <li
+                                        key={`${row.account}-${row.currency}`}
+                                        className="flex items-baseline justify-between gap-3"
+                                    >
+                                        <span className="text-muted-foreground">
+                                            {row.account}
+                                        </span>
+                                        <span className="tabular-nums">
+                                            {fmtRon(row.amount)}{' '}
+                                            <span className="text-xs text-muted-foreground">
+                                                {row.currency}
+                                            </span>
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {opening.negative && opening.negative.length > 0 && (
+                        <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
+                            <div className="text-xs font-semibold text-muted-foreground uppercase">
+                                Conturi pe minus, scăzute din poziție
+                            </div>
+                            <ul className="mt-1.5 space-y-0.5 text-sm">
+                                {opening.negative.map((row) => (
+                                    <li
+                                        key={row.account}
+                                        className="flex items-baseline justify-between gap-3"
+                                    >
+                                        <span className="truncate text-muted-foreground">
+                                            {row.bank}
+                                        </span>
+                                        <span className="tabular-nums text-red-600 dark:text-red-400">
+                                            {fmtRon(row.amount)}{' '}
+                                            <span className="text-xs text-muted-foreground">
+                                                {row.currency}
+                                            </span>
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <p className="mt-1.5 text-xs text-muted-foreground">
+                                Linii de credit trase sau conturi din care s-a
+                                constituit un depozit: banii se regăsesc în
+                                depozite.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <p className="text-xs text-muted-foreground">
                 {rates.length > 0 && (
                     <>

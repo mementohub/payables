@@ -367,6 +367,11 @@ class CashFlowReportBuilder
             'rates' => array_map(fn (float $rate) => round($rate, 4), $rates),
             'currencies' => $currencies,
             'rows' => array_values($rows),
+            // Trezoreria ține minte depozitele în tranșe și conturile pe minus
+            // pe numele lor: fără ele, suma din raport nu se poate confrunta
+            // cu extrasul.
+            'deposits' => $this->omc->depositBreakdown($anchors, $asOf),
+            'negative' => $this->omc->negativeAccounts($asOf),
             'by_currency' => $byCurrency,
             'total' => round($total, 2),
             '_rows' => count($position),

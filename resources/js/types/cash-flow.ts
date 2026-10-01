@@ -97,6 +97,22 @@ export type OpeningDetail = {
     rates?: Record<string, number>;
     currencies: string[];
     rows: OpeningRow[];
+    /** Depozitele 5081 pe conturi analitice, ca să se poată bifa tranșele. */
+    deposits?: {
+        account: string;
+        currency: string;
+        opening: number;
+        change: number;
+        amount: number;
+    }[];
+    /** Conturile bancare pe minus: linii de credit sau conturi din care s-a
+     *  constituit un depozit. */
+    negative?: {
+        bank: string;
+        account: string;
+        currency: string;
+        amount: number;
+    }[];
     by_currency: Record<string, number>;
     total: number;
 };
