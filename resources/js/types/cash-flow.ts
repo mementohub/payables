@@ -387,4 +387,6 @@ export type CashFlowPageProps = {
     /** Deferred: undefined until Inertia has loaded the programme. */
     flights?: Flight[];
     schedule: { nightly: string; timezone: string; weeks: number };
+    /** Ultima sincronizare OMC: dacă e după construire, raportul e de dinainte. */
+    syncedAt: string | null;
 };

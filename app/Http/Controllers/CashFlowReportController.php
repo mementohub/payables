@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ReadsRemote;
 use App\Models\CashFlowSnapshot;
 use App\Models\CharterContract;
 use App\Models\CharterFlight;
+use App\Models\Company;
 use App\Services\CashFlow\BookingSegments;
 use App\Services\CashFlow\CashFlowCellDetails;
 use App\Services\CashFlow\CashFlowOverrides;
@@ -51,6 +52,11 @@ class CashFlowReportController extends Controller
             'overrides' => $overrides->from(WeekGrid::fromToday()->start->toDateString()),
             'run' => $runner->status(ArtisanRunner::CASHFLOW),
             'lastRun' => Cache::get('cashflow:last_run'),
+            // Raportul e o fotografie: dacă OMC a mai primit documente după
+            // ce s-a construit, cifrele din el sunt de dinainte. OMC primește
+            // și documente cu dată în urmă, așa că diferența se vede inclusiv
+            // în soldurile de ieri.
+            'syncedAt' => Company::max('last_synced_at'),
             'parameters' => $params,
             'opex' => CashFlowParameters::opexCatalogue($params, $computed),
             'connections' => collect((array) config('etrip.connections'))->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),

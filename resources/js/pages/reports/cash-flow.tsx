@@ -107,6 +107,7 @@ export default function CashFlowReport({
     contracts,
     flights,
     schedule,
+    syncedAt,
 }: CashFlowPageProps) {
     const payload = snapshot?.payload ?? null;
     const [horizon, setHorizon] = useState<13 | 52>(13);
@@ -272,6 +273,24 @@ export default function CashFlowReport({
                                         {weekLabel(payload.week_start, true)}
                                     </span>
                                 )}
+                                {/* OMC primește și documente cu dată în urmă:
+                                    dacă s-a sincronizat după construire,
+                                    cifrele de aici sunt de dinainte. */}
+                                {syncedAt &&
+                                    new Date(syncedAt) >
+                                        new Date(snapshot.built_at) && (
+                                        <Badge variant="outline">
+                                            OMC sincronizat după construire (
+                                            {new Date(
+                                                syncedAt,
+                                            ).toLocaleTimeString('ro-RO', {
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
+                                            ) — reconstruiește pentru cifrele
+                                            de acum
+                                        </Badge>
+                                    )}
                             </p>
                         )}
                     </div>
