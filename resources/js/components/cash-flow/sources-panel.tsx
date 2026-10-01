@@ -31,6 +31,121 @@ function StatusIcon({ status }: { status: SourceStatus['status'] }) {
  * Where each line comes from, whether the last build could read it, the
  * opening balance detail and the rules the report applies.
  */
+/**
+ * Poziția de trezorerie, pe monede.
+ *
+ * Coloana unei monede apare doar dacă are ceva în ea: altfel unsprezece
+ * coloane, din care opt de zerouri, strâng cifrele una în alta și nu se mai
+ * citește nimic. Mărunțișul (sub un leu echivalent) se spune în cuvinte, sub
+ * tabel.
+ */
+function OpeningTable({ opening }: { opening: OpeningDetail }) {
+    const used = opening.currencies.filter((currency) =>
+        opening.rows.some(
+            (row) => Math.abs(row.values[currency] ?? 0) >= 1000,
+        ),
+    );
+    const shown = used.length > 0 ? used : opening.currencies.slice(0, 1);
+    const rest = opening.currencies.filter(
+        (currency) =>
+            !shown.includes(currency) &&
+            opening.rows.some((row) => Math.abs(row.values[currency] ?? 0) >= 1),
+    );
+    const position = opening.rows.find((row) => row.key === 'position');
+    const rates = Object.entries(opening.rates ?? {}).filter(
+        ([currency]) => currency !== 'RON' && shown.includes(currency),
+    );
+
+    return (
+        <div className="space-y-3">
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-sm">
+                    <thead className="text-xs text-muted-foreground uppercase">
+                        <tr>
+                            <th className="py-1.5 pr-4 text-left font-medium">
+                                Element
+                            </th>
+                            {shown.map((currency) => (
+                                <th
+                                    key={currency}
+                                    className="w-[150px] py-1.5 pl-4 text-right font-medium"
+                                >
+                                    {currency}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {opening.rows.map((row) => {
+                            const total =
+                                row.key.endsWith('_now') ||
+                                row.key === 'position';
+
+                            return (
+                                <tr
+                                    key={row.key}
+                                    className={
+                                        total
+                                            ? 'border-t border-sidebar-border/70 font-semibold'
+                                            : 'text-muted-foreground'
+                                    }
+                                >
+                                    <td className="py-1.5 pr-4">{row.label}</td>
+                                    {shown.map((currency) => (
+                                        <td
+                                            key={currency}
+                                            className="py-1.5 pl-4 text-right whitespace-nowrap tabular-nums"
+                                        >
+                                            {Math.abs(
+                                                row.values[currency] ?? 0,
+                                            ) >= 0.005
+                                                ? fmtRon(
+                                                      row.values[currency] ?? 0,
+                                                  )
+                                                : '—'}
+                                        </td>
+                                    ))}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-muted/40 px-3 py-2">
+                <span className="text-sm font-semibold">Total în lei</span>
+                <span className="text-lg font-semibold tabular-nums">
+                    {fmtRon(opening.total)}
+                </span>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+                {rates.length > 0 && (
+                    <>
+                        Curs BNR din OMC:{' '}
+                        {rates
+                            .map(([currency, rate]) => `${currency} ${rate}`)
+                            .join(', ')}
+                        .{' '}
+                    </>
+                )}
+                {rest.length > 0 && position && (
+                    <>
+                        Sume mărunte, cuprinse în total:{' '}
+                        {rest
+                            .map(
+                                (currency) =>
+                                    `${fmtRon(position.values[currency] ?? 0)} ${currency}`,
+                            )
+                            .join(', ')}
+                        .
+                    </>
+                )}
+            </p>
+        </div>
+    );
+}
+
 export default function SourcesPanel({
     sources,
     opening,
@@ -114,91 +229,30 @@ export default function SourcesPanel({
                 <CardHeader>
                     <CardTitle>Poziția de trezorerie (sold inițial)</CardTitle>
                     <CardDescription>
-                        {opening?.date
-                            ? `Poziția de trezorerie la ${opening.date}, sfârșitul zilei de ieri: soldurile contabile de bază (bănci ${opening.base?.bank ?? '–'}, casierii ${opening.base?.cash ?? '–'}, depozite 5081 ${opening.base?.deposits ?? '–'}) rulate cu documentele de bancă și casă până în acea zi inclusiv, la cursul BNR din OMC de la acea dată.${opening.fallback ? ' OMC nu are solduri înainte de ieri; s-a folosit cea mai recentă dată disponibilă.' : ''}`
-                            : 'Nu există încă o poziție: OMC nu a răspuns sau lipsesc soldurile de sfârșit de lună.'}
+                        {opening?.date ? (
+                            <>
+                                Banii din conturi la {opening.date}, sfârșitul
+                                zilei de ieri.
+                                <span className="mt-1 block">
+                                    Pornește din ultimele solduri din OMC —
+                                    bănci {opening.base?.bank ?? '–'}, casierii{' '}
+                                    {opening.base?.cash ?? '–'}, depozite 5081{' '}
+                                    {opening.base?.deposits ?? '–'} — rulate cu
+                                    documentele de bancă și casă până în acea zi
+                                    inclusiv.
+                                    {opening.fallback
+                                        ? ' OMC nu are solduri înainte de ieri; s-a folosit cea mai recentă dată disponibilă.'
+                                        : ''}
+                                </span>
+                            </>
+                        ) : (
+                            'Nu există încă o poziție: OMC nu a răspuns sau lipsesc soldurile de sfârșit de lună.'
+                        )}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {opening && opening.rows.length > 0 ? (
-                        <div className="overflow-auto">
-                            <table className="w-full text-sm">
-                                <thead className="text-xs text-muted-foreground uppercase">
-                                    <tr>
-                                        <th className="py-1 text-left">
-                                            Element
-                                        </th>
-                                        {opening.currencies.map((currency) => (
-                                            <th
-                                                key={currency}
-                                                className="py-1 text-right"
-                                            >
-                                                {currency}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-sidebar-border/70">
-                                    {opening.rows.map((row) => (
-                                        <tr
-                                            key={row.key}
-                                            className={
-                                                row.key.endsWith('_now') ||
-                                                row.key === 'position'
-                                                    ? 'font-semibold'
-                                                    : ''
-                                            }
-                                        >
-                                            <td className="py-1 pr-2">
-                                                {row.label}
-                                            </td>
-                                            {opening.currencies.map(
-                                                (currency) => (
-                                                    <td
-                                                        key={currency}
-                                                        className="py-1 text-right whitespace-nowrap tabular-nums"
-                                                    >
-                                                        {fmtRon(
-                                                            row.values[
-                                                                currency
-                                                            ] ?? 0,
-                                                        )}
-                                                    </td>
-                                                ),
-                                            )}
-                                        </tr>
-                                    ))}
-                                    <tr className="font-semibold">
-                                        <td className="py-1 pr-2">
-                                            Total RON
-                                            {opening.rates &&
-                                            Object.keys(opening.rates).length >
-                                                0
-                                                ? ` (BNR ${Object.entries(
-                                                      opening.rates,
-                                                  )
-                                                      .filter(
-                                                          ([currency]) =>
-                                                              currency !==
-                                                              'RON',
-                                                      )
-                                                      .map(
-                                                          ([currency, rate]) =>
-                                                              `${currency} ${rate}`,
-                                                      )
-                                                      .join(', ')})`
-                                                : ''}
-                                        </td>
-                                        <td
-                                            className="py-1 text-right tabular-nums"
-                                            colSpan={opening.currencies.length}
-                                        >
-                                            {fmtRon(opening.total)}
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <OpeningTable opening={opening} />
                     ) : null}
                 </CardContent>
             </Card>
