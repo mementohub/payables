@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Mail\CashFlowDailyMail;
 use App\Models\CashFlowSnapshot;
+use App\Models\User;
+use App\Services\Notifications\Recipients;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -14,7 +16,7 @@ use Throwable;
 #[Description('Trimite pe e-mail raportul de trezorerie (WCFR 52 Weeks) din ultimul snapshot bun. Programat zilnic dimineața, după construirea de noapte.')]
 class MailCashFlow extends Command
 {
-    public function handle(): int
+    public function handle(Recipients $recipients): int
     {
         if (! config('notifications.enabled', true) || ! config('notifications.cash_flow.enabled', true)) {
             $this->warn('Trimiterea raportului de trezorerie e oprită din config.');
@@ -22,10 +24,10 @@ class MailCashFlow extends Command
             return self::SUCCESS;
         }
 
-        $recipients = $this->recipients();
+        $to = $this->recipients($recipients);
 
-        if ($recipients === []) {
-            $this->error('Nu e trecut niciun destinatar (NOTIFICATIONS_CASH_FLOW_TO).');
+        if ($to === []) {
+            $this->error('Nu e trecut niciun destinatar: nimeni cu rol Top Management și nimic în NOTIFICATIONS_CASH_FLOW_TO.');
 
             return self::FAILURE;
         }
@@ -54,24 +56,37 @@ class MailCashFlow extends Command
         );
 
         try {
-            Mail::to($recipients)->send($mail);
+            Mail::to($to)->send($mail);
         } catch (Throwable $e) {
             $this->error('Mailul nu a plecat: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->info('Raport din '.$snapshot->built_at?->format('d.m.Y H:i').' trimis către '.implode(', ', $recipients).'.');
+        $this->info('Raport din '.$snapshot->built_at?->format('d.m.Y H:i').' trimis către '.implode(', ', $to).'.');
 
         return self::SUCCESS;
     }
 
     /**
+     * Cui pleacă raportul: Top Management, plus adresele trecute în config.
+     *
+     * Rolul e sursa de adevăr, nu o listă scrisă de mână: cine intră mâine în
+     * Top Management primește raportul fără să umble nimeni la `.env`. Cu
+     * `--to` se trimite doar acolo, pentru o probă.
+     *
      * @return list<string>
      */
-    private function recipients(): array
+    private function recipients(Recipients $recipients): array
     {
-        $raw = $this->option('to') ?: [config('notifications.cash_flow.to', '')];
+        if ($this->option('to')) {
+            $raw = $this->option('to');
+        } else {
+            $raw = [
+                ...$recipients->topManagement()->map(fn (User $user) => (string) $user->email)->all(),
+                (string) config('notifications.cash_flow.to', ''),
+            ];
+        }
 
         return collect($raw)
             ->flatMap(fn ($value) => explode(',', (string) $value))

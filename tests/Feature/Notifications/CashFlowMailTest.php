@@ -2,6 +2,7 @@
 
 use App\Mail\CashFlowDailyMail;
 use App\Models\CashFlowSnapshot;
+use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -38,6 +39,37 @@ function cashFlowPayload(): array
 beforeEach(function () {
     Mail::fake();
     config(['notifications.cash_flow.to' => 'stefan.petre@christiantour.ro']);
+});
+
+test('the report goes to Top Management, and to whoever else is written in the config', function () {
+    CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
+    $boss = User::factory()->withRoles('top_management')->create(['email' => 'sef@christiantour.ro']);
+    $alsoBoss = User::factory()->withRoles(['top_management', 'admin'])->create(['email' => 'sef2@christiantour.ro']);
+    $clerk = User::factory()->withRoles('admin')->create(['email' => 'administrator@christiantour.ro']);
+    config(['notifications.cash_flow.to' => 'trezorerie@christiantour.ro']);
+
+    $this->artisan('cashflow:mail')->assertSuccessful();
+
+    Mail::assertSent(CashFlowDailyMail::class, function (CashFlowDailyMail $mail) use ($boss, $alsoBoss, $clerk) {
+        return $mail->hasTo($boss->email)
+            && $mail->hasTo($alsoBoss->email)
+            && $mail->hasTo('trezorerie@christiantour.ro')
+            // Un cont de administrare nu e un om de decizie.
+            && ! $mail->hasTo($clerk->email);
+    });
+});
+
+test('the mail wears the Christian Tour colours and carries the logo inside it', function () {
+    CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
+
+    $html = (new CashFlowDailyMail(CashFlowSnapshot::latestUsable()))->render();
+
+    expect($html)->toContain('#011f5b')        // albastrul mărcii
+        ->toContain('#ff4200')                 // portocaliul mărcii
+        ->toContain('Nunito')
+        ->toContain('Christian Tour')
+        // Sigla e dusă cu mailul, nu luată de pe internet la deschidere.
+        ->toContain('data:image/png;base64,');
 });
 
 test('the morning mail carries the position, the weeks ahead and the report itself', function () {

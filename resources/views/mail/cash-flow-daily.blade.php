@@ -1,5 +1,31 @@
 @php
-    /** Un mail se citește pe telefon: tabel simplu, cifre aliniate, fără culori de ecran. */
+    /**
+     * Mailul poartă culorile aplicației: albastrul Christian Tour pentru text
+     * și cap de tabel, portocaliul doar pe ce se apasă și pe ce doare. Totul
+     * e scris în stiluri pe element, fiindcă Gmail aruncă foile de stil; ce
+     * ține de font rămâne și în <style>, pentru clienții care le citesc.
+     */
+    $ink = '#011f5b';          // albastrul mărcii
+    $orange = '#ff4200';       // portocaliul mărcii
+    $muted = '#74809a';
+    $line = '#d7dde9';
+    $wash = '#eef1f7';
+    $red = '#c8102e';
+    $green = '#1e7d3b';
+    $sans = "'Nunito Sans','Segoe UI',Helvetica,Arial,sans-serif";
+    $heading = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
+
+    /**
+     * Sigla merge în mail ca atașament ascuns (cid:), nu ca adresă de pe
+     * internet: altfel clienții de mail o blochează până dă omul clic pe
+     * „arată imaginile”. La o randare fără mesaj (probă, test) rămâne scrisă
+     * în pagină.
+     */
+    $logoPath = public_path('img/logo.png');
+    $logo = isset($message)
+        ? $message->embed($logoPath)
+        : 'data:image/png;base64,'.base64_encode(is_file($logoPath) ? (string) file_get_contents($logoPath) : '');
+
     $money = fn (?float $value, int $decimals = 0) => $value === null ? '—' : number_format($value, $decimals, ',', '.');
     $currency = $digest['currency'];
 @endphp
@@ -8,101 +34,175 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Trezorerie</title>
+    <meta name="color-scheme" content="light">
+    <title>Poziția de trezorerie</title>
+    <style>
+        @import url('https://fonts.bunny.net/css?family=nunito:600,700,800|nunito-sans:400,600,700');
+        body { margin: 0; padding: 0; }
+        a { color: {{ $ink }}; }
+        @media (max-width: 600px) {
+            .ct-pad { padding: 20px 16px !important; }
+            .ct-hide-sm { display: none !important; }
+            .ct-total { font-size: 26px !important; }
+        }
+    </style>
 </head>
-<body style="margin:0;padding:24px;background:#f5f5f4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1c1917;">
-<div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:24px;">
+<body style="margin:0;padding:0;background:{{ $wash }};font-family:{{ $sans }};color:{{ $ink }};-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{ $wash }};padding:24px 12px;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:100%;background:#ffffff;border:1px solid {{ $line }};border-radius:14px;overflow:hidden;">
 
-    <h1 style="margin:0 0 4px;font-size:18px;">Poziția de trezorerie</h1>
-    <p style="margin:0 0 20px;font-size:13px;color:#78716c;">
-        la {{ $digest['as_of'] ? \Carbon\CarbonImmutable::parse($digest['as_of'])->format('d.m.Y') : '—' }}
-        · raport construit {{ optional($digest['built_at'])->format('d.m.Y H:i') ?? '—' }}
-    </p>
+                {{-- Antet: sigla și numele aplicației, pe linia portocalie a mărcii --}}
+                <tr>
+                    <td class="ct-pad" style="padding:22px 28px 18px;border-bottom:3px solid {{ $orange }};">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                            <tr>
+                                <td width="44" style="width:44px;vertical-align:middle;">
+                                    <img src="{{ $logo }}" width="40" height="41" alt="Christian Tour" style="display:block;width:40px;height:41px;border:0;">
+                                </td>
+                                <td style="padding-left:12px;vertical-align:middle;">
+                                    <div style="font-family:{{ $heading }};font-size:17px;font-weight:800;letter-spacing:-0.2px;color:{{ $ink }};">Christian Tour</div>
+                                    <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">Cash Flow · Payables</div>
+                                </td>
+                                <td class="ct-hide-sm" align="right" style="vertical-align:middle;font-size:12px;color:{{ $muted }};">
+                                    {{ optional($digest['built_at'])->format('d.m.Y H:i') ?? '—' }}
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
 
-    @if ($digest['problems'] !== [])
-        <div style="margin:0 0 20px;padding:12px;border:1px solid #fcd34d;background:#fffbeb;border-radius:8px;font-size:13px;">
-            <strong>Raportul e incomplet.</strong>
-            <ul style="margin:6px 0 0;padding-left:18px;">
-                @foreach ($digest['problems'] as $problem)
-                    <li>{{ $problem }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+                <tr>
+                    <td class="ct-pad" style="padding:26px 28px 0;">
+                        <h1 style="margin:0 0 4px;font-family:{{ $heading }};font-size:21px;font-weight:800;color:{{ $ink }};">Poziția de trezorerie</h1>
+                        <p style="margin:0;font-size:13px;color:{{ $muted }};">
+                            la {{ $digest['as_of'] ? \Carbon\CarbonImmutable::parse($digest['as_of'])->format('d.m.Y') : '—' }}
+                            · raport WCFR 52 Weeks
+                        </p>
+                    </td>
+                </tr>
 
-    <table style="width:100%;border-collapse:collapse;margin:0 0 24px;font-size:14px;">
-        <tbody>
-        @foreach ($digest['position'] as $code => $amount)
-            <tr>
-                <td style="padding:6px 0;border-bottom:1px solid #f5f5f4;">{{ $code }}</td>
-                <td style="padding:6px 0;border-bottom:1px solid #f5f5f4;text-align:right;font-variant-numeric:tabular-nums;">
-                    {{ $money($amount, 2) }}
-                </td>
-            </tr>
-        @endforeach
-        <tr>
-            <td style="padding:8px 0;font-weight:600;">Total în {{ $currency }}</td>
-            <td style="padding:8px 0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">
-                {{ $money($digest['position_total']) }}
-            </td>
-        </tr>
-        </tbody>
-    </table>
+                @if ($digest['problems'] !== [])
+                    <tr>
+                        <td class="ct-pad" style="padding:18px 28px 0;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:3px solid {{ $orange }};background:#fff6f2;border-radius:0 8px 8px 0;">
+                                <tr>
+                                    <td style="padding:12px 14px;font-size:13px;color:{{ $ink }};">
+                                        <strong style="font-family:{{ $heading }};">Raportul e incomplet.</strong>
+                                        @foreach ($digest['problems'] as $problem)
+                                            <div style="margin-top:4px;color:{{ $muted }};">{{ $problem }}</div>
+                                        @endforeach
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                @endif
 
-    <h2 style="margin:0 0 8px;font-size:15px;">Următoarele {{ count($digest['weeks']) }} săptămâni</h2>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead>
-        <tr style="color:#78716c;text-align:right;">
-            <th style="padding:6px 4px;text-align:left;font-weight:500;">Săptămâna</th>
-            <th style="padding:6px 4px;font-weight:500;">Încasări</th>
-            <th style="padding:6px 4px;font-weight:500;">Plăți</th>
-            <th style="padding:6px 4px;font-weight:500;">Flux net</th>
-            <th style="padding:6px 4px;font-weight:500;">Sold final</th>
-        </tr>
-        </thead>
-        <tbody>
-        @foreach ($digest['weeks'] as $week)
-            <tr style="text-align:right;">
-                <td style="padding:6px 4px;text-align:left;border-top:1px solid #f5f5f4;">S+{{ $week['index'] }} · {{ $week['week'] }}</td>
-                <td style="padding:6px 4px;border-top:1px solid #f5f5f4;font-variant-numeric:tabular-nums;">{{ $money($week['in']) }}</td>
-                <td style="padding:6px 4px;border-top:1px solid #f5f5f4;font-variant-numeric:tabular-nums;">{{ $money($week['out']) }}</td>
-                <td style="padding:6px 4px;border-top:1px solid #f5f5f4;font-variant-numeric:tabular-nums;color:{{ $week['net'] < 0 ? '#b91c1c' : '#15803d' }};">{{ $money($week['net']) }}</td>
-                <td style="padding:6px 4px;border-top:1px solid #f5f5f4;font-weight:600;font-variant-numeric:tabular-nums;color:{{ $week['closing'] < 0 ? '#b91c1c' : '#1c1917' }};">{{ $money($week['closing']) }}</td>
-            </tr>
-        @endforeach
-        </tbody>
-    </table>
+                {{-- Banii de azi: totalul mare, monedele sub el --}}
+                <tr>
+                    <td class="ct-pad" style="padding:20px 28px 0;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{ $ink }};border-radius:12px;">
+                            <tr>
+                                <td style="padding:18px 20px 14px;">
+                                    <div style="font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#9fb0d4;">Total în {{ $currency }}</div>
+                                    <div class="ct-total" style="font-family:{{ $heading }};font-size:32px;font-weight:800;color:#ffffff;line-height:1.2;">{{ $money($digest['position_total']) }}</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:0 20px 18px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid rgba(255,255,255,0.18);">
+                                        @foreach ($digest['position'] as $code => $amount)
+                                            <tr>
+                                                <td style="padding:7px 0 0;font-size:13px;font-weight:700;color:#ffffff;">{{ $code }}</td>
+                                                <td align="right" style="padding:7px 0 0;font-size:13px;color:#dfe7f6;font-variant-numeric:tabular-nums;">{{ $money($amount, 2) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
 
-    <table style="width:100%;border-collapse:collapse;margin:20px 0 0;font-size:13px;">
-        <tbody>
-        <tr>
-            <td style="padding:4px 0;color:#78716c;">Încasări 13 săptămâni</td>
-            <td style="padding:4px 0;text-align:right;font-variant-numeric:tabular-nums;">{{ $money($digest['in_13']) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:4px 0;color:#78716c;">Plăți 13 săptămâni</td>
-            <td style="padding:4px 0;text-align:right;font-variant-numeric:tabular-nums;">{{ $money($digest['out_13']) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:4px 0;color:#78716c;">Sold la 13 săptămâni</td>
-            <td style="padding:4px 0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">{{ $money($digest['closing_13']) }}</td>
-        </tr>
-        @if ($digest['min_closing'] !== null)
-            <tr>
-                <td style="padding:4px 0;color:#78716c;">Cel mai jos sold ({{ $digest['min_closing']['week'] }})</td>
-                <td style="padding:4px 0;text-align:right;font-variant-numeric:tabular-nums;">{{ $money($digest['min_closing']['value']) }}</td>
-            </tr>
-        @endif
-        </tbody>
-    </table>
+                {{-- Săptămânile apropiate --}}
+                <tr>
+                    <td class="ct-pad" style="padding:26px 28px 0;">
+                        <h2 style="margin:0 0 10px;font-family:{{ $heading }};font-size:15px;font-weight:700;color:{{ $ink }};">Următoarele {{ count($digest['weeks']) }} săptămâni</h2>
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+                            <tr style="background:{{ $wash }};">
+                                <th align="left" style="padding:9px 8px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:{{ $muted }};border-radius:8px 0 0 8px;">Săptămâna</th>
+                                <th align="right" style="padding:9px 8px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:{{ $muted }};">Încasări</th>
+                                <th align="right" style="padding:9px 8px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:{{ $muted }};">Plăți</th>
+                                <th align="right" class="ct-hide-sm" style="padding:9px 8px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:{{ $muted }};">Flux net</th>
+                                <th align="right" style="padding:9px 8px;font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:{{ $muted }};border-radius:0 8px 8px 0;">Sold final</th>
+                            </tr>
+                            @foreach ($digest['weeks'] as $week)
+                                <tr>
+                                    <td style="padding:9px 8px;border-bottom:1px solid {{ $line }};color:{{ $ink }};">
+                                        <strong style="font-family:{{ $heading }};">S+{{ $week['index'] }}</strong>
+                                        <span style="color:{{ $muted }};">{{ $week['week'] }}</span>
+                                    </td>
+                                    <td align="right" style="padding:9px 8px;border-bottom:1px solid {{ $line }};font-variant-numeric:tabular-nums;">{{ $money($week['in']) }}</td>
+                                    <td align="right" style="padding:9px 8px;border-bottom:1px solid {{ $line }};font-variant-numeric:tabular-nums;">{{ $money($week['out']) }}</td>
+                                    <td align="right" class="ct-hide-sm" style="padding:9px 8px;border-bottom:1px solid {{ $line }};font-variant-numeric:tabular-nums;color:{{ $week['net'] < 0 ? $red : $green }};">{{ $money($week['net']) }}</td>
+                                    <td align="right" style="padding:9px 8px;border-bottom:1px solid {{ $line }};font-weight:700;font-variant-numeric:tabular-nums;color:{{ $week['closing'] < 0 ? $red : $ink }};">{{ $money($week['closing']) }}</td>
+                                </tr>
+                            @endforeach
+                        </table>
+                    </td>
+                </tr>
 
-    <p style="margin:24px 0 0;">
-        <a href="{{ $url }}" style="display:inline-block;padding:10px 16px;background:#1c1917;color:#ffffff;border-radius:8px;text-decoration:none;font-size:14px;">Deschide raportul</a>
-    </p>
+                {{-- Cifrele pe 13 săptămâni --}}
+                <tr>
+                    <td class="ct-pad" style="padding:22px 28px 0;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{ $wash }};border-radius:12px;">
+                            <tr>
+                                <td style="padding:14px 18px;font-size:13px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                        <tr>
+                                            <td style="padding:4px 0;color:{{ $muted }};">Încasări 13 săptămâni</td>
+                                            <td align="right" style="padding:4px 0;font-variant-numeric:tabular-nums;">{{ $money($digest['in_13']) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:4px 0;color:{{ $muted }};">Plăți 13 săptămâni</td>
+                                            <td align="right" style="padding:4px 0;font-variant-numeric:tabular-nums;">{{ $money($digest['out_13']) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:4px 0;color:{{ $muted }};">Sold la 13 săptămâni</td>
+                                            <td align="right" style="padding:4px 0;font-weight:700;font-variant-numeric:tabular-nums;">{{ $money($digest['closing_13']) }}</td>
+                                        </tr>
+                                        @if ($digest['min_closing'] !== null)
+                                            <tr>
+                                                <td style="padding:4px 0;color:{{ $muted }};">Cel mai jos sold ({{ $digest['min_closing']['week'] }})</td>
+                                                <td align="right" style="padding:4px 0;font-variant-numeric:tabular-nums;color:{{ $digest['min_closing']['value'] < 0 ? $red : $ink }};">{{ $money($digest['min_closing']['value']) }}</td>
+                                            </tr>
+                                        @endif
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
 
-    <p style="margin:20px 0 0;font-size:12px;color:#a8a29e;">
-        Toate cifrele sunt în {{ $currency }}, din raportul WCFR 52 Weeks. Raportul întreg e atașat.
-    </p>
-</div>
+                <tr>
+                    <td class="ct-pad" align="center" style="padding:26px 28px 6px;">
+                        <a href="{{ $url }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $heading }};font-size:14px;font-weight:700;">Deschide raportul</a>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td class="ct-pad" style="padding:18px 28px 26px;border-top:1px solid {{ $line }};">
+                        <p style="margin:14px 0 0;font-size:11px;line-height:1.6;color:{{ $muted }};text-align:center;">
+                            Toate cifrele sunt în {{ $currency }}, din raportul WCFR 52 Weeks construit în noaptea precedentă.<br>
+                            Raportul întreg e atașat. Mail automat — Christian Tour · Payables.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
 </body>
 </html>

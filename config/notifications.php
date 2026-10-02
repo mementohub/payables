@@ -28,7 +28,10 @@ return [
 
     'cash_flow' => [
         'enabled' => (bool) env('NOTIFICATIONS_CASH_FLOW_ENABLED', true),
-        'to' => env('NOTIFICATIONS_CASH_FLOW_TO', 'stefan.petre@christiantour.ro'),
+        // Raportul se citește în zilele de lucru; sâmbăta și duminica nu pleacă.
+        'weekdays_only' => (bool) env('NOTIFICATIONS_CASH_FLOW_WEEKDAYS_ONLY', true),
+        // Adrese în plus față de Top Management, separate prin virgulă.
+        'to' => env('NOTIFICATIONS_CASH_FLOW_TO', ''),
         'hour' => env('NOTIFICATIONS_CASH_FLOW_HOUR', '08:00'),
         'timezone' => env('NOTIFICATIONS_CASH_FLOW_TIMEZONE', 'Europe/Bucharest'),
         // Câte săptămâni din prognoză intră în corpul mailului; restul sunt în fișier.
