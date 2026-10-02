@@ -107,9 +107,12 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
  *
  * @param  list<array<string, mixed>>  $invoices
  */
-function mockTina(array $invoices = []): void
+function mockTina(array $invoices = [], array $receipts = []): void
 {
-    test()->mock(TinaCashFlowReader::class, fn (MockInterface $mock) => $mock->shouldReceive('openClientInvoices')->andReturn($invoices));
+    test()->mock(TinaCashFlowReader::class, function (MockInterface $mock) use ($invoices, $receipts) {
+        $mock->shouldReceive('openClientInvoices')->andReturn($invoices);
+        $mock->shouldReceive('receiptsByWeek')->andReturn($receipts);
+    });
 }
 
 function mockEtrip(bool $failBookings = false): void
@@ -685,4 +688,31 @@ test('the same deposit under the contract terms is regularised at the last rotat
     // The last rotation (week 6) is free and the one before it pays 500 of its 1.000 EUR.
     expect($values[3])->toEqualWithDelta(500 * 5, 0.01)
         ->and($values[6])->toEqualWithDelta(0, 0.01);
+});
+
+/**
+ * Banii pe facturile corporate intră tot prin bancă, deci OMC îi vede. Fără o
+ * linie a lor ar rămâne nenumiți, în „alte încasări”, iar B12 ar fi o linie cu
+ * prognoză și fără trecut — cum a și fost la început.
+ */
+test('the corporate receipts get their own line in the past, taken out of the residual', function () {
+    mockOmc();
+    mockEtrip();
+    mockTina(receipts: [
+        ['week' => '2026-09-07', 'receipts' => 213, 'lei' => 1437960.0],
+        ['week' => '2026-09-14', 'receipts' => 156, 'lei' => 761374.0],
+    ]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build();
+    $past = $snapshot->payload['past'] ?? null;
+
+    expect($past)->not->toBeNull();
+
+    $weeks = array_flip($past['weeks']);
+    $i = $weeks['2026-09-07'] ?? null;
+
+    expect($i)->not->toBeNull()
+        ->and($past['lines']['B12'][$i] ?? null)->toEqual(1437960.0)
+        // Ce s-a numit nu mai stă în rest: totalul rămâne cel din OMC.
+        ->and($past['lines']['BX'][$i] ?? null)->toBeLessThan($past['lines']['B12'][$i] + 1000000000);
 });

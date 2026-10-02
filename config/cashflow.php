@@ -102,6 +102,13 @@ return [
     */
     'tina' => [
         'connection' => env('CASHFLOW_TINA_CONNECTION', 'tina'),
+
+        /*
+         * Ce înseamnă bani intrați, din felurile de încasare ale Tinei.
+         * Compensările, voucherele și plățile mutate de pe o factură pe alta
+         * sting o creanță, dar nu aduc bani în cont.
+         */
+        'cash_doc_types' => ['paymentOrder', 'receipt', 'creditcreditBt', 'cardEuropeBank', 'creditCardsodexo', 'cardEdenred'],
     ],
 
     'omc' => [

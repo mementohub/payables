@@ -17,6 +17,37 @@ use Illuminate\Support\Facades\DB;
 class TinaCashFlowReader
 {
     /**
+     * Încasările pe facturile corporate, pe săptămâni.
+     *
+     * Doar banii care chiar au intrat: ordinele de plată, cardurile și
+     * chitanțele. Compensările, voucherele și plățile mutate de pe o factură
+     * pe alta nu sunt bani noi, deci n-au ce căuta într-un flux de trezorerie.
+     *
+     * @return list<array{week: string, lei: float, receipts: int}>
+     */
+    public function receiptsByWeek(CarbonInterface $from, CarbonInterface $to): array
+    {
+        $types = (array) config('cashflow.tina.cash_doc_types', ['paymentOrder', 'receipt', 'creditcreditBt', 'cardEuropeBank', 'creditCardsodexo', 'cardEdenred']);
+
+        $rows = DB::connection((string) config('cashflow.tina.connection', 'tina'))->select(sprintf(<<<'SQL'
+            select date_format(date_sub(ch.docDate, interval weekday(ch.docDate) day), '%%Y-%%m-%%d') as week,
+                   count(*) as receipts,
+                   sum(ch.value * coalesce(nullif(ch.currencyRate, 0), 1)) as lei
+            from clientInvoiceCashings ch
+            where ch.voidTime is null
+              and ch.docDate >= ? and ch.docDate <= ?
+              and ch.docType in (%s)
+            group by 1
+            SQL, implode(', ', array_fill(0, count($types), '?'))), [$from->toDateString(), $to->toDateString(), ...$types]);
+
+        return array_map(fn ($row) => [
+            'week' => (string) $row->week,
+            'receipts' => (int) $row->receipts,
+            'lei' => round((float) $row->lei, 2),
+        ], $rows);
+    }
+
+    /**
      * Facturile emise clienților și neîncasate, cu scadența lor.
      *
      * @return list<array{id: int, number: string, client: string, currency: string, amount: float, rate: float, due: string, issued: string}>

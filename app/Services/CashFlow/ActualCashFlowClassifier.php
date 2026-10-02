@@ -52,6 +52,7 @@ class ActualCashFlowClassifier
     public function __construct(
         private EtripCashFlowReader $etrip,
         private OmcCashFlowReader $omc,
+        private TinaCashFlowReader $tina,
     ) {}
 
     /**
@@ -140,10 +141,21 @@ class ActualCashFlowClassifier
             }
         }
 
+        // Încasările pe facturile corporate: banii intră tot prin bancă, deci
+        // OMC îi vede — dar fără linia asta ar rămâne nenumiți, în BX.
+        foreach ($this->tina->receiptsByWeek($firstMonday, $to) as $row) {
+            $add('B12', $row['week'], $row['lei']);
+            $detail('B12', $row['week'], 'tina_receipts', 'Încasări pe facturi corporate (Tina)', $row['lei'], [
+                'group' => 'Tina',
+                'reference' => $row['receipts'].' încasări',
+                'meta' => ['receipts' => $row['receipts']],
+            ]);
+        }
+
         // Whatever OMC received beyond the eTrip receipts and the charter seats.
         $explained = array_fill(0, count($weeks), 0.0);
 
-        foreach ([...array_values($segmentLines), 'B10'] as $line) {
+        foreach ([...array_values($segmentLines), 'B10', 'B12'] as $line) {
             foreach ($lines[$line] ?? [] as $i => $lei) {
                 $explained[$i] += $lei;
             }
@@ -156,6 +168,7 @@ class ActualCashFlowClassifier
             $detail('BX', $week, 'residual', 'Încasări OMC (bancă + casă, fără transferuri interne)', $receiptsTotal[$i], ['group' => 'Total OMC']);
             $detail('BX', $week, 'residual', 'Minus încasările eTrip alocate pe dosare (B1–B7)', -($explained[$i] - $charterIn[$i]), ['group' => 'Explicate pe alte linii']);
             $detail('BX', $week, 'residual', 'Minus încasările din contracte charter (B10)', -$charterIn[$i], ['group' => 'Explicate pe alte linii']);
+            $detail('BX', $week, 'residual', 'Minus încasările pe facturi corporate (B12)', -($lines['B12'][$i] ?? 0.0), ['group' => 'Explicate pe alte linii']);
         }
         $lines = array_map(fn (array $values) => array_map(fn (float $v) => round($v, 2), $values), $lines);
 
