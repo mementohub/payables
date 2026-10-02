@@ -144,6 +144,26 @@ return [
             'sslmode' => env('DB_ETRIP_CHR_SSLMODE', 'prefer'),
         ],
 
+        'tina' => [
+            'driver' => 'mysql',
+            'url' => env('DB_TINA_URL'),
+            'host' => env('DB_TINA_HOST', '127.0.0.1'),
+            'port' => env('DB_TINA_PORT', '3306'),
+            'database' => env('DB_TINA_DATABASE', 'tina'),
+            'username' => env('DB_TINA_USERNAME', ''),
+            'password' => env('DB_TINA_PASSWORD', ''),
+            'unix_socket' => env('DB_TINA_SOCKET', ''),
+            'charset' => env('DB_TINA_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_TINA_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('DB_TINA_SSL_CA'),
+            ]) : [],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
@@ -178,6 +198,7 @@ return [
             'omc' => 'OMC',
             'etrip_vcz' => 'eTrip Vacanza',
             'etrip_chr' => 'eTrip Christian Tour',
+            'tina' => 'Tina',
         ],
 
         'timeout' => (int) env('DB_STATUS_TIMEOUT', 5),

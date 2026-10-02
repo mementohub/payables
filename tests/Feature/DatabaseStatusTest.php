@@ -113,3 +113,11 @@ test('statuses never expose connection passwords', function () {
     expect(json_encode($statuses))->not->toContain('super-secret')
         ->and($keys)->not->toContain('password');
 });
+
+test('the tina connection is a mysql connection monitored on the status page', function () {
+    $connection = require config_path('database.php');
+
+    expect($connection['connections']['tina']['driver'])->toBe('mysql')
+        ->and($connection['connections']['tina']['port'])->not->toBeEmpty()
+        ->and($connection['status']['connections'])->toHaveKey('tina', 'Tina');
+});
