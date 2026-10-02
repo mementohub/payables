@@ -78,6 +78,7 @@ class PnlReportService
 
     public function __construct(
         private EtripPnlReader $etrip,
+        private TinaPnlReader $tina,
         private OmcPnlCostReader $costs,
         private PnlCostMap $map,
         private PnlBranchMap $branches,
@@ -1016,7 +1017,19 @@ class PnlReportService
         $overrides = PnlCostOverride::query()->where('company_id', $company->getKey())->get();
         $this->map->withOverrides($overrides);
 
+        // Venitul vine din două ERP-uri: eTrip pentru turismul de masă, Tina
+        // pentru business-ul corporate. Dacă unul tace, raportul se face din
+        // ce răspunde — mai bine incomplet și spus, decât deloc.
         $revenue = $this->etrip->byChannelAndProduct($year);
+        $tinaError = null;
+
+        try {
+            $revenue = [...$revenue, ...$this->tina->byChannelAndProduct($year)];
+        } catch (Throwable $e) {
+            report($e);
+            $tinaError = 'Tina nu a putut fi citită: '.mb_substr($e->getMessage(), 0, 160);
+        }
+
         $costRows = [...$this->costs->costs($company, $year), ...$this->documentMoves($company, $year, $overrides)];
 
         $channels = array_keys((array) config('pnl.channels', []));
@@ -1114,6 +1127,9 @@ class PnlReportService
                 'duration_ms' => (int) ((microtime(true) - $startedAt) * 1000),
                 'cost_rows' => count($costRows),
                 'excluded_accounts' => OmcPnlCostReader::EXCLUDED_ACCOUNTS,
+                // Spus pe raport, nu doar în log: altfel lipsa veniturilor
+                // corporate s-ar citi ca o scădere de business.
+                'tina_error' => $tinaError,
             ],
         ];
     }

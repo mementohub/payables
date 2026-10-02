@@ -96,7 +96,45 @@ return [
         'site' => 'Site',
         'cc' => 'Call Center (Online B2C)',
         'franciza' => 'Franciză',
+        'corporate' => 'Corporate (Tina)',
         'other' => 'Altele',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tina — ERP-ul business-ului corporate
+    |--------------------------------------------------------------------------
+    |
+    | Tina ține biletele de avion, cazările și evenimentele vândute firmelor,
+    | separat de eTrip. Categoria de produs vine din departamentul care
+    | răspunde de comandă, așa cum îl știe Tina; departamentele de vânzare
+    | (B2B, B2C) spun doar canalul, iar produsul se ia atunci din serviciu.
+    |
+    */
+    'tina' => [
+        'connection' => env('PNL_TINA_CONNECTION', 'tina'),
+
+        'departments' => [
+            'Corporate' => ['product' => 'Corporate', 'channel' => 'corporate'],
+            'Ticketing' => ['product' => 'Ticketing', 'channel' => 'corporate'],
+            'Hotels' => ['product' => 'Cazare', 'channel' => 'corporate'],
+            'Hotels &amp; flights (IRIX)' => ['product' => 'Cazare', 'channel' => 'corporate'],
+            'Turism intern' => ['product' => 'Turism intern', 'channel' => 'corporate'],
+            'Exotic' => ['product' => 'Sejururi Exotice', 'channel' => 'corporate'],
+            // Vânzarea spune canalul; ce s-a vândut spune serviciul.
+            'B2B Sales' => ['product' => null, 'channel' => 'b2b'],
+            'B2C Sales' => ['product' => null, 'channel' => 'retail'],
+        ],
+
+        'service_products' => [
+            'airTransport' => 'Ticketing',
+            'accommodation' => 'Cazare',
+            'transfer' => 'Transfer',
+            'default' => 'Corporate',
+        ],
+
+        'default_channel' => 'corporate',
+        'default_product' => 'Corporate',
     ],
 
     /*

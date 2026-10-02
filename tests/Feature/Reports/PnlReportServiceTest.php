@@ -6,6 +6,7 @@ use App\Services\Reports\EtripPnlReader;
 use App\Services\Reports\OmcPnlCostReader;
 use App\Services\Reports\PnlBranchMap;
 use App\Services\Reports\PnlReportService;
+use App\Services\Reports\TinaPnlReader;
 use Illuminate\Support\Facades\Cache;
 use Mockery\MockInterface;
 
@@ -15,9 +16,11 @@ use Mockery\MockInterface;
  *
  * @param  list<array<string, mixed>>  $rows
  */
-function fakePnlRevenue(array $rows): void
+function fakePnlRevenue(array $rows, array $tina = []): void
 {
     test()->mock(EtripPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn($rows));
+    // Tina e al doilea ERP de venituri; testele care n-o privesc o lasă mută.
+    test()->mock(TinaPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn($tina));
 }
 
 /**
@@ -1251,4 +1254,38 @@ test('a shop with no payroll of its own still carries its share', function () {
     // ei, la raportul lui Magheru (150 la 750), deci 50 — un sfert din cheie.
     expect($view['totals']['by_channel']['Magheru'])->toEqual(225.0)
         ->and($view['totals']['by_channel']['Plaza'])->toEqual(75.0);
+});
+
+/**
+ * Veniturile corporate vin din Tina, nu din eTrip, și se adaugă la celelalte:
+ * același raport, două ERP-uri. Dacă Tina tace, raportul se face din ce
+ * răspunde, dar o spune — altfel lipsa lor s-ar citi ca o scădere de business.
+ */
+test('the corporate revenue from Tina lands in the same report', function () {
+    fakePnlRevenue(
+        [['channel' => 'retail', 'branch' => 'Agenția Unu', 'product' => 'Charter', 'month' => 3, 'bookings' => 10, 'net' => 1000, 'margin' => 250]],
+        [['channel' => 'corporate', 'branch' => 'Tina', 'product' => 'Corporate', 'month' => 3, 'bookings' => 4, 'net' => 600, 'margin' => 120]],
+    );
+    fakePnlBranches([]);
+    fakePnlCosts([]);
+
+    $report = app(PnlReportService::class)->report($this->company, 2026, forceRefresh: true);
+
+    expect($report['revenue']['months'][3]['channel']['corporate']['net'] ?? null)->toEqual(600.0)
+        ->and($report['revenue']['months'][3]['channel']['retail']['net'] ?? null)->toEqual(1000.0)
+        ->and($report['revenue']['months'][3]['product']['Corporate']['margin'] ?? null)->toEqual(120.0)
+        ->and($report['meta']['tina_error'])->toBeNull();
+});
+
+test('a silent Tina leaves the rest of the report standing, and says so', function () {
+    fakePnlRevenue([['channel' => 'retail', 'branch' => 'Agenția Unu', 'product' => 'Charter', 'month' => 3, 'bookings' => 10, 'net' => 1000, 'margin' => 250]]);
+    fakePnlBranches([]);
+    fakePnlCosts([]);
+
+    test()->mock(TinaPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andThrow(new RuntimeException('connection refused')));
+
+    $report = app(PnlReportService::class)->report($this->company, 2026, forceRefresh: true);
+
+    expect($report['meta']['tina_error'])->toContain('Tina nu a putut fi citită')
+        ->and($report['revenue']['months'][3]['channel']['retail']['net'] ?? null)->toEqual(1000.0);
 });
