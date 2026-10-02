@@ -17,8 +17,10 @@ $map = [
 
 $services = ['airTransport' => 'Ticketing', 'accommodation' => 'Cazare', 'default' => 'Altele'];
 
-test('the department gives the channel and the service gives the product', function (string $department, string $category, string $channel, string $product) use ($map, $services) {
-    expect(app(TinaPnlReader::class)->place($department, $category, $map, $services, 'corporate', 'Altele'))
+$codes = ['h' => 'Cazare', 'k' => 'Ticketing', 'Pc' => 'Pachete'];
+
+test('the department gives the channel and the service gives the product', function (string $department, string $category, string $channel, string $product, string $code = '') use ($map, $services, $codes) {
+    expect(app(TinaPnlReader::class)->place($department, $category, $map, $services, 'corporate', 'Altele', $code, $codes))
         ->toBe([$channel, $product]);
 })->with([
     // Un bilet e Ticketing și când îl cumpără o firmă: Corporate e canalul.
@@ -31,4 +33,8 @@ test('the department gives the channel and the service gives the product', funct
     'b2c event' => ['B2C Sales', 'others', 'retail', 'Altele'],
     'no department' => ['', 'accommodation', 'corporate', 'Cazare'],
     'nothing at all' => ['', '', 'corporate', 'Altele'],
+    // O treime din servicii n-au categorie, dar au cod: „h” e hotel.
+    'hotel without a category' => ['Corporate', '', 'corporate', 'Cazare', 'h'],
+    'package without a category' => ['Corporate', '', 'corporate', 'Pachete', 'Pc'],
+    'category beats the code' => ['Corporate', 'airTransport', 'corporate', 'Ticketing', 'h'],
 ]);

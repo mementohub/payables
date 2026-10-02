@@ -36,6 +36,7 @@ class TinaPnlReader
 
         $map = (array) config('pnl.tina.departments', []);
         $services = (array) config('pnl.tina.service_products', []);
+        $codes = (array) config('pnl.tina.service_codes', []);
         $fallbackChannel = (string) config('pnl.tina.default_channel', 'corporate');
         $fallbackProduct = (string) config('pnl.tina.default_product', 'Corporate');
 
@@ -49,6 +50,8 @@ class TinaPnlReader
                 $services,
                 $fallbackChannel,
                 $fallbackProduct,
+                (string) ($row->code ?? ''),
+                $codes,
             );
 
             $key = $channel.'|'.$product.'|'.(int) $row->month;
@@ -75,14 +78,21 @@ class TinaPnlReader
      * @param  array<string, string>  $services
      * @return array{0: string, 1: string}
      */
-    public function place(string $department, string $category, array $map, array $services, string $fallbackChannel, string $fallbackProduct): array
+    public function place(string $department, string $category, array $map, array $services, string $fallbackChannel, string $fallbackProduct, string $code = '', array $codes = []): array
     {
         $rules = $map[$department] ?? [];
         $channel = (string) ($rules['channel'] ?? $fallbackChannel);
         $product = $rules['product'] ?? null;
 
         if ($product === null || $product === '') {
-            $product = $services[$category] ?? ($services['default'] ?? $fallbackProduct);
+            // Categoria serviciului spune ce s-a vândut; când e goală — și e
+            // goală la o treime din servicii — rămâne codul, care știe: „h” e
+            // hotel, „Pc” e pachet.
+            $product = $services[$category] ?? null;
+        }
+
+        if ($product === null || $product === '') {
+            $product = $codes[$code] ?? ($services['default'] ?? $fallbackProduct);
         }
 
         return [$channel, (string) $product];
@@ -100,6 +110,7 @@ class TinaPnlReader
         return <<<'SQL'
             select coalesce(d.name, '') as department,
                    coalesce(s.serviceCfgCat, '') as category,
+                   coalesce(s.serviceCode, '') as code,
                    month(coalesce(ci.invoiceDate, s.startDate)) as month,
                    count(*) as services,
                    sum(o.offerTotal * coalesce(nullif(o.currencyRate, 0), 1)) as net,
@@ -111,7 +122,7 @@ class TinaPnlReader
             left join clientInvoices ci on ci.id = s.idRelevantInvoice
             where coalesce(ci.invoiceDate, s.startDate) >= ?
               and coalesce(ci.invoiceDate, s.startDate) < ?
-            group by 1, 2, 3
+            group by 1, 2, 3, 4
             SQL;
     }
 }

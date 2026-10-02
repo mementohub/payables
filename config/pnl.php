@@ -135,8 +135,23 @@ return [
             'airTransport' => 'Ticketing',
             'accommodation' => 'Cazare',
             'transfer' => 'Transfer',
-            'others' => 'Altele',
             'default' => 'Altele',
+        ],
+
+        /*
+         * O treime din servicii n-au categorie, dar au cod: „h” e hotel, „Pc”
+         * e pachet, „k” e bilet. Fără asta, 15 milioane de cazări corporate
+         * ar sta la „Altele”.
+         */
+        'service_codes' => [
+            'h' => 'Cazare',
+            'ro' => 'Cazare',
+            'ce' => 'Cazare',
+            'k' => 'Ticketing',
+            'x' => 'Ticketing',
+            'bk' => 'Ticketing',
+            'Pc' => 'Pachete',
+            'T3' => 'Transfer',
         ],
 
         'default_channel' => 'corporate',
