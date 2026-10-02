@@ -53,6 +53,17 @@ class Department extends Model
         return static::query()->whereNotNull('code')->pluck('id', 'code')->all();
     }
 
+    /**
+     * Șeful departamentului, dacă e pus: el primește vestea când cineva
+     * rutează facturi aici.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function head(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'head_user_id');
+    }
+
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withTimestamps();

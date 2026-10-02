@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Maintenance\ArtisanRunner;
+use App\Services\Notifications\WorkflowNotifier;
 use App\Services\Routing\DepartmentAssigner;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
@@ -43,7 +44,7 @@ class RoutingController extends Controller
     /**
      * Send an invoice, or some of its lines, to a department by hand.
      */
-    public function assign(Request $request, Invoice $invoice, DepartmentAssigner $assigner): RedirectResponse
+    public function assign(Request $request, Invoice $invoice, DepartmentAssigner $assigner, WorkflowNotifier $notifier): RedirectResponse
     {
         $this->authorizeFinance($request->user());
 
@@ -65,6 +66,8 @@ class RoutingController extends Controller
             );
         }
 
+        $notifier->routed($department, collect([$invoice]), $request->user());
+
         Inertia::flash('toast', ['type' => 'success', 'message' => "Factura {$invoice->nr_doc} merge la {$department->name}."]);
 
         return back();
@@ -73,7 +76,7 @@ class RoutingController extends Controller
     /**
      * Send several invoices to one department at once (Facturi → Primite).
      */
-    public function assignMany(Request $request, DepartmentAssigner $assigner): RedirectResponse
+    public function assignMany(Request $request, DepartmentAssigner $assigner, WorkflowNotifier $notifier): RedirectResponse
     {
         $this->authorizeFinance($request->user());
 
@@ -99,6 +102,9 @@ class RoutingController extends Controller
                 }
             }
         });
+
+        // Un teanc rutat deodată face un singur mail către departament.
+        $notifier->routed($department, $invoices, $request->user());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $invoices->count() === 1
             ? "Factura {$invoices->first()->nr_doc} merge la {$department->name}."

@@ -33,6 +33,7 @@ class DepartmentController extends Controller
                     'name' => $department->name,
                     'group' => $department->group,
                     'parent_id' => $department->parent_id,
+                    'head_user_id' => $department->head_user_id,
                     'is_active' => $department->is_active,
                     'pending_count' => (int) $department->pending_count,
                     'members' => $department->members->map(fn (User $user) => [
@@ -104,8 +105,37 @@ class DepartmentController extends Controller
         return back();
     }
 
+    /**
+     * Cine e șeful departamentului: lui îi pleacă vestea când cineva rutează
+     * facturi aici. Fără șef pus, vestea merge la toți oamenii lui.
+     */
+    public function setHead(Request $request, Department $department): RedirectResponse
+    {
+        $validated = $request->validate([
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $head = $validated['user_id'] ?? null;
+
+        if ($head !== null && ! $department->members()->whereKey($head)->exists()) {
+            $department->members()->syncWithoutDetaching([$head]);
+        }
+
+        $department->update(['head_user_id' => $head]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $head === null
+            ? 'Departamentul rămâne fără șef; vestea merge la toți membrii.'
+            : 'Șef de departament stabilit.']);
+
+        return back();
+    }
+
     public function detachMember(Department $department, User $user): RedirectResponse
     {
+        if ($department->head_user_id === $user->id) {
+            $department->update(['head_user_id' => null]);
+        }
+
         $department->members()->detach($user->id);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Utilizator eliminat.']);

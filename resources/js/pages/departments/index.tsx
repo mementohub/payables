@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Pencil, Plus, Route, UserMinus } from 'lucide-react';
+import { Crown, Pencil, Plus, Route, UserMinus } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import DepartmentController from '@/actions/App/Http/Controllers/DepartmentController';
@@ -31,6 +31,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { index as departmentsIndex } from '@/routes/departments';
 import { index as routingIndex } from '@/routes/routing';
 import type { DepartmentGroup } from '@/types/approvals';
@@ -160,6 +161,14 @@ function DepartmentCard({
             { preserveScroll: true },
         );
 
+    // Șeful departamentului primește mailul când cineva rutează facturi aici.
+    const setHead = (userId: number | null) =>
+        router.put(
+            DepartmentController.setHead(department.id).url,
+            { user_id: userId },
+            { preserveScroll: true },
+        );
+
     const removeMember = (userId: number) =>
         router.delete(
             DepartmentController.detachMember({
@@ -211,30 +220,77 @@ function DepartmentCard({
                     </p>
                 ) : (
                     <ul className="grid gap-1">
-                        {department.members.map((member) => (
-                            <li
-                                key={member.id}
-                                className="flex items-center justify-between gap-2 text-sm"
-                            >
-                                <span>
-                                    {member.name}{' '}
-                                    <span className="text-muted-foreground">
-                                        {member.email}
-                                    </span>
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-7"
-                                    onClick={() => removeMember(member.id)}
-                                    aria-label={`Scoate ${member.name}`}
+                        {department.members.map((member) => {
+                            const isHead = department.head_user_id === member.id;
+
+                            return (
+                                <li
+                                    key={member.id}
+                                    className="flex items-center justify-between gap-2 text-sm"
                                 >
-                                    <UserMinus className="size-4" />
-                                </Button>
-                            </li>
-                        ))}
+                                    <span>
+                                        {member.name}{' '}
+                                        <span className="text-muted-foreground">
+                                            {member.email}
+                                        </span>
+                                        {isHead && (
+                                            <Badge
+                                                variant="outline"
+                                                className="ml-1 border-amber-600/40 text-amber-700 dark:text-amber-300"
+                                            >
+                                                șef
+                                            </Badge>
+                                        )}
+                                    </span>
+                                    <span className="flex items-center">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-7"
+                                            onClick={() =>
+                                                setHead(
+                                                    isHead ? null : member.id,
+                                                )
+                                            }
+                                            aria-label={
+                                                isHead
+                                                    ? `${member.name} nu mai e șef`
+                                                    : `${member.name} devine șef`
+                                            }
+                                        >
+                                            <Crown
+                                                className={cn(
+                                                    'size-4',
+                                                    isHead
+                                                        ? 'text-amber-600'
+                                                        : 'text-muted-foreground/40',
+                                                )}
+                                            />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-7"
+                                            onClick={() =>
+                                                removeMember(member.id)
+                                            }
+                                            aria-label={`Scoate ${member.name}`}
+                                        >
+                                            <UserMinus className="size-4" />
+                                        </Button>
+                                    </span>
+                                </li>
+                            );
+                        })}
                     </ul>
                 )}
+                {department.members.length > 0 &&
+                    department.head_user_id === null && (
+                        <p className="text-xs text-muted-foreground">
+                            Fără șef: facturile rutate aici se anunță tuturor
+                            membrilor.
+                        </p>
+                    )}
                 {candidates.length > 0 && (
                     <Select value="" onValueChange={addMember}>
                         <SelectTrigger size="sm" className="w-full">

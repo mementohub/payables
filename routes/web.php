@@ -224,6 +224,7 @@ Route::middleware('auth')->group(function () {
     Route::put('departments/{department}', [DepartmentController::class, 'update'])->name('departments.update')->middleware('role:admin');
     Route::delete('departments/{department}', [DepartmentController::class, 'destroy'])->name('departments.destroy')->middleware('role:admin');
     Route::post('departments/{department}/members', [DepartmentController::class, 'attachMember'])->name('departments.members.attach')->middleware('role:admin');
+    Route::put('departments/{department}/head', [DepartmentController::class, 'setHead'])->name('departments.head')->middleware('role:admin');
     Route::delete('departments/{department}/members/{user}', [DepartmentController::class, 'detachMember'])->name('departments.members.detach')->middleware('role:admin');
 });
 

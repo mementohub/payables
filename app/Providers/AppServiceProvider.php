@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -40,6 +41,14 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        // Pe orice calculator care nu e producția, mailurile merg într-un
+        // singur loc: o probă n-are voie să ajungă la oamenii adevărați.
+        $override = config('notifications.override_recipient');
+
+        if (is_string($override) && $override !== '') {
+            Mail::alwaysTo($override);
+        }
 
         (new MemoryLimit)->raiseTo(config('app.memory_limit'));
 

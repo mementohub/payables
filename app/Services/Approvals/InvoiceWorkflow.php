@@ -8,6 +8,7 @@ use App\Models\InvoiceDepartmentApproval;
 use App\Models\InvoiceEvent;
 use App\Models\InvoiceLineDepartment;
 use App\Models\User;
+use App\Services\Notifications\WorkflowNotifier;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -47,6 +48,8 @@ class InvoiceWorkflow
     public const TRACK_RUN = 'run';
 
     public const TRACK_INVOICE = 'invoice';
+
+    public function __construct(private WorkflowNotifier $notifier) {}
 
     /**
      * Bring the department approvals of the invoices in line with their
@@ -121,6 +124,13 @@ class InvoiceWorkflow
             $this->event($invoice, $user, 'department_'.$decision, $comment, $department->id, $until);
             $this->recompute($invoice->fresh());
         });
+
+        // Vestea pleacă după ce decizia e scrisă, nu din mijlocul tranzacției:
+        // un mail despre o factură contestată care apoi nu se salvează e mai
+        // rău decât niciun mail.
+        if ($decision === InvoiceDepartmentApproval::DISPUTED) {
+            $this->notifier->disputed($invoice, $user, $department, $comment);
+        }
     }
 
     /**
@@ -162,6 +172,10 @@ class InvoiceWorkflow
 
             $this->event($invoice, $user, 'final_'.$decision, $comment, null, $until, $via !== null ? ['via' => $via] : []);
         });
+
+        if ($decision === self::DISPUTED) {
+            $this->notifier->disputed($invoice, $user, null, $comment);
+        }
     }
 
     /**

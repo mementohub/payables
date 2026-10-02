@@ -18,6 +18,12 @@ Schedule::command('erp:sync', ['--days' => (int) config('sync.window_days', 400)
     ->withoutOverlapping(180)
     ->runInBackground();
 Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping();
+// Raportul de trezorerie pleacă pe mail dimineața, după construirea de noapte.
+Schedule::command('cashflow:mail')
+    ->dailyAt((string) config('notifications.cash_flow.hour', '08:00'))
+    ->timezone((string) config('notifications.cash_flow.timezone', 'Europe/Bucharest'))
+    ->when(fn () => (bool) config('notifications.enabled', true) && (bool) config('notifications.cash_flow.enabled', true))
+    ->withoutOverlapping(30);
 Schedule::command('pnl:build')
     ->dailyAt('05:15')
     ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))

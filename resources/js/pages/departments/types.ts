@@ -12,6 +12,7 @@ export type Department = {
     name: string;
     group: DepartmentGroup;
     parent_id: number | null;
+    head_user_id: number | null;
     is_active: boolean;
     pending_count: number;
     members: Member[];

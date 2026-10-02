@@ -17,6 +17,27 @@ class ReportExporter
         private PdfWriter $pdf,
     ) {}
 
+    /**
+     * Raportul ca fișier în memorie: pentru mail, unde nu descarcă nimeni
+     * nimic — se atașează.
+     */
+    public function contents(ReportDocument $document, string $format): string
+    {
+        if ($format === 'pdf') {
+            return $this->pdf->render($document);
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'xlsx');
+
+        try {
+            $this->xlsx->write($document, $path);
+
+            return (string) file_get_contents($path);
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function download(ReportDocument $document, string $format): Response|BinaryFileResponse
     {
         if ($format === 'pdf') {

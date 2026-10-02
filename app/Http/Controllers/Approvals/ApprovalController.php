@@ -9,6 +9,7 @@ use App\Models\InvoiceDepartmentApproval;
 use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Approvals\InvoiceWorkflow;
+use App\Services\Notifications\WorkflowNotifier;
 use App\Services\Routing\DepartmentAssigner;
 use App\Services\Xlsx\XlsxWriter;
 use App\Support\ViewAs;
@@ -347,7 +348,7 @@ class ApprovalController extends Controller
      * A department sends invoices that landed on it by mistake to the
      * department they belong to.
      */
-    public function redirect(Request $request, DepartmentAssigner $assigner): RedirectResponse
+    public function redirect(Request $request, DepartmentAssigner $assigner, WorkflowNotifier $notifier): RedirectResponse
     {
         $validated = $request->validate([
             'invoice_ids' => ['required', 'array', 'min:1', 'max:500'],
@@ -366,6 +367,8 @@ class ApprovalController extends Controller
         $invoices = $this->invoicesFor($request, $validated['invoice_ids']);
 
         DB::transaction(fn () => $invoices->each(fn (Invoice $invoice) => $assigner->redirect($invoice, $from, $to, $request->user(), $validated['comment'])));
+
+        $notifier->routed($to, $invoices, $request->user(), $from, $validated['comment']);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $invoices->count() === 1
             ? "Factura a fost trimisă la {$to->name}."
