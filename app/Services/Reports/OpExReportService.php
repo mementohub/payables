@@ -4,9 +4,11 @@ namespace App\Services\Reports;
 
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Services\Omc\OmcReader;
 use App\Services\RemoteConnection;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 class OpExReportService
 {
@@ -34,12 +36,37 @@ class OpExReportService
     public function report(Company $company, int $year, bool $forceRefresh = false): array
     {
         $key = $this->cacheKey($company, $year);
+        $lastGood = $key.':ultima-buna';
 
         if ($forceRefresh) {
             Cache::forget($key);
         }
 
-        return Cache::remember($key, self::CACHE_TTL_SECONDS, fn () => $this->compute($company, $year));
+        if (($cached = Cache::get($key)) !== null) {
+            return $cached;
+        }
+
+        try {
+            $report = $this->compute($company, $year);
+
+            Cache::put($key, $report, self::CACHE_TTL_SECONDS);
+            // Ultima citire bună se ține o săptămână: când OMC nu răspunde, e
+            // mai de folos raportul de ieri, cu data lui scrisă pe el, decât
+            // un ecran gol.
+            Cache::put($lastGood, ['at' => now()->toIso8601String(), 'report' => $report], now()->addWeek());
+
+            return $report;
+        } catch (Throwable $e) {
+            $fallback = Cache::get($lastGood);
+
+            if ($fallback === null) {
+                throw $e;
+            }
+
+            report($e);
+
+            return [...$fallback['report'], 'stale_at' => $fallback['at'], 'stale_reason' => OmcReader::friendlyMessage($e)];
+        }
     }
 
     /**

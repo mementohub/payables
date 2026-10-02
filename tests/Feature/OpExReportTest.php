@@ -2,8 +2,10 @@
 
 use App\Models\Company;
 use App\Models\User;
+use App\Services\RemoteConnection;
 use App\Services\Reports\OpExReportService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 
 beforeEach(function () {
     $this->user = User::factory()->withRoles('top_management')->create();
@@ -174,4 +176,39 @@ test('the page says it plainly when OMC cannot be read', function () {
         ->assertInertia(fn ($page) => $page
             ->where('report', null)
             ->where('error', 'OMC a refuzat conexiunea: parola contului de citire nu mai e bună. Raportul se încarcă singur după ce se repune.'));
+});
+
+/**
+ * Ultima citire bună se ține o săptămână: când OMC nu răspunde, raportul de
+ * ieri, cu data lui scrisă pe el, e mai de folos decât un ecran gol.
+ */
+test('when OMC falls over, the last good reading stays on screen', function () {
+    $key = "opex_report:v3:{$this->company->getKey()}:2026";
+
+    Cache::put($key.':ultima-buna', [
+        'at' => '2026-10-01T10:39:00+00:00',
+        'report' => ['year' => 2026, 'roots' => [], 'months' => [], 'totals_by_month' => [], 'grand_total' => 10, 'meta' => []],
+    ], now()->addWeek());
+
+    // OMC refuză conexiunea, exact ca în ziua în care s-a schimbat parola.
+    $this->mock(RemoteConnection::class, function ($mock) {
+        $mock->shouldReceive('connection')->andThrow(new QueryException(
+            'omc',
+            'select 1',
+            [],
+            new PDOException('SQLSTATE[08006] [7] connection to server failed: FATAL:  password authentication failed'),
+        ));
+    });
+
+    $report = app(OpExReportService::class)->report($this->company, 2026);
+
+    expect($report['grand_total'])->toBe(10)
+        ->and($report['stale_at'])->toBe('2026-10-01T10:39:00+00:00')
+        ->and($report['stale_reason'])->toContain('parola contului de citire');
+
+    // Iar fără o citire bună de dinainte, eroarea nu se ascunde.
+    Cache::forget($key.':ultima-buna');
+    Cache::forget($key);
+
+    expect(fn () => app(OpExReportService::class)->report($this->company, 2026))->toThrow(QueryException::class);
 });

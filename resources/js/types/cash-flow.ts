@@ -264,6 +264,13 @@ export type Snapshot = {
     error: string | null;
     sources: SourceStatus[];
     payload: ReportPayload | null;
+    /** O construcție mai nouă care a eșuat: cifrele de pe ecran sunt dinainte. */
+    failed_attempt?: {
+        built_at: string;
+        status: string;
+        error: string | null;
+        sources: SourceStatus[];
+    } | null;
 };
 
 export type RunStatus = {

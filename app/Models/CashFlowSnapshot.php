@@ -34,4 +34,21 @@ class CashFlowSnapshot extends Model
     {
         return static::query()->orderByDesc('built_at')->orderByDesc('id')->first();
     }
+
+    /**
+     * Ultimul raport pe care se poate lucra.
+     *
+     * Când o construcție cade (OMC nu răspunde, de pildă), rezultatul ei e un
+     * raport ciuntit: linii goale și o listă de erori. Mai folositor decât
+     * nimic e raportul de dinainte, cu data lui scrisă pe el — altfel omul
+     * rămâne cu ecranul gol exact când are nevoie de cifre.
+     */
+    public static function latestUsable(): ?self
+    {
+        return static::query()
+            ->where('status', self::STATUS_OK)
+            ->orderByDesc('built_at')
+            ->orderByDesc('id')
+            ->first();
+    }
 }

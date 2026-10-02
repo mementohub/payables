@@ -276,6 +276,17 @@ export default function CashFlowReport({
                                 {/* OMC primește și documente cu dată în urmă:
                                     dacă s-a sincronizat după construire,
                                     cifrele de aici sunt de dinainte. */}
+                                {/* O construcție căzută nu înlocuiește raportul
+                                    bun: se spune doar că e mai veche. */}
+                                {snapshot.failed_attempt && (
+                                    <Badge variant="destructive">
+                                        Reconstruirea din{' '}
+                                        {new Date(
+                                            snapshot.failed_attempt.built_at,
+                                        ).toLocaleString('ro-RO')}{' '}
+                                        a eșuat — se arată raportul de mai sus
+                                    </Badge>
+                                )}
                                 {syncedAt &&
                                     new Date(syncedAt) >
                                         new Date(snapshot.built_at) && (

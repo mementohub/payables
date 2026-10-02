@@ -341,3 +341,39 @@ test('the charter form records how a paid deposit is consumed, and keeps the con
         ->put('/reports/cash-flow/contracts/'.$contract->id, [...$terms, 'deposit_settlement_order' => 'sometime'])
         ->assertSessionHasErrors('deposit_settlement_order');
 });
+
+/**
+ * Când o construcție cade — OMC nu răspunde, de pildă — rezultatul ei e un
+ * raport ciuntit. Mai de folos decât un ecran gol e raportul de dinainte, cu
+ * data lui scrisă pe el și cu eșecul spus alături.
+ */
+test('a failed rebuild does not wipe the last good report off the screen', function () {
+    $good = CashFlowSnapshot::factory()->create([
+        'built_at' => '2026-09-15 04:30:00',
+        'payload' => ['weeks' => ['2026-09-14'], 'lines' => [], 'kpis' => ['opening' => 7]],
+    ]);
+    CashFlowSnapshot::factory()->create([
+        'built_at' => '2026-09-16 04:30:00',
+        'status' => 'partial',
+        'error' => 'OMC nu răspunde',
+        'payload' => ['weeks' => [], 'lines' => [], 'kpis' => ['opening' => 0]],
+        'sources' => [
+            ['key' => 'opening', 'label' => 'Sold inițial (OMC)', 'error' => 'password authentication failed'],
+            ['key' => 'etrip', 'label' => 'Încasări (eTrip)', 'error' => null],
+        ],
+    ]);
+
+    $this->actingAs($this->user)
+        ->get('/reports/cash-flow', [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/reports/cash-flow')),
+            'X-Inertia-Partial-Component' => 'reports/cash-flow',
+            'X-Inertia-Partial-Data' => 'snapshot',
+        ])
+        ->assertOk()
+        ->assertJsonPath('props.snapshot.id', $good->id)
+        ->assertJsonPath('props.snapshot.payload.kpis.opening', 7)
+        ->assertJsonPath('props.snapshot.failed_attempt.status', 'partial')
+        // Doar sursele căzute, ca banda să spună ce lipsește.
+        ->assertJsonCount(1, 'props.snapshot.failed_attempt.sources');
+});

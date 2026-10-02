@@ -172,7 +172,12 @@ class CashFlowReportController extends Controller
 
     private function snapshotPayload(): ?array
     {
-        $snapshot = CashFlowSnapshot::latest();
+        $last = CashFlowSnapshot::latest();
+        // Un raport ciuntit (OMC căzut) nu se pune în locul celui bun: se
+        // arată cel de dinainte, iar încercarea căzută se spune separat.
+        $snapshot = $last !== null && $last->status === CashFlowSnapshot::STATUS_OK
+            ? $last
+            : (CashFlowSnapshot::latestUsable() ?? $last);
 
         return $snapshot ? [
             'id' => $snapshot->id,
@@ -183,6 +188,14 @@ class CashFlowReportController extends Controller
             'error' => $snapshot->error,
             'sources' => $snapshot->sources ?? [],
             'payload' => $snapshot->payload,
+            // Încercarea mai nouă, dacă a eșuat: cine se uită trebuie să știe
+            // că cifrele de pe ecran sunt de dinainte și de ce.
+            'failed_attempt' => $last !== null && $last->isNot($snapshot) ? [
+                'built_at' => $last->built_at->toIso8601String(),
+                'status' => $last->status,
+                'error' => $last->error,
+                'sources' => collect($last->sources ?? [])->filter(fn ($source) => ! empty($source['error']))->values()->all(),
+            ] : null,
         ] : null;
     }
 
