@@ -77,6 +77,7 @@ class CashFlowReportBuilder
     public function __construct(
         private EtripCashFlowReader $etrip,
         private OmcCashFlowReader $omc,
+        private TinaCashFlowReader $tina,
         private CashFlowParameters $parameters,
         private ReceivablesScheduler $scheduler,
         private ActualCashFlowClassifier $classifier,
@@ -154,6 +155,12 @@ class CashFlowReportBuilder
         $payables = $this->source('payables', 'Plăți furnizori din rezervări (eTrip)', fn () => $this->payables())
             ?? ['lines' => ['hotel' => $this->grid->zeros(), 'transfer' => $this->grid->zeros(), 'insurance' => $this->grid->zeros(), 'flight' => $this->grid->zeros(), 'other' => $this->grid->zeros()], 'structure' => []];
 
+        // Business-ul corporate se vinde și se facturează în Tina, nu în eTrip:
+        // fără linia asta, prognoza nu vedea deloc banii pe care îi au de dat
+        // firmele.
+        $corporate = $this->source('tina_receivables', 'Încasări din facturi corporate (Tina)', fn () => $this->corporateReceivables())
+            ?? ['line' => $this->grid->zeros(), 'total' => 0.0, 'overdue' => 0.0, 'invoices' => 0];
+
         $charter = $this->source('charter', 'Contracte charter (aplicație)', fn () => $this->charter())
             ?? ['signed' => $this->grid->zeros(), 'draft' => $this->grid->zeros(), 'deposit' => $this->grid->zeros(), 'taxes' => $this->grid->zeros(), 'incoming' => $this->grid->zeros(), 'estimate' => $this->grid->zeros(), 'estimate_taxes' => $this->grid->zeros(), 'contracts' => []];
 
@@ -186,7 +193,7 @@ class CashFlowReportBuilder
         )) ?? ['lines' => [], 'classified' => []];
 
         return [
-            ...$this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals, $classified),
+            ...$this->assemble($opening, $receivables, $payables, $charter, $suppliers, $opex, $scenario, $actuals, $classified, $corporate),
             'advances' => $advances['summary'] ?? [],
         ];
     }
@@ -975,6 +982,62 @@ class CashFlowReportBuilder
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Facturile corporate neîncasate, fiecare la scadența ei.
+     *
+     * Ce a trecut de scadență se pune pe săptămâna curentă: banii se cer acum,
+     * nu la data la care trebuiau să vină.
+     *
+     * @return array{line: list<float>, total: float, overdue: float, invoices: int, _message: string}
+     */
+    private function corporateReceivables(): array
+    {
+        $from = $this->today->subYears(2);
+        $to = $this->grid->end();
+        $line = $this->grid->zeros();
+        $total = 0.0;
+        $overdue = 0.0;
+        $count = 0;
+
+        foreach ($this->tina->openClientInvoices($from, $to) as $invoice) {
+            $lei = round($invoice['amount'] * $invoice['rate'], 2);
+            $due = $this->day($invoice['due']);
+            $late = $due->lt($this->today);
+            $index = $late ? 0 : $this->grid->index($due);
+
+            if ($index === null) {
+                continue;
+            }
+
+            $line[$index] += $lei;
+            $total += $lei;
+            $overdue += $late ? $lei : 0.0;
+            $count++;
+
+            $this->recorder->record('B12', $this->grid->monday($index)->toDateString(), 'tina', $invoice['client'] !== '' ? $invoice['client'] : 'Client corporate', $lei, [
+                'group' => 'Facturi corporate (Tina)',
+                'reference' => $invoice['number'],
+                'date' => $invoice['due'],
+                'currency' => $invoice['currency'],
+                'amount' => $invoice['amount'],
+                'meta' => ['issued' => $invoice['issued'], 'overdue' => $late],
+            ]);
+        }
+
+        return [
+            'line' => $line,
+            'total' => round($total, 2),
+            'overdue' => round($overdue, 2),
+            'invoices' => $count,
+            '_message' => sprintf(
+                '%d facturi emise clienților corporate și neîncasate: %s RON, din care %s RON cu scadența depășită, puși pe săptămâna curentă.',
+                $count,
+                number_format($total, 0, ',', '.'),
+                number_format($overdue, 0, ',', '.'),
+            ),
+        ];
+    }
+
     private function openSuppliers(): array
     {
         $weeks = max(1, (int) ($this->params['payables']['supplier_balance_weeks'] ?? 2));
@@ -1767,7 +1830,7 @@ class CashFlowReportBuilder
      * @param  array{lines: array<string, list<float>>, classified: array<string, float>}  $classified
      * @return array<string, mixed>
      */
-    private function assemble(array $opening, array $receivables, array $payables, array $charter, array $suppliers, array $opex, array $scenario, array $actuals, array $classified): array
+    private function assemble(array $opening, array $receivables, array $payables, array $charter, array $suppliers, array $opex, array $scenario, array $actuals, array $classified, array $corporate): array
     {
         $weeks = $this->grid->weeks;
         $scenarioOn = (bool) ($this->params['scenario']['enabled'] ?? true);
@@ -1788,6 +1851,7 @@ class CashFlowReportBuilder
         $this->line('B8', sprintf('Recuperare solduri restante ≤ %d zile (scadență depășită)', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recovery, note: sprintf('%s%% din restanțe, egal pe %d săptămâni', $this->params['overdue']['recent_pct'] ?? 0, $this->params['overdue']['recent_weeks'] ?? 4));
         $this->line('B9', sprintf('Recuperare solduri restante > %d zile', (int) ($this->params['overdue']['recent_days'] ?? 60)), 'B', $recoveryOld, note: sprintf('%s%% din restanțele vechi', $this->params['overdue']['old_pct'] ?? 0));
         $this->line('B10', 'Încasări din vânzarea de locuri charter (contracte hard block)', 'B', $charter['incoming'], note: 'contracte charter în care CHR vinde locuri; rotația, taxele și depozitul pe termenii contractului');
+        $this->line('B12', 'Încasări din facturi corporate (Tina)', 'B', $corporate['line'], note: sprintf('%d facturi emise și neîncasate, la scadența lor; restanțele pe săptămâna curentă', $corporate['invoices']));
         $this->line('BX', 'Alte încasări (fără încasare eTrip pe dosar) – doar efectiv', 'B', $this->grid->zeros(), note: 'în trecut: încasările OMC peste cele din eTrip și din charter (nealocate pe dosar, decalaje de înregistrare); în prognoză nu se estimează');
 
         $newSales = [];
@@ -1799,7 +1863,7 @@ class CashFlowReportBuilder
         }
 
         $this->line('B11', 'Încasări din vânzări noi – total (scenariu: curba anului anterior × factor)', 'B', $this->sum($newSales), kind: 'subtotal', scenario: true, note: 'suma liniilor B11.1–B11.7; intră în total doar cu scenariul pornit');
-        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10'], $scenarioOn ? $newSales : []), kind: 'total');
+        $this->line('B', 'TOTAL ÎNCASĂRI OPERAȚIONALE', 'B', $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B12'], $scenarioOn ? $newSales : []), kind: 'total');
 
         $this->line('C1', 'Plăți cazare (hoteluri) – rezervări existente', 'C', $payables['lines']['hotel'], note: 'eTrip: cost furnizor net, plată cu N zile înainte de check-in');
         $this->line('C2', 'Plăți transferuri, excursii, autocar, servicii la sol', 'C', $payables['lines']['transfer']);
@@ -1856,7 +1920,7 @@ class CashFlowReportBuilder
         $this->line('E4', 'Marja peste pragul minim (deficit dacă este negativ)', 'E', array_map(fn (float $v) => round($v - $minimum, 2), $closing), kind: 'total');
         $this->line('E5', 'Semnal', 'E', array_map(fn (float $v) => $v < $minimum ? 'DEFICIT' : ($v < $comfort ? 'ATENȚIE' : 'OK'), $closing), kind: 'text');
 
-        $existing = $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']);
+        $existing = $this->sum(['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B12', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']);
         $coverage = array_map(fn (float $v) => $v > 0 ? 'existing' : 'scenario', $existing);
         $this->line('E6', 'Acoperire date', 'E', array_map(fn (string $c) => $c === 'existing'
             ? ($scenarioOn ? 'rezervări existente + vânzări noi (scenariu)' : 'rezervări existente')

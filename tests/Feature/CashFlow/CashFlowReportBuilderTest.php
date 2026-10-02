@@ -8,6 +8,7 @@ use App\Models\CharterFlight;
 use App\Services\CashFlow\CashFlowReportBuilder;
 use App\Services\CashFlow\EtripCashFlowReader;
 use App\Services\CashFlow\OmcCashFlowReader;
+use App\Services\CashFlow\TinaCashFlowReader;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -100,6 +101,17 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
     });
 }
 
+/**
+ * Facturile corporate din Tina: testele care nu le privesc o lasă mută, ca
+ * raportul să se facă din restul surselor.
+ *
+ * @param  list<array<string, mixed>>  $invoices
+ */
+function mockTina(array $invoices = []): void
+{
+    test()->mock(TinaCashFlowReader::class, fn (MockInterface $mock) => $mock->shouldReceive('openClientInvoices')->andReturn($invoices));
+}
+
 function mockEtrip(bool $failBookings = false): void
 {
     test()->mock(EtripCashFlowReader::class, function (MockInterface $mock) use ($failBookings) {
@@ -154,6 +166,7 @@ function lineValues(CashFlowSnapshot $snapshot, string $code): array
 test('the snapshot puts every source on its week in lei', function () {
     mockOmc();
     mockEtrip();
+    mockTina();
 
     $signed = CharterContract::factory()->create(['season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
     CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100]);
@@ -168,7 +181,7 @@ test('the snapshot puts every source on its week in lei', function () {
         ->and($snapshot->payload['weeks'])->toHaveCount(52)
         ->and($snapshot->payload['fx'])->toEqual(['RON' => 1, 'EUR' => 5, 'USD' => 4.5])
         ->and(collect($snapshot->sources)->pluck('status', 'key')->all())->toBe([
-            'fx' => 'ok', 'opening' => 'ok', 'receivables' => 'ok', 'payables' => 'ok', 'charter' => 'ok',
+            'fx' => 'ok', 'opening' => 'ok', 'receivables' => 'ok', 'payables' => 'ok', 'tina_receivables' => 'ok', 'charter' => 'ok',
             'suppliers_open' => 'ok', 'advances' => 'ok', 'opex' => 'ok', 'new_sales' => 'ok', 'actuals' => 'ok', 'actual_lines' => 'ok',
         ]);
 
@@ -261,6 +274,7 @@ test('the snapshot puts every source on its week in lei', function () {
 test('the past weeks sit on the report lines, add up to OMC and chain into the forecast balance', function () {
     mockOmc();
     mockEtrip();
+    mockTina();
     CharterContract::factory()->create(['counterparty' => 'Anima Wings Aviation S.A.', 'direction' => 'in']);
 
     $past = app(CashFlowReportBuilder::class)->build()->payload['past'];
@@ -314,6 +328,7 @@ test('without a base season every signed season estimates its next edition until
     ]]);
     mockOmc();
     mockEtrip();
+    mockTina();
 
     // Flown and paid in spring 2026 (pay 22.03.2026, taxes 05.05.2026): only its S27 echo, 364 days later, is ahead.
     $signed = CharterContract::factory()->create(['season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
@@ -365,6 +380,7 @@ test('the position is stated at the end of yesterday, rolled from the last close
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
     mockOmc();
     mockEtrip();
+    mockTina();
 
     $snapshot = app(CashFlowReportBuilder::class)->build();
     $opening = $snapshot->payload['opening'];
@@ -398,6 +414,7 @@ test('when OMC has a daily balance the position starts from it, not from the mon
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
     mockOmc(balanceSource: OmcCashFlowReader::SOURCE_DAILY);
     mockEtrip();
+    mockTina();
 
     $opening = app(CashFlowReportBuilder::class)->build()->payload['opening'];
     $rows = collect($opening['rows'])->keyBy('key');
@@ -415,6 +432,7 @@ test('the position converts at the BNR rate OMC holds for that day, not the fore
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual', 'EUR' => 5, 'USD' => 4.5], 'scenario' => ['enabled' => false]]]);
     mockOmc(positionRates: ['RON' => 1.0, 'EUR' => 5.2636]);
     mockEtrip();
+    mockTina();
 
     $snapshot = app(CashFlowReportBuilder::class)->build();
     $opening = $snapshot->payload['opening'];
@@ -430,6 +448,7 @@ test('without saved balances in OMC the balance starts at zero and says so', fun
     CashFlowSetting::query()->where('key', CashFlowSetting::PARAMETERS)->update(['value' => ['fx' => ['mode' => 'manual'], 'scenario' => ['enabled' => false]]]);
     mockOmc(anchor: false);
     mockEtrip();
+    mockTina();
 
     $snapshot = app(CashFlowReportBuilder::class)->build();
 
@@ -445,6 +464,7 @@ test('old snapshots are pruned', function () {
     config(['cashflow.keep_snapshots' => 2]);
     mockOmc();
     mockEtrip();
+    mockTina();
     CashFlowSnapshot::factory()->count(3)->sequence(fn ($sequence) => ['built_at' => '2026-09-1'.$sequence->index.' 04:30:00'])->create();
 
     app(CashFlowReportBuilder::class)->build();
@@ -460,6 +480,7 @@ test('every charter contract is settled on its own terms', function () {
     ]]);
     mockOmc();
     mockEtrip();
+    mockTina();
 
     // Signed, taxes reconciled monthly, and lei at the BNR rate plus the 2 % the contract adds.
     $signed = CharterContract::factory()->create([
@@ -517,6 +538,7 @@ test('every charter contract is settled on its own terms', function () {
 test('every cell of the snapshot is the sum of the pieces the build kept for it', function () {
     mockOmc();
     mockEtrip();
+    mockTina();
 
     $signed = CharterContract::factory()->create(['name' => 'CTR 317', 'season' => 'S26', 'status' => 'signed', 'days_before_flight' => 10]);
     CharterFlight::factory()->for($signed, 'contract')->create(['flight_date' => '2026-10-15', 'net_value' => 1000, 'taxes' => 100, 'flight_no' => 'A2 4212']);
@@ -580,6 +602,7 @@ test('money already paid to a supplier is not paid again: unmatched payments set
         'ledger' => [['partner' => 'Memento Air Srl', 'currency' => 'EUR', 'amount' => 1500, 'lei' => 7500, 'last' => '2026-08-14']],
     ]);
     mockEtrip();
+    mockTina();
 
     $contract = CharterContract::factory()->draft()->create(['name' => 'W26/27', 'counterparty' => 'Memento Air S.R.L.', 'deposit_percent' => 50, 'deposit_due_date' => '2026-10-05', 'contract_value' => 2000, 'currency' => 'EUR']);
     CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-12-01', 'net_value' => 2000, 'taxes' => 0]);
@@ -604,6 +627,7 @@ test('money already paid to a supplier is not paid again: unmatched payments set
 test('a paid deposit the contract already sets against its last rotations is not taken off a second time', function () {
     mockOmc(advances: ['ledger' => [['partner' => 'Anima Wings Aviation SA', 'currency' => 'EUR', 'amount' => 1000, 'lei' => 5000, 'last' => '2026-05-01']]]);
     mockEtrip();
+    mockTina();
 
     $contract = CharterContract::factory()->create(['counterparty' => 'Anima Wings Aviation S.A.', 'status' => 'signed', 'direction' => 'out', 'deposit_amount' => 1000, 'deposit_paid' => true, 'deposit_due_date' => '2026-03-01', 'currency' => 'EUR', 'days_before_flight' => 10]);
     CharterFlight::factory()->for($contract, 'contract')->create(['flight_date' => '2026-11-10', 'net_value' => 3000, 'taxes' => 0]);
@@ -619,6 +643,7 @@ test('a paid deposit the contract already sets against its last rotations is not
 test('a deposit paid outside the contract terms stops the next payments due, not the last rotations', function () {
     mockOmc();
     mockEtrip();
+    mockTina();
 
     // 1.500 EUR already with the carrier, to be used up by whatever is paid next.
     $contract = CharterContract::factory()->draft()->create([
@@ -645,6 +670,7 @@ test('a deposit paid outside the contract terms stops the next payments due, not
 test('the same deposit under the contract terms is regularised at the last rotations instead', function () {
     mockOmc();
     mockEtrip();
+    mockTina();
 
     $contract = CharterContract::factory()->draft()->create([
         'counterparty' => 'Memento Air S.R.L.', 'currency' => 'EUR', 'days_before_flight' => 10, 'fx_markup_pct' => 0,

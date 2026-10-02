@@ -114,27 +114,33 @@ return [
     'tina' => [
         'connection' => env('PNL_TINA_CONNECTION', 'tina'),
 
+        /*
+         * Departamentul care răspunde de comandă spune pe ce canal s-a vândut.
+         * Corporate e canal, nu categorie de produs: ce s-a vândut spune
+         * serviciul — un bilet rămâne Ticketing, o cazare rămâne Cazare, fie
+         * că l-a cumpărat o firmă, o agenție sau un om.
+         */
         'departments' => [
-            'Corporate' => ['product' => 'Corporate', 'channel' => 'corporate'],
-            'Ticketing' => ['product' => 'Ticketing', 'channel' => 'corporate'],
-            'Hotels' => ['product' => 'Cazare', 'channel' => 'corporate'],
-            'Hotels &amp; flights (IRIX)' => ['product' => 'Cazare', 'channel' => 'corporate'],
-            'Turism intern' => ['product' => 'Turism intern', 'channel' => 'corporate'],
-            'Exotic' => ['product' => 'Sejururi Exotice', 'channel' => 'corporate'],
-            // Vânzarea spune canalul; ce s-a vândut spune serviciul.
-            'B2B Sales' => ['product' => null, 'channel' => 'b2b'],
-            'B2C Sales' => ['product' => null, 'channel' => 'retail'],
+            'Corporate' => ['channel' => 'corporate'],
+            'Ticketing' => ['channel' => 'corporate'],
+            'Hotels' => ['channel' => 'corporate'],
+            'Hotels &amp; flights (IRIX)' => ['channel' => 'corporate'],
+            'Turism intern' => ['channel' => 'corporate'],
+            'Exotic' => ['channel' => 'corporate'],
+            'B2B Sales' => ['channel' => 'b2b'],
+            'B2C Sales' => ['channel' => 'retail'],
         ],
 
         'service_products' => [
             'airTransport' => 'Ticketing',
             'accommodation' => 'Cazare',
             'transfer' => 'Transfer',
-            'default' => 'Corporate',
+            'others' => 'Altele',
+            'default' => 'Altele',
         ],
 
         'default_channel' => 'corporate',
-        'default_product' => 'Corporate',
+        'default_product' => 'Altele',
     ],
 
     /*

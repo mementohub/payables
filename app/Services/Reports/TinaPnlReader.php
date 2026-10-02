@@ -8,16 +8,15 @@ use Illuminate\Support\Facades\DB;
  * Venitul și marja din Tina, pe canal de vânzare și categorie de produs.
  *
  * Tina e un ERP separat, ca eTrip, pentru business-ul corporate: bilete de
- * avion, cazări și evenimente vândute firmelor. Categoria de produs vine din
- * departamentul care răspunde de comandă („Corporate”, „Ticketing”, „Hotels”),
- * așa cum o știe Tina — nu dintr-o ghicitoare peste tipul serviciului. Când
- * departamentul e unul de vânzare (B2B, B2C), produsul se ia din serviciu:
- * un bilet rămâne Ticketing, o cazare rămâne Cazare.
+ * avion, cazări și evenimente vândute firmelor. Departamentul care răspunde de
+ * comandă spune canalul — „Corporate” e canal de vânzare, alături de B2B și
+ * Retail, nu categorie de produs. Ce s-a vândut spune serviciul: un bilet
+ * rămâne Ticketing, o cazare rămâne Cazare, oricine ar fi cumpărat.
  *
- * Banii: fiecare serviciu ține valorile în moneda facturii, cu cursul zilei la
- * leu pe el (`invoiceCurrencyRate`). Venitul e ce plătește clientul, marja e
- * ce rămâne peste prețul furnizorului — la bilete, taxele de aeroport intră în
- * amândouă, deci se sting între ele.
+ * Banii se citesc din oferta serviciului, acolo unde Tina ține comerțul:
+ * `offerTotal` e prețul de vânzare, `supplierValue` plus TVA-ul lui e costul
+ * (COGS), iar diferența e marja. Valorile sunt în moneda ofertei, cu cursul
+ * zilei pe ea.
  */
 class TinaPnlReader
 {
@@ -69,9 +68,8 @@ class TinaPnlReader
     /**
      * Unde cade o comandă: canalul și produsul.
      *
-     * Departamentul care răspunde de comandă decide. Departamentele de vânzare
-     * (B2B, B2C) spun doar canalul, nu și ce s-a vândut, așa că produsul se ia
-     * atunci din categoria serviciului.
+     * Departamentul comenzii dă canalul, serviciul dă produsul. Un departament
+     * nu poate numi produsul: „Corporate” spune cine a cumpărat, nu ce.
      *
      * @param  array<string, array{product?: ?string, channel?: string}>  $map
      * @param  array<string, string>  $services
@@ -104,15 +102,15 @@ class TinaPnlReader
                    coalesce(s.serviceCfgCat, '') as category,
                    month(coalesce(ci.invoiceDate, s.startDate)) as month,
                    count(*) as services,
-                   sum(coalesce(s.invoiceTotal, 0) * coalesce(nullif(s.invoiceCurrencyRate, 0), 1)) as net,
-                   sum((coalesce(s.invoiceTotal, 0) - coalesce(s.invoiceServicePriceValue, 0)) * coalesce(nullif(s.invoiceCurrencyRate, 0), 1)) as margin
-            from services s
-            left join orders o on o.id = s.idOrder
-            left join departments d on d.id = o.idDepartment
+                   sum(o.offerTotal * coalesce(nullif(o.currencyRate, 0), 1)) as net,
+                   sum((o.offerTotal - o.supplierValue - coalesce(o.supplierVat, 0)) * coalesce(nullif(o.currencyRate, 0), 1)) as margin
+            from offers o
+            join services s on s.id = o.idService
+            left join orders r on r.id = s.idOrder
+            left join departments d on d.id = r.idDepartment
             left join clientInvoices ci on ci.id = s.idRelevantInvoice
             where coalesce(ci.invoiceDate, s.startDate) >= ?
               and coalesce(ci.invoiceDate, s.startDate) < ?
-              and coalesce(s.invoiceTotal, 0) <> 0
             group by 1, 2, 3
             SQL;
     }

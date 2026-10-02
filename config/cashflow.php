@@ -91,6 +91,19 @@ return [
     /*
     | OMC: the accounting database, read through config/omc.php.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Tina — facturile corporate
+    |--------------------------------------------------------------------------
+    |
+    | Business-ul corporate se facturează în Tina, deci banii pe care îi au de
+    | dat firmele se citesc de acolo, nu din eTrip.
+    |
+    */
+    'tina' => [
+        'connection' => env('CASHFLOW_TINA_CONNECTION', 'tina'),
+    ],
+
     'omc' => [
         /**
          * Bank and cash documents are recognised by the tip_doc flags
