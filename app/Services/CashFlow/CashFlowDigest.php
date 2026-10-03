@@ -4,6 +4,7 @@ namespace App\Services\CashFlow;
 
 use App\Models\CashFlowDetail;
 use App\Models\CashFlowSnapshot;
+use App\Models\Company;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,9 @@ class CashFlowDigest
     /** Etichete care nu sunt un partener, ci lipsa lui. */
     private const NO_PARTNER = ['Fără partener', 'Fara partener', 'neclasificat', '—', '-'];
 
+    /** Câte documente se scriu sub fiecare nume. */
+    private const DOCUMENTS = 2;
+
     /**
      * Cele mai mari sume ale săptămânii, strânse pe contraparte.
      *
@@ -44,9 +48,14 @@ class CashFlowDigest
      */
     private function movers(CashFlowSnapshot $snapshot, string $week, array $kinds, array $prefixes, int $limit = 3): array
     {
+        // Numai bucățile de prognoză: coloana săptămânii din tabel e tot
+        // prognoză, iar ce s-a întâmplat deja e scris separat, pe alte rânduri.
+        // Amestecate, topul ar aduna de două ori aceiași bani și ar ieși mai
+        // mare decât totalul săptămânii.
         $base = fn () => CashFlowDetail::query()
             ->where('cash_flow_snapshot_id', $snapshot->id)
             ->whereDate('week', $week)
+            ->where('actual', false)
             ->whereIn('kind', $kinds)
             ->whereNotNull('label')
             ->where('label', '!=', '')
@@ -54,62 +63,60 @@ class CashFlowDigest
             ->where(fn (Builder $query) => collect($prefixes)->each(fn (string $prefix) => $query->orWhere('line', 'like', $prefix.'%')));
 
         $groups = $base()
-            ->select('label', DB::raw('sum(lei) as lei'), DB::raw('count(*) as pieces'), DB::raw('min(actual) as all_done'), DB::raw('max(actual) as any_done'))
+            ->select('label', DB::raw('sum(lei) as lei'), DB::raw('count(*) as pieces'))
             ->groupBy('label')
             ->orderByDesc(DB::raw('abs(sum(lei))'))
             ->limit($limit)
             ->get();
 
-        return $groups->map(function ($group) use ($base) {
-            // Documentul cel mai greu al partenerului: el spune despre ce e vorba.
-            $largest = $base()->where('label', $group->label)->orderByDesc(DB::raw('abs(lei)'))->first();
+        $houses = $this->houseNames();
+
+        return $groups->map(function ($group) use ($base, $houses) {
+            // Cele mai grele hârtii ale partenerului: ele spun despre ce e vorba.
+            $documents = $base()
+                ->where('label', $group->label)
+                ->orderByDesc(DB::raw('abs(lei)'))
+                ->limit(self::DOCUMENTS)
+                ->get();
+
+            $label = (string) $group->label;
 
             return [
-                'label' => (string) $group->label,
+                // Pe vânzările proprii, „clientul” dosarului e chiar agenția
+                // noastră; omul care citește știe că n-are de încasat de la el
+                // însuși, deci grupul se numește cum e: clienți direcți.
+                'label' => in_array(mb_strtolower(trim($label)), $houses, true)
+                    ? 'Clienți direcți (retail)'
+                    : $label,
                 'lei' => round((float) $group->lei, 2),
                 'pieces' => (int) $group->pieces,
-                'state' => match (true) {
-                    (bool) $group->all_done => 'efectuat',
-                    ! (bool) $group->any_done => 'estimat',
-                    default => 'parțial',
-                },
-                'note' => $this->note($group->pieces, $largest),
-                'detail' => $largest === null ? null : array_filter([
-                    'reference' => $largest->reference,
-                    'group' => $largest->group,
-                    'date' => $largest->date?->format('d.m.Y'),
-                    'currency' => $largest->currency,
-                    'amount' => $largest->amount !== null ? round((float) $largest->amount, 2) : null,
-                    'lei' => round((float) $largest->lei, 2),
-                ], fn ($value) => $value !== null && $value !== ''),
+                'documents' => $documents->map(fn (CashFlowDetail $piece) => [
+                    'reference' => $piece->reference !== null && $piece->reference !== '' ? (string) $piece->reference : null,
+                    'group' => $piece->group,
+                    'date' => $piece->date?->format('d.m.Y'),
+                    'currency' => $piece->currency,
+                    'amount' => $piece->amount !== null ? round((float) $piece->amount, 2) : null,
+                    'lei' => round((float) $piece->lei, 2),
+                    'bank' => in_array($piece->kind, ['omc_payment', 'omc_receipt'], true),
+                ])->all(),
+                'rest' => max(0, (int) $group->pieces - $documents->count()),
             ];
         })->values()->all();
     }
 
     /**
-     * Rândul mic de sub nume: câte hârtii și care e cea mai grea.
+     * Numele companiilor noastre, cu litere mici, pentru recunoaștere.
      *
-     * O mișcare de bancă n-are număr de document, are cont, iar contul nu
-     * spune nimic nimănui — pentru ea se scrie doar că a trecut prin bancă.
+     * @return list<string>
      */
-    private function note(int $pieces, ?CashFlowDetail $largest): string
+    private function houseNames(): array
     {
-        $count = $pieces === 1 ? 'un document' : number_format($pieces, 0, ',', '.').' documente';
-
-        if ($largest === null) {
-            return $count;
-        }
-
-        $money = number_format((float) $largest->lei, 0, ',', '.').' lei';
-
-        if (in_array($largest->kind, ['omc_payment', 'omc_receipt'], true)) {
-            return $count.' · prin bancă, cel mai mare '.$money;
-        }
-
-        $biggest = trim(($largest->reference !== null && $largest->reference !== '' ? $largest->reference.' · ' : '').$money);
-
-        return $count.' · cel mai mare '.$biggest
-            .($largest->date !== null ? ', scadent '.$largest->date->format('d.m.Y') : '');
+        return Company::query()
+            ->pluck('name')
+            ->map(fn (string $name) => mb_strtolower(trim($name)))
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**
