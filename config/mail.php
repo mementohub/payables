@@ -110,9 +110,17 @@ return [
     |
     */
 
+    /*
+     * Cine semnează mailurile.
+     *
+     * Numele stă aici, nu în `.env`: fișierul de mediu e rescris la fiecare
+     * punere pe server din panoul de găzduire, unde `MAIL_FROM_NAME` e numele
+     * aplicației, nu al expeditorului. Cu `MAIL_SENDER_NAME` se poate schimba
+     * oricând, fără să umble nimeni prin cod.
+     */
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
+        'name' => env('MAIL_SENDER_NAME', 'Receivables & Payables'),
     ],
 
 ];

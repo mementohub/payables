@@ -135,6 +135,32 @@ test('on our own sales the client of the booking is us, so the group says what i
     expect($digest['top_in'][0]['label'])->toBe('Clienți direcți (retail)');
 });
 
+test('a company of the group is not a client, and the mail says so', function () {
+    $snapshot = CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
+
+    CashFlowDetail::query()->create([
+        'cash_flow_snapshot_id' => $snapshot->id,
+        'week' => '2026-09-28',
+        'actual' => false,
+        'source' => 'test',
+        'line' => 'B8',
+        'kind' => 'overdue',
+        'label' => 'MEMENTO INTERNATIONAL SRL',
+        'reference' => '1299736',
+        'lei' => 336136,
+    ]);
+
+    $digest = (new CashFlowDailyMail($snapshot))->digest;
+
+    expect($digest['top_in'][0]['label'])->toBe('MEMENTO INTERNATIONAL SRL (intragrup)')
+        // Banii rămân la locul lor: se scrie ce sunt, nu se ascund.
+        ->and($digest['top_in'][0]['lei'])->toBe(336136.0);
+});
+
+test('the mail is signed by Receivables & Payables', function () {
+    expect(config('mail.from.name'))->toBe('Receivables & Payables');
+});
+
 test('with no recorded pieces the week block simply is not there', function () {
     $snapshot = CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
 

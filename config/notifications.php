@@ -42,6 +42,18 @@ return [
         'stale_after_hours' => (int) env('NOTIFICATIONS_CASH_FLOW_STALE_HOURS', 24),
     ],
 
+    /*
+     * Firmele din grup: nu sunt clienți și nu sunt furnizori ca oricare alții,
+     * iar banii dintre noi și ele rămân în familie. Rămân în topuri, fiindcă
+     * sunt bani adevărați care se mișcă, dar scriu pe ele ce sunt. Se compară
+     * cu litere mici, pe bucată de nume.
+     */
+    'group_partners' => [
+        'memento international',
+        'memento air',
+        'memento group',
+    ],
+
     'disputed' => [
         'enabled' => (bool) env('NOTIFICATIONS_DISPUTED_ENABLED', true),
     ],

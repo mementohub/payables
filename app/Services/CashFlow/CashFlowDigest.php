@@ -82,12 +82,7 @@ class CashFlowDigest
             $label = (string) $group->label;
 
             return [
-                // Pe vânzările proprii, „clientul” dosarului e chiar agenția
-                // noastră; omul care citește știe că n-are de încasat de la el
-                // însuși, deci grupul se numește cum e: clienți direcți.
-                'label' => in_array(mb_strtolower(trim($label)), $houses, true)
-                    ? 'Clienți direcți (retail)'
-                    : $label,
+                'label' => $this->name($label, $houses),
                 'lei' => round((float) $group->lei, 2),
                 'pieces' => (int) $group->pieces,
                 'documents' => $documents->map(fn (CashFlowDetail $piece) => [
@@ -102,6 +97,34 @@ class CashFlowDigest
                 'rest' => max(0, (int) $group->pieces - $documents->count()),
             ];
         })->values()->all();
+    }
+
+    /**
+     * Numele sub care intră în mail contrapartea.
+     *
+     * Pe vânzările proprii, „clientul” dosarului e chiar agenția noastră, iar
+     * un om care citește că are de încasat de la el însuși pierde timp până
+     * înțelege; așa că se numește cum e. Firmele din grup rămân cu numele lor,
+     * dar scriu pe ele că sunt din grup — banii sunt adevărați, numai că nu
+     * vin de la o piață din afară.
+     *
+     * @param  list<string>  $houses
+     */
+    private function name(string $label, array $houses): string
+    {
+        $needle = mb_strtolower(trim($label));
+
+        if (in_array($needle, $houses, true)) {
+            return 'Clienți direcți (retail)';
+        }
+
+        foreach ((array) config('notifications.group_partners', []) as $group) {
+            if ($group !== '' && str_contains($needle, mb_strtolower((string) $group))) {
+                return $label.' (intragrup)';
+            }
+        }
+
+        return $label;
     }
 
     /**
