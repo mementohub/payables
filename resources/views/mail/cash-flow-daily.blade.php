@@ -126,6 +126,42 @@
                     </td>
                 </tr>
 
+                {{-- Cine ține săptămâna în curs: cele mai mari sume, de o parte și de alta --}}
+                @if ($digest['top_in'] !== [] || $digest['top_out'] !== [])
+                    <tr>
+                        <td class="ct-pad" style="padding:26px 28px 0;">
+                            <h2 style="margin:0 0 2px;font-family:{{ $heading }};font-size:15px;font-weight:700;color:{{ $ink }};">Săptămâna în curs</h2>
+                            @if ($digest['current_week'] !== null)
+                                <p style="margin:0 0 10px;font-size:12px;color:{{ $muted }};">{{ $digest['current_week']['from'] }} – {{ $digest['current_week']['to'] }}</p>
+                            @endif
+
+                            @foreach ([['Top 3 încasări', $digest['top_in'], $green], ['Top 3 plăți', $digest['top_out'], $ink]] as [$title, $movers, $tone])
+                                @continue($movers === [])
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid {{ $line }};border-radius:12px;margin:0 0 12px;">
+                                    <tr>
+                                        <td colspan="2" style="padding:11px 16px 2px;font-family:{{ $heading }};font-size:12px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:{{ $tone }};">
+                                            {{ $title }}
+                                        </td>
+                                    </tr>
+                                    @foreach ($movers as $mover)
+                                        <tr>
+                                            <td style="padding:8px 16px 0;font-size:13px;font-weight:700;color:{{ $ink }};">{{ $mover['label'] }}</td>
+                                            <td align="right" style="padding:8px 16px 0;font-size:13px;font-weight:700;color:{{ $tone }};font-variant-numeric:tabular-nums;white-space:nowrap;">
+                                                {{ $money($mover['lei']) }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="2" style="padding:1px 16px {{ $loop->last ? '13px' : '9px' }};font-size:11px;line-height:1.5;color:{{ $muted }};{{ $loop->last ? '' : 'border-bottom:1px solid '.$wash.';' }}">
+                                                <span style="display:inline-block;padding:1px 6px;margin-right:6px;border-radius:4px;background:{{ $wash }};font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;color:{{ $mover['state'] === 'efectuat' ? $green : ($mover['state'] === 'estimat' ? $muted : $orange) }};">{{ $mover['state'] }}</span>{{ $mover['note'] }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </table>
+                            @endforeach
+                        </td>
+                    </tr>
+                @endif
+
                 {{-- Săptămânile apropiate --}}
                 <tr>
                     <td class="ct-pad" style="padding:26px 28px 0;">

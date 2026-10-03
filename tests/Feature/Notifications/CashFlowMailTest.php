@@ -1,6 +1,7 @@
 <?php
 
 use App\Mail\CashFlowDailyMail;
+use App\Models\CashFlowDetail;
 use App\Models\CashFlowSnapshot;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
@@ -57,6 +58,61 @@ test('the report goes to Top Management, and to whoever else is written in the c
             // Un cont de administrare nu e un om de decizie.
             && ! $mail->hasTo($clerk->email);
     });
+});
+
+test('the mail names who the current week hangs on, on both sides', function () {
+    $snapshot = CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
+
+    $piece = fn (array $attributes) => CashFlowDetail::query()->create([
+        'cash_flow_snapshot_id' => $snapshot->id,
+        'week' => '2026-09-28',
+        'actual' => false,
+        'source' => 'test',
+        ...$attributes,
+    ]);
+
+    // Un client cu două hârtii bate unul cu una singură, mai mare.
+    $piece(['line' => 'B7', 'kind' => 'tranche', 'label' => 'Agenția Mare', 'reference' => 'D-1', 'date' => '2026-10-01', 'lei' => 400000]);
+    $piece(['line' => 'B7', 'kind' => 'tranche', 'label' => 'Agenția Mare', 'reference' => 'D-2', 'lei' => 300000]);
+    $piece(['line' => 'B8', 'kind' => 'overdue', 'label' => 'Agenția Mică', 'reference' => 'D-3', 'lei' => 500000]);
+    // Scenariul și restul neexplicat n-au contraparte: nu intră în top.
+    $piece(['line' => 'B11', 'kind' => 'new_receipts', 'label' => 'Săptămâna 29.09', 'lei' => 9000000]);
+    $piece(['line' => 'BX', 'kind' => 'residual', 'label' => 'Total OMC', 'lei' => 8000000]);
+
+    $piece(['line' => 'C10', 'kind' => 'invoice', 'label' => 'Furnizor Greu', 'reference' => 'F-9', 'date' => '2026-10-02', 'lei' => 2000000]);
+    $piece(['line' => 'D8', 'kind' => 'omc_payment', 'label' => 'Furnizor Ușor', 'lei' => 100000, 'actual' => true]);
+    $piece(['line' => 'C10', 'kind' => 'invoice', 'label' => 'Fără partener', 'lei' => 5000000]);
+    // Altă săptămână, altă socoteală.
+    $piece(['line' => 'C10', 'kind' => 'invoice', 'label' => 'Furnizor de Luna Viitoare', 'week' => '2026-10-05', 'lei' => 7000000]);
+
+    $digest = (new CashFlowDailyMail($snapshot))->digest;
+
+    expect(array_column($digest['top_in'], 'label'))->toBe(['Agenția Mare', 'Agenția Mică'])
+        ->and($digest['top_in'][0]['lei'])->toBe(700000.0)
+        ->and($digest['top_in'][0]['pieces'])->toBe(2)
+        ->and($digest['top_in'][0]['state'])->toBe('estimat')
+        ->and($digest['top_in'][0]['note'])->toContain('2 documente')->toContain('D-1')->toContain('01.10.2026')
+        ->and(array_column($digest['top_out'], 'label'))->toBe(['Furnizor Greu', 'Furnizor Ușor'])
+        ->and($digest['top_out'][1]['state'])->toBe('efectuat')
+        // O mișcare de bancă n-are număr de document, are cont.
+        ->and($digest['top_out'][1]['note'])->toContain('prin bancă')
+        ->and($digest['current_week'])->toBe(['from' => '28.09', 'to' => '04.10.2026']);
+
+    $html = (new CashFlowDailyMail($snapshot))->render();
+
+    expect($html)->toContain('Top 3 încasări')->toContain('Agenția Mare')
+        ->toContain('Top 3 plăți')->toContain('Furnizor Greu')
+        ->not->toContain('Furnizor de Luna Viitoare');
+});
+
+test('with no recorded pieces the week block simply is not there', function () {
+    $snapshot = CashFlowSnapshot::factory()->create(['payload' => cashFlowPayload()]);
+
+    $mail = new CashFlowDailyMail($snapshot);
+
+    expect($mail->digest['top_in'])->toBe([])
+        ->and($mail->digest['top_out'])->toBe([])
+        ->and($mail->render())->not->toContain('Top 3');
 });
 
 test('the mail wears the Christian Tour colours and carries the logo inside it', function () {
