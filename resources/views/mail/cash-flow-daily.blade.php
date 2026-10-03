@@ -126,50 +126,60 @@
                     </td>
                 </tr>
 
-                {{-- Cine ține săptămâna în curs: cele mai mari sume, de o parte și de alta --}}
+                {{-- Săptămâna în curs, pe liniile raportului --}}
                 @if ($digest['top_in'] !== [] || $digest['top_out'] !== [])
                     <tr>
                         <td class="ct-pad" style="padding:26px 28px 0;">
                             <h2 style="margin:0 0 2px;font-family:{{ $heading }};font-size:15px;font-weight:700;color:{{ $ink }};">Săptămâna în curs</h2>
                             @if ($digest['current_week'] !== null)
-                                <p style="margin:0 0 10px;font-size:12px;color:{{ $muted }};">{{ $digest['current_week']['from'] }} – {{ $digest['current_week']['to'] }} · sume de încasat și de plătit, așa cum le vede raportul</p>
+                                <p style="margin:0 0 10px;font-size:12px;color:{{ $muted }};">{{ $digest['current_week']['from'] }} – {{ $digest['current_week']['to'] }} · cele mai mari linii ale săptămânii, cu ce stă sub ele</p>
                             @endif
 
-                            @foreach ([['Top 3 de încasat', $digest['top_in'], $green], ['Top 3 de plătit', $digest['top_out'], $ink]] as [$title, $movers, $tone])
-                                @continue($movers === [])
+                            @foreach ([['Top 3 linii de încasat', $digest['top_in'], $green], ['Top 3 linii de plătit', $digest['top_out'], $ink]] as [$title, $lines, $tone])
+                                @continue($lines === [])
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid {{ $line }};border-radius:12px;margin:0 0 12px;">
                                     <tr>
                                         <td colspan="2" style="padding:11px 16px 4px;font-family:{{ $heading }};font-size:12px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:{{ $tone }};">
                                             {{ $title }}
                                         </td>
                                     </tr>
-                                    @foreach ($movers as $mover)
+                                    @foreach ($lines as $row)
                                         <tr>
-                                            <td style="padding:7px 16px 0;font-size:13px;font-weight:700;color:{{ $ink }};">{{ $mover['label'] }}</td>
-                                            <td align="right" style="padding:7px 16px 0;font-size:13px;font-weight:700;color:{{ $tone }};font-variant-numeric:tabular-nums;white-space:nowrap;">
-                                                {{ $money($mover['lei']) }}
+                                            <td style="padding:8px 16px 0;font-size:13px;color:{{ $ink }};">
+                                                <span style="display:inline-block;min-width:30px;font-family:{{ $heading }};font-weight:800;color:{{ $tone }};">{{ $row['code'] }}</span>
+                                                <span style="font-weight:700;">{{ $row['label'] }}</span>
+                                            </td>
+                                            <td align="right" style="padding:8px 16px 0;font-size:13px;font-weight:700;color:{{ $tone }};font-variant-numeric:tabular-nums;white-space:nowrap;vertical-align:top;">
+                                                {{ $money($row['lei']) }}
                                             </td>
                                         </tr>
                                         <tr>
-                                            <td colspan="2" style="padding:2px 16px {{ $loop->last ? '13px' : '10px' }};{{ $loop->last ? '' : 'border-bottom:1px solid '.$wash.';' }}">
-                                                @foreach ($mover['documents'] as $doc)
-                                                    <div style="font-size:11px;line-height:1.6;color:{{ $muted }};">
-                                                        @if ($doc['bank'])
-                                                            mișcare prin bancă
-                                                        @else
-                                                            {{ $doc['reference'] ?? 'fără număr' }}
-                                                        @endif
-                                                        @if (! empty($doc['group'])) · {{ $doc['group'] }} @endif
-                                                        @if (! empty($doc['date'])) · scadent {{ $doc['date'] }} @endif
-                                                        · <span style="color:{{ $ink }};font-weight:600;">{{ $money($doc['lei']) }} lei</span>
-                                                        @if (! empty($doc['currency']) && $doc['currency'] !== 'RON' && $doc['amount'] !== null)
-                                                            ({{ $money($doc['amount'], 2) }} {{ $doc['currency'] }})
-                                                        @endif
-                                                    </div>
-                                                @endforeach
-                                                @if ($mover['rest'] > 0)
-                                                    <div style="font-size:11px;line-height:1.6;color:{{ $muted }};">+ încă {{ number_format($mover['rest'], 0, ',', '.') }} {{ $mover['rest'] === 1 ? 'document' : 'documente' }}</div>
-                                                @endif
+                                            <td colspan="2" style="padding:3px 16px {{ $loop->last ? '13px' : '10px' }};{{ $loop->last ? '' : 'border-bottom:1px solid '.$wash.';' }}">
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                                    @foreach ($row['documents'] as $doc)
+                                                        <tr>
+                                                            <td style="padding:2px 0;font-size:11px;line-height:1.5;color:{{ $muted }};">
+                                                                <span style="color:{{ $ink }};font-weight:600;">{{ $doc['partner'] }}</span>
+                                                                @if ($doc['bank'])
+                                                                    · prin bancă
+                                                                @elseif ($doc['reference'] !== null)
+                                                                    · {{ $doc['reference'] }}
+                                                                @endif
+                                                                @if (! empty($doc['group'])) · {{ $doc['group'] }} @endif
+                                                                @if (! empty($doc['date'])) · scadent {{ $doc['date'] }} @endif
+                                                                @if (! empty($doc['currency']) && $doc['currency'] !== 'RON' && $doc['amount'] !== null)
+                                                                    · {{ $money($doc['amount'], 2) }} {{ $doc['currency'] }}
+                                                                @endif
+                                                            </td>
+                                                            <td align="right" style="padding:2px 0;font-size:11px;color:{{ $ink }};font-variant-numeric:tabular-nums;white-space:nowrap;">{{ $money($doc['lei']) }}</td>
+                                                        </tr>
+                                                    @endforeach
+                                                    @if ($row['rest'] > 0)
+                                                        <tr>
+                                                            <td colspan="2" style="padding:2px 0;font-size:11px;line-height:1.5;color:{{ $muted }};">+ încă {{ number_format($row['rest'], 0, ',', '.') }} {{ $row['rest'] === 1 ? 'bucată' : 'bucăți' }} pe linia asta</td>
+                                                        </tr>
+                                                    @endif
+                                                </table>
                                             </td>
                                         </tr>
                                     @endforeach

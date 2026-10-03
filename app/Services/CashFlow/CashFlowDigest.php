@@ -19,73 +19,75 @@ use Illuminate\Support\Facades\DB;
  */
 class CashFlowDigest
 {
-    /**
-     * Ce intră la „cine ne plătește” și la „cui plătim”.
-     *
-     * Numai bucățile care au un nume în spate: un dosar, o factură, o plată.
-     * Totalurile pe scenariu („curba anului trecut”) și resturile neexplicate
-     * n-au contraparte, deci n-au ce căuta într-un top de nume.
-     */
-    private const IN_KINDS = ['tranche', 'overdue', 'tina', 'omc_receipt', 'tina_receipts'];
-
-    private const OUT_KINDS = ['invoice', 'omc_payment', 'services', 'tickets', 'new_costs'];
-
     /** Etichete care nu sunt un partener, ci lipsa lui. */
     private const NO_PARTNER = ['Fără partener', 'Fara partener', 'neclasificat', '—', '-'];
 
-    /** Câte documente se scriu sub fiecare nume. */
+    /** Câte bucăți se scriu sub fiecare linie. */
     private const DOCUMENTS = 2;
 
+    /** Rândurile care adună alte rânduri: ele n-au ce căuta într-un top. */
+    private const SUMS = ['total', 'balance', 'threshold', 'text', 'reference'];
+
     /**
-     * Cele mai mari sume ale săptămânii, strânse pe contraparte.
+     * Cele mai mari linii ale săptămânii în curs, cu ce stă sub ele.
      *
-     * Un partener are de obicei mai multe hârtii într-o săptămână; omul vrea
-     * să știe întâi de cine atârnă suma, apoi care e documentul cel mai greu.
+     * Topul se face pe liniile raportului, nu pe nume de parteneri: așa se
+     * citește cu raportul alături, iar sumele sunt exact cele din coloana
+     * săptămânii. Sub fiecare linie stau bucățile ei cele mai grele, cu
+     * contrapartea și documentul lor.
      *
-     * @param  list<string>  $kinds
+     * @param  array<string, mixed>  $payload
      * @param  list<string>  $prefixes  literele liniilor (B pentru încasări, C și D pentru plăți)
      * @return list<array<string, mixed>>
      */
-    private function movers(CashFlowSnapshot $snapshot, string $week, array $kinds, array $prefixes, int $limit = 3): array
+    private function topLines(CashFlowSnapshot $snapshot, array $payload, string $week, array $prefixes, int $limit = 3): array
     {
-        // Numai bucățile de prognoză: coloana săptămânii din tabel e tot
-        // prognoză, iar ce s-a întâmplat deja e scris separat, pe alte rânduri.
-        // Amestecate, topul ar aduna de două ori aceiași bani și ar ieși mai
-        // mare decât totalul săptămânii.
-        $base = fn () => CashFlowDetail::query()
-            ->where('cash_flow_snapshot_id', $snapshot->id)
-            ->whereDate('week', $week)
-            ->where('actual', false)
-            ->whereIn('kind', $kinds)
-            ->whereNotNull('label')
-            ->where('label', '!=', '')
-            ->whereNotIn('label', self::NO_PARTNER)
-            ->where(fn (Builder $query) => collect($prefixes)->each(fn (string $prefix) => $query->orWhere('line', 'like', $prefix.'%')));
-
-        $groups = $base()
-            ->select('label', DB::raw('sum(lei) as lei'), DB::raw('count(*) as pieces'))
-            ->groupBy('label')
-            ->orderByDesc(DB::raw('abs(sum(lei))'))
-            ->limit($limit)
-            ->get();
-
         $houses = $this->houseNames();
 
-        return $groups->map(function ($group) use ($base, $houses) {
-            // Cele mai grele hârtii ale partenerului: ele spun despre ce e vorba.
-            $documents = $base()
-                ->where('label', $group->label)
+        $lines = collect($payload['lines'] ?? [])
+            ->filter(function (array $line) use ($prefixes) {
+                $code = (string) ($line['code'] ?? '');
+
+                // Subtotalul și copiii lui spun aceiași bani de două ori; se
+                // ține rândul de sus, ca în raport.
+                return $code !== ''
+                    && ! str_contains($code, '.')
+                    && ! in_array((string) ($line['kind'] ?? 'value'), self::SUMS, true)
+                    && collect($prefixes)->contains(fn (string $prefix) => str_starts_with($code, $prefix));
+            })
+            ->map(fn (array $line) => [
+                'code' => (string) $line['code'],
+                'label' => trim((string) ($line['label'] ?? '')),
+                'lei' => round((float) ($line['values'][0] ?? 0), 2),
+            ])
+            ->filter(fn (array $line) => abs($line['lei']) >= 1)
+            ->sortByDesc(fn (array $line) => abs($line['lei']))
+            ->take($limit)
+            ->values();
+
+        return $lines->map(function (array $line) use ($snapshot, $week, $houses) {
+            // Numai bucățile de prognoză: coloana săptămânii e tot prognoză,
+            // iar ce s-a întâmplat deja e scris pe alte rânduri.
+            $pieces = CashFlowDetail::query()
+                ->where('cash_flow_snapshot_id', $snapshot->id)
+                ->whereDate('week', $week)
+                ->where('actual', false)
+                ->where(fn (Builder $query) => $query
+                    ->where('line', $line['code'])
+                    ->orWhere('line', 'like', $line['code'].'.%'));
+
+            $count = (clone $pieces)->count();
+
+            $documents = (clone $pieces)
                 ->orderByDesc(DB::raw('abs(lei)'))
                 ->limit(self::DOCUMENTS)
                 ->get();
 
-            $label = (string) $group->label;
-
             return [
-                'label' => $this->name($label, $houses),
-                'lei' => round((float) $group->lei, 2),
-                'pieces' => (int) $group->pieces,
+                ...$line,
+                'pieces' => $count,
                 'documents' => $documents->map(fn (CashFlowDetail $piece) => [
+                    'partner' => $this->name((string) $piece->label, $houses),
                     'reference' => $piece->reference !== null && $piece->reference !== '' ? (string) $piece->reference : null,
                     'group' => $piece->group,
                     'date' => $piece->date?->format('d.m.Y'),
@@ -94,9 +96,9 @@ class CashFlowDigest
                     'lei' => round((float) $piece->lei, 2),
                     'bank' => in_array($piece->kind, ['omc_payment', 'omc_receipt'], true),
                 ])->all(),
-                'rest' => max(0, (int) $group->pieces - $documents->count()),
+                'rest' => max(0, $count - $documents->count()),
             ];
-        })->values()->all();
+        })->all();
     }
 
     /**
@@ -113,6 +115,10 @@ class CashFlowDigest
     private function name(string $label, array $houses): string
     {
         $needle = mb_strtolower(trim($label));
+
+        if ($label === '' || in_array(trim($label), self::NO_PARTNER, true)) {
+            return 'fără partener';
+        }
 
         if (in_array($needle, $houses, true)) {
             return 'Clienți direcți (retail)';
@@ -193,8 +199,8 @@ class CashFlowDigest
                 'from' => CarbonImmutable::parse($current)->format('d.m'),
                 'to' => CarbonImmutable::parse($current)->addDays(6)->format('d.m.Y'),
             ] : null,
-            'top_in' => $current !== null ? $this->movers($snapshot, $current, self::IN_KINDS, ['B']) : [],
-            'top_out' => $current !== null ? $this->movers($snapshot, $current, self::OUT_KINDS, ['C', 'D']) : [],
+            'top_in' => $current !== null ? $this->topLines($snapshot, $payload, $current, ['B']) : [],
+            'top_out' => $current !== null ? $this->topLines($snapshot, $payload, $current, ['C', 'D']) : [],
             'closing_13' => isset($kpis['closing_13']) ? (float) $kpis['closing_13'] : null,
             'in_13' => isset($kpis['in_13']) ? (float) $kpis['in_13'] : null,
             'out_13' => isset($kpis['out_13']) ? (float) $kpis['out_13'] : null,
