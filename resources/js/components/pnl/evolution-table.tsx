@@ -32,6 +32,8 @@ export type EvolutionRow = {
     cells: Record<string, EvolutionCell>;
 };
 
+export type UnpostedMonth = { month: number; label: string; reasons: string[] };
+
 export type PnlEvolution = {
     year: number;
     channels: string[];
@@ -40,6 +42,8 @@ export type PnlEvolution = {
         code: string;
         label: string;
         kind: 'month' | 'quarter' | 'year';
+        /** Lunile din perioadă pe care contabilitatea nu le-a închis încă. */
+        unposted?: UnpostedMonth[];
     }[];
     rows: EvolutionRow[];
 };
@@ -232,7 +236,11 @@ export function PnlEvolutionTable({
                 <p className="text-sm text-muted-foreground">
                     Lunile fără nicio mișcare nu se desenează. Un clic pe numele
                     perioadei o deschide pe coloanele vederii, iar unul pe grupa
-                    de cost îi arată liniile.
+                    de cost îi arată liniile. Bulina{' '}
+                    <span className="text-amber-600 dark:text-amber-400">
+                        ●
+                    </span>{' '}
+                    arată o lună pe care contabilitatea n-a închis-o încă.
                 </p>
             </div>
 
@@ -274,6 +282,20 @@ export function PnlEvolutionTable({
                                                       : 'Desfă pe produse'
                                             }
                                         >
+                                            {(period.unposted?.length ?? 0) >
+                                                0 && (
+                                                <span
+                                                    className="mr-0.5 text-amber-600 dark:text-amber-400"
+                                                    title={`Contabilitatea n-a închis încă: ${period.unposted
+                                                        ?.map(
+                                                            (month) =>
+                                                                `${month.label} (${month.reasons.join('; ')})`,
+                                                        )
+                                                        .join(', ')}`}
+                                                >
+                                                    ●
+                                                </span>
+                                            )}
                                             {period.label}
                                             {split(period.code) ? (
                                                 <ChevronDown className="size-3" />

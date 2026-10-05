@@ -213,15 +213,30 @@ class PnlReportService
 
             foreach ($months as $month) {
                 $slices['m'.$month] = $this->slice($report, [$month], 'mtd'.$month, $basis, $mode, $expand, $key);
-                $periods[] = ['code' => 'm'.$month, 'label' => self::MONTHS[$month - 1], 'kind' => 'month'];
+                $periods[] = [
+                    'code' => 'm'.$month,
+                    'label' => self::MONTHS[$month - 1],
+                    'kind' => 'month',
+                    'unposted' => $slices['m'.$month]['meta']['unposted'] ?? [],
+                ];
             }
 
             $slices['q'.$quarter] = $this->slice($report, $months, 'q'.$quarter, $basis, $mode, $expand, $key);
-            $periods[] = ['code' => 'q'.$quarter, 'label' => 'T'.$quarter, 'kind' => 'quarter'];
+            $periods[] = [
+                'code' => 'q'.$quarter,
+                'label' => 'T'.$quarter,
+                'kind' => 'quarter',
+                'unposted' => $slices['q'.$quarter]['meta']['unposted'] ?? [],
+            ];
         }
 
         $slices['year'] = $this->slice($report, range(1, 12), 'year', $basis, $mode, $expand, $key);
-        $periods[] = ['code' => 'year', 'label' => (string) $report['year'], 'kind' => 'year'];
+        $periods[] = [
+            'code' => 'year',
+            'label' => (string) $report['year'],
+            'kind' => 'year',
+            'unposted' => $slices['year']['meta']['unposted'] ?? [],
+        ];
 
         // O lună fără nicio mișcare nu se desenează, iar trimestrul ei cade
         // odată cu ea; anul rămâne oricum, ca reper.
@@ -832,6 +847,9 @@ class PnlReportService
             ],
             'meta' => [
                 ...$report['meta'],
+                // Lunile din perioadă pe care contabilitatea nu le-a închis:
+                // vederea financiară a unei luni necontate nu înseamnă nimic.
+                'unposted' => $this->unpostedIn($report, $months),
                 'direct_lei' => round($direct, 2),
                 'allocated_lei' => round($total - $direct, 2),
                 'unmapped_lei' => round($unmapped, 2),
@@ -1341,6 +1359,9 @@ class PnlReportService
                 'channels' => $channels,
             ],
             'financial' => $financial,
+            // Lunile pe care contabilitatea nu le-a închis încă: altfel o lună
+            // necontată se citește ca o lună slabă.
+            'posting' => $this->posting($revenueMonths, $financial, $costRows),
             'lines' => $lines,
             'trip' => $trip,
             'below' => $below,
@@ -1355,6 +1376,119 @@ class PnlReportService
                 'tina_error' => $tinaError,
             ],
         ];
+    }
+
+    /**
+     * Lunile necontate dintr-o perioadă, cu motivul fiecăreia.
+     *
+     * @param  array<string, mixed>  $report
+     * @param  list<int>  $months
+     * @return list<array{month: int, label: string, reasons: list<string>}>
+     */
+    private function unpostedIn(array $report, array $months): array
+    {
+        $unposted = [];
+
+        foreach ($months as $month) {
+            $state = $report['posting'][$month] ?? null;
+
+            if ($state === null || ! $state['unposted']) {
+                continue;
+            }
+
+            $unposted[] = [
+                'month' => $month,
+                'label' => self::MONTHS[$month - 1],
+                'reasons' => $state['reasons'],
+            ];
+        }
+
+        return $unposted;
+    }
+
+    /**
+     * Ce lună e închisă contabil și ce lună nu.
+     *
+     * Registrul vine după vânzare: facturile de ieșire și statul de plată se
+     * pun la câteva zile după ce s-a terminat luna. Până atunci, luna arată în
+     * vederea financiară ca un dezastru — venit aproape zero și cheltuieli pe
+     * jumătate — deși nu s-a întâmplat nimic rău. Două semne o dau de gol:
+     * venitul din registru mult sub cel operațional (vânzarea e făcută, dar
+     * nefacturată) și salariile lipsă față de lunile dinainte.
+     *
+     * @param  array<int, array<string, mixed>>  $revenueMonths
+     * @param  array<int, array<string, float>>  $financial
+     * @param  list<array<string, mixed>>  $costRows
+     * @return array<int, array<string, mixed>>
+     */
+    private function posting(array $revenueMonths, array $financial, array $costRows): array
+    {
+        $revenueRatio = (float) config('pnl.posting.revenue_ratio', 0.2);
+        $ledgerRevenue = [];
+
+        foreach (range(1, 12) as $month) {
+            $ledgerRevenue[$month] = (float) ($financial[$month]['revenue'] ?? 0.0)
+                + (float) ($financial[$month]['other_income'] ?? 0.0);
+        }
+
+        $payrollRatio = (float) config('pnl.posting.payroll_ratio', 0.1);
+
+        $payroll = [];
+
+        foreach ($costRows as $row) {
+            foreach (self::PAYROLL_ACCOUNTS as $prefix) {
+                if (str_starts_with((string) $row['account'], $prefix)) {
+                    $payroll[(int) $row['month']] = ($payroll[(int) $row['month']] ?? 0.0) + (float) $row['lei'];
+
+                    break;
+                }
+            }
+        }
+
+        $posting = [];
+
+        foreach (range(1, 12) as $month) {
+            $operational = (float) ($revenueMonths[$month]['total']['net'] ?? 0.0);
+            $ledger = $ledgerRevenue[$month];
+            $wages = (float) ($payroll[$month] ?? 0.0);
+
+            // Media lunilor dinainte: trei, dintre cele care chiar au cifra.
+            // Comparația se face cu registrul însuși, nu cu vânzarea din eTrip:
+            // acolo venitul se numără când se vinde, iar factura vine luni mai
+            // târziu, așa că iarna ar ieși „necontată” în fiecare an.
+            $mean = function (array $values): float {
+                $values = array_values(array_filter($values, fn (float $value) => $value > 0.0));
+
+                return $values === [] ? 0.0 : array_sum($values) / count($values);
+            };
+
+            $before = range(max(1, $month - 3), max(1, $month - 1));
+            $expectedRevenue = $month === 1 ? 0.0 : $mean(array_map(fn (int $m) => $ledgerRevenue[$m], $before));
+            $expected = $month === 1 ? 0.0 : $mean(array_map(fn (int $m) => (float) ($payroll[$m] ?? 0.0), $before));
+            $reasons = [];
+
+            // O lună fără nicio vânzare (viitorul) nu e „necontată”, e goală;
+            // una cu registru negativ nu e nici ea necontată, ci corectată.
+            if ($operational > 0.5 && $expectedRevenue > 0.5 && $ledger >= 0.0 && $ledger < $expectedRevenue * $revenueRatio) {
+                $reasons[] = 'veniturile nu sunt facturate în contabilitate';
+            }
+
+            if ($expected > 0.5 && $wages < $expected * $payrollRatio) {
+                $reasons[] = 'salariile lunii nu sunt înregistrate';
+            }
+
+            $posting[$month] = [
+                'operational_net' => round($operational, 2),
+                'ledger_revenue' => round($ledger, 2),
+                'ledger_expected' => round($expectedRevenue, 2),
+                'payroll' => round($wages, 2),
+                'payroll_expected' => round($expected, 2),
+                'unposted' => $reasons !== [],
+                'reasons' => $reasons,
+            ];
+        }
+
+        return $posting;
     }
 
     /**

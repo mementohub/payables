@@ -3,6 +3,16 @@
 return [
 
     /*
+    | Când se consideră o lună neînchisă contabil: venitul din registru sub
+    | `revenue_ratio` din cel operațional (vânzarea e făcută, dar nefacturată)
+    | ori salariile sub `payroll_ratio` din media ultimelor trei luni.
+    */
+    'posting' => [
+        'revenue_ratio' => (float) env('PNL_POSTING_REVENUE_RATIO', 0.2),
+        'payroll_ratio' => (float) env('PNL_POSTING_PAYROLL_RATIO', 0.1),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Segmentarea rezervărilor eTrip
     |--------------------------------------------------------------------------

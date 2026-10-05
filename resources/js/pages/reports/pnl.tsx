@@ -142,6 +142,8 @@ type PnlReport = {
         unmapped_lei: number;
         excluded_accounts: string[];
         channels_without_costs?: string[];
+        /** Lunile din perioadă pe care contabilitatea nu le-a închis încă. */
+        unposted?: { month: number; label: string; reasons: string[] }[];
         reconciles: boolean;
     };
 };
@@ -620,6 +622,29 @@ export default function Pnl({
                                     care nu se văd încă în cifre. Fă-le pe
                                     toate, apoi apasă „Aplică” — raportul se
                                     reconstruiește o singură dată.
+                                </span>
+                            </div>
+                        )}
+                        {(report.meta.unposted?.length ?? 0) > 0 && (
+                            <div className="flex flex-wrap items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                                <span>
+                                    <span className="font-medium">
+                                        {report.meta.unposted!.length === 1
+                                            ? 'O lună din perioadă nu e închisă contabil'
+                                            : `${report.meta.unposted!.length} luni din perioadă nu sunt închise contabil`}
+                                    </span>
+                                    :{' '}
+                                    {report.meta
+                                        .unposted!.map(
+                                            (month) =>
+                                                `${month.label} — ${month.reasons.join('; ')}`,
+                                        )
+                                        .join(' · ')}
+                                    .{' '}
+                                    {filters.mode === 'financial'
+                                        ? 'Vederea financiară citește registrul, deci cifrele acelor luni sunt incomplete; se întregesc după ce Financiarul închide luna.'
+                                        : 'Vânzarea e întreagă (vine din eTrip și Tina), dar costurile și vederea financiară se întregesc după ce Financiarul închide luna.'}
                                 </span>
                             </div>
                         )}

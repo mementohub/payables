@@ -573,12 +573,13 @@ class OmcCashFlowReader
     }
 
     /**
-     * Numele băncii, curățat: OMC le ține umplute cu spații neîntrerupte, iar
-     * „BANCA TRANSILVANIA” și „BANCA TRANSILVANIA␠␠␠” ar ieși două bănci.
+     * Numele băncii, curățat: OMC le ține umplute cu spații neîntrerupte și
+     * scrise când cu majuscule, când nu, iar „BANCA TRANSILVANIA”, „Banca
+     * Transilvania” și „BANCA TRANSILVANIA␠␠␠” ar ieși trei bănci.
      */
     public static function bankName(string $name): string
     {
-        return trim((string) preg_replace('/\s+/u', ' ', str_replace("\u{00A0}", ' ', $name)));
+        return mb_strtoupper(trim((string) preg_replace('/\s+/u', ' ', str_replace("\u{00A0}", ' ', $name))));
     }
 
     /**

@@ -162,3 +162,63 @@ test('the evolution of a company with nothing built says so instead of breaking'
 
     expect($service->evolution(['error' => 'nimic construit']))->toBe(['error' => 'nimic construit']);
 });
+
+/**
+ * O lună pe care contabilitatea n-a închis-o încă: vânzarea e în eTrip, dar
+ * registrul n-are nici facturile, nici statul de plată.
+ */
+function unpostedSources(): void
+{
+    fakeEvolutionSources(
+        [
+            ['channel' => 'retail', 'branch' => '', 'product' => 'Charter', 'month' => 1, 'bookings' => 10, 'net' => 1000.0, 'margin' => 200.0],
+            ['channel' => 'retail', 'branch' => '', 'product' => 'Charter', 'month' => 2, 'bookings' => 10, 'net' => 1000.0, 'margin' => 200.0],
+            ['channel' => 'retail', 'branch' => '', 'product' => 'Charter', 'month' => 3, 'bookings' => 10, 'net' => 1000.0, 'margin' => 200.0],
+        ],
+        [
+            ['account' => '641', 'sediu' => '', 'partner' => 'Salarii', 'note' => 'Salarii', 'month' => 1, 'lei' => 500.0],
+            ['account' => '641', 'sediu' => '', 'partner' => 'Salarii', 'note' => 'Salarii', 'month' => 2, 'lei' => 500.0],
+            // Luna a treia n-are salarii puse.
+        ],
+    );
+
+    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('costs')->andReturn([
+            ['account' => '641', 'sediu' => '', 'partner' => 'Salarii', 'note' => 'Salarii', 'month' => 1, 'lei' => 500.0, 'trip_share' => 0.0],
+            ['account' => '641', 'sediu' => '', 'partner' => 'Salarii', 'note' => 'Salarii', 'month' => 2, 'lei' => 500.0, 'trip_share' => 0.0],
+        ]);
+        $mock->shouldReceive('belowEbitda')->andReturn([]);
+        $mock->shouldReceive('documentsByKey')->andReturn([]);
+        $mock->shouldReceive('details')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
+        // Registrul: ianuarie și februarie facturate, martie nu.
+        $mock->shouldReceive('revenueAndCogs')->andReturn([
+            ['bucket' => 'revenue', 'month' => 1, 'lei' => 900.0],
+            ['bucket' => 'cogs', 'month' => 1, 'lei' => 700.0],
+            ['bucket' => 'revenue', 'month' => 2, 'lei' => 900.0],
+            ['bucket' => 'cogs', 'month' => 2, 'lei' => 700.0],
+            // Martie: abia câteva facturi, restul nepuse.
+            ['bucket' => 'revenue', 'month' => 3, 'lei' => 10.0],
+            ['bucket' => 'cogs', 'month' => 3, 'lei' => 5.0],
+        ]);
+    });
+}
+
+test('a month the accountants have not closed is marked, with the reason', function () {
+    unpostedSources();
+
+    $evolution = pnlEvolution();
+    $march = collect($evolution['periods'])->firstWhere('code', 'm3');
+    $february = collect($evolution['periods'])->firstWhere('code', 'm2');
+
+    expect($march['unposted'])->toHaveCount(1)
+        ->and($march['unposted'][0]['label'])->toBe('mar.')
+        ->and($march['unposted'][0]['reasons'])->toBe([
+            'veniturile nu sunt facturate în contabilitate',
+            'salariile lunii nu sunt înregistrate',
+        ])
+        // O lună întreagă nu poartă niciun semn.
+        ->and($february['unposted'])->toBe([])
+        // Trimestrul care o cuprinde spune și el ce lună îi lipsește.
+        ->and(collect($evolution['periods'])->firstWhere('code', 'q1')['unposted'])->toHaveCount(1);
+});
