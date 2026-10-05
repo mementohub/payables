@@ -21,6 +21,8 @@ import {
     MoveCostButton,
     MoveProductButton,
 } from '@/components/pnl/move-cost-button';
+import { PnlEvolutionTable } from '@/components/pnl/evolution-table';
+import type { PnlEvolution } from '@/components/pnl/evolution-table';
 import { useCostDetails } from '@/components/pnl/use-cost-details';
 import { ExportMenu } from '@/components/reports/export-menu';
 import type { CostDetails } from '@/components/pnl/use-cost-details';
@@ -174,9 +176,12 @@ type Props = {
         expand: string | null;
         compare: boolean;
         key: string;
+        layout: 'table' | 'evolution';
     };
     report: PnlReport | null;
     previous: PnlReport | null;
+    /** Anul pe luni, trimestre și total — doar în vederea de evoluție. */
+    evolution: PnlEvolution | null;
     lines: Record<string, { group: string; label: string }>;
     overrides: Override[];
     /** Corecturi făcute după ultima construcție: se văd abia după „Aplică”. */
@@ -234,6 +239,7 @@ export default function Pnl({
     filters,
     report,
     previous,
+    evolution,
     lines,
     overrides,
     pending,
@@ -352,6 +358,37 @@ export default function Pnl({
                     </div>
 
                     <div className="grid gap-1.5">
+                        <Label>Afișare</Label>
+                        <ToggleGroup
+                            type="single"
+                            value={filters.layout}
+                            onValueChange={(value) =>
+                                value &&
+                                go({ layout: value as 'table' | 'evolution' })
+                            }
+                            variant="outline"
+                        >
+                            <ViewChoice
+                                value="table"
+                                label="O perioadă"
+                                title="Raportul perioadei alese"
+                                lines={[
+                                    'Rândurile P&L pe coloanele vederii, pentru perioada din dreapta — cu detaliul fiecărei celule la un clic.',
+                                ]}
+                            />
+                            <ViewChoice
+                                value="evolution"
+                                label="Evoluție"
+                                title="Anul întreg dintr-o privire"
+                                lines={[
+                                    'Fiecare lună, trimestrul ei și totalul anului, una lângă alta, pe aceleași coloane ale vederii.',
+                                    'Lunile fără nicio mișcare nu se desenează.',
+                                ]}
+                            />
+                        </ToggleGroup>
+                    </div>
+
+                    <div className="grid gap-1.5">
                         <Label>Venit și COGS</Label>
                         <ToggleGroup
                             type="single"
@@ -443,7 +480,12 @@ export default function Pnl({
                         </Select>
                     </div>
 
-                    <div className="grid gap-1.5">
+                    <div
+                        className={cn(
+                            'grid gap-1.5',
+                            filters.layout === 'evolution' && 'hidden',
+                        )}
+                    >
                         <Label>Cumul</Label>
                         <ToggleGroup
                             type="single"
@@ -493,7 +535,12 @@ export default function Pnl({
                         </div>
                     )}
 
-                    <div className="grid gap-1.5">
+                    <div
+                        className={cn(
+                            'grid gap-1.5',
+                            filters.layout === 'evolution' && 'hidden',
+                        )}
+                    >
                         <Label>Comparație</Label>
                         <ToggleGroup
                             type="single"
@@ -576,63 +623,75 @@ export default function Pnl({
                                 </span>
                             </div>
                         )}
-                        <PnlTable
-                            report={report}
-                            previous={previous}
-                            view={view}
-                            open={open}
-                            details={details}
-                            loading={loading}
-                            catalogue={lines}
-                            onDocuments={setDocumentsSaf}
-                            onMoveChannel={(payload, channel) =>
-                                router.post(
-                                    `/reports/pnl/${filters.company_id}/move`,
-                                    {
-                                        ...payload,
-                                        channel,
-                                        year: filters.year,
-                                    },
-                                    { preserveScroll: true },
-                                )
-                            }
-                            onMoveProduct={(payload, product) =>
-                                router.post(
-                                    `/reports/pnl/${filters.company_id}/move`,
-                                    {
-                                        ...payload,
-                                        product,
-                                        year: filters.year,
-                                    },
-                                    { preserveScroll: true },
-                                )
-                            }
-                            onExpand={(channel) =>
-                                go({ expand: channel ?? '' })
-                            }
-                            onOpen={(saf, column) =>
-                                setOpen((current) =>
-                                    current?.saf === saf &&
-                                    current.column === column
-                                        ? null
-                                        : { saf, column },
-                                )
-                            }
-                            onDrop={(payload, saf) => {
-                                // Lăsată înapoi pe linia ei, mutarea nu
-                                // înseamnă nimic; nu scriem o corectură goală.
-                                if (open?.saf === saf) {
-                                    return;
+                        {filters.layout === 'evolution' && evolution ? (
+                            <PnlEvolutionTable
+                                evolution={evolution}
+                                view={view}
+                                labelOf={(key) =>
+                                    view === 'channel'
+                                        ? (CHANNEL_LABELS[key] ?? key)
+                                        : key
                                 }
+                            />
+                        ) : (
+                            <PnlTable
+                                report={report}
+                                previous={previous}
+                                view={view}
+                                open={open}
+                                details={details}
+                                loading={loading}
+                                catalogue={lines}
+                                onDocuments={setDocumentsSaf}
+                                onMoveChannel={(payload, channel) =>
+                                    router.post(
+                                        `/reports/pnl/${filters.company_id}/move`,
+                                        {
+                                            ...payload,
+                                            channel,
+                                            year: filters.year,
+                                        },
+                                        { preserveScroll: true },
+                                    )
+                                }
+                                onMoveProduct={(payload, product) =>
+                                    router.post(
+                                        `/reports/pnl/${filters.company_id}/move`,
+                                        {
+                                            ...payload,
+                                            product,
+                                            year: filters.year,
+                                        },
+                                        { preserveScroll: true },
+                                    )
+                                }
+                                onExpand={(channel) =>
+                                    go({ expand: channel ?? '' })
+                                }
+                                onOpen={(saf, column) =>
+                                    setOpen((current) =>
+                                        current?.saf === saf &&
+                                        current.column === column
+                                            ? null
+                                            : { saf, column },
+                                    )
+                                }
+                                onDrop={(payload, saf) => {
+                                    // Lăsată înapoi pe linia ei, mutarea nu
+                                    // înseamnă nimic; nu scriem o corectură goală.
+                                    if (open?.saf === saf) {
+                                        return;
+                                    }
 
-                                movePnlCost(
-                                    filters.company_id as number,
-                                    filters.year,
-                                    payload,
-                                    saf,
-                                );
-                            }}
-                        />
+                                    movePnlCost(
+                                        filters.company_id as number,
+                                        filters.year,
+                                        payload,
+                                        saf,
+                                    );
+                                }}
+                            />
+                        )}
                         {overrides.length > 0 && (
                             <PnlOverrides
                                 overrides={overrides}

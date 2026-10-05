@@ -69,6 +69,9 @@ class PnlReportService
 
     public const KEYS = [self::KEY_REVENUE, self::KEY_PAYROLL];
 
+    /** Numele scurte ale lunilor, pentru capul de tabel al evoluției. */
+    private const MONTHS = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sep.', 'oct.', 'nov.', 'dec.'];
+
     /**
      * Diferențele de curs de pe încasările de la client: un comision, nu un
      * rezultat financiar. Se citește din registru ca tot ce e sub EBITDA, dar
@@ -181,11 +184,231 @@ class PnlReportService
      */
     public function view(array $report, string $period, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE): array
     {
+        return $this->slice($report, self::months($period), $period, $basis, $mode, $expand, $key);
+    }
+
+    /**
+     * Anul întreg dintr-o privire: fiecare lună, trimestrul ei și totalul.
+     *
+     * E aceeași socoteală ca pe pagina obișnuită, repetată pe fiecare bucată
+     * de timp și pusă una lângă alta, ca să se vadă unde crește și unde scade
+     * fiecare linie — pe canale sau pe produse, după vederea aleasă. Lunile
+     * goale nu se desenează: o coloană de zerouri nu spune nimic și împinge
+     * cifrele care spun ceva în afara ecranului.
+     *
+     * @param  array<string, mixed>  $report
+     * @return array<string, mixed>
+     */
+    public function evolution(array $report, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE): array
+    {
         if (isset($report['error'])) {
             return $report;
         }
 
-        $months = self::months($period);
+        $periods = [];
+        $slices = [];
+
+        foreach ([1, 2, 3, 4] as $quarter) {
+            $months = range($quarter * 3 - 2, $quarter * 3);
+
+            foreach ($months as $month) {
+                $slices['m'.$month] = $this->slice($report, [$month], 'mtd'.$month, $basis, $mode, $expand, $key);
+                $periods[] = ['code' => 'm'.$month, 'label' => self::MONTHS[$month - 1], 'kind' => 'month'];
+            }
+
+            $slices['q'.$quarter] = $this->slice($report, $months, 'q'.$quarter, $basis, $mode, $expand, $key);
+            $periods[] = ['code' => 'q'.$quarter, 'label' => 'T'.$quarter, 'kind' => 'quarter'];
+        }
+
+        $slices['year'] = $this->slice($report, range(1, 12), 'year', $basis, $mode, $expand, $key);
+        $periods[] = ['code' => 'year', 'label' => (string) $report['year'], 'kind' => 'year'];
+
+        // O lună fără nicio mișcare nu se desenează, iar trimestrul ei cade
+        // odată cu ea; anul rămâne oricum, ca reper.
+        $alive = fn (array $slice) => abs((float) $slice['revenue']['total']['net']) > 0.5
+            || abs((float) $slice['totals']['total']) > 0.5;
+
+        $periods = array_values(array_filter(
+            $periods,
+            fn (array $period) => $period['kind'] === 'year' || $alive($slices[$period['code']]),
+        ));
+
+        $first = $slices['year'];
+
+        return [
+            'year' => $report['year'],
+            'basis' => $basis,
+            'mode' => $mode,
+            'expand' => $first['expand'],
+            'expandable' => $first['expandable'],
+            'company' => $first['company'],
+            'channels' => $first['channels'],
+            'products' => $first['products'],
+            'periods' => $periods,
+            'rows' => $this->evolutionRows($slices, $periods, $first['channels'], $first['products']),
+            'meta' => $first['meta'],
+        ];
+    }
+
+    /**
+     * Rândurile evoluției: aceeași structură de P&L ca pe pagină, de la
+     * venituri la profitul net, cu valoarea fiecărei perioade pe coloana ei.
+     *
+     * @param  array<string, array<string, mixed>>  $slices
+     * @param  list<array{code: string, label: string, kind: string}>  $periods
+     * @param  list<string>  $channels
+     * @param  list<string>  $products
+     * @return list<array<string, mixed>>
+     */
+    private function evolutionRows(array $slices, array $periods, array $channels, array $products): array
+    {
+        // Fiecare grupă își ține liniile după ea: ele se văd abia când se
+        // deschide grupa, dar vin odată cu pagina, ca deschiderea să fie
+        // instantanee.
+        $groups = [];
+
+        foreach ($slices['year']['lines'] as $line) {
+            $groups[(string) $line['group']][] = $line;
+        }
+
+        $costRows = [];
+
+        foreach ($groups as $group => $lines) {
+            $costRows[] = ['key' => 'group:'.$group, 'label' => $group, 'kind' => 'cost', 'lines' => count($lines)];
+
+            foreach ($lines as $line) {
+                $costRows[] = [
+                    'key' => 'line:'.$line['saf'],
+                    'label' => (string) $line['label'],
+                    'kind' => 'line',
+                    'group' => $group,
+                    'saf' => (string) $line['saf'],
+                ];
+            }
+        }
+
+        $rows = [
+            ['key' => 'revenue', 'label' => 'Venituri nete', 'kind' => 'strong'],
+            ['key' => 'margin', 'label' => 'Marjă brută', 'kind' => 'strong', 'of' => 'revenue'],
+            ...$costRows,
+            ['key' => 'costs', 'label' => 'Cheltuieli totale operaționale', 'kind' => 'strong', 'cost' => true],
+            ['key' => 'ebitda', 'label' => 'EBITDA', 'kind' => 'result', 'of' => 'revenue'],
+            ['key' => 'below:amortizare', 'label' => 'Amortizare (net de reluări)', 'kind' => 'cost'],
+            ['key' => 'ebit', 'label' => 'EBIT', 'kind' => 'result'],
+            ['key' => 'below:financiar', 'label' => 'Rezultat financiar (net)', 'kind' => 'cost'],
+            ['key' => 'ebt', 'label' => 'Profit înainte de impozitare', 'kind' => 'result'],
+            ['key' => 'below:impozit', 'label' => 'Impozit pe profit', 'kind' => 'cost'],
+            ['key' => 'net', 'label' => 'Profit net', 'kind' => 'result'],
+        ];
+
+        // Amândouă vederile se trimit deodată: schimbarea dintre canale și
+        // produse e o apăsare de buton, nu încă un drum la server.
+        // Coloanele goale nu se trimit: pagina le citește ca zero oricum, iar
+        // un raport cu 61 de linii și 17 perioade are destule cifre de dus.
+        $by = fn (string $key, array $slice, string $axis, array $members) => array_filter(
+            array_map(
+                fn (string $member) => round($this->evolutionValue($key, $slice, $axis, $member), 2),
+                array_combine($members, $members),
+            ),
+            fn (float $value) => abs($value) >= 0.005,
+        );
+
+        return array_map(function (array $row) use ($slices, $periods, $by, $channels, $products) {
+            $cells = [];
+
+            foreach ($periods as $period) {
+                $slice = $slices[$period['code']];
+                $cells[$period['code']] = [
+                    'total' => round($this->evolutionValue($row['key'], $slice, 'by_channel', null), 2),
+                    'by_channel' => $by($row['key'], $slice, 'by_channel', $channels),
+                    'by_product' => $by($row['key'], $slice, 'by_product', $products),
+                ];
+            }
+
+            return [...$row, 'cells' => $cells];
+        }, $rows);
+    }
+
+    /**
+     * Valoarea unui rând al evoluției, pe tot sau pe o coloană a vederii.
+     *
+     * @param  array<string, mixed>  $slice
+     */
+    private function evolutionValue(string $row, array $slice, string $axis, ?string $member): float
+    {
+        $revenue = fn (string $what) => $member === null
+            ? (float) $slice['revenue']['total'][$what]
+            : (float) ($slice['revenue'][$axis][$member][$what] ?? 0.0);
+
+        $costs = fn () => $member === null
+            ? (float) $slice['totals']['total']
+            : (float) ($slice['totals'][$axis][$member] ?? 0.0);
+
+        $below = fn (string $bucket) => $member === null
+            ? (float) ($slice['below'][$bucket]['total'] ?? 0.0)
+            : (float) ($slice['below'][$bucket][$axis][$member] ?? 0.0);
+
+        $group = function (string $group) use ($slice, $axis, $member) {
+            $sum = 0.0;
+
+            foreach ($slice['lines'] as $line) {
+                if ((string) $line['group'] !== $group) {
+                    continue;
+                }
+
+                $sum += $member === null ? (float) $line['total'] : (float) ($line[$axis][$member] ?? 0.0);
+            }
+
+            return $sum;
+        };
+
+        $line = function (string $saf) use ($slice, $axis, $member) {
+            foreach ($slice['lines'] as $row) {
+                if ((string) $row['saf'] !== $saf) {
+                    continue;
+                }
+
+                return $member === null ? (float) $row['total'] : (float) ($row[$axis][$member] ?? 0.0);
+            }
+
+            return 0.0;
+        };
+
+        $ebitda = fn () => $revenue('margin') - $costs();
+
+        return match (true) {
+            $row === 'revenue' => $revenue('net'),
+            $row === 'margin' => $revenue('margin'),
+            $row === 'costs' => $costs(),
+            $row === 'ebitda' => $ebitda(),
+            $row === 'ebit' => $ebitda() - $below('amortizare'),
+            $row === 'ebt' => $ebitda() - $below('amortizare') - $below('financiar'),
+            $row === 'net' => $ebitda() - $below('amortizare') - $below('financiar') - $below('impozit'),
+            str_starts_with($row, 'below:') => $below(substr($row, 6)),
+            str_starts_with($row, 'group:') => $group(substr($row, 6)),
+            str_starts_with($row, 'line:') => $line(substr($row, 5)),
+            default => 0.0,
+        };
+    }
+
+    /**
+     * Același raport, dar pe lunile spuse pe șleau.
+     *
+     * Perioadele numite („q2”) sunt cumulate de la începutul anului, fiindcă
+     * așa se citește un raport de gestiune. Evoluția are însă nevoie de luna
+     * ei singură și de trimestrul lui singur, așa că aici lunile se dau cu
+     * mâna.
+     *
+     * @param  array<string, mixed>  $report
+     * @param  list<int>  $months
+     * @return array<string, mixed>
+     */
+    public function slice(array $report, array $months, string $period, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE): array
+    {
+        if (isset($report['error'])) {
+            return $report;
+        }
+
         $products = $report['products'];
 
         // Se ține deoparte: `$key` e folosit mai jos ca variabilă de buclă pe

@@ -56,6 +56,9 @@ class PnlController extends Controller
             ? $request->string('key')->toString()
             : PnlReportService::KEY_REVENUE;
         $compare = $request->boolean('compare');
+        // Evoluția arată anul întreg — lună, trimestru, total — pe aceleași
+        // coloane ale vederii; tabelul obișnuit arată o singură perioadă.
+        $layout = $request->string('layout')->toString() === 'evolution' ? 'evolution' : 'table';
 
         $company = $companyId ? Company::find($companyId) : null;
         $built = $company ? $this->service->cached($company, $year) : null;
@@ -74,9 +77,12 @@ class PnlController extends Controller
 
         return Inertia::render('reports/pnl', [
             'companies' => $companies,
-            'filters' => ['company_id' => $companyId, 'year' => $year, 'view' => $view, 'period' => $period, 'basis' => $basis, 'mode' => $mode, 'expand' => $expand, 'compare' => $compare, 'key' => $key],
+            'filters' => ['company_id' => $companyId, 'year' => $year, 'view' => $view, 'period' => $period, 'basis' => $basis, 'mode' => $mode, 'expand' => $expand, 'compare' => $compare, 'key' => $key, 'layout' => $layout],
             'report' => $built ? $this->service->view($built, $period, $basis, $mode, $expand, $key) : null,
             'previous' => $previousBuilt ? $this->service->view($previousBuilt, $period, $basis, $mode, $expand, $key) : null,
+            'evolution' => $built && $layout === 'evolution'
+                ? $this->service->evolution($built, $basis, $mode, $expand, $key)
+                : null,
             'lines' => $this->map->lines(),
             'overrides' => $company ? $this->overrides($company) : [],
             'pending' => $company ? $this->pending($company, $built) : 0,
