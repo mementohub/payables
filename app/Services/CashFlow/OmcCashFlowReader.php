@@ -425,6 +425,163 @@ class OmcCashFlowReader
     }
 
     /**
+     * Poziția desfăcută pe fiecare cont bancar și pe fiecare casierie.
+     *
+     * Totalul pe monedă e bun de pus în raport, dar nu se poate confrunta cu
+     * nimic: trezorierul are extrase pe bănci, nu pe monede. Aici stă aceeași
+     * socoteală ca la total — soldul de bază rulat cu documentele de după el —
+     * dar ținută pe cont, ca să se vadă câți bani sunt, în ce monedă și la
+     * care bancă.
+     *
+     * @param  array{bank: ?CarbonInterface, cash: ?CarbonInterface, bank_source?: string, cash_source?: string}  $anchors
+     * @return array{banks: list<array{bank: string, account: string, currency: string, opening: float, in: float, out: float, amount: float}>, desks: list<array{desk: string, currency: string, opening: float, in: float, out: float, amount: float}>}
+     */
+    public function accountPositions(array $anchors, CarbonInterface $asOf): array
+    {
+        $connection = $this->omc->connection();
+        $to = CarbonImmutable::instance($asOf)->toDateString();
+        $balancesAt = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? '1900-01-01';
+        $movesAfter = fn (?CarbonInterface $anchor) => $anchor?->toDateString() ?? $to;
+
+        $daily = ($anchors['bank_source'] ?? self::SOURCE_MONTH) === self::SOURCE_DAILY;
+
+        $accounts = $daily
+            ? 'select distinct v.banca, v.cont_banca, v.moneda from view_banca_sold_final_zi v'
+            : 'select banca, cont_banca, moneda from eu_banca where not coalesce(discontinued, false)';
+
+        $balances = $daily
+            ? <<<'SQL'
+                select distinct on (v.banca, v.cont_banca) v.banca, v.cont_banca, v.sold_final_zi as s
+                from view_banca_sold_final_zi v
+                where v.data_contab <= ?::date
+                order by v.banca, v.cont_banca, v.data_contab desc
+                SQL
+            : <<<'SQL'
+                select distinct on (s.banca, s.cont_banca) s.banca, s.cont_banca,
+                       coalesce(s.sold_banca_db, 0) - coalesce(s.sold_banca_cr, 0) as s
+                from eu_banca_sold s
+                where s.data_sold <= ?::date
+                order by s.banca, s.cont_banca, s.data_sold desc
+                SQL;
+
+        $banks = $connection->select(<<<SQL
+            with acc as (
+                {$accounts}
+            ),
+            s1 as (
+                {$balances}
+            ),
+            mv as (
+                select d.banca_eu as banca, d.cont_banca_eu as cont_banca,
+                       sum(case when t.incasare_b then d.val_mon else 0 end) as inc,
+                       sum(case when t.plata_b then d.val_mon else 0 end) as pl
+                from doc d
+                join tip_doc t on t.tip_doc = d.tip_doc
+                where d.data_doc > ?::date and d.data_doc <= ?::date
+                  and (t.incasare_b or t.plata_b)
+                  and d.data_anulare is null
+                group by 1, 2
+            )
+            select a.banca, a.cont_banca, a.moneda,
+                   coalesce(s1.s, 0) as open_m,
+                   coalesce(mv.inc, 0) as inc,
+                   coalesce(mv.pl, 0) as pl
+            from acc a
+            left join s1 on s1.banca = a.banca and s1.cont_banca = a.cont_banca
+            left join mv on mv.banca = a.banca and mv.cont_banca = a.cont_banca
+            SQL, [
+            $balancesAt($anchors['bank']),
+            $movesAfter($anchors['bank']), $to,
+        ]);
+
+        $cashDaily = ($anchors['cash_source'] ?? self::SOURCE_MONTH) === self::SOURCE_DAILY;
+
+        $cashBalances = $cashDaily
+            ? <<<'SQL'
+                select distinct on (w.casa, w.moneda) w.casa, w.moneda, w.sold_final_zi as s
+                from view_casa_sold_final_zi w
+                where w.data_doc <= ?::date
+                order by w.casa, w.moneda, w.data_doc desc
+                SQL
+            : <<<'SQL'
+                select distinct on (s.casa, s.moneda) s.casa, s.moneda, coalesce(s.sold_casa_db, 0) as s
+                from casa_sold s
+                where s.data_sold <= ?::date
+                order by s.casa, s.moneda, s.data_sold desc
+                SQL;
+
+        $desks = $connection->select(<<<SQL
+            with casa as (
+                {$cashBalances}
+            ),
+            mv as (
+                select d.casa, d.moneda,
+                       sum(case when t.incasare_c then d.val_mon else 0 end) as inc,
+                       sum(case when t.plata_c then d.val_mon else 0 end) as pl
+                from doc d
+                join tip_doc t on t.tip_doc = d.tip_doc
+                where d.data_doc > ?::date and d.data_doc <= ?::date
+                  and (t.incasare_c or t.plata_c)
+                  and d.data_anulare is null
+                group by 1, 2
+            )
+            select coalesce(c.casa, mv.casa) as casa,
+                   coalesce(c.moneda, mv.moneda) as moneda,
+                   coalesce(c.s, 0) as open_m,
+                   coalesce(mv.inc, 0) as inc,
+                   coalesce(mv.pl, 0) as pl
+            from casa c
+            full outer join mv on mv.casa = c.casa and mv.moneda = c.moneda
+            SQL, [
+            $balancesAt($anchors['cash']),
+            $movesAfter($anchors['cash']), $to,
+        ]);
+
+        $money = fn ($value) => round((float) $value, 2);
+
+        return [
+            'banks' => collect($banks)
+                ->map(fn ($row) => [
+                    'bank' => self::bankName((string) $row->banca),
+                    'account' => trim((string) $row->cont_banca),
+                    'currency' => self::currency((string) $row->moneda),
+                    'opening' => $money($row->open_m),
+                    'in' => $money($row->inc),
+                    'out' => $money($row->pl),
+                    'amount' => $money((float) $row->open_m + (float) $row->inc - (float) $row->pl),
+                ])
+                // Un cont închis, cu zero pe el, n-are ce căuta într-o listă
+                // care se citește ca să se bifeze extrasele.
+                ->filter(fn (array $row) => abs($row['amount']) >= 0.005 || abs($row['in']) >= 0.005 || abs($row['out']) >= 0.005)
+                ->sortBy([['bank', 'asc'], ['currency', 'asc'], ['account', 'asc']])
+                ->values()
+                ->all(),
+            'desks' => collect($desks)
+                ->map(fn ($row) => [
+                    'desk' => self::bankName((string) $row->casa),
+                    'currency' => self::currency((string) $row->moneda),
+                    'opening' => $money($row->open_m),
+                    'in' => $money($row->inc),
+                    'out' => $money($row->pl),
+                    'amount' => $money((float) $row->open_m + (float) $row->inc - (float) $row->pl),
+                ])
+                ->filter(fn (array $row) => abs($row['amount']) >= 0.005 || abs($row['in']) >= 0.005 || abs($row['out']) >= 0.005)
+                ->sortBy([['desk', 'asc'], ['currency', 'asc']])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * Numele băncii, curățat: OMC le ține umplute cu spații neîntrerupte, iar
+     * „BANCA TRANSILVANIA” și „BANCA TRANSILVANIA␠␠␠” ar ieși două bănci.
+     */
+    public static function bankName(string $name): string
+    {
+        return trim((string) preg_replace('/\s+/u', ' ', str_replace("\u{00A0}", ' ', $name)));
+    }
+
+    /**
      * Conturile bancare pe minus la data poziției: linii de credit trase sau
      * conturi din care s-a constituit un depozit. Scad din poziție, așa cum
      * trebuie, dar trezoreria le ține minte separat — altfel „banii din bănci”

@@ -91,6 +91,16 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
         $mock->shouldReceive('depositBreakdown')->andReturn([
             ['account' => '.134', 'currency' => 'RON', 'opening' => 5000000, 'change' => 300000, 'amount' => 5300000],
         ]);
+        $mock->shouldReceive('accountPositions')->andReturn([
+            'banks' => [
+                ['bank' => 'Banca Transilvania', 'account' => 'RO49BTRL0000', 'currency' => 'RON', 'opening' => 900000.0, 'in' => 150000.0, 'out' => 50000.0, 'amount' => 1000000.0],
+                ['bank' => 'Banca Transilvania', 'account' => 'RO49BTRLEUR0', 'currency' => 'EUR', 'opening' => 40000.0, 'in' => 0.0, 'out' => 0.0, 'amount' => 40000.0],
+                ['bank' => 'ING Bank', 'account' => 'RO11INGB0000', 'currency' => 'RON', 'opening' => 200000.0, 'in' => 0.0, 'out' => 0.0, 'amount' => 200000.0],
+            ],
+            'desks' => [
+                ['desk' => 'Casierie centrală', 'currency' => 'RON', 'opening' => 50000.0, 'in' => 0.0, 'out' => 0.0, 'amount' => 50000.0],
+            ],
+        ])->byDefault();
         $mock->shouldReceive('negativeAccounts')->andReturn([
             ['bank' => 'UNICREDIT', 'account' => 'RO49BACX0000002661784001', 'currency' => 'EUR', 'amount' => -10000],
         ]);
@@ -715,4 +725,21 @@ test('the corporate receipts get their own line in the past, taken out of the re
         ->and($past['lines']['B12'][$i] ?? null)->toEqual(1437960.0)
         // Ce s-a numit nu mai stă în rest: totalul rămâne cel din OMC.
         ->and($past['lines']['BX'][$i] ?? null)->toBeLessThan($past['lines']['B12'][$i] + 1000000000);
+});
+
+test('the opening position is broken down by bank and cash desk', function () {
+    mockEtrip();
+    mockOmc();
+    mockTina();
+
+    $snapshot = app(CashFlowReportBuilder::class)->build('test');
+    $accounts = $snapshot->payload['opening']['accounts'];
+
+    expect($accounts['banks'])->toHaveCount(3)
+        ->and($accounts['banks'][0]['bank'])->toBe('Banca Transilvania')
+        ->and($accounts['banks'][0]['currency'])->toBe('RON')
+        // Suma conturilor unei monede e chiar ce scrie în poziție pe moneda aia.
+        ->and(collect($accounts['banks'])->where('currency', 'RON')->sum('amount'))->toEqual(1200000.0)
+        ->and($accounts['desks'])->toHaveCount(1)
+        ->and($accounts['desks'][0]['desk'])->toBe('Casierie centrală');
 });

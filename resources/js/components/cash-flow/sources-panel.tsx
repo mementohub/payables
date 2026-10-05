@@ -1,4 +1,5 @@
 import { CircleAlert, CircleCheck, CircleDashed } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import {
     Card,
@@ -14,6 +15,160 @@ import type {
     SupplierAdvance,
 } from '@/types/cash-flow';
 import { fmtRon } from './report-math';
+
+/**
+ * Poziția pe fiecare bancă: câți bani, în ce monedă, la care bancă.
+ *
+ * Un total pe monedă nu se poate confrunta cu nimic — trezorierul are extrase
+ * pe bănci. Banca se arată strânsă, cu totalul ei pe monede; conturile de sub
+ * ea se deschid la cerere, fiindcă sunt câteva sute și nimeni nu le citește pe
+ * toate deodată.
+ */
+function BankPositions({
+    accounts,
+}: {
+    accounts: NonNullable<OpeningDetail['accounts']>;
+}) {
+    const [open, setOpen] = useState<string | null>(null);
+    const [desks, setDesks] = useState(false);
+
+    const banks = new Map<
+        string,
+        { currencies: Map<string, number>; accounts: typeof accounts.banks }
+    >();
+
+    for (const row of accounts.banks) {
+        const bank = banks.get(row.bank) ?? {
+            currencies: new Map<string, number>(),
+            accounts: [],
+        };
+
+        bank.currencies.set(
+            row.currency,
+            (bank.currencies.get(row.currency) ?? 0) + row.amount,
+        );
+        bank.accounts.push(row);
+        banks.set(row.bank, bank);
+    }
+
+    const deskTotals = new Map<string, number>();
+
+    for (const row of accounts.desks) {
+        deskTotals.set(
+            row.currency,
+            (deskTotals.get(row.currency) ?? 0) + row.amount,
+        );
+    }
+
+    const money = (currencies: Map<string, number>) =>
+        [...currencies.entries()]
+            .filter(([, value]) => Math.abs(value) >= 0.005)
+            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+            .map(([currency, value]) => `${fmtRon(value)} ${currency}`)
+            .join(' · ') || '—';
+
+    return (
+        <div className="rounded-md border border-sidebar-border/70 p-3 dark:border-sidebar-border">
+            <div className="text-xs font-semibold text-muted-foreground uppercase">
+                Pe bănci, la data poziției
+            </div>
+            <ul className="mt-1.5 divide-y divide-sidebar-border/50 text-sm">
+                {[...banks.entries()]
+                    .sort((a, b) => a[0].localeCompare(b[0], 'ro'))
+                    .map(([bank, detail]) => (
+                        <li key={bank} className="py-1">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setOpen(open === bank ? null : bank)
+                                }
+                                className="flex w-full items-baseline justify-between gap-3 text-left hover:text-foreground"
+                            >
+                                <span className="truncate font-medium">
+                                    {bank}
+                                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                        ({detail.accounts.length})
+                                    </span>
+                                </span>
+                                <span className="shrink-0 tabular-nums">
+                                    {money(detail.currencies)}
+                                </span>
+                            </button>
+                            {open === bank && (
+                                <ul className="mt-1 space-y-0.5 pl-3 text-xs text-muted-foreground">
+                                    {detail.accounts.map((row) => (
+                                        <li
+                                            key={row.account}
+                                            className="flex items-baseline justify-between gap-3"
+                                        >
+                                            <span className="truncate">
+                                                {row.account}
+                                            </span>
+                                            <span className="shrink-0 tabular-nums">
+                                                {fmtRon(row.amount)}{' '}
+                                                {row.currency}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </li>
+                    ))}
+                {accounts.desks.length > 0 && (
+                    <li className="py-1">
+                        <button
+                            type="button"
+                            onClick={() => setDesks(!desks)}
+                            className="flex w-full items-baseline justify-between gap-3 text-left hover:text-foreground"
+                        >
+                            <span className="truncate font-medium">
+                                Casierii
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                    ({accounts.desks.length})
+                                </span>
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                                {money(deskTotals)}
+                            </span>
+                        </button>
+                        {desks && (
+                            <ul className="mt-1 space-y-0.5 pl-3 text-xs text-muted-foreground">
+                                {accounts.desks
+                                    .filter(
+                                        (row) => Math.abs(row.amount) >= 0.005,
+                                    )
+                                    .sort(
+                                        (a, b) =>
+                                            Math.abs(b.amount) -
+                                            Math.abs(a.amount),
+                                    )
+                                    .map((row) => (
+                                        <li
+                                            key={`${row.desk}-${row.currency}`}
+                                            className="flex items-baseline justify-between gap-3"
+                                        >
+                                            <span className="truncate">
+                                                {row.desk}
+                                            </span>
+                                            <span className="shrink-0 tabular-nums">
+                                                {fmtRon(row.amount)}{' '}
+                                                {row.currency}
+                                            </span>
+                                        </li>
+                                    ))}
+                            </ul>
+                        )}
+                    </li>
+                )}
+            </ul>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+                Soldul de bază al fiecărui cont, rulat cu documentele de după el
+                — aceeași socoteală ca totalul de sus. Depozitele stau separat,
+                mai jos.
+            </p>
+        </div>
+    );
+}
 
 function StatusIcon({ status }: { status: SourceStatus['status'] }) {
     if (status === 'ok') {
@@ -41,15 +196,15 @@ function StatusIcon({ status }: { status: SourceStatus['status'] }) {
  */
 function OpeningTable({ opening }: { opening: OpeningDetail }) {
     const used = opening.currencies.filter((currency) =>
-        opening.rows.some(
-            (row) => Math.abs(row.values[currency] ?? 0) >= 1000,
-        ),
+        opening.rows.some((row) => Math.abs(row.values[currency] ?? 0) >= 1000),
     );
     const shown = used.length > 0 ? used : opening.currencies.slice(0, 1);
     const rest = opening.currencies.filter(
         (currency) =>
             !shown.includes(currency) &&
-            opening.rows.some((row) => Math.abs(row.values[currency] ?? 0) >= 1),
+            opening.rows.some(
+                (row) => Math.abs(row.values[currency] ?? 0) >= 1,
+            ),
     );
     const position = opening.rows.find((row) => row.key === 'position');
     const rates = Object.entries(opening.rates ?? {}).filter(
@@ -119,6 +274,10 @@ function OpeningTable({ opening }: { opening: OpeningDetail }) {
                 </span>
             </div>
 
+            {opening.accounts && opening.accounts.banks.length > 0 && (
+                <BankPositions accounts={opening.accounts} />
+            )}
+
             {(opening.deposits?.length || opening.negative?.length) && (
                 <div className="grid gap-3 sm:grid-cols-2">
                     {opening.deposits && opening.deposits.length > 0 && (
@@ -161,7 +320,7 @@ function OpeningTable({ opening }: { opening: OpeningDetail }) {
                                         <span className="truncate text-muted-foreground">
                                             {row.bank}
                                         </span>
-                                        <span className="tabular-nums text-red-600 dark:text-red-400">
+                                        <span className="text-red-600 tabular-nums dark:text-red-400">
                                             {fmtRon(row.amount)}{' '}
                                             <span className="text-xs text-muted-foreground">
                                                 {row.currency}

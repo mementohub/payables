@@ -379,6 +379,10 @@ class CashFlowReportBuilder
             // cu extrasul.
             'deposits' => $this->omc->depositBreakdown($anchors, $asOf),
             'negative' => $this->omc->negativeAccounts($asOf),
+            // Trezorierul are extrase pe bănci, nu pe monede: poziția se
+            // desface pe fiecare cont și pe fiecare casierie, cu aceeași
+            // socoteală ca totalul.
+            'accounts' => $this->omc->accountPositions($anchors, $asOf),
             'by_currency' => $byCurrency,
             'total' => round($total, 2),
             '_rows' => count($position),

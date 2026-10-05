@@ -113,6 +113,26 @@ export type OpeningDetail = {
         currency: string;
         amount: number;
     }[];
+    /** Poziția desfăcută pe fiecare cont bancar și pe fiecare casierie. */
+    accounts?: {
+        banks: {
+            bank: string;
+            account: string;
+            currency: string;
+            opening: number;
+            in: number;
+            out: number;
+            amount: number;
+        }[];
+        desks: {
+            desk: string;
+            currency: string;
+            opening: number;
+            in: number;
+            out: number;
+            amount: number;
+        }[];
+    };
     by_currency: Record<string, number>;
     total: number;
 };
