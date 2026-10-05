@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Reports\TinaPnlReader;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Departamentul comenzii dă canalul — „Corporate” e canal de vânzare, alături
@@ -38,3 +39,23 @@ test('the department gives the channel and the service gives the product', funct
     'package without a category' => ['Corporate', '', 'corporate', 'Pachete', 'Pc'],
     'category beats the code' => ['Corporate', 'airTransport', 'corporate', 'Ticketing', 'h'],
 ]);
+
+test('a month that has not started yet has no revenue in it', function () {
+    $captured = [];
+
+    $connection = Mockery::mock();
+    $connection->shouldReceive('select')->andReturnUsing(function (string $sql, array $bindings) use (&$captured) {
+        $captured = ['sql' => $sql, 'bindings' => $bindings];
+
+        return [];
+    });
+
+    DB::shouldReceive('connection')->andReturn($connection);
+
+    app(TinaPnlReader::class)->byChannelAndProduct(2026);
+
+    // Serviciul nefacturat se socotește în luna în care se ține; una care n-a
+    // început încă n-are ce arăta, deci viitorul se taie la ziua de azi.
+    expect($captured['bindings'])->toBe(['2026-01-01', '2027-01-01', now()->toDateString()])
+        ->and($captured['sql'])->toContain('coalesce(ci.invoiceDate, s.startDate) <= ?');
+});

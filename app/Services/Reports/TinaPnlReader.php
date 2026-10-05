@@ -29,9 +29,14 @@ class TinaPnlReader
      */
     public function byChannelAndProduct(int $year): array
     {
+        // Un P&L spune ce s-a întâmplat, nu ce urmează. Serviciul nefacturat
+        // se socotește în luna în care se ține — dar o lună care n-a început
+        // n-are ce venit să arate, așa că viitorul se taie la ziua de azi.
+        // Serviciile vândute pentru noiembrie intră în raport când vine
+        // noiembrie, sau mai devreme, dacă se facturează.
         $rows = DB::connection((string) config('pnl.tina.connection', 'tina'))->select(
             $this->sql(),
-            [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)],
+            [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1), now()->toDateString()],
         );
 
         $map = (array) config('pnl.tina.departments', []);
@@ -122,6 +127,7 @@ class TinaPnlReader
             left join clientInvoices ci on ci.id = s.idRelevantInvoice
             where coalesce(ci.invoiceDate, s.startDate) >= ?
               and coalesce(ci.invoiceDate, s.startDate) < ?
+              and coalesce(ci.invoiceDate, s.startDate) <= ?
             group by 1, 2, 3, 4
             SQL;
     }
