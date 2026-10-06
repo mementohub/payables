@@ -1056,8 +1056,8 @@ class CashFlowReportBuilder
                 $this->recorder->record('C10', $this->grid->monday($i)->toDateString(), 'manual', 'Sold furnizori introdus în parametri', $total / $weeks, [
                     'group' => 'Parametri',
                     'currency' => 'RON',
-                    'amount' => $total,
-                    'meta' => ['share' => round(1 / $weeks, 6), 'weeks' => $weeks],
+                    'amount' => round($total / $weeks, 2),
+                    'meta' => ['amount_total' => round($total, 2), 'share' => round(1 / $weeks, 6), 'weeks' => $weeks],
                 ]);
             }
 
@@ -1104,10 +1104,15 @@ class CashFlowReportBuilder
                     $claims[] = ['key' => ActualCashFlowClassifier::normalize($row['partner']), 'series' => 'line', 'line' => 'C10', 'index' => $i, 'lei' => $row['lei'] / $weeks, 'label' => $row['partner'], 'reference' => $row['nr_doc'], 'priority' => 0];
                 }
 
+                // Bucata poartă partea care cade în săptămâna asta și în moneda
+                // ei, nu valoarea întreagă a facturii: altfel tabelul pe monede
+                // arată „1.105.318 RON → 552.659 RON”, ca și cum leul s-ar
+                // schimba în leu. Valoarea întreagă rămâne scrisă în meta.
                 $this->recorder->record('C10', $this->grid->monday($i)->toDateString(), 'invoice', $row['partner'] ?? 'Furnizor', $row['lei'] / $weeks, [
                     ...$detail,
+                    'amount' => round($row['amount'] / $weeks, 2),
                     'group' => 'Restante',
-                    'meta' => [...$detail['meta'], 'days_overdue' => $days, 'share' => round(1 / $weeks, 6), 'weeks' => $weeks],
+                    'meta' => [...$detail['meta'], 'days_overdue' => $days, 'amount_total' => $row['amount'], 'lei_total' => round($row['lei'], 2), 'share' => round(1 / $weeks, 6), 'weeks' => $weeks],
                 ]);
             }
         }
@@ -2059,8 +2064,8 @@ class CashFlowReportBuilder
                     'reference' => $row['booking'],
                     'date' => $row['due'],
                     'currency' => $row['currency'],
-                    'amount' => $row['amount'],
-                    'meta' => ['connection' => $row['connection'], 'segment' => $row['segment'], 'channel' => $row['channel'], 'days_overdue' => $row['days'], 'share' => round($share, 6), 'pct' => $pct, 'weeks' => $weeks],
+                    'amount' => round($row['amount'] * $share, 2),
+                    'meta' => ['connection' => $row['connection'], 'segment' => $row['segment'], 'channel' => $row['channel'], 'days_overdue' => $row['days'], 'amount_total' => $row['amount'], 'lei_total' => round($row['lei'], 2), 'share' => round($share, 6), 'pct' => $pct, 'weeks' => $weeks],
                 ]);
             }
         }

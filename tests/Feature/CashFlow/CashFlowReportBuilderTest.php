@@ -585,9 +585,10 @@ test('every cell of the snapshot is the sum of the pieces the build kept for it'
 
     expect($checked)->toBeGreaterThan(1000)
         ->and($pieces->whereNull('cash_flow_snapshot_id'))->toBeEmpty()
-        // Overdue: half of it in each of the first two weeks.
-        ->and($invoice->only(['label', 'lei', 'group', 'currency', 'amount']))->toBe(['label' => 'Hotel Alfa', 'lei' => 125000.0, 'group' => 'Restante', 'currency' => 'RON', 'amount' => 250000.0])
-        ->and($invoice->meta)->toMatchArray(['tip_doc' => 'FactFI', 'nr_doc' => 'A1', 'days_overdue' => 15])
+        // Restanța se plătește pe două săptămâni, deci bucata poartă jumătate
+        // și în lei, și în moneda ei; întregul rămâne scris în meta.
+        ->and($invoice->only(['label', 'lei', 'group', 'currency', 'amount']))->toBe(['label' => 'Hotel Alfa', 'lei' => 125000.0, 'group' => 'Restante', 'currency' => 'RON', 'amount' => 125000.0])
+        ->and($invoice->meta)->toMatchArray(['tip_doc' => 'FactFI', 'nr_doc' => 'A1', 'days_overdue' => 15, 'amount_total' => 250000.0, 'lei_total' => 250000.0, 'weeks' => 2])
         ->and($rotation->only(['line', 'label']))->toBe(['line' => 'C6', 'label' => 'CTR 317'])
         ->and($rotation->reference)->toStartWith('A2 4212')
         ->and($pieces->where('line', 'B1')->where('actual', false)->pluck('reference')->unique()->values()->all())->toBe(['1'])

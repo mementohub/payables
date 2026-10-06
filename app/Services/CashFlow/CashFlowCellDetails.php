@@ -129,9 +129,12 @@ class CashFlowCellDetails
             'new_costs' => sprintf('cost %s în an anterior%s', $this->money($meta['ly_amount'] ?? 0).' '.$piece->currency, (float) ($meta['factor'] ?? 1) !== 1.0 ? ' × '.$this->money($meta['factor']) : ''),
             'omc_payment' => trim(($piece->group ?? '').(! empty($meta['account']) && ($meta['rule'] ?? '') === 'account' ? ' · facturile merg pe '.$meta['account'] : '')),
             'etrip_receipts' => 'încasări emise în săptămână, pe segmentul dosarului',
+            // Creditul unui furnizor se strânge din mai multe plăți, adesea în
+            // monede diferite, așa că suma scăzută e în lei chiar dacă factura
+            // pe care o stinge e în euro. Scris pe rând, ca să nu pară euro.
             'advance' => ($meta['basis'] ?? null) === '409'
-                ? sprintf('avans plătit deja (sold 409 în OMC), folosit pentru %s', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))
-                : sprintf('plătit deja fără factură în OMC, stinge %s', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? ''))),
+                ? sprintf('avans plătit deja (sold 409 în OMC), folosit pentru %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))
+                : sprintf('plătit deja fără factură în OMC, stinge %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? ''))),
             default => null,
         };
     }
