@@ -53,6 +53,7 @@ function mockOmc(bool $anchor = true, ?array $positionRates = null, array $advan
         ]);
         $mock->shouldReceive('supplierAdvances')->andReturn($advances['ledger'] ?? [])->byDefault();
         $mock->shouldReceive('unmatchedSupplierPayments')->andReturn($advances['unmatched'] ?? [])->byDefault();
+        $mock->shouldReceive('supplierCreditNotes')->andReturn($advances['credit_notes'] ?? [])->byDefault();
         $mock->shouldReceive('monthlyAverageByAccount')->andReturn(['612' => 100000, '623' => 50000, '628.01' => 20000, '401' => 999]);
         $mock->shouldReceive('monthlyLedgerByAccount')->andReturn(['421' => 500000, '425' => 597000, '4411' => 100000, '627' => 10000, '6651' => 2000]);
         $mock->shouldReceive('monthEndAnchor')->andReturn($anchor ? CarbonImmutable::parse('2026-08-31') : null);
@@ -743,4 +744,28 @@ test('the opening position is broken down by bank and cash desk', function () {
         ->and(collect($accounts['banks'])->where('currency', 'RON')->sum('amount'))->toEqual(1200000.0)
         ->and($accounts['desks'])->toHaveCount(1)
         ->and($accounts['desks'][0]['desk'])->toBe('Casierie centrală');
+});
+
+test('an unallocated credit note wipes out the supplier debt it corrects', function () {
+    mockEtrip();
+    mockTina();
+    mockOmc(advances: ['credit_notes' => [
+        // Storno mai mare decât factura deschisă: datoria se face zero, nu negativă.
+        ['data_doc' => '2026-09-25', 'tip_doc' => 'FactFI', 'nr_doc' => 'CB 1', 'partner' => 'Hotel Alfa', 'currency' => 'EUR', 'amount' => -100000.0, 'lei' => -500000.0],
+    ]]);
+
+    $snapshot = app(CashFlowReportBuilder::class)->build('test');
+    $pieces = CashFlowDetail::query()->where('cash_flow_snapshot_id', $snapshot->id)->where('line', 'C10')->get();
+    $storno = $pieces->where('group', 'Stornouri nealocate');
+    $alfa = collect($snapshot->payload['advances'])->firstWhere('partner', 'Hotel Alfa');
+
+    expect($storno)->not->toBeEmpty()
+        ->and($storno->first()->label)->toBe('Storno nealocat – Hotel Alfa')
+        // Nu se scade mai mult decât datorează: facturile deschise sunt 250.000.
+        ->and(round(-$storno->sum('lei'), 2))->toEqual(250000.0)
+        ->and($alfa['credit_notes_lei'])->toEqual(500000.0)
+        // Ce rămâne din storno nu devine încasare: doar stă nefolosit.
+        ->and($alfa['left_lei'])->toEqual(250000.0)
+        // Pe furnizorul acela, raportul nu mai are nimic de plătit.
+        ->and(round($pieces->filter(fn (CashFlowDetail $piece) => str_contains((string) $piece->label, 'Hotel Alfa'))->sum('lei'), 2))->toEqual(0.0);
 });

@@ -1006,6 +1006,49 @@ class OmcCashFlowReader
     }
 
     /**
+     * Stornourile de furnizor rămase nealocate: facturi de reducere care
+     * stau deschise și micșorează datoria, chiar dacă nu le-a legat nimeni
+     * de factura pe care o corectează.
+     *
+     * Lista facturilor deschise ia doar documentele cu rest pozitiv, fiindcă
+     * ele sunt ce avem de plătit. Dar la același furnizor stau și stornouri
+     * cu rest negativ, iar fără ele datoria iese mai mare decât e: la Memento
+     * Air, 23 de milioane de facturi deschise și 141 de milioane de stornouri
+     * nealocate înseamnă că nu-i datorăm nimic.
+     *
+     * @return list<array{data_doc: string, tip_doc: string, nr_doc: string, partner: ?string, currency: string, amount: float, lei: float}>
+     */
+    public function supplierCreditNotes(CarbonInterface $since): array
+    {
+        $types = (array) config('cashflow.omc.supplier_tip_doc', ['FactFI', 'FactFE']);
+
+        $rows = $this->omc->connection()->select(sprintf(<<<'SQL'
+            select d.data_doc::date as data_doc, d.tip_doc, d.nr_doc, d.partener as partner,
+                   d.moneda as currency,
+                   (%2$s)::numeric(20,2) as amount,
+                   ((%2$s) * (case when d.moneda = 'Lei' then 1 else coalesce(nullif(d.curs, 0), 1) end))::numeric(20,2) as lei
+            from doc d
+            where d.tip_doc in (%1$s)
+              and d.data_doc >= ?::date
+              and d.data_anulare is null
+              and d.partener is not null
+              and (%2$s) < -0.01
+            order by 7
+            SQL, $this->quoted($types), 'd.val_mon - coalesce(d.val_mon_pl, 0) - coalesce(d.val_mon_dimin_negru, 0)'),
+            [$since->toDateString()]);
+
+        return array_map(fn ($row) => [
+            'data_doc' => (string) $row->data_doc,
+            'tip_doc' => (string) $row->tip_doc,
+            'nr_doc' => trim((string) $row->nr_doc),
+            'partner' => (string) $row->partner,
+            'currency' => self::currency((string) $row->currency),
+            'amount' => (float) $row->amount,
+            'lei' => (float) $row->lei,
+        ], $rows);
+    }
+
+    /**
      * Monthly average (lei, VAT included) of the supplier-invoice lines per
      * synthetic account over the period.
      *

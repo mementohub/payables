@@ -132,9 +132,11 @@ class CashFlowCellDetails
             // Creditul unui furnizor se strânge din mai multe plăți, adesea în
             // monede diferite, așa că suma scăzută e în lei chiar dacă factura
             // pe care o stinge e în euro. Scris pe rând, ca să nu pară euro.
-            'advance' => ($meta['basis'] ?? null) === '409'
+            'advance' => ($meta['basis'] ?? null) === 'storno'
+                ? sprintf('storno rămas nealocat în OMC, scade din %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))
+                : (($meta['basis'] ?? null) === '409'
                 ? sprintf('avans plătit deja (sold 409 în OMC), folosit pentru %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))
-                : sprintf('plătit deja fără factură în OMC, stinge %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? ''))),
+                : sprintf('plătit deja fără factură în OMC, stinge %s · sumă în lei', trim(($meta['covers'] ?? '').' '.($meta['covers_reference'] ?? '')))),
             default => null,
         };
     }

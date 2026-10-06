@@ -1150,20 +1150,41 @@ class CashFlowReportBuilder
         $name = fn (string $partner) => ActualCashFlowClassifier::normalize($partner);
         $unmatched = collect($this->omc->unmatchedSupplierPayments($since))->groupBy(fn (array $row) => $name($row['partner']));
         $ledger = collect($this->omc->supplierAdvances())->groupBy(fn (array $row) => $name($row['partner']));
+        // Stornourile nealocate micșorează datoria la fel ca un avans plătit:
+        // sunt documente care spun „atât nu mai datorăm”, numai că nimeni nu
+        // le-a legat de factura pe care o corectează.
+        $credits = collect($this->omc->supplierCreditNotes($since))->groupBy(fn (array $row) => $name($row['partner']));
         $etripPartners = $this->etripPartners();
         $summary = [];
 
-        $take = function (array $claims, float $credit, string $basis, string $partner, array &$applied) use (&$suppliers, &$charter, &$payables): float {
+        // Fiecare datorie se poate stinge o singură dată, oricâte feluri de
+        // credit ar avea furnizorul: altfel stornoul o duce la zero, iar
+        // avansul o mai scade o dată și linia iese pe minus. Cât a mai rămas
+        // din fiecare se ține aici, pe toată durata repartizării.
+        $sets = ['suppliers' => $suppliers['claims'] ?? [], 'charter' => $charter['claims'] ?? [], 'payables' => $payables['claims'] ?? []];
+
+        foreach ($sets as $set => $list) {
+            foreach ($list as $i => $claim) {
+                $sets[$set][$i]['id'] = $set.':'.$i;
+            }
+        }
+
+        $open = [];
+
+        $take = function (array $claims, float $credit, string $basis, string $partner, array &$applied) use (&$suppliers, &$charter, &$payables, &$open): float {
             foreach ($claims as $claim) {
                 if ($credit <= 0.005) {
                     break;
                 }
 
-                $amount = min($credit, $claim['lei']);
+                $left = $open[$claim['id']] ??= (float) $claim['lei'];
+                $amount = min($credit, $left);
 
                 if ($amount <= 0.005) {
                     continue;
                 }
+
+                $open[$claim['id']] = round($left - $amount, 2);
 
                 match (true) {
                     $claim['line'] === 'C10' => $suppliers['line'][$claim['index']] -= $amount,
@@ -1171,8 +1192,8 @@ class CashFlowReportBuilder
                     default => $charter[$claim['series']][$claim['index']] -= $amount,
                 };
 
-                $this->recorder->record($claim['line'], $this->grid->monday($claim['index'])->toDateString(), 'advance', 'Avans plătit – '.$partner, -$amount, [
-                    'group' => 'Avansuri plătite anterior',
+                $this->recorder->record($claim['line'], $this->grid->monday($claim['index'])->toDateString(), 'advance', ($basis === 'storno' ? 'Storno nealocat – ' : 'Avans plătit – ').$partner, -$amount, [
+                    'group' => $basis === 'storno' ? 'Stornouri nealocate' : 'Avansuri plătite anterior',
                     'reference' => trim(($claim['label'] ?? '').' '.($claim['reference'] ?? '')),
                     'currency' => 'RON',
                     'amount' => -$amount,
@@ -1186,10 +1207,11 @@ class CashFlowReportBuilder
             return $credit;
         };
 
-        foreach ($unmatched->keys()->merge($ledger->keys())->unique() as $key) {
+        foreach ($unmatched->keys()->merge($ledger->keys())->merge($credits->keys())->unique() as $key) {
             $payments = $unmatched->get($key, collect());
             $balances = $ledger->get($key, collect());
-            $partner = (string) ($payments->first()['partner'] ?? $balances->first()['partner']);
+            $notes = $credits->get($key, collect());
+            $partner = (string) ($payments->first()['partner'] ?? $balances->first()['partner'] ?? $notes->first()['partner']);
             $unmatchedLei = round((float) $payments->sum(fn (array $row) => $this->lei($row['amount'], $row['currency'])), 2);
             $advance = $balances->groupBy('currency')->map(fn (Collection $rows) => round((float) $rows->sum('amount'), 2))->filter(fn (float $amount) => $amount > 0.5);
             $advanceLei = round((float) $advance->map(fn (float $amount, string $currency) => $this->lei($amount, $currency))->sum(), 2);
@@ -1197,24 +1219,36 @@ class CashFlowReportBuilder
             $inUse = round((float) ($charter['deposits_in_use'][$key] ?? 0.0), 2);
             $available = max(0.0, $advanceLei - $inUse);
 
-            if ($unmatchedLei <= 0.5 && $available <= 0.5) {
+            // Stornourile se adună peste celelalte: ele nu sunt bani dați
+            // înainte, ci facturi care s-au anulat, deci nu se suprapun nici cu
+            // plățile fără factură, nici cu soldul 409.
+            $creditLei = round((float) $notes->sum(fn (array $row) => -$row['lei']), 2);
+
+            if ($unmatchedLei <= 0.5 && $available <= 0.5 && $creditLei <= 0.5) {
                 continue;
             }
 
             $applied = [];
             $claims = fn (array $list, callable $match) => collect($list)->filter($match)->sortBy([['priority', 'asc'], ['index', 'asc']])->values()->all();
+            $mine = fn (array $c) => $c['key'] === $key;
 
-            // 1. Paid without an invoice: the supplier's open invoices are settled by it.
-            $left = $take($claims($suppliers['claims'] ?? [], fn (array $c) => $c['key'] === $key), $unmatchedLei, 'nealocat', $partner, $applied);
+            // 1. Stornourile nealocate sting întâi facturile deschise ale
+            // furnizorului: ele sunt chiar corectarea lor.
+            $leftCredit = $take($claims($sets['suppliers'], $mine), $creditLei, 'storno', $partner, $applied);
 
-            // 2. The future dues, from the larger of what is left and the 409 balance.
-            $future = max($left, $available);
+            // 2. Paid without an invoice: the supplier's open invoices are settled by it.
+            $left = $take($claims($sets['suppliers'], $mine), $unmatchedLei, 'nealocat', $partner, $applied);
+
+            // 3. The future dues, from the larger of what is left and the 409 balance.
+            $future = max($left, $available) + $leftCredit;
             $basis = $available >= $left ? '409' : 'nealocat';
-            $future = $take($claims($charter['claims'] ?? [], fn (array $c) => $c['key'] === $key), $future, $basis, $partner, $applied);
-            $future = $take($claims($payables['claims'] ?? [], fn (array $c) => ($etripPartners[$c['supplier']] ?? null) === $key), $future, $basis, $partner, $applied);
+            $future = $take($claims($sets['charter'], $mine), $future, $basis, $partner, $applied);
+            $future = $take($claims($sets['payables'], fn (array $c) => ($etripPartners[$c['supplier']] ?? null) === $key), $future, $basis, $partner, $applied);
 
             $summary[] = [
                 'partner' => $partner,
+                'credit_notes_lei' => $creditLei,
+                'credit_notes' => $notes->count(),
                 'unmatched_lei' => $unmatchedLei,
                 'unmatched_payments' => $payments->count(),
                 'unmatched_last' => $payments->max('data_doc'),
