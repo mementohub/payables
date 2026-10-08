@@ -147,6 +147,8 @@ class PnlController extends Controller
             // care a ajuns acolo.
             'column' => ['nullable', 'string', 'max:80'],
             'axis' => ['nullable', Rule::in(['channel', 'product', 'branch'])],
+            // Grupa apăsată („cont · sediu · partener”): documentele ei.
+            'item' => ['nullable', 'string', 'max:300'],
         ]);
 
         return $this->service->costDetails(
@@ -156,6 +158,7 @@ class PnlController extends Controller
             $this->period($validated['period'] ?? ''),
             $validated['column'] ?? null,
             $validated['axis'] ?? 'channel',
+            $validated['item'] ?? null,
         );
     }
 

@@ -58,6 +58,8 @@ export type CostDetails = {
     period: string;
     /** Coloana pentru care s-a cerut detaliul, sau null pentru toată linia. */
     column: string | null;
+    /** Grupa pentru care s-au cerut documentele, sau null pentru toată linia. */
+    item: string | null;
     total: number;
     by_month: Record<string, number>;
     items: CostItem[];
@@ -79,11 +81,13 @@ export function useCostDetails(
     saf: string | null,
     column: string | null = null,
     axis: 'channel' | 'product' | 'branch' = 'channel',
+    item: string | null = null,
 ) {
     const [loaded, setLoaded] = useState<{
         saf: string;
         period: string;
         column: string | null;
+        item: string | null;
         data: CostDetails;
     } | null>(null);
 
@@ -100,6 +104,7 @@ export function useCostDetails(
                 saf,
                 period,
                 ...(column ? { column, axis } : {}),
+                ...(item ? { item } : {}),
             })}`,
             {
                 headers: { Accept: 'application/json' },
@@ -108,19 +113,20 @@ export function useCostDetails(
         )
             .then((response) => response.json())
             .then((data: CostDetails) =>
-                setLoaded({ saf, period, column, data }),
+                setLoaded({ saf, period, column, item, data }),
             )
             .catch(() => undefined);
 
         return () => controller.abort();
-    }, [companyId, year, period, saf, column, axis]);
+    }, [companyId, year, period, saf, column, axis, item]);
 
     // Rezultatul se ține împreună cu ce s-a cerut: altfel, apăsând altă
     // coloană, s-ar vedea o clipă detaliul celei dinainte, cu alte cifre.
     const details =
         loaded?.saf === saf &&
         loaded.period === period &&
-        loaded.column === column
+        loaded.column === column &&
+        loaded.item === item
             ? loaded.data
             : null;
 

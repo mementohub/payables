@@ -1289,3 +1289,41 @@ test('a silent Tina leaves the rest of the report standing, and says so', functi
     expect($report['meta']['tina_error'])->toContain('Tina nu a putut fi citită')
         ->and($report['revenue']['months'][3]['channel']['retail']['net'] ?? null)->toEqual(1000.0);
 });
+
+test('a group of the breakdown opens with its own documents, negatives included', function () {
+    fakePnlRevenue(pnlRevenueRows());
+    fakePnlBranches([]);
+
+    // Aceeași grupă („cont · sediu · partener”) ține trei hârtii, dintre care
+    // două storno: suma ei iese negativă, iar omul vrea să vadă de ce.
+    $costs = [
+        ['account' => '6022', 'sediu' => 'SEDIUL CENTRAL', 'partner' => 'Diversi furnizori', 'note' => 'Combustibil', 'month' => 7, 'lei' => 100.0],
+        ['account' => '6022', 'sediu' => 'SEDIUL CENTRAL', 'partner' => 'Diversi furnizori', 'note' => 'Combustibil', 'month' => 8, 'lei' => -400.0],
+        ['account' => '6022', 'sediu' => 'SEDIUL CENTRAL', 'partner' => 'Diversi furnizori', 'note' => 'Combustibil', 'month' => 8, 'lei' => -200.0],
+        ['account' => '6022', 'sediu' => 'CT', 'partner' => 'DKV', 'note' => 'Combustibil', 'month' => 8, 'lei' => 50.0],
+    ];
+
+    fakePnlCosts($costs, [], array_map(
+        fn (array $cost, int $i) => [...$cost, 'data_doc' => '2026-08-0'.($i + 1), 'tip_doc' => 'FactFI', 'nr_doc' => 'DIV'.$i],
+        $costs,
+        array_keys($costs),
+    ));
+
+    $service = app(PnlReportService::class);
+    $service->report($this->company, 2026, forceRefresh: true);
+
+    $all = $service->costDetails($this->company, 2026, '5010', 'year');
+    $group = collect($all['items'])->firstWhere('partner', 'Diversi furnizori');
+    $one = $service->costDetails($this->company, 2026, '5010', 'year', null, 'channel', $group['key']);
+
+    expect($group['documents'])->toBe(3)
+        ->and($group['lei'])->toEqual(-500.0)
+        // Deschisă, grupa își arată chiar hârtiile ei, nu toată linia.
+        ->and($one['documents_total'])->toBe(3)
+        ->and($one['item'])->toBe($group['key'])
+        ->and(collect($one['documents'])->sum('lei'))->toEqual(-500.0)
+        ->and(collect($one['documents'])->pluck('partner')->unique()->all())->toBe(['Diversi furnizori'])
+        // Grupele rămân toate, ca să se vadă din ce e făcută linia întreagă.
+        ->and(count($one['items']))->toBe(count($all['items']))
+        ->and($one['total'])->toEqual($all['total']);
+});

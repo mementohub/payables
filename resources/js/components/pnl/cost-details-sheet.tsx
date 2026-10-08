@@ -65,6 +65,7 @@ export function CostDetailsSheet({
     period,
     saf,
     column,
+    item = null,
     detailsAxis,
     catalogue,
     axis,
@@ -77,6 +78,8 @@ export function CostDetailsSheet({
     saf: string | null;
     /** Coloana deschisă în tabel; documentele o urmează. */
     column: string | null;
+    /** Grupa apăsată („cont · sediu · partener”), dacă s-a cerut una. */
+    item?: { key: string; label: string } | null;
     detailsAxis: 'channel' | 'product' | 'branch';
     catalogue: Record<string, { group: string; label: string }>;
     axis: 'channel' | 'product';
@@ -93,6 +96,7 @@ export function CostDetailsSheet({
         saf,
         column,
         detailsAxis,
+        item?.key ?? null,
     );
 
     return (
@@ -110,7 +114,9 @@ export function CostDetailsSheet({
                     </SheetTitle>
                     <SheetDescription>
                         {details
-                            ? `${details.group} · ${lei(details.total)} lei · ${details.documents_total} documente`
+                            ? item
+                                ? `${item.label} · ${details.documents_total} documente din ${details.group}`
+                                : `${details.group} · ${lei(details.total)} lei · ${details.documents_total} documente`
                             : 'Se încarcă…'}
                     </SheetDescription>
                 </SheetHeader>
@@ -126,7 +132,9 @@ export function CostDetailsSheet({
                     <div className="flex-1 space-y-6 overflow-y-auto p-4">
                         <section className="space-y-2">
                             <h3 className="text-sm font-semibold">
-                                Documente
+                                {item
+                                    ? `Documentele grupei · ${lei(details.documents.reduce((sum, doc) => sum + doc.lei, 0))} lei`
+                                    : 'Documente'}
                                 {details.documents_total >
                                     details.documents.length &&
                                     ` (primele ${details.documents.length} din ${details.documents_total})`}

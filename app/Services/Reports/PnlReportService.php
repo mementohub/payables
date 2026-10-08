@@ -873,7 +873,7 @@ class PnlReportService
      *
      * @return array{saf: string, label: string, group: string, period: string, total: float, items: list<array<string, mixed>>, documents: list<array<string, mixed>>}
      */
-    public function costDetails(Company $company, int $year, string $saf, string $period, ?string $column = null, string $axis = 'channel', int $limit = 400): array
+    public function costDetails(Company $company, int $year, string $saf, string $period, ?string $column = null, string $axis = 'channel', ?string $group = null, int $limit = 400): array
     {
         $this->map->withOverrides(PnlCostOverride::query()->where('company_id', $company->getKey())->get());
 
@@ -905,9 +905,17 @@ class PnlReportService
             $lei = $row['lei'] * $share;
             $total += $lei;
             $byMonth[$row['month']] = ($byMonth[$row['month']] ?? 0.0) + $lei;
-            $documents[] = [...$row, 'lei' => $lei];
-
             $key = PnlCostOverride::itemKey($row['account'], $row['sediu'], $row['partner']);
+
+            // Cerut pe o grupă („Diversi furnizori”), se trimit documentele ei:
+            // altfel, dintr-o linie cu sute de facturi, cele câteva ale grupei
+            // s-ar putea să nu încapă în listă, iar un total negativ rămâne
+            // neexplicat. Grupele se numără mai departe toate, ca să se vadă
+            // din ce e făcută linia întreagă.
+            if ($group === null || $group === $key) {
+                $documents[] = [...$row, 'lei' => $lei];
+            }
+
             $item = $items[$key] ?? [
                 'key' => $key,
                 'account' => $row['account'],
@@ -934,6 +942,7 @@ class PnlReportService
             'group' => $lines[$saf]['group'] ?? '',
             'period' => $period,
             'column' => $keys === null ? null : $column,
+            'item' => $group,
             'total' => round($total, 2),
             'by_month' => array_map(fn (float $value) => round($value, 2), $byMonth),
             'items' => array_map(fn (array $item) => [...$item, 'lei' => round($item['lei'], 2)], array_values($items)),

@@ -252,6 +252,12 @@ export default function Pnl({
         column: string | null;
     } | null>(null);
     const [documentsSaf, setDocumentsSaf] = useState<string | null>(null);
+    // Grupa apăsată din defalcare („cont · sediu · partener”): panoul arată
+    // atunci doar documentele ei, nu toate cele ale liniei.
+    const [documentsItem, setDocumentsItem] = useState<{
+        key: string;
+        label: string;
+    } | null>(null);
 
     // Perioada se ține într-un singur câmp („ytd7”), dar se alege din două
     // controale: luna și felul în care se citește.
@@ -667,7 +673,10 @@ export default function Pnl({
                                 details={details}
                                 loading={loading}
                                 catalogue={lines}
-                                onDocuments={setDocumentsSaf}
+                                onDocuments={(saf, item) => {
+                                    setDocumentsSaf(saf);
+                                    setDocumentsItem(item ?? null);
+                                }}
                                 onMoveChannel={(payload, channel) =>
                                     router.post(
                                         `/reports/pnl/${filters.company_id}/move`,
@@ -736,11 +745,15 @@ export default function Pnl({
                         period={filters.period}
                         saf={documentsSaf}
                         column={open?.column ?? null}
+                        item={documentsItem}
                         detailsAxis={detailsAxis}
                         catalogue={lines}
                         axis={view}
                         products={report?.products ?? []}
-                        onClose={() => setDocumentsSaf(null)}
+                        onClose={() => {
+                            setDocumentsSaf(null);
+                            setDocumentsItem(null);
+                        }}
                     />
                 )}
             </div>
@@ -777,7 +790,10 @@ function CostBreakdown({
     loading: boolean;
     span: number;
     catalogue: Record<string, { group: string; label: string }>;
-    onDocuments: (saf: string) => void;
+    onDocuments: (
+        saf: string,
+        item?: { key: string; label: string } | null,
+    ) => void;
     onMove: (payload: MovePayload, saf: string) => void;
     onMoveChannel: (payload: MovePayload, channel: string) => void;
     onMoveProduct: (payload: MovePayload, product: string) => void;
@@ -909,21 +925,47 @@ function CostBreakdown({
                                         className="flex cursor-grab items-center gap-3 border-b bg-background px-3 py-1.5 text-xs last:border-b-0 hover:bg-muted/50 active:cursor-grabbing"
                                     >
                                         <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
-                                        <span className="w-16 shrink-0 font-mono">
-                                            {item.account}
-                                        </span>
-                                        <span className="w-48 shrink-0 truncate">
-                                            {item.sediu || '—'}
-                                        </span>
-                                        <span className="flex-1 truncate">
-                                            {item.partner || '—'}
-                                        </span>
-                                        <span className="w-20 shrink-0 text-right text-muted-foreground tabular-nums">
-                                            {item.documents} doc
-                                        </span>
-                                        <span className="w-28 shrink-0 text-right font-medium tabular-nums">
-                                            {lei(item.lei)}
-                                        </span>
+                                        {/*
+                                            Grupa se deschide la clic: altfel,
+                                            dintr-o linie cu sute de facturi,
+                                            nu se vede ce stă chiar sub „Diversi
+                                            furnizori” — mai ales când suma lor
+                                            e negativă.
+                                        */}
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onDocuments(line.saf, {
+                                                    key: item.key,
+                                                    label: [
+                                                        item.account,
+                                                        item.sediu,
+                                                        item.partner,
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(' · '),
+                                                });
+                                            }}
+                                            className="flex flex-1 items-center gap-3 text-left hover:underline"
+                                            title="Vezi documentele grupei"
+                                        >
+                                            <span className="w-16 shrink-0 font-mono">
+                                                {item.account}
+                                            </span>
+                                            <span className="w-48 shrink-0 truncate">
+                                                {item.sediu || '—'}
+                                            </span>
+                                            <span className="flex-1 truncate">
+                                                {item.partner || '—'}
+                                            </span>
+                                            <span className="w-20 shrink-0 text-right text-muted-foreground tabular-nums">
+                                                {item.documents} doc
+                                            </span>
+                                            <span className="w-28 shrink-0 text-right font-medium tabular-nums">
+                                                {lei(item.lei)}
+                                            </span>
+                                        </button>
                                         {axis === 'channel' ? (
                                             <MoveChannelButton
                                                 payload={{
@@ -1284,7 +1326,10 @@ function PnlTable({
     catalogue: Record<string, { group: string; label: string }>;
     onOpen: (saf: string, column: string | null) => void;
     onDrop: (payload: MovePayload, saf: string) => void;
-    onDocuments: (saf: string) => void;
+    onDocuments: (
+        saf: string,
+        item?: { key: string; label: string } | null,
+    ) => void;
     onExpand: (channel: string | null) => void;
     onMoveChannel: (payload: MovePayload, channel: string) => void;
     onMoveProduct: (payload: MovePayload, product: string) => void;
