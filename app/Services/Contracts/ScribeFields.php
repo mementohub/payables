@@ -29,6 +29,19 @@ class ScribeFields
 
     private const TAIL = 12000;
 
+    /**
+     * Cât loc are fiecare câmp în fișă. Peste atât, baza refuză rândul
+     * întreg — și cu el se pierde și ce-a citit bine agentul.
+     */
+    private const ROOM = [
+        'partner_name' => 200,
+        'partner_tax_id' => 40,
+        'number' => 40,
+        'object' => 5000,
+        'payment_terms' => 200,
+        'governing_law' => 80,
+    ];
+
     public function __construct(private Meter $meter) {}
 
     public function on(): bool
@@ -68,19 +81,29 @@ class ScribeFields
     {
         $fields = [];
 
-        foreach (['partner_name', 'partner_tax_id', 'number', 'object', 'payment_terms', 'governing_law'] as $name) {
+        foreach (self::ROOM as $name => $room) {
             $field = $this->text($said[$name] ?? null);
 
             if ($field !== null) {
+                // Agentul mai scapă o frază întreagă acolo unde fișa are loc
+                // de un rând. Se taie la ultimul cuvânt întreg, ca să nu cadă
+                // salvarea pe un câmp prea lung.
+                $field['value'] = $this->short($field['value'], $room);
                 $fields[$name] = $field;
             }
         }
 
         // Codul fiscal se scrie în contracte cu spații și puncte după cum s-a
         // nimerit („RO 39404632”); în fișă intră strâns, ca să se potrivească
-        // cu fișa partenerului.
+        // cu fișa partenerului. Dacă nu seamănă a cod fiscal, nu e.
         if (isset($fields['partner_tax_id'])) {
-            $fields['partner_tax_id']['value'] = (string) preg_replace('~[^A-Z0-9]~', '', strtoupper($fields['partner_tax_id']['value']));
+            $tax = (string) preg_replace('~[^A-Z0-9]~', '', strtoupper($fields['partner_tax_id']['value']));
+
+            if (preg_match('~^[A-Z]{0,3}\d{2,15}$~', $tax) === 1) {
+                $fields['partner_tax_id']['value'] = $tax;
+            } else {
+                unset($fields['partner_tax_id']);
+            }
         }
 
         foreach (['signed_at', 'expires_at'] as $name) {
@@ -173,6 +196,19 @@ class ScribeFields
             'confidence' => $this->sure($field),
             'source' => $field['quote'] ?? null,
         ];
+    }
+
+    /** Taie la ultimul cuvânt întreg care încape. */
+    private function short(string $value, int $room): string
+    {
+        if (mb_strlen($value) <= $room) {
+            return $value;
+        }
+
+        $cut = mb_substr($value, 0, $room);
+        $space = mb_strrpos($cut, ' ');
+
+        return rtrim($space !== false && $space > $room / 2 ? mb_substr($cut, 0, $space) : $cut, " \t,;:-");
     }
 
     private function sure(mixed $field): float

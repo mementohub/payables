@@ -246,6 +246,16 @@ class ReadContractFile implements ShouldQueue
             return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
         }
 
+        // Valoarea e o pereche sumă-monedă, nu un singur lucru: se face un
+        // șir din amândouă, ca să poată sta lângă cea de dinainte.
+        if (is_array($value)) {
+            return implode(' ', array_map(fn ($part) => $this->flat($part), $value));
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'da' : 'nu';
+        }
+
         return trim((string) $value);
     }
 

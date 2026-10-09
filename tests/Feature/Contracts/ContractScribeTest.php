@@ -76,6 +76,41 @@ test('the agent reads the fields, and what it reads goes into the file', functio
         ->and($contract->notice_days)->toBe(7);
 });
 
+test('a long-winded reading is trimmed to what the file can hold', function () {
+    // Agentul mai scapă o frază întreagă acolo unde fișa are loc de un rând.
+    // Dacă n-o scurtăm, baza refuză rândul și se pierde tot ce-a citit bine.
+    ContractScribe::fake([said([
+        'partner_name' => str_repeat('Societatea Foarte Lungă și Pomposă SRL ', 20),
+        'partner_tax_id' => 'nu scrie codul fiscal nicăieri în contract',
+        'signed_at' => '2026-02-12',
+        'governing_law' => str_repeat('legea română ', 30),
+    ])]);
+
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0104', 'title' => 'Lung', 'partner_name' => '—',
+        'created_by_id' => $this->keeper->id,
+    ]);
+    $file = ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_CONTRACT, 'version' => 1,
+        'path' => 'f.txt', 'original_name' => 'contract.txt', 'hash' => 's4', 'mime' => 'text/plain',
+    ]);
+    Storage::disk(config('contracts.disk'))->put('f.txt', 'Un contract oarecare, încheiat la 12.02.2026.');
+
+    (new ReadContractFile($file->id))->handle(
+        app(App\Services\Contracts\ContractReader::class),
+        app(App\Services\Contracts\ContractFields::class),
+        app(App\Services\Contracts\ScribeFields::class),
+    );
+
+    $contract->refresh();
+
+    expect(mb_strlen($contract->partner_name))->toBeLessThanOrEqual(200)
+        ->and(mb_strlen((string) $contract->governing_law))->toBeLessThanOrEqual(80)
+        // O frază nu e cod fiscal: mai bine gol decât greșit.
+        ->and($contract->partner_tax_id)->toBeNull()
+        ->and($contract->signed_at->toDateString())->toBe('2026-02-12');
+});
+
 test('a re-read mends what the machine got wrong, but never what a person wrote', function () {
     ContractScribe::fake([
         said(['partner_name' => 'ALFA SRL', 'signed_at' => '2025-09-01', 'expires_at' => '2025-04-30']),
