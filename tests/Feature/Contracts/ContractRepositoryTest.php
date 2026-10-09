@@ -333,7 +333,7 @@ test('an addendum sits beside the contract, it does not replace it', function ()
     $contract = Contract::query()->firstOrFail();
 
     $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/files", [
-        'file' => UploadedFile::fake()->createWithContent('act aditional 1.pdf', 'actul adițional'),
+        'files' => [UploadedFile::fake()->createWithContent('act aditional 1.pdf', 'actul adițional')],
         'kind' => 'addendum',
         'label' => 'nr. 1',
         'signed_at' => '2027-01-15',
@@ -354,7 +354,7 @@ test('an addendum sits beside the contract, it does not replace it', function ()
 
     // O versiune nouă a contractului însuși se numerotează mai departe.
     $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/files", [
-        'file' => UploadedFile::fake()->createWithContent('contract semnat.pdf', 'exemplarul semnat'),
+        'files' => [UploadedFile::fake()->createWithContent('contract semnat.pdf', 'exemplarul semnat')],
         'kind' => 'contract',
     ])->assertRedirect();
 
@@ -386,4 +386,29 @@ test('a question looks in the addenda too, and says which paper answers it', fun
     expect($answers[0]['document'])->toBe('Act adițional nr. 1')
         ->and($answers[0]['text'])->toContain('1.250')
         ->and(collect($answers)->pluck('document')->all())->toContain('Contract v1');
+});
+
+test('a whole stack of annexes goes up at once', function () {
+    $this->actingAs($this->keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent('contract.pdf', 'contractul')]])
+        ->assertRedirect();
+
+    $contract = Contract::query()->firstOrFail();
+
+    $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/files", [
+        'files' => [
+            UploadedFile::fake()->createWithContent('anexa 1.pdf', 'grila de preturi'),
+            UploadedFile::fake()->createWithContent('anexa 2.pdf', 'caiet de sarcini'),
+            UploadedFile::fake()->createWithContent('anexa 3.pdf', 'lista de servicii'),
+        ],
+        'kind' => 'annex',
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    $contract->refresh()->load('files');
+
+    expect($contract->files)->toHaveCount(4)
+        ->and($contract->files->where('kind', ContractFile::KIND_ANNEX))->toHaveCount(3)
+        // Niciuna nu e „versiunea 2” a contractului.
+        ->and($contract->current()->version)->toBe(1)
+        ->and($contract->addenda())->toHaveCount(3);
 });

@@ -233,30 +233,40 @@ class ContractController extends Controller
         }
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
-            'label' => ['nullable', 'string', 'max:120'],
+            // Anexele vin de obicei în teanc: se primesc toate deodată.
+            'files' => ['required', 'array', 'min:1', 'max:20'],
+            'files.*' => ['file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
             'kind' => ['nullable', Rule::in(ContractFile::KINDS)],
+            // Numărul și data se citesc din document; se pot pune și cu mâna,
+            // dacă vrea cineva.
+            'label' => ['nullable', 'string', 'max:120'],
             'signed_at' => ['nullable', 'date'],
         ]);
 
-        $upload = $validated['file'];
         $kind = $validated['kind'] ?? ContractFile::KIND_CONTRACT;
+        $count = 0;
 
-        $file = $this->attach(
-            $contract,
-            $upload,
-            hash_file('sha256', $upload->getRealPath()),
-            $request->user(),
-            $validated['label'] ?? null,
-            $kind,
-            $validated['signed_at'] ?? null,
-        );
+        foreach ($validated['files'] as $upload) {
+            $this->attach(
+                $contract,
+                $upload,
+                hash_file('sha256', $upload->getRealPath()),
+                $request->user(),
+                $validated['label'] ?? null,
+                $kind,
+                $validated['signed_at'] ?? null,
+            );
+            $count++;
+        }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => match ($kind) {
-            ContractFile::KIND_ADDENDUM => 'Act adițional încărcat; se citește acum.',
-            ContractFile::KIND_ANNEX => 'Anexă încărcată; se citește acum.',
-            default => 'Versiune nouă a contractului, încărcată; se citește acum.',
-        }]);
+        $what = match ($kind) {
+            ContractFile::KIND_ADDENDUM => $count === 1 ? 'Act adițional încărcat' : $count.' acte adiționale încărcate',
+            ContractFile::KIND_ANNEX => $count === 1 ? 'Anexă încărcată' : $count.' anexe încărcate',
+            ContractFile::KIND_CONTRACT => $count === 1 ? 'Versiune nouă a contractului, încărcată' : $count.' versiuni încărcate',
+            default => $count === 1 ? 'Document încărcat' : $count.' documente încărcate',
+        };
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $what.'; se citesc acum. Numărul și data se iau din ele.']);
 
         return back();
     }

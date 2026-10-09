@@ -333,3 +333,42 @@ test('a pointed question is answered with the clause that says it', function () 
     $this->actingAs($outsider)->postJson("/contracts/{$contract->id}/ask", ['question' => 'ce scrie?'])
         ->assertForbidden();
 });
+
+test('the number and the date of an addendum are read from it, not typed', function () {
+    Storage::fake(config('contracts.disk'));
+
+    $this->mock(ContractReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('read')->andReturn([
+            'engine' => 'pdftotext',
+            'status' => 'done',
+            'pages' => 1,
+            'error' => null,
+            'text' => "ACT ADITIONAL nr. 3 / 15.01.2027\n"
+                ."la Contractul de prestari servicii nr. 1/09.10.2026\n\n"
+                .'Partile convin prelungirea contractului pana la data de 31 decembrie 2028, '
+                .'valoarea contractului fiind de 12.500 EUR pe an.',
+        ]);
+    });
+
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0060', 'title' => 'Prestări', 'partner_name' => 'BVB',
+        'expires_at' => '2027-12-31',
+    ]);
+    $file = ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_ADDENDUM,
+        'path' => 'a.pdf', 'original_name' => 'act aditional.pdf', 'hash' => 'ha1',
+    ]);
+
+    app(ReadContractFile::class, ['fileId' => $file->id])
+        ->handle(app(ContractReader::class), app(ContractFields::class));
+
+    $file->refresh();
+
+    expect($file->label)->toBe('nr. 3')
+        ->and($file->signed_at?->toDateString())->toBe('2027-01-15')
+        ->and($file->title())->toBe('Act adițional nr. 3')
+        // Contractul nu se schimbă singur: ce spune actul se propune în jurnal.
+        ->and($contract->fresh()->expires_at?->toDateString())->toBe('2027-12-31')
+        ->and($contract->events()->where('type', 'ocr_done')->first()->body)
+        ->toContain('termen nou: 31.12.2028');
+});

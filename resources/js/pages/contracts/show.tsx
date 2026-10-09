@@ -141,16 +141,9 @@ export default function ContractShow({
         days: '30',
         note: '',
     });
-    const version = useForm<{
-        file: File | null;
-        label: string;
-        kind: string;
-        signed_at: string;
-    }>({
-        file: null,
-        label: '',
+    const version = useForm<{ files: File[]; kind: string }>({
+        files: [],
         kind: 'addendum',
-        signed_at: '',
     });
     // Ce se adaugă la un contract e, de obicei, un act adițional — nu altă
     // versiune a aceluiași document.
@@ -174,9 +167,9 @@ export default function ContractShow({
             return;
         }
 
-        // Ca la încărcarea din repertoriu: fișierul se dă trimiterii, fiindcă
+        // Ca la încărcarea din repertoriu: fișierele se dau trimiterii, fiindcă
         // starea formularului se vede abia la randarea următoare.
-        version.transform((data) => ({ ...data, file: files[0] }));
+        version.transform((data) => ({ ...data, files: Array.from(files) }));
         version.post(fileStore(contract.id).url, {
             forceFormData: true,
             preserveScroll: true,
@@ -267,6 +260,8 @@ export default function ContractShow({
                         <input
                             ref={uploader}
                             type="file"
+                            multiple
+                            accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg,.tif,.tiff,.webp,.heic"
                             hidden
                             onChange={(event) => {
                                 sendVersion(event.target.files);
@@ -769,42 +764,6 @@ export default function ContractShow({
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="grid gap-2 sm:grid-cols-2">
-                                            <div className="grid gap-1.5">
-                                                <Label htmlFor="doc-label">
-                                                    Număr
-                                                </Label>
-                                                <Input
-                                                    id="doc-label"
-                                                    placeholder="nr. 1"
-                                                    value={version.data.label}
-                                                    onChange={(event) =>
-                                                        version.setData(
-                                                            'label',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </div>
-                                            <div className="grid gap-1.5">
-                                                <Label htmlFor="doc-date">
-                                                    Semnat la
-                                                </Label>
-                                                <Input
-                                                    id="doc-date"
-                                                    type="date"
-                                                    value={
-                                                        version.data.signed_at
-                                                    }
-                                                    onChange={(event) =>
-                                                        version.setData(
-                                                            'signed_at',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </div>
-                                        </div>
                                         <Button
                                             onClick={() =>
                                                 uploader.current?.click()
@@ -812,14 +771,17 @@ export default function ContractShow({
                                             disabled={version.processing}
                                         >
                                             <Upload className="size-4" />
-                                            Alege fișierul
+                                            Alege fișierele
                                         </Button>
                                         <p className="text-xs text-muted-foreground">
-                                            Actul adițional nu înlocuiește
-                                            contractul: stă lângă el, se caută
-                                            odată cu el, iar ce schimbă (termen,
-                                            valoare) se scrie în jurnal, ca
-                                            propunere.
+                                            Numărul și data semnării se citesc
+                                            din fiecare document — nu le scrie
+                                            nimeni cu mâna. Se pot alege mai
+                                            multe deodată. Actul adițional nu
+                                            înlocuiește contractul: stă lângă
+                                            el, se caută odată cu el, iar ce
+                                            schimbă (termen, valoare) se scrie
+                                            în jurnal, ca propunere.
                                         </p>
                                     </div>
                                 )}

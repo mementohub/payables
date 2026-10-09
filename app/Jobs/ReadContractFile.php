@@ -76,10 +76,12 @@ class ReadContractFile implements ShouldQueue
         $contract = $file->contract;
 
         if ($isAddendum) {
+            $this->describe($file, $read);
+
             ContractEvent::query()->create([
                 'contract_id' => $contract->id,
                 'type' => 'ocr_done',
-                'body' => sprintf('%s citit cu %s. %s', $file->title(), $result['engine'], $this->proposes($read)),
+                'body' => sprintf('%s citit cu %s. %s', $file->fresh()->title(), $result['engine'], $this->proposes($read)),
                 'payload' => ['file_id' => $file->id, 'kind' => $file->kind, 'read' => $this->plain($read)],
             ]);
 
@@ -94,6 +96,31 @@ class ReadContractFile implements ShouldQueue
             'body' => sprintf('Citit cu %s: %d câmpuri propuse, %d puse în contract.', $result['engine'], count($read), count($filled)),
             'payload' => ['file_id' => $file->id, 'filled' => $filled, 'unsure' => ContractFields::unsure($read)],
         ]);
+    }
+
+    /**
+     * Numărul și data actului adițional, luate din el.
+     *
+     * Omul n-are de ce să le scrie: sunt pe prima pagină a documentului, iar
+     * dacă a pus el ceva cu mâna, rămâne ce a pus.
+     *
+     * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $read
+     */
+    private function describe(ContractFile $file, array $read): void
+    {
+        $changed = [];
+
+        if (blank($file->label) && isset($read['number'])) {
+            $changed['label'] = 'nr. '.ltrim((string) $read['number']['value'], 'nr. ');
+        }
+
+        if ($file->signed_at === null && isset($read['signed_at'])) {
+            $changed['signed_at'] = (string) $read['signed_at']['value'];
+        }
+
+        if ($changed !== []) {
+            $file->forceFill($changed)->save();
+        }
     }
 
     /**
