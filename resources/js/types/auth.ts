@@ -20,6 +20,8 @@ export type Capabilities = {
     invoices: boolean;
     routing: boolean;
     reports: boolean;
+    /** Repertoriul de contracte, la rolul lui. */
+    contracts: boolean;
     team: boolean;
     admin: boolean;
 };

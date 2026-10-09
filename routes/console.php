@@ -25,6 +25,20 @@ $cashFlowMail = Schedule::command('cashflow:mail')
     ->when(fn () => (bool) config('notifications.enabled', true) && (bool) config('notifications.cash_flow.enabled', true))
     ->withoutOverlapping(30);
 
+// Contractele: dimineața, ce vine la rând; lunea, lista întreagă.
+Schedule::command('contracts:alerts')
+    ->dailyAt('08:15')
+    ->timezone((string) config('notifications.cash_flow.timezone', 'Europe/Bucharest'))
+    ->when(fn () => (bool) config('notifications.enabled', true) && (bool) config('contracts.alerts.enabled', true))
+    ->weekdays()
+    ->withoutOverlapping(30);
+
+Schedule::command('contracts:alerts', ['--digest' => true])
+    ->weeklyOn(1, (string) config('contracts.alerts.digest_hour', '08:30'))
+    ->timezone((string) config('notifications.cash_flow.timezone', 'Europe/Bucharest'))
+    ->when(fn () => (bool) config('notifications.enabled', true) && (bool) config('contracts.alerts.enabled', true))
+    ->withoutOverlapping(30);
+
 if (config('notifications.cash_flow.weekdays_only', true)) {
     $cashFlowMail->weekdays();
 }

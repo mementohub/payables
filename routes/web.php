@@ -10,6 +10,7 @@ use App\Http\Controllers\CashFlowReportController;
 use App\Http\Controllers\CharterContractController;
 use App\Http\Controllers\CharterFlightController;
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\Contracts\ContractController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
@@ -218,6 +219,21 @@ Route::middleware('auth')->group(function () {
     Route::post('maintenance/upgrade', [MaintenanceController::class, 'upgrade'])->name('maintenance.upgrade')->middleware('role:admin');
     Route::post('maintenance/migrate', [MaintenanceController::class, 'migrate'])->name('maintenance.migrate')->middleware('role:admin');
     Route::post('maintenance/stop/{run}', [MaintenanceController::class, 'stop'])->name('maintenance.stop')->middleware('role:admin');
+
+    /*
+     * Repertoriul de contracte: rolul lui, tabul lui. Cine n-are rolul nu intră,
+     * oricât ar ghici din adresă.
+     */
+    Route::middleware('role:contract_management')->group(function () {
+        Route::get('contracts', [ContractController::class, 'index'])->name('contracts.index');
+        Route::post('contracts', [ContractController::class, 'store'])->name('contracts.store');
+        Route::get('contracts/{contract}', [ContractController::class, 'show'])->name('contracts.show');
+        Route::put('contracts/{contract}', [ContractController::class, 'update'])->name('contracts.update');
+        Route::post('contracts/{contract}/files', [ContractController::class, 'addFile'])->name('contracts.files.store');
+        Route::get('contracts/{contract}/files/{file}', [ContractController::class, 'download'])->name('contracts.files.download');
+        Route::post('contracts/{contract}/share', [ContractController::class, 'share'])->name('contracts.share');
+        Route::post('contracts/{contract}/archive', [ContractController::class, 'archive'])->name('contracts.archive');
+    });
 
     Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index')->middleware('role:admin');
     Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store')->middleware('role:admin');

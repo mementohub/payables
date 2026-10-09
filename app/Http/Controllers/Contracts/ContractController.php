@@ -1,0 +1,450 @@
+<?php
+
+namespace App\Http\Controllers\Contracts;
+
+use App\Http\Controllers\Controller;
+use App\Jobs\ReadContractFile;
+use App\Models\Contract;
+use App\Models\ContractEvent;
+use App\Models\ContractFile;
+use App\Models\ContractShare;
+use App\Models\Department;
+use App\Models\User;
+use App\Services\Contracts\ContractReader;
+use Carbon\CarbonInterface;
+use Illuminate\Contracts\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/**
+ * Repertoriul de contracte.
+ *
+ * Contractul se ține separat de facturi: are rolul lui, ecranul lui și
+ * scadențele lui. Fișierele stau pe discul privat și se dau numai prin
+ * aplicație.
+ */
+class ContractController extends Controller
+{
+    public function index(Request $request, ContractReader $reader): Response
+    {
+        $filters = $this->filters($request);
+        $query = $this->filtered($filters);
+
+        $contracts = (clone $query)
+            ->with(['department:id,name', 'owner:id,name', 'partner:id,name'])
+            ->withCount('files')
+            ->orderByRaw('case when expires_at is null then 1 else 0 end')
+            ->orderBy('expires_at')
+            ->orderByDesc('id')
+            ->paginate(40)
+            ->withQueryString()
+            ->through(fn (Contract $contract) => $this->row($contract));
+
+        return Inertia::render('contracts/index', [
+            'filters' => $filters,
+            'contracts' => $contracts,
+            'summary' => $this->summary(),
+            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
+            'partners' => (clone $query)->select('partner_name')->distinct()->orderBy('partner_name')->limit(300)->pluck('partner_name'),
+            'ocr' => $reader->available(),
+        ]);
+    }
+
+    public function show(Request $request, Contract $contract): Response
+    {
+        $contract->load([
+            'department:id,name', 'owner:id,name,email', 'partner:id,name,cui',
+            'createdBy:id,name', 'files.uploadedBy:id,name',
+            'shares.user:id,name', 'events.user:id,name',
+        ]);
+
+        return Inertia::render('contracts/show', [
+            'contract' => [
+                ...$this->row($contract),
+                'object' => $contract->object,
+                'notes' => $contract->notes,
+                'partner_tax_id' => $contract->partner_tax_id,
+                'payment_terms' => $contract->payment_terms,
+                'governing_law' => $contract->governing_law,
+                'notice_days' => $contract->notice_days,
+                'notice_on' => $contract->noticeOn()?->toDateString(),
+                'auto_renew' => $contract->auto_renew,
+                'starts_at' => $contract->starts_at?->toDateString(),
+                'tags' => $contract->tags ?? [],
+                'ocr_fields' => $contract->ocr_fields ?? [],
+                'created_by' => $contract->createdBy?->name,
+                'files' => $contract->files->map(fn (ContractFile $file) => [
+                    'id' => $file->id,
+                    'version' => $file->version,
+                    'label' => $file->label,
+                    'name' => $file->original_name,
+                    'size' => $file->size,
+                    'pages' => $file->pages,
+                    'ocr_status' => $file->ocr_status,
+                    'ocr_engine' => $file->ocr_engine,
+                    'ocr_error' => $file->ocr_error,
+                    'has_text' => $file->text !== null,
+                    'uploaded_by' => $file->uploadedBy?->name,
+                    'uploaded_at' => $file->created_at?->toIso8601String(),
+                ])->values(),
+                'shares' => $contract->shares->map(fn (ContractShare $share) => [
+                    'id' => $share->id,
+                    'email' => $share->email,
+                    'permission' => $share->permission,
+                    'expires_at' => $share->expires_at?->toIso8601String(),
+                    'opened_at' => $share->opened_at?->toIso8601String(),
+                    'opens' => $share->opens,
+                ])->values(),
+                'events' => $contract->events->map(fn (ContractEvent $event) => [
+                    'id' => $event->id,
+                    'type' => $event->type,
+                    'body' => $event->body,
+                    'user' => $event->user?->name,
+                    'at' => $event->created_at?->toIso8601String(),
+                ])->values(),
+            ],
+            'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
+            'people' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
+        ]);
+    }
+
+    /**
+     * Încarcă unul sau mai multe fișiere; fiecare devine un contract în lucru,
+     * iar citirea lui pleacă în fundal.
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'files' => ['required', 'array', 'min:1', 'max:20'],
+            'files.*' => ['file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'mimes:pdf,docx,doc,png,jpg,jpeg,tif,tiff,txt'],
+            'kind' => ['nullable', Rule::in(Contract::KINDS)],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+        ]);
+
+        $created = [];
+
+        foreach ($validated['files'] as $upload) {
+            $hash = hash_file('sha256', $upload->getRealPath());
+            $existing = ContractFile::query()->where('hash', $hash)->with('contract')->first();
+
+            // Același fișier încărcat a doua oară nu face al doilea contract:
+            // devine versiune nouă pe cel pe care îl are deja.
+            $contract = $existing?->contract ?? $this->blank($request->user(), $upload->getClientOriginalName(), $validated);
+            $created[] = $contract->number;
+            $this->attach($contract, $upload, $hash, $request->user());
+        }
+
+        $message = count($created) === 1
+            ? 'Contractul '.$created[0].' a fost încărcat; se citește acum.'
+            : count($created).' contracte au fost încărcate; se citesc acum.';
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return back();
+    }
+
+    public function update(Request $request, Contract $contract): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:300'],
+            'partner_name' => ['required', 'string', 'max:200'],
+            'partner_tax_id' => ['nullable', 'string', 'max:40'],
+            'kind' => ['required', Rule::in(Contract::KINDS)],
+            'object' => ['nullable', 'string', 'max:5000'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
+            'value' => ['nullable', 'numeric', 'between:-999999999999,999999999999'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'signed_at' => ['nullable', 'date'],
+            'starts_at' => ['nullable', 'date'],
+            'expires_at' => ['nullable', 'date', 'after_or_equal:signed_at'],
+            'notice_days' => ['nullable', 'integer', 'between:0,3650'],
+            'auto_renew' => ['nullable', 'boolean'],
+            'payment_terms' => ['nullable', 'string', 'max:200'],
+            'governing_law' => ['nullable', 'string', 'max:80'],
+            'status' => ['required', Rule::in(Contract::STATUSES)],
+            'tags' => ['nullable', 'array', 'max:20'],
+            'tags.*' => ['string', 'max:40'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $changed = $this->changes($contract, $validated);
+        $contract->fill([...$validated, 'auto_renew' => (bool) ($validated['auto_renew'] ?? false)])->save();
+
+        if ($changed !== []) {
+            $this->event($contract, $request->user(), 'updated', 'A schimbat: '.implode(', ', array_keys($changed)), $changed);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contract salvat.']);
+
+        return back();
+    }
+
+    /** O versiune nouă pe un contract care există deja. */
+    public function addFile(Request $request, Contract $contract): RedirectResponse
+    {
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'mimes:pdf,docx,doc,png,jpg,jpeg,tif,tiff,txt'],
+            'label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $upload = $validated['file'];
+        $this->attach($contract, $upload, hash_file('sha256', $upload->getRealPath()), $request->user(), $validated['label'] ?? null);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Versiune nouă încărcată; se citește acum.']);
+
+        return back();
+    }
+
+    public function download(Request $request, Contract $contract, ContractFile $file): StreamedResponse
+    {
+        if ($file->contract_id !== $contract->id) {
+            throw new AuthorizationException('Fișierul nu e al acestui contract.');
+        }
+
+        $this->event($contract, $request->user(), 'downloaded', $file->original_name, ['file_id' => $file->id]);
+
+        return Storage::disk((string) config('contracts.disk', 'local'))->download($file->path, $file->original_name);
+    }
+
+    public function share(Request $request, Contract $contract): RedirectResponse
+    {
+        $validated = $request->validate([
+            'emails' => ['required', 'string', 'max:2000'],
+            'permission' => ['required', Rule::in(ContractShare::PERMISSIONS)],
+            'days' => ['nullable', 'integer', 'between:1,365'],
+        ]);
+
+        $emails = collect(preg_split('~[,;\s]+~', $validated['emails']) ?: [])
+            ->map(fn (string $email) => trim($email))
+            ->filter(fn (string $email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false)
+            ->unique();
+
+        if ($emails->isEmpty()) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Nicio adresă bună de e-mail.']);
+
+            return back();
+        }
+
+        foreach ($emails as $email) {
+            ContractShare::query()->create([
+                'contract_id' => $contract->id,
+                'user_id' => User::query()->where('email', $email)->value('id'),
+                'email' => $email,
+                'permission' => $validated['permission'],
+                'token' => Str::random(48),
+                'expires_at' => isset($validated['days']) ? now()->addDays((int) $validated['days']) : null,
+                'created_by_id' => $request->user()?->id,
+            ]);
+        }
+
+        $this->event($contract, $request->user(), 'shared', $emails->implode(', '), ['permission' => $validated['permission']]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul a fost trimis către '.$emails->count().' '.($emails->count() === 1 ? 'adresă' : 'adrese').'.']);
+
+        return back();
+    }
+
+    public function archive(Request $request, Contract $contract): RedirectResponse
+    {
+        $archived = $contract->archived_at === null;
+        $contract->forceFill(['archived_at' => $archived ? now() : null])->save();
+        $this->event($contract, $request->user(), $archived ? 'archived' : 'restored');
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $archived ? 'Contract arhivat.' : 'Contract scos din arhivă.']);
+
+        return back();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function filtered(array $filters): Builder
+    {
+        return Contract::query()
+            ->when(! $filters['archived'], fn ($q) => $q->whereNull('archived_at'))
+            ->when($filters['archived'], fn ($q) => $q->whereNotNull('archived_at'))
+            ->when($filters['search'] !== null, function ($q) use ($filters) {
+                $like = '%'.$filters['search'].'%';
+                $q->where(fn ($inner) => $inner
+                    ->where('number', 'like', $like)
+                    ->orWhere('title', 'like', $like)
+                    ->orWhere('partner_name', 'like', $like)
+                    ->orWhere('object', 'like', $like)
+                    // Căutarea prinde și textul citit din document: o clauză se
+                    // găsește fără să deschidă nimeni fișierul.
+                    ->orWhereHas('files', fn ($files) => $files->where('text', 'like', $like)));
+            })
+            ->when($filters['partner'] !== null, fn ($q) => $q->where('partner_name', $filters['partner']))
+            ->when($filters['kind'] !== null, fn ($q) => $q->where('kind', $filters['kind']))
+            ->when($filters['department_id'] !== null, fn ($q) => $q->where('department_id', $filters['department_id']))
+            ->when($filters['status'] !== null, fn ($q) => $q->where('status', $filters['status']))
+            ->when($filters['signed_from'] !== null, fn ($q) => $q->whereDate('signed_at', '>=', $filters['signed_from']))
+            ->when($filters['signed_to'] !== null, fn ($q) => $q->whereDate('signed_at', '<=', $filters['signed_to']))
+            ->when($filters['expires_to'] !== null, fn ($q) => $q->whereDate('expires_at', '<=', $filters['expires_to']))
+            ->when($filters['value_from'] !== null, fn ($q) => $q->where('value', '>=', $filters['value_from']))
+            ->when($filters['value_to'] !== null, fn ($q) => $q->where('value', '<=', $filters['value_to']));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filters(Request $request): array
+    {
+        $date = fn (string $key) => $request->filled($key) ? Carbon::parse($request->string($key)->toString())->toDateString() : null;
+
+        return [
+            'search' => $request->filled('search') ? trim($request->string('search')->toString()) : null,
+            'partner' => $request->filled('partner') ? $request->string('partner')->toString() : null,
+            'kind' => in_array($request->string('kind')->toString(), Contract::KINDS, true) ? $request->string('kind')->toString() : null,
+            'department_id' => $request->integer('department_id') ?: null,
+            'status' => in_array($request->string('status')->toString(), Contract::STATUSES, true) ? $request->string('status')->toString() : null,
+            'signed_from' => $date('signed_from'),
+            'signed_to' => $date('signed_to'),
+            'expires_to' => $date('expires_to'),
+            'value_from' => $request->filled('value_from') ? (float) $request->string('value_from')->toString() : null,
+            'value_to' => $request->filled('value_to') ? (float) $request->string('value_to')->toString() : null,
+            'archived' => $request->boolean('archived'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function row(Contract $contract): array
+    {
+        return [
+            'id' => $contract->id,
+            'number' => $contract->number,
+            'title' => $contract->title,
+            'partner_name' => $contract->partner_name,
+            'partner_id' => $contract->partner_id,
+            'kind' => $contract->kind,
+            'department' => $contract->department?->name,
+            'department_id' => $contract->department_id,
+            'owner' => $contract->owner?->name,
+            'owner_id' => $contract->owner_id,
+            'value' => $contract->value !== null ? (float) $contract->value : null,
+            'currency' => $contract->currency,
+            'signed_at' => $contract->signed_at?->toDateString(),
+            'expires_at' => $contract->expires_at?->toDateString(),
+            'days_left' => $contract->daysLeft(),
+            'status' => $contract->state(),
+            'archived' => $contract->archived_at !== null,
+            'files_count' => $contract->files_count ?? $contract->files()->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, int|float>
+     */
+    private function summary(): array
+    {
+        $active = Contract::query()->active();
+
+        return [
+            'total' => Contract::query()->notArchived()->count(),
+            'active' => (clone $active)->count(),
+            'expiring' => (clone $active)->whereNotNull('expires_at')
+                ->whereDate('expires_at', '>=', now()->toDateString())
+                ->whereDate('expires_at', '<=', now()->addDays(90)->toDateString())->count(),
+            'unowned' => Contract::query()->notArchived()->whereNull('owner_id')->count(),
+            'value_ron' => (float) Contract::query()->active()->where('currency', 'RON')->sum('value'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function blank(?User $user, string $name, array $validated): Contract
+    {
+        $title = trim(pathinfo($name, PATHINFO_FILENAME));
+
+        return Contract::query()->create([
+            'number' => $this->number(),
+            'title' => $title !== '' ? Str::limit($title, 290) : 'Contract fără titlu',
+            'partner_name' => '—',
+            'kind' => $validated['kind'] ?? Contract::KIND_SUPPLIER,
+            'department_id' => $validated['department_id'] ?? null,
+            'status' => Contract::STATUS_DRAFT,
+            'created_by_id' => $user?->id,
+        ]);
+    }
+
+    private function attach(Contract $contract, mixed $upload, string $hash, ?User $user, ?string $label = null): void
+    {
+        $version = (int) ContractFile::query()->where('contract_id', $contract->id)->max('version') + 1;
+        $path = $upload->store(trim((string) config('contracts.path', 'contracts'), '/').'/'.$contract->id, (string) config('contracts.disk', 'local'));
+
+        $file = ContractFile::query()->create([
+            'contract_id' => $contract->id,
+            'version' => $version,
+            'label' => $label,
+            'path' => $path,
+            'original_name' => $upload->getClientOriginalName(),
+            'mime' => $upload->getClientMimeType(),
+            'size' => $upload->getSize(),
+            'hash' => $hash,
+            'ocr_status' => ContractFile::OCR_PENDING,
+            'uploaded_by_id' => $user?->id,
+        ]);
+
+        $this->event($contract, $user, $version === 1 ? 'uploaded' : 'version', $upload->getClientOriginalName(), ['file_id' => $file->id, 'version' => $version]);
+
+        ReadContractFile::dispatch($file->id);
+    }
+
+    private function number(): string
+    {
+        return DB::transaction(function () {
+            $year = now()->year;
+            $last = Contract::query()->where('number', 'like', 'CTR-'.$year.'-%')->lockForUpdate()->max('number');
+            $next = $last === null ? 1 : ((int) Str::afterLast($last, '-')) + 1;
+
+            return sprintf('CTR-%d-%04d', $year, $next);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, array{from: mixed, to: mixed}>
+     */
+    private function changes(Contract $contract, array $validated): array
+    {
+        $changed = [];
+
+        foreach ($validated as $key => $value) {
+            $before = $contract->{$key};
+            $before = $before instanceof CarbonInterface ? $before->toDateString() : $before;
+
+            if ((string) $before !== (string) (is_array($value) ? json_encode($value) : $value)) {
+                $changed[$key] = ['from' => $before, 'to' => $value];
+            }
+        }
+
+        return $changed;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function event(Contract $contract, ?User $user, string $type, ?string $body = null, array $payload = []): void
+    {
+        ContractEvent::query()->create([
+            'contract_id' => $contract->id,
+            'user_id' => $user?->id,
+            'type' => $type,
+            'body' => $body,
+            'payload' => $payload ?: null,
+        ]);
+    }
+}

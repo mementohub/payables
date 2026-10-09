@@ -43,7 +43,10 @@ class User extends Authenticatable
     /** Omul unui departament: aprobă ce e al lui și atât. */
     public const ROLE_OPERATIONAL = 'operational';
 
-    public const ROLES = [self::ROLE_ADMIN, self::ROLE_TOP_MANAGEMENT, self::ROLE_FINANCE, self::ROLE_TREASURY, self::ROLE_OPERATIONAL];
+    /** Repertoriul de contracte: un rol de sine stătător, cu tabul lui. */
+    public const ROLE_CONTRACTS = 'contract_management';
+
+    public const ROLES = [self::ROLE_ADMIN, self::ROLE_TOP_MANAGEMENT, self::ROLE_FINANCE, self::ROLE_TREASURY, self::ROLE_OPERATIONAL, self::ROLE_CONTRACTS];
 
     /**
      * Cine ce vede și ce poate face.
@@ -60,6 +63,15 @@ class User extends Authenticatable
      * Regulile stau aici, într-un singur loc: meniul le citește ca să ascundă
      * ce nu e al omului, iar rutele ca să refuze ce n-a fost ascuns.
      */
+    /**
+     * Contractele stau la rolul lor, nu se amestecă cu facturile: cine n-are
+     * rolul nu vede nici tabul, nici repertoriul.
+     */
+    public function canSeeContracts(): bool
+    {
+        return $this->hasRole(self::ROLE_CONTRACTS);
+    }
+
     public function canSeeReports(): bool
     {
         return $this->hasRole(self::ROLE_TOP_MANAGEMENT);

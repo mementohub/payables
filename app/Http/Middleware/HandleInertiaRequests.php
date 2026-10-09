@@ -69,6 +69,7 @@ class HandleInertiaRequests extends Middleware
                     'invoices' => $user->canSeeInvoices(),
                     'routing' => $user->canSeeRouting(),
                     'reports' => $user->canSeeReports(),
+                    'contracts' => $user->canSeeContracts(),
                     'team' => $user->canManageOwnTeam(),
                     'admin' => $user->isAdmin(),
                 ] : [],

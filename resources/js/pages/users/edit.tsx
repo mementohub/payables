@@ -36,6 +36,12 @@ const roleOptions = [
             'Rulajele de plată, e-Facturi, verificările de plăți și extrasele bancare. Trimite plata la bancă (fișierul BT).',
     },
     {
+        value: 'contract_management',
+        label: 'Contract Management',
+        description:
+            'Repertoriul de contracte: încarcă, citește, caută, trimite și arhivează. Nu vede facturi, rulaje sau rapoarte dacă n-are și rolurile acelea.',
+    },
+    {
         value: 'admin',
         label: 'Administrator',
         description:

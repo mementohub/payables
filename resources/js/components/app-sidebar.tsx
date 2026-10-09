@@ -9,6 +9,7 @@ import {
     ClipboardCheck,
     DatabaseZap,
     FileCheck2,
+    FileSignature,
     FileSearch,
     Landmark,
     LayoutGrid,
@@ -52,6 +53,7 @@ import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as dueIndex } from '@/routes/reports/due';
 import { index as opexIndex } from '@/routes/reports/opex';
 import { index as pnlIndex } from '@/routes/reports/pnl';
+import { index as contractsIndex } from '@/routes/contracts';
 import { index as routingIndex } from '@/routes/routing';
 import { index as teamIndex } from '@/routes/team';
 import { index as usersIndex } from '@/routes/users';
@@ -189,6 +191,16 @@ const mainNavItems = (
                           icon: CalendarCheck,
                       },
                   ],
+              },
+          ]
+        : []),
+    // Contractele stau la rolul lor: cine nu-l are nici nu vede tabul.
+    ...(can.contracts
+        ? [
+              {
+                  title: 'Contracte',
+                  href: contractsIndex(),
+                  icon: FileSignature,
               },
           ]
         : []),
