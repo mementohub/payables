@@ -11,6 +11,7 @@ use App\Models\ContractFile;
 use App\Models\ContractShare;
 use App\Models\Department;
 use App\Models\User;
+use App\Services\Contracts\ContractAsk;
 use App\Services\Contracts\ContractReader;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -438,6 +439,23 @@ class ContractController extends Controller
                 'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="'.addslashes($file->original_name).'"',
             ],
         );
+    }
+
+    /**
+     * Întrebare punctuală despre contractul ăsta.
+     *
+     * Răspunsul vine din chiar textul lui: bucățile care spun ceva despre ce
+     * s-a întrebat. Nimic nu pleacă de pe server și nimic nu se inventează.
+     */
+    public function ask(Request $request, Contract $contract, ContractAsk $ask): array
+    {
+        $this->seen($request, $contract);
+
+        $validated = $request->validate([
+            'question' => ['required', 'string', 'min:3', 'max:300'],
+        ]);
+
+        return $ask->ask($contract->load('files'), $validated['question']);
     }
 
     public function archive(Request $request, Contract $contract): RedirectResponse

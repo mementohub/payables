@@ -303,3 +303,33 @@ test('a contract taken in is active from the day it was signed', function () {
         ->and($contract->expires_at?->toDateString())->toBe('2027-12-31')
         ->and($contract->partner_name)->toBe('BURSA DE VALORI BUCURESTI S.A.');
 });
+
+test('a pointed question is answered with the clause that says it', function () {
+    $keeper = User::factory()->withRoles('contract_management')->create();
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0040', 'title' => 'Prestări', 'partner_name' => 'BVB',
+        'created_by_id' => $keeper->id,
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'path' => 'x.pdf', 'original_name' => 'x.pdf', 'hash' => 'q1',
+        'text' => "1.4. Pretul serviciilor este de 3.750 EUR pe an.\n\n"
+            ."1.5. Facturile vor fi platite de Beneficiar in termen de 15 zile calendaristice de la data primirii facturii.\n\n"
+            ."4.30. In cazul intarzierii la plata, Beneficiarul datoreaza penalitati de 0,1% pe zi de intarziere.\n\n"
+            .'5.1. Contractul poate fi reziliat de oricare dintre parti cu un preaviz de 30 de zile.',
+    ]);
+
+    $answer = fn (string $question) => $this->actingAs($keeper)
+        ->postJson("/contracts/{$contract->id}/ask", ['question' => $question])
+        ->json('answers');
+
+    expect($answer('care este termenul de plata?')[0]['text'])->toContain('15 zile')
+        ->and($answer('ce penalitati sunt pentru intarziere?')[0]['text'])->toContain('0,1%')
+        ->and($answer('cum se reziliaza?')[0]['text'])->toContain('preaviz')
+        // Ce nu scrie în contract nu se inventează.
+        ->and($answer('ce scrie despre zborurile charter?'))->toBe([]);
+
+    // Contractul altuia nu răspunde la întrebări.
+    $outsider = User::factory()->withRoles('contract_management')->create();
+    $this->actingAs($outsider)->postJson("/contracts/{$contract->id}/ask", ['question' => 'ce scrie?'])
+        ->assertForbidden();
+});

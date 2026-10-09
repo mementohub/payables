@@ -240,6 +240,7 @@ Route::middleware('auth')->group(function () {
         Route::post('contracts/{contract}/files', [ContractController::class, 'addFile'])->name('contracts.files.store');
         Route::get('contracts/{contract}/files/{file}', [ContractController::class, 'download'])->name('contracts.files.download');
         Route::get('contracts/{contract}/files/{file}/preview', [ContractController::class, 'preview'])->name('contracts.files.preview');
+        Route::post('contracts/{contract}/ask', [ContractController::class, 'ask'])->name('contracts.ask');
         Route::post('contracts/{contract}/share', [ContractController::class, 'share'])->name('contracts.share');
         Route::post('contracts/{contract}/archive', [ContractController::class, 'archive'])->name('contracts.archive');
         // Ștergerea cu totul e a administratorului: ruta cere rolul, nu doar ecranul.

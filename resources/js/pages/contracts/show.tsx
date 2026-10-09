@@ -6,6 +6,7 @@ import {
     Eye,
     FileText,
     Loader2,
+    Search,
     Send,
     Trash2,
     Upload,
@@ -35,6 +36,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import {
     archive as archiveRoute,
+    ask as askRoute,
     destroy as destroyRoute,
     index as contractsIndex,
     share as shareRoute,
@@ -171,6 +173,48 @@ export default function ContractShow({
     };
 
     const ocr = contract.ocr_fields;
+
+    // Întrebare despre contractul ăsta: răspunsul vine din textul lui, nu
+    // dintr-o părere.
+    const [question, setQuestion] = useState('');
+    const [asking, setAsking] = useState(false);
+    const [answers, setAnswers] = useState<
+        { text: string; score: number; words: string[] }[] | null
+    >(null);
+
+    const askContract = async (event: FormEvent) => {
+        event.preventDefault();
+
+        if (question.trim().length < 3) {
+            return;
+        }
+
+        setAsking(true);
+
+        try {
+            const response = await fetch(askRoute(contract.id).url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-XSRF-TOKEN': decodeURIComponent(
+                        document.cookie
+                            .split('; ')
+                            .find((part) => part.startsWith('XSRF-TOKEN='))
+                            ?.split('=')[1] ?? '',
+                    ),
+                },
+                body: JSON.stringify({ question }),
+            });
+
+            const data = await response.json();
+            setAnswers(data.answers ?? []);
+        } catch {
+            setAnswers([]);
+        } finally {
+            setAsking(false);
+        }
+    };
 
     return (
         <AppLayout
@@ -840,6 +884,60 @@ export default function ContractShow({
                             </CardContent>
                         </Card>
 
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base">
+                                    Întreabă contractul
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <form
+                                    onSubmit={askContract}
+                                    className="flex gap-2"
+                                >
+                                    <Input
+                                        value={question}
+                                        onChange={(event) =>
+                                            setQuestion(event.target.value)
+                                        }
+                                        placeholder="ce scrie despre penalități? cum se reziliază?"
+                                    />
+                                    <Button type="submit" disabled={asking}>
+                                        {asking ? (
+                                            <Loader2 className="size-4 animate-spin" />
+                                        ) : (
+                                            <Search className="size-4" />
+                                        )}
+                                    </Button>
+                                </form>
+
+                                {answers !== null && answers.length === 0 && (
+                                    <p className="mt-3 text-sm text-muted-foreground">
+                                        Nu am găsit nimic despre asta în textul
+                                        contractului.
+                                    </p>
+                                )}
+
+                                {answers !== null && answers.length > 0 && (
+                                    <ul className="mt-3 grid gap-2">
+                                        {answers.map((answer, index) => (
+                                            <li
+                                                key={index}
+                                                className="rounded-md border bg-muted/30 p-2 text-sm"
+                                            >
+                                                {answer.text}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                <p className="mt-3 text-xs text-muted-foreground">
+                                    Răspunsul e chiar textul contractului —
+                                    clauzele care vorbesc despre ce ai întrebat.
+                                    Nimic nu pleacă de pe server.
+                                </p>
+                            </CardContent>
+                        </Card>
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base">
