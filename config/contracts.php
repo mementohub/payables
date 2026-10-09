@@ -50,6 +50,15 @@ return [
         'timeout' => (int) env('CONTRACTS_OCR_TIMEOUT', 600),
     ],
 
+    /*
+     * Cine semnează mailurile despre contracte. Adresa rămâne cea a
+     * aplicației; se schimbă doar numele de deasupra ei, ca omul să vadă din
+     * căsuță despre ce e vorba.
+     */
+    'mail' => [
+        'from_name' => env('CONTRACTS_MAIL_FROM_NAME', 'Contracts Christian Tour'),
+    ],
+
     'alerts' => [
         'enabled' => (bool) env('CONTRACTS_ALERTS_ENABLED', true),
         /** Cu câte zile înainte de expirare se dă de veste. */

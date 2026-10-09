@@ -191,3 +191,21 @@ test('the weekly digest carries everything on the horizon', function () {
         return array_column($mail->rows, 'number') === ['CTR-A'];
     });
 });
+
+test('the contract mails are signed by Contracts Christian Tour, not by the payables desk', function () {
+    $contract = \App\Models\Contract::query()->create([
+        'number' => 'CTR-2026-0030', 'title' => 'Test', 'partner_name' => 'Hotel Alfa',
+    ]);
+    $share = $contract->shares()->create([
+        'email' => 'cineva@christiantour.ro', 'permission' => 'view', 'token' => 'token-lung-de-proba',
+    ]);
+
+    $shared = (new \App\Mail\ContractSharedMail($contract, $share))->envelope();
+    $alerts = (new ContractAlertsMail([]))->envelope();
+
+    expect($shared->from?->name)->toBe('Contracts Christian Tour')
+        ->and($shared->from?->address)->toBe(config('mail.from.address'))
+        ->and($alerts->from?->name)->toBe('Contracts Christian Tour')
+        // Restul aplicației rămâne cum era.
+        ->and(config('mail.from.name'))->toBe('Receivables & Payables');
+});

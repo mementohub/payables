@@ -7,6 +7,7 @@ use App\Models\ContractShare;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -31,12 +32,18 @@ class ContractSharedMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: sprintf(
-            '%s ți-a trimis contractul %s — %s',
-            $this->sender?->name ?? 'Christian Tour',
-            $this->contract->number,
-            $this->contract->partner_name,
-        ));
+        return new Envelope(
+            from: new Address(
+                (string) config('mail.from.address'),
+                (string) config('contracts.mail.from_name', 'Contracts Christian Tour'),
+            ),
+            subject: sprintf(
+                '%s ți-a trimis contractul %s — %s',
+                $this->sender?->name ?? 'Christian Tour',
+                $this->contract->number,
+                $this->contract->partner_name,
+            ),
+        );
     }
 
     public function content(): Content

@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -29,11 +30,17 @@ class ContractAlertsMail extends Mailable
     {
         $urgent = collect($this->rows)->filter(fn (array $row) => ($row['days_left'] ?? 99) <= 30)->count();
 
-        return new Envelope(subject: sprintf(
-            'Contracte · %d de urmărit%s',
-            count($this->rows),
-            $urgent > 0 ? ', din care '.$urgent.' sub 30 de zile' : '',
-        ));
+        return new Envelope(
+            from: new Address(
+                (string) config('mail.from.address'),
+                (string) config('contracts.mail.from_name', 'Contracts Christian Tour'),
+            ),
+            subject: sprintf(
+                'Contracte · %d de urmărit%s',
+                count($this->rows),
+                $urgent > 0 ? ', din care '.$urgent.' sub 30 de zile' : '',
+            ),
+        );
     }
 
     public function content(): Content
