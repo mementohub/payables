@@ -242,6 +242,9 @@ Route::middleware('auth')->group(function () {
         Route::get('contracts/{contract}/files/{file}/preview', [ContractController::class, 'preview'])->name('contracts.files.preview');
         Route::post('contracts/{contract}/ask', [ContractController::class, 'ask'])->name('contracts.ask');
         Route::post('contracts/{contract}/share', [ContractController::class, 'share'])->name('contracts.share');
+        // Aceeași faptă pe un teanc de contracte: trimitere, departament,
+        // responsabil, stare, recitire, ștergere.
+        Route::post('contracts-bulk', [ContractController::class, 'bulk'])->name('contracts.bulk');
         Route::post('contracts/{contract}/archive', [ContractController::class, 'archive'])->name('contracts.archive');
         // Ștergerea cu totul e a administratorului: ruta cere rolul, nu doar ecranul.
         Route::delete('contracts/{contract}', [ContractController::class, 'destroy'])->name('contracts.destroy')->middleware('role:admin');

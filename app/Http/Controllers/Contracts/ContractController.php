@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Contracts;
 use App\Http\Controllers\Controller;
 use App\Jobs\ReadContractFile;
 use App\Mail\ContractSharedMail;
+use App\Mail\ContractsSharedMail;
 use App\Models\Contract;
 use App\Models\ContractEvent;
 use App\Models\ContractFile;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -84,6 +86,9 @@ class ContractController extends Controller
             'summary' => $this->summary($request),
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
             'partners' => (clone $query)->select('partner_name')->distinct()->orderBy('partner_name')->limit(300)->pluck('partner_name'),
+            // Pentru faptele pe teanc: cui i se dă un departament sau un
+            // responsabil dintr-o mișcare.
+            'people' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
             // Top Management citește repertoriul, dar nu umblă la el.
             'can' => ['delete' => (bool) $request->user()?->isAdmin(), 'all' => (bool) $request->user()?->seesAllContracts()],
             'ocr' => $reader->available(),
@@ -328,6 +333,201 @@ class ContractController extends Controller
         );
     }
 
+    /**
+     * Aceeași faptă, pe mai multe contracte deodată.
+     *
+     * Se lucrează numai pe ce are omul voie să vadă: ce nu e al lui iese
+     * tăcut din teanc, iar la capăt i se spune pe câte s-a făcut treaba. Mai
+     * bine decât un refuz sec, care l-ar lăsa să ghicească de ce.
+     */
+    public function bulk(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(['share', 'department', 'owner', 'archive', 'reread', 'delete'])],
+            'ids' => ['required', 'array', 'min:1', 'max:200'],
+            'ids.*' => ['integer'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'owner_id' => ['nullable', 'integer', 'exists:users,id'],
+            'emails' => ['nullable', 'string', 'max:2000'],
+            'permission' => ['nullable', Rule::in(ContractShare::PERMISSIONS)],
+            'days' => ['nullable', 'integer', 'between:1,365'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $user = $request->user();
+        $contracts = $this->mine($request, Contract::query()->whereIn('id', $validated['ids']))->get();
+
+        if ($contracts->isEmpty()) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Niciunul dintre contractele alese nu e al dumneavoastră.']);
+
+            return back();
+        }
+
+        $said = match ($validated['action']) {
+            'share' => $this->mailMany($request, $contracts, $validated),
+            'department' => $this->setMany($contracts, $user, ['department_id' => $validated['department_id'] ?? null], 'Departamentul'),
+            'owner' => $this->setMany($contracts, $user, ['owner_id' => $validated['owner_id'] ?? null], 'Responsabilul'),
+            'archive' => $this->archiveMany($contracts, $user),
+            'reread' => $this->rereadMany($contracts),
+            'delete' => $this->dropMany($request, $contracts),
+        };
+
+        Inertia::flash('toast', $said);
+
+        return back();
+    }
+
+    /**
+     * Un singur mail cu tot teancul, nu câte unul de fiecare contract.
+     *
+     * @param  Collection<int, Contract>  $contracts
+     * @param  array<string, mixed>  $validated
+     * @return array{type: string, message: string}
+     */
+    private function mailMany(Request $request, $contracts, array $validated): array
+    {
+        $emails = collect(preg_split('~[,;\s]+~', (string) ($validated['emails'] ?? '')) ?: [])
+            ->map(fn (string $email) => trim($email))
+            ->filter(fn (string $email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false)
+            ->unique();
+
+        if ($emails->isEmpty()) {
+            return ['type' => 'error', 'message' => 'Nicio adresă bună de e-mail.'];
+        }
+
+        $permission = $validated['permission'] ?? ContractShare::VIEW;
+        $until = now()->addDays((int) ($validated['days'] ?? config('contracts.share_days', 15)));
+        $sent = [];
+
+        foreach ($emails as $email) {
+            $shares = $contracts->map(fn (Contract $contract) => ContractShare::query()->create([
+                'contract_id' => $contract->id,
+                'user_id' => User::query()->where('email', $email)->value('id'),
+                'email' => $email,
+                'permission' => $permission,
+                'token' => Str::random(48),
+                'expires_at' => $until,
+                'created_by_id' => $request->user()?->id,
+            ])->setRelation('contract', $contract));
+
+            try {
+                Mail::to($email)->send(new ContractsSharedMail($shares, $request->user(), $validated['note'] ?? null));
+                $sent[] = $email;
+            } catch (Throwable $e) {
+                Log::warning('Teancul de contracte n-a putut fi trimis la '.$email.': '.$e->getMessage());
+            }
+        }
+
+        foreach ($contracts as $contract) {
+            $this->event($contract, $request->user(), 'shared', $emails->implode(', '), [
+                'permission' => $permission,
+                'mailed' => $sent,
+                'bulk' => $contracts->count(),
+            ]);
+        }
+
+        return $sent === []
+            ? ['type' => 'error', 'message' => 'Legăturile s-au făcut, dar mailul n-a putut pleca. Uită-te în jurnalul aplicației.']
+            : ['type' => 'success', 'message' => sprintf('%d contracte au plecat către %s.', $contracts->count(), implode(', ', $sent))];
+    }
+
+    /**
+     * @param  Collection<int, Contract>  $contracts
+     * @param  array<string, mixed>  $change
+     * @return array{type: string, message: string}
+     */
+    private function setMany($contracts, ?User $user, array $change, string $what): array
+    {
+        $touched = 0;
+
+        foreach ($contracts as $contract) {
+            $contract->fill($change);
+
+            if (! $contract->isDirty()) {
+                continue;
+            }
+
+            $contract->save();
+            $this->event($contract, $user, 'updated', $what.' s-a schimbat dintr-o mișcare pe mai multe contracte.', $change);
+            $touched++;
+        }
+
+        return $touched === 0
+            ? ['type' => 'success', 'message' => 'Erau deja așa toate.']
+            : ['type' => 'success', 'message' => sprintf('%s s-a schimbat pe %d contracte.', $what, $touched)];
+    }
+
+    /**
+     * Arhivarea nu e o stare a contractului, ci ziua în care a fost pus
+     * deoparte. Pe teanc se pune, nu se întoarce pe dos: cine vrea să scoată
+     * un contract din arhivă o face din fișa lui.
+     *
+     * @param  Collection<int, Contract>  $contracts
+     * @return array{type: string, message: string}
+     */
+    private function archiveMany($contracts, ?User $user): array
+    {
+        $count = 0;
+
+        foreach ($contracts as $contract) {
+            if ($contract->archived_at !== null) {
+                continue;
+            }
+
+            $contract->forceFill(['archived_at' => now()])->save();
+            $this->event($contract, $user, 'archived');
+            $count++;
+        }
+
+        return ['type' => 'success', 'message' => $count === 0
+            ? 'Erau deja toate în arhivă.'
+            : sprintf('%d contracte puse în arhivă.', $count)];
+    }
+
+    /**
+     * @param  Collection<int, Contract>  $contracts
+     * @return array{type: string, message: string}
+     */
+    private function rereadMany($contracts): array
+    {
+        $sent = 0;
+
+        foreach ($contracts->load('files') as $contract) {
+            $file = $contract->files->where('kind', ContractFile::KIND_CONTRACT)->last();
+
+            if ($file === null) {
+                continue;
+            }
+
+            ReadContractFile::dispatch($file->id, true);
+            $sent++;
+        }
+
+        return ['type' => 'success', 'message' => $sent === 0
+            ? 'Niciunul n-are document de citit.'
+            : sprintf('%d contracte se citesc din nou. Fișele se îndreaptă în câteva minute.', $sent)];
+    }
+
+    /**
+     * @param  Collection<int, Contract>  $contracts
+     * @return array{type: string, message: string}
+     */
+    private function dropMany(Request $request, $contracts): array
+    {
+        if (! $request->user()?->isAdmin()) {
+            throw new AuthorizationException('Numai un administrator poate șterge contracte.');
+        }
+
+        $count = 0;
+
+        foreach ($contracts as $contract) {
+            $this->drop($contract);
+            $count++;
+        }
+
+        return ['type' => 'success', 'message' => sprintf('%d contracte șterse cu totul.', $count)];
+    }
+
     public function share(Request $request, Contract $contract): RedirectResponse
     {
         $this->seen($request, $contract);
@@ -400,6 +600,17 @@ class ContractController extends Controller
             throw new AuthorizationException('Numai administratorul șterge contracte.');
         }
 
+        $number = $contract->number;
+        $this->drop($contract);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul '.$number.' a fost șters cu totul.']);
+
+        return redirect()->route('contracts.index');
+    }
+
+    /** Contractul și hârtiile lui, scoase de pe disc și din baza de date. */
+    private function drop(Contract $contract): void
+    {
         $disk = Storage::disk((string) config('contracts.disk', 'contracts'));
 
         foreach ($contract->files as $file) {
@@ -407,12 +618,7 @@ class ContractController extends Controller
         }
 
         $disk->deleteDirectory(trim(trim((string) config('contracts.path', ''), '/').'/'.$contract->id, '/'));
-        $number = $contract->number;
         $contract->delete();
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul '.$number.' a fost șters cu totul.']);
-
-        return redirect()->route('contracts.index');
     }
 
     /**

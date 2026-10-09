@@ -3,17 +3,29 @@ import {
     ArrowDown,
     ArrowUp,
     ArrowUpDown,
+    Building2,
     FileSignature,
     Loader2,
+    RefreshCw,
     Search,
+    Send,
     Trash2,
     Upload,
+    UserRound,
+    X,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -33,7 +45,9 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 import {
+    bulk as contractsBulk,
     destroy as contractDestroy,
     index as contractsIndex,
     show as contractShow,
@@ -41,6 +55,18 @@ import {
 } from '@/routes/contracts';
 import { KIND_LABELS, STATUS_LABELS } from './types';
 import type { ContractRow } from './types';
+
+/** Ce se poate face pe un teanc de contracte deodată. */
+type Action =
+    | 'share'
+    | 'department'
+    | 'owner'
+    | 'archive'
+    | 'reread'
+    | 'delete';
+
+/** Cât ține, din capul locului, legătura trimisă pe mail. */
+const defaultShareDays = 15;
 
 type Props = {
     can: { delete: boolean; all: boolean };
@@ -63,6 +89,7 @@ type Props = {
         value_ron: number;
     };
     departments: { id: number; name: string }[];
+    people: { id: number; name: string; email: string }[];
     partners: string[];
     /** Ce unelte de citire are serverul; fără ele, datele se pun cu mâna. */
     ocr: Record<string, boolean>;
@@ -174,6 +201,7 @@ export default function ContractsIndex({
     contracts,
     summary,
     departments,
+    people,
     partners,
     ocr,
     limits,
@@ -184,6 +212,49 @@ export default function ContractsIndex({
     const [refused, setRefused] = useState<string | null>(null);
     const uploader = useRef<HTMLInputElement>(null);
     const upload = useForm<{ files: File[] }>({ files: [] });
+
+    // Alegerea ține cât stă omul pe pagină: trece la pagina următoare și se
+    // golește, fiindcă n-ar mai vedea pe ce lucrează.
+    const [picked, setPicked] = useState<number[]>([]);
+    const [doing, setDoing] = useState<Action | null>(null);
+    const [busy, setBusy] = useState(false);
+    const bulk = useForm({
+        emails: '',
+        permission: 'view',
+        days: String(defaultShareDays),
+        note: '',
+        department_id: '',
+        owner_id: '',
+    });
+
+    const chosen = (id: number) => picked.includes(id);
+
+    const pick = (id: number, yes: boolean) =>
+        setPicked((all) =>
+            yes ? [...all, id] : all.filter((one) => one !== id),
+        );
+
+    const pickAll = (yes: boolean) =>
+        setPicked(yes ? contracts.data.map((row) => row.id) : []);
+
+    /** Trimite fapta la server și golește alegerea dacă a mers. */
+    const run = (action: Action, extra: Record<string, string> = {}) => {
+        setBusy(true);
+
+        router.post(
+            contractsBulk().url,
+            { action, ids: picked, ...extra },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setPicked([]);
+                    setDoing(null);
+                    bulk.reset();
+                },
+                onFinish: () => setBusy(false),
+            },
+        );
+    };
 
     const go = (next: Record<string, string | number | boolean | null>) =>
         router.get(
@@ -525,11 +596,300 @@ export default function ContractsIndex({
                     </div>
                 </div>
 
+                {picked.length > 0 && (
+                    <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-background/95 p-2 shadow-sm backdrop-blur">
+                        <span className="px-2 text-sm font-medium">
+                            {picked.length}{' '}
+                            {picked.length === 1
+                                ? 'contract ales'
+                                : 'contracte alese'}
+                        </span>
+
+                        <Button
+                            size="sm"
+                            onClick={() => setDoing('share')}
+                            disabled={busy}
+                        >
+                            <Send className="size-4" />
+                            Trimite pe mail
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setDoing('department')}
+                            disabled={busy}
+                        >
+                            <Building2 className="size-4" />
+                            Departament
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setDoing('owner')}
+                            disabled={busy}
+                        >
+                            <UserRound className="size-4" />
+                            Responsabil
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => run('archive')}
+                            disabled={busy}
+                        >
+                            Arhivează
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => run('reread')}
+                            disabled={busy}
+                            title="Citește din nou documentele și îndreaptă fișele"
+                        >
+                            <RefreshCw className="size-4" />
+                            Recitește
+                        </Button>
+                        {can.delete && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700"
+                                disabled={busy}
+                                onClick={() => {
+                                    if (
+                                        window.confirm(
+                                            `Ștergi ${picked.length} contracte cu totul, împreună cu fișierele lor?`,
+                                        )
+                                    ) {
+                                        run('delete');
+                                    }
+                                }}
+                            >
+                                <Trash2 className="size-4" />
+                                Șterge
+                            </Button>
+                        )}
+
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="ml-auto text-muted-foreground"
+                            onClick={() => setPicked([])}
+                        >
+                            <X className="size-4" />
+                            Lasă alegerea
+                        </Button>
+                    </div>
+                )}
+
+                <Dialog
+                    open={doing === 'share'}
+                    onOpenChange={(open) => !open && setDoing(null)}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                Trimite {picked.length} contracte
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-3">
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="bulk-emails">
+                                    Către (adrese despărțite prin virgulă)
+                                </Label>
+                                <Input
+                                    id="bulk-emails"
+                                    value={bulk.data.emails}
+                                    placeholder="cineva@christiantour.ro, altcineva@..."
+                                    onChange={(event) =>
+                                        bulk.setData(
+                                            'emails',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-1.5">
+                                    <Label>Ce poate face</Label>
+                                    <Select
+                                        value={bulk.data.permission}
+                                        onValueChange={(value) =>
+                                            bulk.setData('permission', value)
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="view">
+                                                Citește și descarcă
+                                            </SelectItem>
+                                            <SelectItem value="comment">
+                                                Citește și comentează
+                                            </SelectItem>
+                                            <SelectItem value="edit">
+                                                Poate schimba datele
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="bulk-days">
+                                        Cât ține legătura (zile)
+                                    </Label>
+                                    <Input
+                                        id="bulk-days"
+                                        type="number"
+                                        min={1}
+                                        max={365}
+                                        value={bulk.data.days}
+                                        onChange={(event) =>
+                                            bulk.setData(
+                                                'days',
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="bulk-note">
+                                    Un rând de la tine (nu e obligatoriu)
+                                </Label>
+                                <Textarea
+                                    id="bulk-note"
+                                    rows={2}
+                                    value={bulk.data.note}
+                                    onChange={(event) =>
+                                        bulk.setData('note', event.target.value)
+                                    }
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Pleacă un singur mail către fiecare adresă, cu
+                                toate contractele alese. Fișierele nu se
+                                atașează: fiecare contract are legătura lui, iar
+                                deschiderile se văd în jurnal.
+                            </p>
+                            <Button
+                                onClick={() =>
+                                    run('share', {
+                                        emails: bulk.data.emails,
+                                        permission: bulk.data.permission,
+                                        days: bulk.data.days,
+                                        note: bulk.data.note,
+                                    })
+                                }
+                                disabled={
+                                    busy || bulk.data.emails.trim() === ''
+                                }
+                            >
+                                {busy && (
+                                    <Loader2 className="size-4 animate-spin" />
+                                )}
+                                Trimite
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={doing === 'department' || doing === 'owner'}
+                    onOpenChange={(open) => !open && setDoing(null)}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                {doing === 'department'
+                                    ? 'Dă-le un departament'
+                                    : 'Dă-le un responsabil'}
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-3">
+                            <Select
+                                value={
+                                    doing === 'department'
+                                        ? bulk.data.department_id
+                                        : bulk.data.owner_id
+                                }
+                                onValueChange={(value) =>
+                                    bulk.setData(
+                                        doing === 'department'
+                                            ? 'department_id'
+                                            : 'owner_id',
+                                        value,
+                                    )
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Alege" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {doing === 'department'
+                                        ? departments.map((one) => (
+                                              <SelectItem
+                                                  key={one.id}
+                                                  value={String(one.id)}
+                                              >
+                                                  {one.name}
+                                              </SelectItem>
+                                          ))
+                                        : people.map((one) => (
+                                              <SelectItem
+                                                  key={one.id}
+                                                  value={String(one.id)}
+                                              >
+                                                  {one.name}
+                                              </SelectItem>
+                                          ))}
+                                </SelectContent>
+                            </Select>
+                            <Button
+                                onClick={() =>
+                                    doing === 'department'
+                                        ? run('department', {
+                                              department_id:
+                                                  bulk.data.department_id,
+                                          })
+                                        : run('owner', {
+                                              owner_id: bulk.data.owner_id,
+                                          })
+                                }
+                                disabled={
+                                    busy ||
+                                    (doing === 'department'
+                                        ? bulk.data.department_id === ''
+                                        : bulk.data.owner_id === '')
+                                }
+                            >
+                                {busy && (
+                                    <Loader2 className="size-4 animate-spin" />
+                                )}
+                                Pune pe toate {picked.length}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
                 <Card>
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-10">
+                                        <Checkbox
+                                            aria-label="Alege tot ce se vede"
+                                            checked={
+                                                contracts.data.length > 0 &&
+                                                picked.length ===
+                                                    contracts.data.length
+                                            }
+                                            onCheckedChange={(value) =>
+                                                pickAll(value === true)
+                                            }
+                                        />
+                                    </TableHead>
                                     {(
                                         [
                                             ['number', 'Număr', ''],
@@ -558,7 +918,7 @@ export default function ContractsIndex({
                                 {contracts.data.length === 0 && (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={can.delete ? 9 : 8}
+                                            colSpan={can.delete ? 10 : 9}
                                             className="py-10 text-center text-muted-foreground"
                                         >
                                             <FileSignature className="mx-auto mb-2 size-6 opacity-40" />
@@ -568,7 +928,23 @@ export default function ContractsIndex({
                                     </TableRow>
                                 )}
                                 {contracts.data.map((row) => (
-                                    <TableRow key={row.id}>
+                                    <TableRow
+                                        key={row.id}
+                                        data-state={
+                                            chosen(row.id)
+                                                ? 'selected'
+                                                : undefined
+                                        }
+                                    >
+                                        <TableCell>
+                                            <Checkbox
+                                                aria-label={`Alege ${row.number}`}
+                                                checked={chosen(row.id)}
+                                                onCheckedChange={(value) =>
+                                                    pick(row.id, value === true)
+                                                }
+                                            />
+                                        </TableCell>
                                         <TableCell className="font-mono text-xs">
                                             <Link
                                                 href={contractShow(row.id).url}
