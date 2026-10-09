@@ -2,6 +2,7 @@
 
 use App\Jobs\ReadContractFile;
 use App\Mail\ContractAlertsMail;
+use App\Mail\ContractSharedMail;
 use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractFile;
@@ -9,6 +10,7 @@ use App\Models\Partner;
 use App\Models\User;
 use App\Services\Contracts\ContractFields;
 use App\Services\Contracts\ContractReader;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Mockery\MockInterface;
@@ -193,14 +195,14 @@ test('the weekly digest carries everything on the horizon', function () {
 });
 
 test('the contract mails are signed by Contracts Christian Tour, not by the payables desk', function () {
-    $contract = \App\Models\Contract::query()->create([
+    $contract = Contract::query()->create([
         'number' => 'CTR-2026-0030', 'title' => 'Test', 'partner_name' => 'Hotel Alfa',
     ]);
     $share = $contract->shares()->create([
         'email' => 'cineva@christiantour.ro', 'permission' => 'view', 'token' => 'token-lung-de-proba',
     ]);
 
-    $shared = (new \App\Mail\ContractSharedMail($contract, $share))->envelope();
+    $shared = (new ContractSharedMail($contract, $share))->envelope();
     $alerts = (new ContractAlertsMail([]))->envelope();
 
     expect($shared->from?->name)->toBe('Contracts Christian Tour')
@@ -208,4 +210,96 @@ test('the contract mails are signed by Contracts Christian Tour, not by the paya
         ->and($alerts->from?->name)->toBe('Contracts Christian Tour')
         // Restul aplicației rămâne cum era.
         ->and(config('mail.from.name'))->toBe('Receivables & Payables');
+});
+
+/** Un contract ca cel de la BVB: două părți, cu sediile lor, și termen scris în litere. */
+function romanianContract(): string
+{
+    return <<<'TEXT'
+        CONTRACT DE PRESTARI SERVICII
+        Nr. 1/ 09.10.2026
+
+        BURSA DE VALORI BUCURESTI S.A., cu sediul in Bucuresti, Soseaua Nicolae Titulescu nr. 4-8,
+        cod unic de inregistrare CUI 17777754, reprezentata legal prin Remus Vulpescu, denumita in
+        continuare „Furnizor",
+        si
+        CHRISTIAN '76 TOUR SA cu sediul in Blvd. Nicolae Balcescu nr 25, Bucuresti, inregistrata la
+        Registrul Comertului sub nr. 1997005529405, CUI 9617078, reprezentata prin Stefan Petre,
+        denumita in continuare „Beneficiar".
+
+        OBIECTUL CONTRACTULUI
+        1.1. Obiectul Contractului il constituie prestarea de catre Furnizor a serviciilor de promovare
+        a Beneficiarului prin intermediul portalului online www.bvbresearch.ro.
+        1.2. Prezentul Contract intra in vigoare la data semnarii de catre ambele Parti si se aplica
+        raporturilor juridice dintre Parti nascute incepand cu data de 1 iulie 2026 si pana la data de
+        31 decembrie 2027.
+        TEXT;
+}
+
+test('the partner is always the other party, never us, however our name is written', function () {
+    $fields = app(ContractFields::class)->extract(romanianContract(), ['Christian Tour', 'Christian 76 Tour']);
+
+    expect($fields['partner_name']['value'])->toBe('BURSA DE VALORI BUCURESTI S.A.')
+        ->and($fields['partner_name']['confidence'])->toBeGreaterThan(0.85)
+        // Codul fiscal e al partenerului, nu al nostru.
+        ->and($fields['partner_tax_id']['value'])->toBe('17777754');
+});
+
+test('a name that only ends in "SA" is not taken for a company', function () {
+    // „BURSA” se termină în „SA” din întâmplare; forma juridică trebuie să fie
+    // cuvânt despărțit.
+    $fields = app(ContractFields::class)->extract(
+        "CONTRACT\nBURSA DE VALORI BUCURESTI S.A., cu sediul in Bucuresti, CUI 17777754, denumita Furnizor",
+        ['Christian Tour'],
+    );
+
+    expect($fields['partner_name']['value'])->not->toBe('BURSA');
+});
+
+test('the term written in words is read, and the second date is the end', function () {
+    $fields = app(ContractFields::class)->extract(romanianContract(), ['Christian Tour']);
+
+    expect($fields['expires_at']['value'])->toBe('2027-12-31')
+        ->and($fields['signed_at']['value'])->toBe('2026-10-09')
+        ->and($fields['number']['value'])->toBe('1');
+});
+
+test('the object is the sentence, not the numbering of the article', function () {
+    $fields = app(ContractFields::class)->extract(romanianContract(), ['Christian Tour']);
+
+    expect($fields['object']['value'])->toContain('promovare')
+        ->and($fields['object']['value'])->not->toStartWith('1.1')
+        ->and(mb_strlen($fields['object']['value']))->toBeGreaterThan(30);
+});
+
+test('a contract taken in is active from the day it was signed', function () {
+    Storage::fake(config('contracts.disk'));
+
+    $this->mock(ContractReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('read')->andReturn([
+            'engine' => 'pdftotext', 'text' => romanianContract(), 'pages' => 2, 'status' => 'done', 'error' => null,
+        ]);
+    });
+
+    $keeper = User::factory()->withRoles('contract_management')->create();
+
+    $this->actingAs($keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->create('contract.pdf', 50, 'application/pdf')]])
+        ->assertRedirect();
+
+    $contract = Contract::query()->firstOrFail();
+
+    // Starea e „activ” din capul locului, nu ciornă.
+    expect($contract->status)->toBe(Contract::STATUS_ACTIVE);
+
+    app(ReadContractFile::class, ['fileId' => $contract->files()->first()->id])
+        ->handle(app(ContractReader::class), app(ContractFields::class));
+
+    $contract->refresh();
+
+    // „În vigoare din” urmează data semnării, fără să întrebe pe nimeni.
+    expect($contract->signed_at?->toDateString())->toBe('2026-10-09')
+        ->and($contract->starts_at?->toDateString())->toBe('2026-10-09')
+        ->and($contract->expires_at?->toDateString())->toBe('2027-12-31')
+        ->and($contract->partner_name)->toBe('BURSA DE VALORI BUCURESTI S.A.');
 });

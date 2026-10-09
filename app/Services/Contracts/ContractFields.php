@@ -216,12 +216,10 @@ class ContractFields
 
         if (preg_match('~(?:subject(?:\s+matter)?|scope)\s+of\s+(?:this\s+|the\s+)?(?:agreement|contract|services)[^a-z0-9]{0,30}~u', $flat, $m, PREG_OFFSET_CAPTURE)) {
             $from = $this->at($flat, (int) $m[0][1]) + mb_strlen($m[0][0]);
-            $slice = trim((string) preg_replace('~\s+~u', ' ', mb_substr($text, $from, 400)));
-            $end = mb_strpos($slice, '. ');
-            $value = trim($end !== false ? mb_substr($slice, 0, $end + 1) : $slice);
+            $value = $this->sentence(mb_substr($text, $from, 600));
 
-            if ($value !== '') {
-                $found['object'] = ['value' => mb_substr($value, 0, 300), 'confidence' => 0.8, 'source' => $value];
+            if ($value !== null) {
+                $found['object'] = ['value' => $value, 'confidence' => 0.82, 'source' => $value];
             }
         }
 
@@ -311,12 +309,22 @@ class ContractFields
      */
     private function number(string $text, string $flat): ?array
     {
-        if (preg_match('~contract[^\n]{0,60}?nr\.?\s*:?\s*([a-z0-9][a-z0-9\-\./]{0,24})~u', $flat, $m, PREG_OFFSET_CAPTURE)) {
-            return $this->hit($text, $m[1], 0.9);
-        }
+        $patterns = [
+            // „Nr. 1/ 09.10.2026” sau „nr. 147 / 12.02.2026”: numărul e înaintea datei.
+            '~\bnr\.?\s*:?\s*([a-z0-9][a-z0-9\-\.]{0,24})\s*/\s*\d{1,2}[.\-/\s]~u' => 0.9,
+            '~contract[^\n]{0,60}?nr\.?\s*:?\s*([a-z0-9][a-z0-9\-\./]{0,24})~u' => 0.88,
+            // „1 din 07.10.2026”, sub titlul contractului.
+            '~(?:^|\s)([0-9]{1,6})\s+din\s+\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}~u' => 0.86,
+        ];
 
-        if (preg_match('~\bnr\.?\s*:?\s*([0-9][0-9\-\./]{0,20})\s*/\s*\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}~u', $flat, $m, PREG_OFFSET_CAPTURE)) {
-            return $this->hit($text, $m[1], 0.78);
+        foreach ($patterns as $pattern => $confidence) {
+            if (preg_match($pattern, $flat, $m, PREG_OFFSET_CAPTURE)) {
+                $number = trim($m[1][0], ' /.-');
+
+                if ($number !== '') {
+                    return ['value' => $number, 'confidence' => $confidence, 'source' => $this->around($text, $this->at($flat, (int) $m[1][1]))];
+                }
+            }
         }
 
         return null;
@@ -327,10 +335,14 @@ class ContractFields
      */
     private function signedAt(string $text, string $flat): ?array
     {
+        $date = '(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{1,2}\s+[a-z]{3,12}\s+\d{4})';
+
         $patterns = [
-            '~incheiat(?:\s+astazi|\s+la\s+data\s+de|\s+in\s+data\s+de)?\s*:?\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.93,
-            '~data\s+(?:semnarii|incheierii)\s*:?\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.92,
-            '~nr\.?\s*[a-z0-9\-\./]{1,24}\s*/\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.86,
+            '~incheiat(?:\s+astazi|\s+la\s+data\s+de|\s+in\s+data\s+de)?\s*:?\s*'.$date.'~u' => 0.93,
+            '~data\s+(?:semnarii|incheierii)\s*:?\s*'.$date.'~u' => 0.92,
+            // „nr. 1/ 07.10.2026” — numărul și data, cum se scriu în antet.
+            '~nr\.?\s*[a-z0-9\-\./]{0,24}\s*/\s*'.$date.'~u' => 0.88,
+            '~(?:^|\s)\d{1,6}\s+din\s+'.$date.'~u' => 0.88,
         ];
 
         foreach ($patterns as $pattern => $confidence) {
@@ -351,19 +363,30 @@ class ContractFields
      */
     private function expiresAt(string $text, string $flat): ?array
     {
+        // Data poate fi scrisă cu cifre sau cu luna în litere; amândouă trec
+        // prin aceeași socoteală.
+        $date = '(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{1,2}\s+[a-z]{3,12}\s+\d{4})';
+
         $patterns = [
-            '~(?:valabil|valabilitate|produce\s+efecte|isi\s+produce\s+efectele)[^.\n]{0,60}?pana\s+la\s+(?:data\s+de\s+)?(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.93,
-            '~(?:expira|inceteaza)[^.\n]{0,40}?(?:la|in)\s+(?:data\s+de\s+)?(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.9,
-            '~pana\s+la\s+data\s+de\s+(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})~u' => 0.8,
+            // „raporturilor născute începând cu data de 1 iulie 2026 și până la
+            // data de 31 decembrie 2027”: sfârșitul e a doua dată, nu prima.
+            '~incepand\s+(?:cu\s+)?(?:data\s+de\s+)?'.$date.'\s+si\s+pana\s+la\s+(?:data\s+de\s+)?'.$date.'~u' => 0.94,
+            '~(?:valabil|valabilitate|produce\s+efecte|isi\s+produce\s+efectele)[^.\n]{0,60}?pana\s+la\s+(?:data\s+de\s+)?'.$date.'~u' => 0.93,
+            '~(?:expira|inceteaza)[^.\n]{0,40}?(?:la|in)\s+(?:data\s+de\s+)?'.$date.'~u' => 0.9,
+            '~pana\s+la\s+(?:data\s+de\s+)?'.$date.'~u' => 0.82,
         ];
 
         foreach ($patterns as $pattern => $confidence) {
-            if (preg_match($pattern, $flat, $m, PREG_OFFSET_CAPTURE)) {
-                $date = $this->date($m[1][0]);
+            if (! preg_match($pattern, $flat, $m, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
 
-                if ($date !== null) {
-                    return ['value' => $date, 'confidence' => $confidence, 'source' => $this->around($text, $this->at($flat, (int) $m[1][1]))];
-                }
+            // Perechea „de la … până la …” dă două date; a doua e scadența.
+            $raw = isset($m[2]) && $m[2][0] !== '' ? $m[2] : $m[1];
+            $value = $this->date($raw[0]);
+
+            if ($value !== null) {
+                return ['value' => $value, 'confidence' => $confidence, 'source' => $this->around($text, $this->at($flat, (int) $raw[1]))];
             }
         }
 
@@ -459,17 +482,32 @@ class ContractFields
      */
     private function partner(string $text, array $houses): ?array
     {
-        if (! preg_match_all('~\b([A-ZȘȚĂÂÎ][A-ZȘȚĂÂÎ0-9&\.\- ]{2,60}?(?:S\.?R\.?L|S\.?A|GMBH|LTD|LIMITED|B\.?V|INC|LLC)\.?)\b~u', $text, $matches, PREG_OFFSET_CAPTURE)) {
+        // Întâi părțile, cum sunt scrise în orice contract românesc: numele,
+        // apoi „cu sediul în…”. E mult mai sigur decât ghicitul după „SRL”,
+        // care prinde și „BURSA” — numele se termină în „SA” din întâmplare.
+        if (preg_match_all('~(?:^|\n|\(\d\)|\bsi\b|\bși\b)\s*([A-ZȘȚĂÂÎ][^\n]{2,70}?)\s*,?\s*cu\s+sediul~ui', $text, $parties, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            foreach ($parties as $party) {
+                $name = $this->clean($party[1][0]);
+
+                if ($name !== '' && ! $this->ours($name, $houses)) {
+                    $at = $this->at($text, (int) $party[1][1]);
+
+                    return ['value' => $name, 'confidence' => 0.92, 'source' => $this->around($text, $at), 'offset' => $at];
+                }
+            }
+        }
+
+        // Fără „cu sediul”: numele urmat de forma juridică, ca ultim ajutor.
+        // Sufixul trebuie să fie cuvânt despărțit, altfel „BURSA” s-ar citi ca
+        // „BUR” + „SA”.
+        if (! preg_match_all('~\b([A-ZȘȚĂÂÎ][A-ZȘȚĂÂÎ0-9&\.\-\x27\s]{2,60}?\s(?:S\.?R\.?L|S\.?A|GMBH|LTD|LIMITED|B\.?V|INC|LLC)\.?)(?=\s|,|$)~u', $text, $matches, PREG_OFFSET_CAPTURE)) {
             return null;
         }
 
-        $ours = array_map(fn (string $name) => $this->fold($name), $houses);
-
         foreach ($matches[1] as $match) {
-            $name = trim((string) preg_replace('~\s+~u', ' ', $match[0]));
-            $folded = $this->fold($name);
+            $name = $this->clean($match[0]);
 
-            if ($folded === '' || array_any($ours, fn (string $house) => $house !== '' && str_contains($folded, $house))) {
+            if ($name === '' || $this->ours($name, $houses)) {
                 continue;
             }
 
@@ -479,6 +517,43 @@ class ContractFields
         }
 
         return null;
+    }
+
+    /**
+     * E numele ăsta al nostru?
+     *
+     * Se compară pe cuvinte, nu pe șiruri: „Christian Tour”, „CHRISTIAN '76
+     * TOUR SA” și „Christian 76 Tour S.A.” sunt una și aceeași casă, oricât ar
+     * umbla apostroaful și forma juridică.
+     *
+     * @param  list<string>  $houses
+     */
+    private function ours(string $name, array $houses): bool
+    {
+        $folded = $this->fold($name);
+
+        foreach ($houses as $house) {
+            $words = array_values(array_filter(
+                preg_split('~\s+~u', $this->fold($house)) ?: [],
+                fn (string $word) => mb_strlen($word) > 2,
+            ));
+
+            if ($words !== [] && array_all($words, fn (string $word) => str_contains($folded, $word))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Numele, curățat de numerotare, ghilimele și spații de prisos. */
+    private function clean(string $name): string
+    {
+        $name = (string) preg_replace('~^\s*(?:\(\d+\)|\d+[.)])\s*~u', '', $name);
+        $name = (string) preg_replace('~^(?:si|și|intre|între|dintre)\s+~ui', '', trim($name));
+        $name = trim((string) preg_replace('~\s+~u', ' ', $name), " \t\n\r\0\x0B,;:\u{201e}\u{201d}\"'");
+
+        return $name;
     }
 
     /**
@@ -514,17 +589,55 @@ class ContractFields
      */
     private function object(string $text, string $flat): ?array
     {
-        if (! preg_match('~obiectul\s+(?:prezentului\s+)?contract(?:ului)?[^a-z0-9]{0,30}~u', $flat, $m, PREG_OFFSET_CAPTURE)) {
+        // Titlul („OBIECTUL CONTRACTULUI”) se repetă de obicei în primul
+        // articol („1.1. Obiectul Contractului îl constituie…”), așa că se
+        // caută toate aparițiile și se ia prima care are o frază după ea.
+        if (! preg_match_all('~obiectul\s+(?:prezentului\s+)?contract(?:ului)?~u', $flat, $all, PREG_OFFSET_CAPTURE)) {
             return null;
         }
 
-        $from = $this->at($flat, (int) $m[0][1]) + mb_strlen($m[0][0]);
-        $slice = trim(mb_substr($text, $from, 400));
-        $slice = (string) preg_replace('~\s+~u', ' ', $slice);
-        $end = mb_strpos($slice, '. ');
-        $value = trim($end !== false ? mb_substr($slice, 0, $end + 1) : $slice);
+        foreach ($all[0] as $match) {
+            $from = $this->at($flat, (int) $match[1]) + mb_strlen($match[0]);
+            $value = $this->sentence(mb_substr($text, $from, 600));
 
-        return $value === '' ? null : ['value' => mb_substr($value, 0, 300), 'confidence' => 0.8, 'source' => $value];
+            if ($value !== null) {
+                return ['value' => $value, 'confidence' => 0.84, 'source' => $value];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Prima frază cu înțeles dintr-o bucată de text.
+     *
+     * Sare peste numerotare („1.1.”), peste legătura cu titlul („îl constituie”,
+     * „constă în”) și peste frazele prea scurte ca să spună ceva — altfel
+     * „obiectul contractului” s-ar citi „1.1.”.
+     */
+    private function sentence(string $slice, int $least = 40): ?string
+    {
+        $slice = trim((string) preg_replace('~\s+~u', ' ', $slice));
+        $slice = (string) preg_replace('~^[\s\.:\-–—]*(?:\d+(?:\.\d+)*\.?)?[\s\.:\-–—]*~u', '', $slice);
+        $slice = (string) preg_replace('~^obiectul\s+(?:prezentului\s+)?contract(?:ului)?\s*~ui', '', $slice);
+        $slice = (string) preg_replace('~^(?:il|îl)\s+constituie\s+|^consta\s+(?:in|în)\s+|^este\s+|^:\s*~ui', '', $slice);
+        $slice = trim($slice);
+
+        if ($slice === '') {
+            return null;
+        }
+
+        $value = '';
+
+        foreach (preg_split('~(?<=\.)\s+~u', $slice) ?: [] as $piece) {
+            $value = trim($value.' '.$piece);
+
+            if (mb_strlen($value) >= $least) {
+                break;
+            }
+        }
+
+        return mb_strlen($value) >= 10 ? mb_substr($value, 0, 300) : null;
     }
 
     /**
@@ -562,8 +675,15 @@ class ContractFields
         };
     }
 
-    private function date(string $raw): ?string
+    private function date(string $raw, string $language = 'ro'): ?string
     {
+        $raw = trim(mb_strtolower($raw));
+
+        // „31 decembrie 2027”, „1 iulie 2026”: contractele le scriu des așa.
+        if (preg_match('~^(\d{1,2})\s+([a-z]{3,12})\s+(\d{4})$~u', $raw, $m)) {
+            return $this->build((int) $m[3], self::MONTHS[$m[2]] ?? 0, (int) $m[1]);
+        }
+
         $parts = preg_split('~[.\-/]~', $raw) ?: [];
 
         if (count($parts) !== 3) {

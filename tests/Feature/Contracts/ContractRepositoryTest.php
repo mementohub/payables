@@ -41,7 +41,8 @@ test('an uploaded file becomes a contract, with its number, and goes off to be r
 
     expect($contract->number)->toBe('CTR-'.now()->year.'-0001')
         ->and($contract->title)->toBe('Contract Memento Air')
-        ->and($contract->status)->toBe(Contract::STATUS_DRAFT)
+        // Ce se încarcă e, de obicei, un contract în lucru.
+        ->and($contract->status)->toBe(Contract::STATUS_ACTIVE)
         ->and($contract->files()->count())->toBe(1)
         ->and($contract->files()->first()->version)->toBe(1)
         // Cine l-a încărcat răspunde de el, până îl trece altcuiva.

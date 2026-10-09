@@ -682,7 +682,9 @@ class ContractController extends Controller
             // Cine încarcă răspunde de contract până spune altcineva altfel:
             // altfel repertoriul se umple de contracte ale nimănui.
             'owner_id' => $user?->id,
-            'status' => Contract::STATUS_DRAFT,
+            // Ce se încarcă e, de obicei, un contract semnat și în lucru:
+            // starea se schimbă dintr-un clic, dacă e altfel.
+            'status' => Contract::STATUS_ACTIVE,
             'created_by_id' => $user?->id,
         ]);
     }

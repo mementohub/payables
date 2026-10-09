@@ -55,6 +55,16 @@ return [
      * aplicației; se schimbă doar numele de deasupra ei, ca omul să vadă din
      * căsuță despre ce e vorba.
      */
+    /*
+     * Cum ne cheamă pe noi, în toate felurile în care apare în contracte.
+     * Partenerul e totdeauna cealaltă parte; ce seamănă cu numele casei nu e
+     * niciodată partener, oricât ar umbla apostroful sau forma juridică.
+     */
+    'house_names' => [
+        'Christian Tour',
+        'Christian 76 Tour',
+    ],
+
     'mail' => [
         'from_name' => env('CONTRACTS_MAIL_FROM_NAME', 'Contracts Christian Tour'),
     ],

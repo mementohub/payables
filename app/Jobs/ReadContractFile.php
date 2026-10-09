@@ -60,7 +60,12 @@ class ReadContractFile implements ShouldQueue
             return;
         }
 
-        $houses = Company::query()->pluck('name')->all();
+        // Numele companiilor noastre, ca să nu le ia drept partener: cele din
+        // aplicație plus felurile scrise în config.
+        $houses = [
+            ...Company::query()->pluck('name')->all(),
+            ...(array) config('contracts.house_names', []),
+        ];
         $read = $fields->extract($result['text'], $houses);
         $contract = $file->contract;
         $filled = $this->fill($contract, $read);
@@ -135,7 +140,10 @@ class ReadContractFile implements ShouldQueue
             }
         }
 
-        if ($contract->starts_at === null && $contract->signed_at !== null) {
+        // „În vigoare din” e data semnării: așa spun contractele („intră în
+        // vigoare la data semnării de către părți”), iar cine vrea altceva o
+        // schimbă cu mâna.
+        if ($contract->signed_at !== null) {
             $contract->starts_at = $contract->signed_at;
         }
 
