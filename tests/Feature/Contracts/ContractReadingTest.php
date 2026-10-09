@@ -41,7 +41,9 @@ test('the reader pulls out of a contract what a person would write down anyway',
     $fields = app(ContractFields::class)->extract(contractText(), ['Christian Tour']);
 
     expect($fields['partner_name']['value'])->toBe('MEMENTO AIR SRL')
-        ->and($fields['partner_tax_id']['value'])->toBe('RO12345678')
+        // Dintre cele două coduri fiscale din contract, al partenerului e cel
+        // scris după numele lui, nu primul din antet.
+        ->and($fields['partner_tax_id']['value'])->toBe('RO38765432')
         ->and($fields['signed_at']['value'])->toBe('2026-02-12')
         ->and($fields['expires_at']['value'])->toBe('2026-10-31')
         ->and($fields['notice_days']['value'])->toBe(30)
@@ -109,6 +111,7 @@ test('reading a file fills the contract, without touching what a person wrote', 
 
     expect($contract->partner_name)->toBe('MEMENTO AIR SRL')
         ->and($contract->partner_id)->toBe($partner->id)
+        ->and($contract->partner_tax_id)->toBe('RO38765432')
         ->and($contract->signed_at?->toDateString())->toBe('2026-02-12')
         ->and($contract->expires_at?->toDateString())->toBe('2026-10-31')
         ->and($contract->notice_days)->toBe(30)

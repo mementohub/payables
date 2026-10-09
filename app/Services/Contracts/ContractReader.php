@@ -21,6 +21,9 @@ use ZipArchive;
  */
 class ContractReader
 {
+    /** @var array<string, ?string> unealta → calea ei, odată găsită */
+    private array $binaries = [];
+
     /**
      * @return array{engine: string, text: string, pages: ?int, status: string, error: ?string}
      */
@@ -58,9 +61,9 @@ class ContractReader
     public function available(): array
     {
         return [
-            'pdftotext' => $this->exists((string) config('contracts.ocr.pdftotext', 'pdftotext')),
-            'pdftoppm' => $this->exists((string) config('contracts.ocr.pdftoppm', 'pdftoppm')),
-            'tesseract' => $this->exists((string) config('contracts.ocr.tesseract', 'tesseract')),
+            'pdftotext' => $this->binary('pdftotext') !== null,
+            'pdftoppm' => $this->binary('pdftoppm') !== null,
+            'tesseract' => $this->binary('tesseract') !== null,
         ];
     }
 
@@ -88,8 +91,10 @@ class ContractReader
     {
         $pages = $this->pdfPages($path);
 
-        if ($this->exists((string) config('contracts.ocr.pdftotext', 'pdftotext'))) {
-            $text = $this->run([(string) config('contracts.ocr.pdftotext', 'pdftotext'), '-layout', '-enc', 'UTF-8', $path, '-']);
+        $pdftotext = $this->binary('pdftotext');
+
+        if ($pdftotext !== null) {
+            $text = $this->run([$pdftotext, '-layout', '-enc', 'UTF-8', $path, '-']);
 
             if (mb_strlen(trim($text)) >= (int) config('contracts.ocr.text_threshold', 400)) {
                 return ['engine' => 'pdftotext', 'text' => $text, 'pages' => $pages, 'status' => 'done', 'error' => null];
@@ -106,10 +111,10 @@ class ContractReader
      */
     private function scanned(string $path, ?int $pages): array
     {
-        $pdftoppm = (string) config('contracts.ocr.pdftoppm', 'pdftoppm');
-        $tesseract = (string) config('contracts.ocr.tesseract', 'tesseract');
+        $pdftoppm = $this->binary('pdftoppm');
+        $tesseract = $this->binary('tesseract');
 
-        if (! $this->exists($pdftoppm) || ! $this->exists($tesseract)) {
+        if ($pdftoppm === null || $tesseract === null) {
             return $this->failed('serverul n-are încă pdftoppm și tesseract; textul se completează cu mâna');
         }
 
@@ -140,9 +145,9 @@ class ContractReader
      */
     private function image(string $path): array
     {
-        $tesseract = (string) config('contracts.ocr.tesseract', 'tesseract');
+        $tesseract = $this->binary('tesseract');
 
-        if (! $this->exists($tesseract)) {
+        if ($tesseract === null) {
             return $this->failed('serverul n-are încă tesseract');
         }
 
@@ -196,7 +201,12 @@ class ContractReader
      */
     private function run(array $command): string
     {
-        $process = new Process($command, timeout: (float) config('contracts.ocr.timeout', 600));
+        // Tesseract își caută limbile acolo unde i se spune: pe serverul ăsta
+        // stau lângă el, în directorul utilizatorului.
+        $tessdata = (string) config('contracts.ocr.tessdata', '');
+        $env = $tessdata !== '' && is_dir($tessdata) ? ['TESSDATA_PREFIX' => $tessdata] : [];
+
+        $process = new Process($command, env: $env, timeout: (float) config('contracts.ocr.timeout', 600));
         $process->run();
 
         if (! $process->isSuccessful()) {
@@ -206,12 +216,34 @@ class ContractReader
         return $process->getOutput();
     }
 
-    private function exists(string $binary): bool
+    /**
+     * Unde e unealta: întâi cum e scrisă în config (poate fi o cale întreagă),
+     * apoi în locurile știute, apoi în PATH.
+     */
+    private function binary(string $name): ?string
     {
-        $process = new Process(['which', $binary]);
-        $process->run();
+        if (array_key_exists($name, $this->binaries)) {
+            return $this->binaries[$name];
+        }
 
-        return $process->isSuccessful();
+        $configured = (string) config('contracts.ocr.'.$name, $name);
+
+        if (str_contains($configured, '/')) {
+            return $this->binaries[$name] = is_executable($configured) ? $configured : null;
+        }
+
+        foreach ((array) config('contracts.ocr.paths', []) as $folder) {
+            $candidate = rtrim((string) $folder, '/').'/'.$configured;
+
+            if (is_executable($candidate)) {
+                return $this->binaries[$name] = $candidate;
+            }
+        }
+
+        $which = new Process(['which', $configured]);
+        $which->run();
+
+        return $this->binaries[$name] = $which->isSuccessful() ? trim($which->getOutput()) : null;
     }
 
     /**

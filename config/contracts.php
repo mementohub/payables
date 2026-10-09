@@ -27,6 +27,19 @@ return [
         'pdftotext' => env('CONTRACTS_PDFTOTEXT', 'pdftotext'),
         'pdftoppm' => env('CONTRACTS_PDFTOPPM', 'pdftoppm'),
         'tesseract' => env('CONTRACTS_TESSERACT', 'tesseract'),
+        /*
+         * Unde se caută uneltele, în ordine, dacă nu sunt în PATH. Serverul
+         * nu le are puse de sistem și nimeni de aici n-are drept de root, așa
+         * că stau în directorul utilizatorului, într-un mediu al lor. Un
+         * `apt-get install poppler-utils tesseract-ocr` pus cândva de un
+         * administrator le aduce în PATH și acestea nu mai sunt folosite.
+         */
+        'paths' => array_values(array_filter([
+            env('CONTRACTS_OCR_BIN'),
+            env('HOME', '/home/ploi').'/.local/ocr/bin',
+        ])),
+        /** Unde stau fișierele de limbă ale tesseract-ului. */
+        'tessdata' => env('CONTRACTS_TESSDATA', env('HOME', '/home/ploi').'/.local/ocr/share/tessdata'),
         'languages' => env('CONTRACTS_OCR_LANGUAGES', 'ron+eng'),
         /** Sub atâtea caractere, PDF-ul e socotit scanat și se dă pe OCR. */
         'text_threshold' => (int) env('CONTRACTS_OCR_TEXT_THRESHOLD', 400),

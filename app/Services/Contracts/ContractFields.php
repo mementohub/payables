@@ -37,12 +37,16 @@ class ContractFields
             'notice_days' => $this->noticeDays($flat),
             'payment_terms' => $this->paymentTerms($text, $flat),
             'value' => $this->value($text, $flat),
-            'partner_name' => $this->partner($text, $houses),
-            'partner_tax_id' => $this->taxId($text, $flat),
+            'partner_name' => $partner = $this->partner($text, $houses),
+            'partner_tax_id' => $this->taxId($text, $flat, $partner['offset'] ?? null),
             'object' => $this->object($text, $flat),
             'governing_law' => $this->law($flat),
             'auto_renew' => $this->autoRenew($flat),
         ], fn (?array $field) => $field !== null);
+
+        // Poziția numelui a folosit la găsirea codului fiscal; mai departe
+        // n-are ce căuta.
+        unset($fields['partner_name']['offset']);
 
         // Durata („12 luni de la semnare”) e a doua cale către scadență: se
         // folosește numai dacă n-a scris nicăieri o dată anume.
@@ -235,7 +239,7 @@ class ContractFields
                 continue;
             }
 
-            return ['value' => $name, 'confidence' => 0.86, 'source' => $this->around($text, (int) $match[1])];
+            return ['value' => $name, 'confidence' => 0.86, 'source' => $this->around($text, (int) $match[1]), 'offset' => (int) $match[1]];
         }
 
         return null;
@@ -244,17 +248,29 @@ class ContractFields
     /**
      * @return array{value: string, confidence: float, source: ?string}|null
      */
-    private function taxId(string $text, string $flat): ?array
+    private function taxId(string $text, string $flat, ?int $after = null): ?array
     {
-        if (preg_match('~(?:c\.?u\.?i\.?|cod\s+unic|cod\s+fiscal|c\.?i\.?f\.?)\s*:?\s*(ro)?\s*(\d{2,10})~u', $flat, $m, PREG_OFFSET_CAPTURE)) {
-            return [
-                'value' => mb_strtoupper(($m[1][0] !== '' ? 'RO' : '').$m[2][0]),
-                'confidence' => 0.88,
-                'source' => $this->around($text, (int) $m[0][1]),
-            ];
+        $pattern = '~(?:c\.?u\.?i\.?|cod\s+unic|cod\s+fiscal|c\.?i\.?f\.?)\s*:?\s*(ro)?\s*(\d{2,10})~u';
+
+        if (! preg_match_all($pattern, $flat, $all, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            return null;
         }
 
-        return null;
+        $read = fn (array $match, float $confidence) => [
+            'value' => mb_strtoupper(($match[1][0] !== '' ? 'RO' : '').$match[2][0]),
+            'confidence' => $confidence,
+            'source' => $this->around($text, (int) $match[0][1]),
+        ];
+
+        // Într-un contract sunt cel puțin două coduri fiscale: al nostru, în
+        // antet, și al partenerului, lângă numele lui. Îl vrem pe al doilea.
+        foreach ($all as $match) {
+            if ($after !== null && (int) $match[0][1] >= $after) {
+                return $read($match, 0.88);
+            }
+        }
+
+        return $read($all[0], $after === null ? 0.74 : 0.6);
     }
 
     /**
