@@ -133,7 +133,12 @@ export default function ContractShow({
         notes: contract.notes ?? '',
     });
 
-    const share = useForm({ emails: '', permission: 'view', days: '30' });
+    const share = useForm({
+        emails: '',
+        permission: 'view',
+        days: '30',
+        note: '',
+    });
     const version = useForm<{ file: File | null; label: string }>({
         file: null,
         label: '',
@@ -758,6 +763,17 @@ export default function ContractShow({
                                             )
                                         }
                                     />
+                                    <Textarea
+                                        rows={2}
+                                        placeholder="un rând de însoțire, dacă vrei"
+                                        value={share.data.note}
+                                        onChange={(event) =>
+                                            share.setData(
+                                                'note',
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
                                     <div className="flex gap-2">
                                         <Select
                                             value={share.data.permission}
@@ -803,6 +819,11 @@ export default function ContractShow({
                                         </Button>
                                     </div>
                                 </form>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    Pleacă un e-mail cu o legătură către
+                                    contract — fișierul nu se atașează. Se vede
+                                    cine a deschis și când.
+                                </p>
                                 {contract.shares.length > 0 && (
                                     <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">
                                         {contract.shares.map((entry) => (

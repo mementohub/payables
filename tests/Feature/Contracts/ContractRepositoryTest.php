@@ -1,11 +1,13 @@
 <?php
 
 use App\Jobs\ReadContractFile;
+use App\Mail\ContractSharedMail;
 use App\Models\Contract;
 use App\Models\ContractFile;
 use App\Models\Department;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
@@ -264,4 +266,60 @@ test('the numbers at the top count what the person can see', function () {
 
     expect($summary($this->keeper)['active'])->toBe(1)
         ->and($summary(User::factory()->withRoles('top_management')->create())['active'])->toBe(2);
+});
+
+test('sharing a contract sends the mail and opens from the link, without an account', function () {
+    Mail::fake();
+
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0021', 'title' => 'Charter', 'partner_name' => 'Memento Air',
+        'created_by_id' => $this->keeper->id, 'value' => 1000, 'currency' => 'EUR',
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'path' => 'x.pdf', 'original_name' => 'contract.pdf',
+        'hash' => 'abc', 'mime' => 'application/pdf',
+    ]);
+
+    $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/share", [
+        'emails' => 'nina.seretean@christiantour.ro',
+        'permission' => 'view',
+        'days' => 7,
+        'note' => 'Te rog uită-te peste art. 9.',
+    ])->assertRedirect();
+
+    $share = $contract->shares()->firstOrFail();
+
+    Mail::assertSent(ContractSharedMail::class, function ($mail) use ($share) {
+        return $mail->hasTo('nina.seretean@christiantour.ro')
+            && $mail->share->is($share)
+            && $mail->note === 'Te rog uită-te peste art. 9.';
+    });
+
+    // Legătura din mail se deschide fără cont și se numără.
+    $this->get("/contracte/{$share->token}")->assertOk();
+
+    expect($share->fresh()->opens)->toBe(1)
+        ->and($contract->events()->where('type', 'opened')->exists())->toBeTrue();
+
+    // Stinsă, nu mai deschide nimic.
+    $share->forceFill(['expires_at' => now()->subDay()])->save();
+    $this->get("/contracte/{$share->token}")->assertNotFound();
+    $this->get('/contracte/habar-n-am-ce-token')->assertNotFound();
+});
+
+test('a contract sent to a colleague opens for him in the application too', function () {
+    $colleague = User::factory()->withRoles('contract_management')->create();
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0022', 'title' => 'Test', 'partner_name' => 'Hotel Alfa',
+        'created_by_id' => $this->keeper->id,
+    ]);
+
+    $this->actingAs($colleague)->get("/contracts/{$contract->id}")->assertForbidden();
+
+    $contract->shares()->create([
+        'email' => $colleague->email, 'user_id' => $colleague->id,
+        'permission' => 'edit', 'token' => 'un-token-oarecare-lung',
+    ]);
+
+    $this->actingAs($colleague)->get("/contracts/{$contract->id}")->assertOk();
 });

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Contracts;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ReadContractFile;
+use App\Mail\ContractSharedMail;
 use App\Models\Contract;
 use App\Models\ContractEvent;
 use App\Models\ContractFile;
@@ -18,12 +19,15 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * Repertoriul de contracte.
@@ -279,6 +283,7 @@ class ContractController extends Controller
             'emails' => ['required', 'string', 'max:2000'],
             'permission' => ['required', Rule::in(ContractShare::PERMISSIONS)],
             'days' => ['nullable', 'integer', 'between:1,365'],
+            'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $emails = collect(preg_split('~[,;\s]+~', $validated['emails']) ?: [])
@@ -292,8 +297,10 @@ class ContractController extends Controller
             return back();
         }
 
+        $sent = [];
+
         foreach ($emails as $email) {
-            ContractShare::query()->create([
+            $share = ContractShare::query()->create([
                 'contract_id' => $contract->id,
                 'user_id' => User::query()->where('email', $email)->value('id'),
                 'email' => $email,
@@ -302,11 +309,25 @@ class ContractController extends Controller
                 'expires_at' => isset($validated['days']) ? now()->addDays((int) $validated['days']) : null,
                 'created_by_id' => $request->user()?->id,
             ]);
+
+            // Mailul duce legătura, nu fișierul: se vede cine l-a deschis, iar
+            // accesul se stinge singur la data pusă.
+            try {
+                Mail::to($email)->send(new ContractSharedMail($contract, $share, $request->user(), $validated['note'] ?? null));
+                $sent[] = $email;
+            } catch (Throwable $e) {
+                Log::warning('Contractul '.$contract->number.' n-a putut fi trimis la '.$email.': '.$e->getMessage());
+            }
         }
 
-        $this->event($contract, $request->user(), 'shared', $emails->implode(', '), ['permission' => $validated['permission']]);
+        $this->event($contract, $request->user(), 'shared', $emails->implode(', '), [
+            'permission' => $validated['permission'],
+            'mailed' => $sent,
+        ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul a fost trimis către '.$emails->count().' '.($emails->count() === 1 ? 'adresă' : 'adrese').'.']);
+        Inertia::flash('toast', $sent === []
+            ? ['type' => 'error', 'message' => 'Legăturile s-au făcut, dar mailul n-a putut pleca. Uită-te în jurnalul aplicației.']
+            : ['type' => 'success', 'message' => 'Contractul a plecat către '.implode(', ', $sent).'.']);
 
         return back();
     }
@@ -337,6 +358,86 @@ class ContractController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul '.$number.' a fost șters cu totul.']);
 
         return redirect()->route('contracts.index');
+    }
+
+    /**
+     * Contractul, deschis din legătura primită pe mail.
+     *
+     * Fără cont: cel căruia i s-a trimis poate fi și din afara companiei.
+     * Legătura e lungă și se poate stinge la o dată anume, iar fiecare
+     * deschidere se numără și se scrie în jurnalul contractului.
+     */
+    public function shared(Request $request, string $token): Response
+    {
+        $share = ContractShare::query()->where('token', $token)->with('contract.files')->first();
+
+        if ($share === null || ! $share->isOpen()) {
+            abort(404, 'Legătura nu mai e bună.');
+        }
+
+        $first = $share->opened_at === null;
+        $share->forceFill(['opened_at' => $share->opened_at ?? now(), 'opens' => $share->opens + 1])->save();
+
+        if ($first) {
+            ContractEvent::query()->create([
+                'contract_id' => $share->contract_id,
+                'user_id' => $share->user_id,
+                'type' => 'opened',
+                'body' => $share->email.' a deschis contractul',
+            ]);
+        }
+
+        $contract = $share->contract;
+        $file = $contract->files->first();
+
+        return Inertia::render('contracts/shared', [
+            'share' => [
+                'permission' => $share->permission,
+                'expires_at' => $share->expires_at?->toIso8601String(),
+                'sender' => $share->createdBy?->name,
+            ],
+            'contract' => [
+                'number' => $contract->number,
+                'title' => $contract->title,
+                'partner_name' => $contract->partner_name,
+                'object' => $contract->object,
+                'value' => $contract->value !== null ? (float) $contract->value : null,
+                'currency' => $contract->currency,
+                'signed_at' => $contract->signed_at?->toDateString(),
+                'expires_at' => $contract->expires_at?->toDateString(),
+                'file' => $file === null ? null : [
+                    'name' => $file->original_name,
+                    'size' => $file->size,
+                    'text' => $file->text !== null ? mb_substr($file->text, 0, 40000) : null,
+                ],
+            ],
+            'token' => $token,
+        ]);
+    }
+
+    /** Fișierul contractului trimis, tot pe legătura aia. */
+    public function sharedFile(Request $request, string $token): StreamedResponse
+    {
+        $share = ContractShare::query()->where('token', $token)->with('contract.files')->first();
+
+        if ($share === null || ! $share->isOpen()) {
+            abort(404, 'Legătura nu mai e bună.');
+        }
+
+        $file = $share->contract->files->first();
+
+        if ($file === null) {
+            abort(404, 'Contractul n-are niciun fișier.');
+        }
+
+        return Storage::disk((string) config('contracts.disk', 'contracts'))->response(
+            $file->path,
+            $file->original_name,
+            [
+                'Content-Type' => $file->mime ?: 'application/octet-stream',
+                'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="'.addslashes($file->original_name).'"',
+            ],
+        );
     }
 
     public function archive(Request $request, Contract $contract): RedirectResponse
@@ -448,6 +549,17 @@ class ContractController extends Controller
         }
 
         if ($user->seesAllContracts() || $contract->created_by_id === $user->id || $contract->owner_id === $user->id) {
+            return;
+        }
+
+        // Cui i s-a trimis contractul îl poate deschide și din aplicație, cât
+        // ține legătura.
+        $shared = $contract->shares()
+            ->where(fn ($query) => $query->where('user_id', $user->id)->orWhere('email', $user->email))
+            ->get()
+            ->contains(fn (ContractShare $share) => $share->isOpen());
+
+        if ($shared) {
             return;
         }
 

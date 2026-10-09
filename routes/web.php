@@ -37,6 +37,14 @@ use Illuminate\Support\Facades\Route;
 // companiei, deci cine n-are voie acolo ar fi fost întâmpinat de un refuz.
 Route::get('/', HomeController::class)->name('home');
 
+/*
+ * Contractul trimis cuiva pe mail: se deschide din legătură, fără cont. Cel
+ * căruia i s-a trimis poate fi și din afara companiei; legătura e lungă, se
+ * poate stinge la o dată anume, iar deschiderile se numără.
+ */
+Route::get('contracte/{token}', [ContractController::class, 'shared'])->name('contracts.shared');
+Route::get('contracte/{token}/fisier', [ContractController::class, 'sharedFile'])->name('contracts.shared.file');
+
 Route::middleware('auth')->group(function () {
     // Panoul principal adună facturile companiei, deci e al celor care le țin.
     Route::middleware('area:dashboard')->group(function () {
