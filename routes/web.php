@@ -224,7 +224,7 @@ Route::middleware('auth')->group(function () {
      * Repertoriul de contracte: rolul lui, tabul lui. Cine n-are rolul nu intră,
      * oricât ar ghici din adresă.
      */
-    Route::middleware('role:contract_management')->group(function () {
+    Route::middleware('role:contract_management,top_management')->group(function () {
         Route::get('contracts', [ContractController::class, 'index'])->name('contracts.index');
         Route::post('contracts', [ContractController::class, 'store'])->name('contracts.store');
         Route::get('contracts/{contract}', [ContractController::class, 'show'])->name('contracts.show');

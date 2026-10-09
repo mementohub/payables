@@ -39,7 +39,7 @@ const roleOptions = [
         value: 'contract_management',
         label: 'Contract Management',
         description:
-            'Repertoriul de contracte: încarcă, citește, caută, trimite și arhivează. Nu vede facturi, rulaje sau rapoarte dacă n-are și rolurile acelea.',
+            'Repertoriul de contracte: încarcă, citește, caută, trimite și arhivează — dar numai contractele aduse de el sau date în grija lui. Peste toate se uită doar Top Management și administratorul.',
     },
     {
         value: 'admin',

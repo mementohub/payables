@@ -64,12 +64,24 @@ class User extends Authenticatable
      * ce nu e al omului, iar rutele ca să refuze ce n-a fost ascuns.
      */
     /**
-     * Contractele stau la rolul lor, nu se amestecă cu facturile: cine n-are
-     * rolul nu vede nici tabul, nici repertoriul.
+     * Cine intră în repertoriul de contracte: rolul lui și Top Management,
+     * care vede tot în companie. Facturile rămân altă lume.
      */
     public function canSeeContracts(): bool
     {
-        return $this->hasRole(self::ROLE_CONTRACTS);
+        return $this->hasRole(self::ROLE_CONTRACTS) || $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /**
+     * Cine vede contractele tuturor, nu doar pe ale lui.
+     *
+     * Omul care ține contracte își vede pe ale lui — cele aduse de el sau date
+     * în grija lui. Peste tot se uită doar administratorul și Top Management,
+     * fiindcă ei răspund de companie, nu de un teanc de dosare.
+     */
+    public function seesAllContracts(): bool
+    {
+        return $this->isAdmin() || in_array(self::ROLE_TOP_MANAGEMENT, (array) ($this->roles ?? []), true);
     }
 
     public function canSeeReports(): bool

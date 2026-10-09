@@ -34,7 +34,7 @@ import { KIND_LABELS, STATUS_LABELS } from './types';
 import type { ContractRow } from './types';
 
 type Props = {
-    can: { delete: boolean };
+    can: { delete: boolean; all: boolean };
     filters: Record<string, string | number | boolean | null>;
     contracts: {
         data: ContractRow[];
@@ -580,6 +580,7 @@ export default function ContractsIndex({
                     <span>
                         {contracts.from ?? 0}–{contracts.to ?? 0} din{' '}
                         {contracts.total}
+                        {!can.all && ' · contractele dumneavoastră'}
                     </span>
                     <div className="ml-auto flex gap-1">
                         {contracts.links.map((link, index) => (

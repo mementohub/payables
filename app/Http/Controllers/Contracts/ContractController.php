@@ -12,7 +12,7 @@ use App\Models\Department;
 use App\Models\User;
 use App\Services\Contracts\ContractReader;
 use Carbon\CarbonInterface;
-use Illuminate\Contracts\Auth\Access\AuthorizationException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,7 +47,7 @@ class ContractController extends Controller
     public function index(Request $request, ContractReader $reader): Response
     {
         $filters = $this->filters($request);
-        $query = $this->filtered($filters);
+        $query = $this->mine($request, $this->filtered($filters));
 
         $contracts = (clone $query)
             ->with(['department:id,name', 'owner:id,name', 'partner:id,name'])
@@ -60,12 +60,13 @@ class ContractController extends Controller
             ->through(fn (Contract $contract) => $this->row($contract));
 
         return Inertia::render('contracts/index', [
-            'can' => ['delete' => (bool) $request->user()?->isAdmin()],
             'filters' => $filters,
             'contracts' => $contracts,
-            'summary' => $this->summary(),
+            'summary' => $this->summary($request),
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
             'partners' => (clone $query)->select('partner_name')->distinct()->orderBy('partner_name')->limit(300)->pluck('partner_name'),
+            // Top Management citește repertoriul, dar nu umblă la el.
+            'can' => ['delete' => (bool) $request->user()?->isAdmin(), 'all' => (bool) $request->user()?->seesAllContracts()],
             'ocr' => $reader->available(),
             'limits' => $this->limits(),
         ]);
@@ -73,6 +74,8 @@ class ContractController extends Controller
 
     public function show(Request $request, Contract $contract): Response
     {
+        $this->seen($request, $contract);
+
         $contract->load([
             'department:id,name', 'owner:id,name,email', 'partner:id,name,cui',
             'createdBy:id,name', 'files.uploadedBy:id,name',
@@ -174,6 +177,8 @@ class ContractController extends Controller
 
     public function update(Request $request, Contract $contract): RedirectResponse
     {
+        $this->seen($request, $contract);
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:300'],
             'partner_name' => ['required', 'string', 'max:200'],
@@ -212,6 +217,8 @@ class ContractController extends Controller
     /** O versiune nouă pe un contract care există deja. */
     public function addFile(Request $request, Contract $contract): RedirectResponse
     {
+        $this->seen($request, $contract);
+
         if ($this->tooBig($request)) {
             return $this->tooBigAnswer();
         }
@@ -231,6 +238,8 @@ class ContractController extends Controller
 
     public function download(Request $request, Contract $contract, ContractFile $file): StreamedResponse
     {
+        $this->seen($request, $contract);
+
         if ($file->contract_id !== $contract->id) {
             throw new AuthorizationException('Fișierul nu e al acestui contract.');
         }
@@ -249,6 +258,8 @@ class ContractController extends Controller
      */
     public function preview(Request $request, Contract $contract, ContractFile $file): StreamedResponse
     {
+        $this->seen($request, $contract);
+
         if ($file->contract_id !== $contract->id) {
             throw new AuthorizationException('Fișierul nu e al acestui contract.');
         }
@@ -262,6 +273,8 @@ class ContractController extends Controller
 
     public function share(Request $request, Contract $contract): RedirectResponse
     {
+        $this->seen($request, $contract);
+
         $validated = $request->validate([
             'emails' => ['required', 'string', 'max:2000'],
             'permission' => ['required', Rule::in(ContractShare::PERMISSIONS)],
@@ -328,6 +341,8 @@ class ContractController extends Controller
 
     public function archive(Request $request, Contract $contract): RedirectResponse
     {
+        $this->seen($request, $contract);
+
         $archived = $contract->archived_at === null;
         $contract->forceFill(['archived_at' => $archived ? now() : null])->save();
         $this->event($contract, $request->user(), $archived ? 'archived' : 'restored');
@@ -401,6 +416,42 @@ class ContractController extends Controller
             'k' => $number * 1024,
             default => $number,
         };
+    }
+
+    /**
+     * Numai contractele omului, dacă n-are drept peste tot.
+     *
+     * „Ale lui” înseamnă cele aduse de el și cele date în grija lui: dacă un
+     * contract i-a fost trecut altcuiva, cel care l-a adus îl vede mai departe,
+     * fiindcă el știe povestea lui.
+     */
+    private function mine(Request $request, Builder $query): Builder
+    {
+        $user = $request->user();
+
+        if ($user === null || $user->seesAllContracts()) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $inner) => $inner
+            ->where('created_by_id', $user->id)
+            ->orWhere('owner_id', $user->id));
+    }
+
+    /** Are omul voie la contractul ăsta? */
+    private function seen(Request $request, Contract $contract): void
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            throw new AuthorizationException('Nu aveți acces la acest contract.');
+        }
+
+        if ($user->seesAllContracts() || $contract->created_by_id === $user->id || $contract->owner_id === $user->id) {
+            return;
+        }
+
+        throw new AuthorizationException('Contractul ăsta nu e al dumneavoastră.');
     }
 
     /**
@@ -485,18 +536,21 @@ class ContractController extends Controller
     /**
      * @return array<string, int|float>
      */
-    private function summary(): array
+    private function summary(Request $request): array
     {
-        $active = Contract::query()->active();
+        // Cifrele de sus numără ce vede omul, nu ce există: altfel ar citi un
+        // total care nu i se potrivește cu lista de dedesubt.
+        $all = fn () => $this->mine($request, Contract::query());
+        $active = fn () => $all()->active();
 
         return [
-            'total' => Contract::query()->notArchived()->count(),
-            'active' => (clone $active)->count(),
-            'expiring' => (clone $active)->whereNotNull('expires_at')
+            'total' => $all()->notArchived()->count(),
+            'active' => $active()->count(),
+            'expiring' => $active()->whereNotNull('expires_at')
                 ->whereDate('expires_at', '>=', now()->toDateString())
                 ->whereDate('expires_at', '<=', now()->addDays(90)->toDateString())->count(),
-            'unowned' => Contract::query()->notArchived()->whereNull('owner_id')->count(),
-            'value_ron' => (float) Contract::query()->active()->where('currency', 'RON')->sum('value'),
+            'unowned' => $all()->notArchived()->whereNull('owner_id')->count(),
+            'value_ron' => (float) $active()->where('currency', 'RON')->sum('value'),
         ];
     }
 

@@ -67,6 +67,7 @@ test('the data of a contract can be corrected, and the change is kept in the log
     $department = Department::query()->whereNotNull('code')->first();
     $contract = Contract::query()->create([
         'number' => 'CTR-2026-0009', 'title' => 'Vechi', 'partner_name' => 'Necunoscut', 'status' => Contract::STATUS_DRAFT,
+        'created_by_id' => $this->keeper->id,
     ]);
 
     $this->actingAs($this->keeper)->put("/contracts/{$contract->id}", [
@@ -94,8 +95,8 @@ test('the data of a contract can be corrected, and the change is kept in the log
 test('the list filters on what the repository is asked for', function () {
     $department = Department::query()->whereNotNull('code')->first();
 
-    Contract::query()->create(['number' => 'CTR-1', 'title' => 'Charter', 'partner_name' => 'Memento Air SRL', 'kind' => 'group', 'department_id' => $department->id, 'status' => Contract::STATUS_ACTIVE, 'signed_at' => '2026-02-12', 'expires_at' => '2026-10-31', 'value' => 100000, 'currency' => 'EUR']);
-    Contract::query()->create(['number' => 'CTR-2', 'title' => 'Combustibil', 'partner_name' => 'DKV Euro Service', 'kind' => 'supplier', 'status' => Contract::STATUS_ACTIVE, 'signed_at' => '2025-09-01', 'expires_at' => '2027-08-31', 'value' => 1200000, 'currency' => 'RON']);
+    Contract::query()->create(['number' => 'CTR-1', 'title' => 'Charter', 'partner_name' => 'Memento Air SRL', 'kind' => 'group', 'department_id' => $department->id, 'status' => Contract::STATUS_ACTIVE, 'signed_at' => '2026-02-12', 'expires_at' => '2026-10-31', 'value' => 100000, 'currency' => 'EUR', 'created_by_id' => $this->keeper->id]);
+    Contract::query()->create(['number' => 'CTR-2', 'title' => 'Combustibil', 'partner_name' => 'DKV Euro Service', 'kind' => 'supplier', 'status' => Contract::STATUS_ACTIVE, 'signed_at' => '2025-09-01', 'expires_at' => '2027-08-31', 'value' => 1200000, 'currency' => 'RON', 'created_by_id' => $this->keeper->id]);
 
     $numbers = fn (array $query) => collect(
         $this->actingAs($this->keeper)->get('/contracts?'.http_build_query($query))
@@ -111,7 +112,7 @@ test('the list filters on what the repository is asked for', function () {
 });
 
 test('a contract is sent as a link with a right and a term, not as a file', function () {
-    $contract = Contract::query()->create(['number' => 'CTR-2026-0011', 'title' => 'Test', 'partner_name' => 'Hotel Alfa']);
+    $contract = Contract::query()->create(['number' => 'CTR-2026-0011', 'title' => 'Test', 'partner_name' => 'Hotel Alfa', 'created_by_id' => $this->keeper->id]);
 
     $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/share", [
         'emails' => 'nina.seretean@christiantour.ro, nu-e-mail, legal@christiantour.ro',
@@ -129,7 +130,7 @@ test('a contract is sent as a link with a right and a term, not as a file', func
 });
 
 test('an archived contract leaves the list but stays in the repository', function () {
-    $contract = Contract::query()->create(['number' => 'CTR-2026-0012', 'title' => 'Test', 'partner_name' => 'Hotel Alfa', 'status' => Contract::STATUS_ACTIVE]);
+    $contract = Contract::query()->create(['number' => 'CTR-2026-0012', 'title' => 'Test', 'partner_name' => 'Hotel Alfa', 'status' => Contract::STATUS_ACTIVE, 'created_by_id' => $this->keeper->id]);
 
     $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/archive")->assertRedirect();
 
@@ -213,4 +214,54 @@ test('the page says how much the server takes, before anyone tries', function ()
 
     expect($limits['upload_mb'])->toBeGreaterThan(0)
         ->and($limits['post'])->not->toBeEmpty();
+});
+
+test('a keeper of contracts sees only his own; Top Management and the admin see them all', function () {
+    $other = User::factory()->withRoles('contract_management')->create();
+    $boss = User::factory()->withRoles('top_management')->create();
+    $admin = User::factory()->withRoles('admin')->create();
+
+    $mine = Contract::query()->create([
+        'number' => 'CTR-A', 'title' => 'Al meu', 'partner_name' => 'Hotel Alfa',
+        'created_by_id' => $this->keeper->id, 'owner_id' => $this->keeper->id,
+    ]);
+    $his = Contract::query()->create([
+        'number' => 'CTR-B', 'title' => 'Al lui', 'partner_name' => 'Hotel Beta',
+        'created_by_id' => $other->id, 'owner_id' => $other->id,
+    ]);
+    // Adus de unul, dat în grija altuia: îl văd amândoi.
+    $shared = Contract::query()->create([
+        'number' => 'CTR-C', 'title' => 'Trecut altuia', 'partner_name' => 'Hotel Gama',
+        'created_by_id' => $other->id, 'owner_id' => $this->keeper->id,
+    ]);
+
+    $seen = fn (User $user) => collect(
+        $this->actingAs($user)->get('/contracts')->viewData('page')['props']['contracts']['data']
+    )->pluck('number')->sort()->values()->all();
+
+    expect($seen($this->keeper))->toBe(['CTR-A', 'CTR-C'])
+        ->and($seen($other))->toBe(['CTR-B', 'CTR-C'])
+        ->and($seen($boss))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        ->and($seen($admin))->toBe(['CTR-A', 'CTR-B', 'CTR-C']);
+
+    // Nici pe ocolite: contractul altuia nu se deschide și nu se descarcă.
+    $this->actingAs($this->keeper)->get("/contracts/{$his->id}")->assertForbidden();
+    $this->actingAs($this->keeper)->put("/contracts/{$his->id}", [
+        'title' => 'x', 'partner_name' => 'y', 'kind' => 'supplier', 'status' => 'draft',
+    ])->assertForbidden();
+    $this->actingAs($boss)->get("/contracts/{$mine->id}")->assertOk();
+    $this->actingAs($this->keeper)->get("/contracts/{$shared->id}")->assertOk();
+});
+
+test('the numbers at the top count what the person can see', function () {
+    $other = User::factory()->withRoles('contract_management')->create();
+
+    Contract::query()->create(['number' => 'CTR-A', 'title' => 'a', 'partner_name' => 'x', 'status' => 'active', 'created_by_id' => $this->keeper->id]);
+    Contract::query()->create(['number' => 'CTR-B', 'title' => 'b', 'partner_name' => 'y', 'status' => 'active', 'created_by_id' => $other->id]);
+
+    $summary = fn (User $user) => $this->actingAs($user)->get('/contracts')
+        ->viewData('page')['props']['summary'];
+
+    expect($summary($this->keeper)['active'])->toBe(1)
+        ->and($summary(User::factory()->withRoles('top_management')->create())['active'])->toBe(2);
 });
