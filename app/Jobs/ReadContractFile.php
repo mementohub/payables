@@ -48,6 +48,9 @@ class ReadContractFile implements ShouldQueue
      */
     private array $disagreed = [];
 
+    /** A citit agentul documentul, sau au rămas numai tiparele? */
+    private bool $scribed = false;
+
     public function handle(ContractReader $reader, ContractFields $fields, ScribeFields $scribe): void
     {
         $file = ContractFile::query()->with('contract')->find($this->fileId);
@@ -217,6 +220,8 @@ class ReadContractFile implements ShouldQueue
             return [...$patterns, ...$agent];
         }
 
+        $this->scribed = true;
+
         foreach (self::SCRIBE as $name) {
             unset($patterns[$name]);
         }
@@ -340,6 +345,27 @@ class ReadContractFile implements ShouldQueue
             $filled[] = 'auto_renew';
         }
 
+        // La o recitire, tăcerea agentului curăță.
+        //
+        // Tiparele apucau uneori un număr care semăna a dată sau a cod fiscal:
+        // „J40/5529/15.07.1997” e înregistrarea casei noastre la Registrul
+        // Comerțului, nu ziua semnării. Dacă agentul a citit documentul și
+        // n-a găsit nimic acolo, ce pusese mașina înainte iese — un câmp gol
+        // se vede și se completează, unul greșit trece drept adevăr și pleacă
+        // mai departe în înștiințări.
+        if ($this->afresh && $this->scribed) {
+            foreach (['partner_tax_id', 'signed_at', 'expires_at', 'notice_days', 'payment_terms', 'governing_law'] as $column) {
+                if (isset($read[$column]) || ! filled($contract->{$column})) {
+                    continue;
+                }
+
+                if ($this->untouched($contract->{$column}, $was[$column]['value'] ?? null)) {
+                    $contract->{$column} = null;
+                    $filled[] = $column.' (golit)';
+                }
+            }
+        }
+
         // Partenerul citit se leagă de fișa lui, dacă îl recunoaștem: din
         // contract se ajunge la facturile lui și invers.
         if ($contract->partner_id === null && filled($contract->partner_name)) {
@@ -356,6 +382,10 @@ class ReadContractFile implements ShouldQueue
         // schimbă cu mâna.
         if ($contract->signed_at !== null) {
             $contract->starts_at = $contract->signed_at;
+        } elseif ($contract->isDirty('signed_at')) {
+            // Dacă tocmai s-a golit data semnării, n-are de unde să mai fie
+            // „în vigoare din” — rămânea cea veche, nelegată de nimic.
+            $contract->starts_at = null;
         }
 
         $contract->ocr_fields = $ocr;

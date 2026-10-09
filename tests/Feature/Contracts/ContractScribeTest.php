@@ -97,9 +97,9 @@ test('a long-winded reading is trimmed to what the file can hold', function () {
     Storage::disk(config('contracts.disk'))->put('f.txt', 'Un contract oarecare, încheiat la 12.02.2026.');
 
     (new ReadContractFile($file->id))->handle(
-        app(App\Services\Contracts\ContractReader::class),
-        app(App\Services\Contracts\ContractFields::class),
-        app(App\Services\Contracts\ScribeFields::class),
+        app(ContractReader::class),
+        app(ContractFields::class),
+        app(ScribeFields::class),
     );
 
     $contract->refresh();
@@ -145,6 +145,44 @@ test('a re-read mends what the machine got wrong, but never what a person wrote'
 
     expect($contract->expires_at->toDateString())->toBe('2026-03-01')
         ->and($contract->title)->toBe('Cum îi spun eu');
+});
+
+test('on a re-read, what the agent cannot find in the paper is cleared', function () {
+    // Tiparul luase drept dată a semnării înregistrarea casei noastre la
+    // Registrul Comerțului. Agentul citește hârtia și nu găsește nicio dată:
+    // atunci cea veche trebuie să iasă, nu să rămână drept adevăr.
+    ContractScribe::fake([
+        said(['partner_name' => 'ALEXANDRA UNGUREANU', 'object' => 'Cesiunea drepturilor de autor.', 'notice_days' => 30]),
+    ]);
+
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0105', 'title' => 'Cesiune', 'partner_name' => 'ALEXANDRA UNGUREANU',
+        'signed_at' => '1997-07-15', 'starts_at' => '1997-07-15', 'partner_tax_id' => 'RO9617078',
+        'ocr_fields' => [
+            'signed_at' => ['value' => '1997-07-15', 'confidence' => 0.88, 'source' => 'J40/5529/15.07.1997'],
+            'partner_tax_id' => ['value' => 'RO9617078', 'confidence' => 0.88, 'source' => 'cod unic de inregistrare RO9617078'],
+        ],
+        'created_by_id' => $this->keeper->id,
+    ]);
+    $file = ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_CONTRACT, 'version' => 1,
+        'path' => 'g.txt', 'original_name' => 'contract.txt', 'hash' => 's5', 'mime' => 'text/plain',
+    ]);
+    Storage::disk(config('contracts.disk'))->put('g.txt', 'CONTRACT DE CESIUNE A DREPTURILOR DE AUTOR. Nr. din februarie 2026, intre ALEXANDRA UNGUREANU si CHRISTIAN 76 TOUR S.R.L., inmatriculata la Registrul Comertului sub nr. J40/5529/15.07.1997.');
+
+    (new ReadContractFile($file->id, true))->handle(
+        app(ContractReader::class),
+        app(ContractFields::class),
+        app(ScribeFields::class),
+    );
+
+    $contract->refresh();
+
+    expect($contract->signed_at)->toBeNull()
+        ->and($contract->starts_at)->toBeNull()
+        ->and($contract->partner_tax_id)->toBeNull()
+        // Ce-a găsit agentul rămâne pus.
+        ->and($contract->notice_days)->toBe(30);
 });
 
 test('when the agent is quiet, the patterns still fill the file', function () {
