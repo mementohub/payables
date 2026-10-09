@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Agents\ContractAnalyst;
 use App\Jobs\ReadContractFile;
 use App\Mail\ContractSharedMail;
 use App\Models\Contract;
@@ -412,6 +413,90 @@ test('a question looks in the addenda too, and says which paper answers it', fun
     expect($answers[0]['document'])->toBe('Act adițional nr. 1')
         ->and($answers[0]['text'])->toContain('1.250')
         ->and(collect($answers)->pluck('document')->all())->toContain('Contract v1');
+});
+
+/** Un contract cu un act adițional care îi schimbă prețul. */
+function priced(User $keeper): Contract
+{
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0051', 'title' => 'Prestări', 'partner_name' => 'Alfa SRL',
+        'created_by_id' => $keeper->id,
+    ]);
+
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_CONTRACT, 'version' => 1,
+        'path' => 'a.pdf', 'original_name' => 'contract.pdf', 'hash' => 'p1',
+        'text' => "3.1. Pretul serviciilor este de 1.000 EUR pe luna.\n\n3.2. Plata se face in 30 de zile.",
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_ADDENDUM, 'version' => 1, 'label' => 'nr. 1',
+        'path' => 'b.pdf', 'original_name' => 'act.pdf', 'hash' => 'p2', 'signed_at' => '2027-01-15',
+        'text' => '1. Incepand cu 01.02.2027, pretul serviciilor se majoreaza la 1.250 EUR pe luna.',
+    ]);
+
+    return $contract;
+}
+
+test('the agent answers in words, and gets the whole contract to answer from', function () {
+    config(['contracts.ai.enabled' => true, 'ai.providers.openai.key' => 'cheie-de-test']);
+
+    $sent = null;
+    ContractAnalyst::fake(function (string $prompt) use (&$sent) {
+        $sent = $prompt;
+
+        return 'Prețul este 1.250 EUR pe lună, majorat prin actul adițional nr. 1.';
+    });
+
+    $contract = priced($this->keeper);
+
+    $said = $this->actingAs($this->keeper)
+        ->postJson("/contracts/{$contract->id}/ask", ['question' => 'care este pretul serviciilor?'])
+        ->json();
+
+    expect($said['by'])->toBe('ai')
+        ->and($said['answer'])->toContain('1.250')
+        // Clauzele rămân dedesubt: omul vede din ce s-a născut răspunsul.
+        ->and($said['answers'])->not->toBeEmpty()
+        // Agentul primește ambele hârtii, nu doar pe cea de bază.
+        ->and($sent)->toContain('1.000 EUR')
+        ->and($sent)->toContain('1.250 EUR')
+        ->and($sent)->toContain('care este pretul serviciilor?');
+});
+
+test('when the agent is silent, the clauses still answer', function () {
+    config(['contracts.ai.enabled' => true, 'ai.providers.openai.key' => 'cheie-de-test']);
+
+    ContractAnalyst::fake(function () {
+        throw new RuntimeException('furnizorul nu răspunde');
+    });
+
+    $contract = priced($this->keeper);
+
+    $said = $this->actingAs($this->keeper)
+        ->postJson("/contracts/{$contract->id}/ask", ['question' => 'care este pretul serviciilor?'])
+        ->json();
+
+    expect($said['by'])->toBe('search')
+        ->and($said['answer'])->toBeNull()
+        ->and($said['answers'][0]['text'])->toContain('1.250');
+});
+
+test('with the agent off, not a word of the contract leaves the server', function () {
+    config(['contracts.ai.enabled' => false]);
+
+    ContractAnalyst::fake();
+
+    $contract = priced($this->keeper);
+
+    $said = $this->actingAs($this->keeper)
+        ->postJson("/contracts/{$contract->id}/ask", ['question' => 'care este pretul serviciilor?'])
+        ->json();
+
+    ContractAnalyst::assertNeverPrompted();
+
+    expect($said['by'])->toBe('search')
+        ->and($said['answer'])->toBeNull()
+        ->and($said['answers'])->not->toBeEmpty();
 });
 
 test('a whole stack of annexes goes up at once', function () {

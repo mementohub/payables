@@ -11,7 +11,7 @@ use App\Models\ContractFile;
 use App\Models\ContractShare;
 use App\Models\Department;
 use App\Models\User;
-use App\Services\Contracts\ContractAsk;
+use App\Services\Contracts\ContractAnswer;
 use App\Services\Contracts\ContractReader;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -103,6 +103,10 @@ class ContractController extends Controller
 
         return Inertia::render('contracts/show', [
             'can' => ['delete' => (bool) $request->user()?->isAdmin()],
+            // Ca pagina să poată spune din capul locului dacă textul pleacă
+            // undeva când întrebi, nu abia după ce ai întrebat.
+            'ai' => (bool) config('contracts.ai.enabled', false)
+                && (string) config('ai.providers.openai.key', '') !== '',
             'contract' => [
                 ...$this->row($contract),
                 'object' => $contract->object,
@@ -494,10 +498,10 @@ class ContractController extends Controller
     /**
      * Întrebare punctuală despre contractul ăsta.
      *
-     * Răspunsul vine din chiar textul lui: bucățile care spun ceva despre ce
-     * s-a întrebat. Nimic nu pleacă de pe server și nimic nu se inventează.
+     * Răspunsul vine din chiar textul lui: clauzele care spun ceva despre ce
+     * s-a întrebat și, dacă agentul e aprins, un răspuns scris peste ele.
      */
-    public function ask(Request $request, Contract $contract, ContractAsk $ask): array
+    public function ask(Request $request, Contract $contract, ContractAnswer $answer): array
     {
         $this->seen($request, $contract);
 
@@ -505,7 +509,7 @@ class ContractController extends Controller
             'question' => ['required', 'string', 'min:3', 'max:300'],
         ]);
 
-        return $ask->ask($contract->load('files'), $validated['question']);
+        return $answer->answer($contract->load('files'), $validated['question']);
     }
 
     public function archive(Request $request, Contract $contract): RedirectResponse

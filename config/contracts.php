@@ -51,6 +51,21 @@ return [
     ],
 
     /*
+     * Întrebările puse unui contract anume („Întreabă contractul”).
+     *
+     * Stins, rămâne căutarea prin textul citit: arată clauzele care vorbesc
+     * despre ce s-a întrebat, fără ca nimic să iasă de pe server. Aprins,
+     * peste clauzele acelea vine un răspuns scris în cuvinte de agentul
+     * `ContractAnalyst` — și atunci textul contractului pleacă la furnizorul
+     * de model (OpenAI), pe drumul pe care merg deja întrebările financiare
+     * din `/ai-assistant`. E singurul loc din modulul de contracte unde iese
+     * ceva în afară.
+     */
+    'ai' => [
+        'enabled' => (bool) env('CONTRACTS_AI_ENABLED', true),
+    ],
+
+    /*
      * Cine semnează mailurile despre contracte. Adresa rămâne cea a
      * aplicației; se schimbă doar numele de deasupra ei, ca omul să vadă din
      * căsuță despre ce e vorba.

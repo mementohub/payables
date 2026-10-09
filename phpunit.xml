@@ -30,6 +30,9 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="SYNC_AUTO_ENABLED" value="false"/>
+        <!-- Nicio întrebare de test nu pleacă la furnizorul de model: cine
+             vrea agentul în test îl aprinde el și îl pune fals. -->
+        <env name="CONTRACTS_AI_ENABLED" value="false"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

@@ -57,6 +57,8 @@ import type {
 
 type Props = {
     can: { delete: boolean };
+    /** Dacă întrebările trec pe la agent — adică dacă textul pleacă de pe server. */
+    ai: boolean;
     contract: Contract;
     departments: { id: number; name: string }[];
     people: { id: number; name: string; email: string }[];
@@ -106,6 +108,7 @@ function Confidence({ field }: { field: OcrField | undefined }) {
 
 export default function ContractShow({
     can,
+    ai,
     contract,
     departments,
     people,
@@ -186,9 +189,11 @@ export default function ContractShow({
     const ocr = contract.ocr_fields;
 
     // Întrebare despre contractul ăsta: răspunsul vine din textul lui, nu
-    // dintr-o părere.
+    // dintr-o părere. Agentul îl scrie în cuvinte; clauzele pe care s-a
+    // sprijinit rămân dedesubt, ca omul să vadă cu ochii lui de unde iese.
     const [question, setQuestion] = useState('');
     const [asking, setAsking] = useState(false);
+    const [said, setSaid] = useState<string | null>(null);
     const [answers, setAnswers] = useState<
         | { text: string; score: number; words: string[]; document: string }[]
         | null
@@ -220,8 +225,10 @@ export default function ContractShow({
             });
 
             const data = await response.json();
+            setSaid(data.answer ?? null);
             setAnswers(data.answers ?? []);
         } catch {
+            setSaid(null);
             setAnswers([]);
         } finally {
             setAsking(false);
@@ -1016,33 +1023,48 @@ export default function ContractShow({
                                     </Button>
                                 </form>
 
-                                {answers !== null && answers.length === 0 && (
-                                    <p className="mt-3 text-sm text-muted-foreground">
-                                        Nu am găsit nimic despre asta în textul
-                                        contractului.
+                                {said !== null && (
+                                    <p className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm whitespace-pre-line">
+                                        {said}
                                     </p>
                                 )}
 
+                                {answers !== null &&
+                                    answers.length === 0 &&
+                                    said === null && (
+                                        <p className="mt-3 text-sm text-muted-foreground">
+                                            Nu am găsit nimic despre asta în
+                                            textul contractului.
+                                        </p>
+                                    )}
+
                                 {answers !== null && answers.length > 0 && (
-                                    <ul className="mt-3 grid gap-2">
-                                        {answers.map((answer, index) => (
-                                            <li
-                                                key={index}
-                                                className="rounded-md border bg-muted/30 p-2 text-sm"
-                                            >
-                                                <div className="mb-1 text-xs text-muted-foreground">
-                                                    {answer.document}
-                                                </div>
-                                                {answer.text}
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    <>
+                                        {said !== null && (
+                                            <p className="mt-3 text-xs font-medium text-muted-foreground">
+                                                Clauzele pe care se sprijină
+                                            </p>
+                                        )}
+                                        <ul className="mt-2 grid gap-2">
+                                            {answers.map((answer, index) => (
+                                                <li
+                                                    key={index}
+                                                    className="rounded-md border bg-muted/30 p-2 text-sm"
+                                                >
+                                                    <div className="mb-1 text-xs text-muted-foreground">
+                                                        {answer.document}
+                                                    </div>
+                                                    {answer.text}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </>
                                 )}
 
                                 <p className="mt-3 text-xs text-muted-foreground">
-                                    Răspunsul e chiar textul contractului —
-                                    clauzele care vorbesc despre ce ai întrebat.
-                                    Nimic nu pleacă de pe server.
+                                    {ai
+                                        ? 'Răspunsul îl scrie agentul, numai din textul contractului, cu clauzele arătate dedesubt. Pentru asta, textul contractului ajunge la furnizorul de model (OpenAI) — pe drumul pe care merg și întrebările financiare.'
+                                        : 'Răspunsul e chiar textul contractului — clauzele care vorbesc despre ce ai întrebat. Nimic nu pleacă de pe server.'}
                                 </p>
                             </CardContent>
                         </Card>
