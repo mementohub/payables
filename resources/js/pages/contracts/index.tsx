@@ -158,7 +158,11 @@ export default function ContractsIndex({
         }
 
         setRefused(null);
-        upload.setData('files', chosen);
+
+        // Fișierele se dau chiar trimiterii, nu prin starea formularului:
+        // `setData` se vede abia la randarea următoare, așa că prima apăsare
+        // pleca fără ele, iar serverul răspundea „câmpul files e obligatoriu”.
+        upload.transform(() => ({ files: chosen }));
         upload.post(contractsStore().url, {
             forceFormData: true,
             preserveScroll: true,
@@ -436,7 +440,12 @@ export default function ContractsIndex({
                             multiple
                             hidden
                             accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg,.tif,.tiff,.webp,.heic"
-                            onChange={(event) => send(event.target.files)}
+                            onChange={(event) => {
+                                send(event.target.files);
+                                // Golit, ca același fișier să poată fi ales din
+                                // nou dacă prima încercare a eșuat.
+                                event.target.value = '';
+                            }}
                         />
                         <Button
                             onClick={() => uploader.current?.click()}

@@ -141,10 +141,20 @@ export default function ContractShow({
         days: '30',
         note: '',
     });
-    const version = useForm<{ file: File | null; label: string }>({
+    const version = useForm<{
+        file: File | null;
+        label: string;
+        kind: string;
+        signed_at: string;
+    }>({
         file: null,
         label: '',
+        kind: 'addendum',
+        signed_at: '',
     });
+    // Ce se adaugă la un contract e, de obicei, un act adițional — nu altă
+    // versiune a aceluiași document.
+    const [adding, setAdding] = useState(false);
 
     const save = (event: FormEvent) => {
         event.preventDefault();
@@ -164,11 +174,16 @@ export default function ContractShow({
             return;
         }
 
-        version.setData('file', files[0]);
+        // Ca la încărcarea din repertoriu: fișierul se dă trimiterii, fiindcă
+        // starea formularului se vede abia la randarea următoare.
+        version.transform((data) => ({ ...data, file: files[0] }));
         version.post(fileStore(contract.id).url, {
             forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => version.reset(),
+            onSuccess: () => {
+                version.reset();
+                setAdding(false);
+            },
         });
     };
 
@@ -253,13 +268,14 @@ export default function ContractShow({
                             ref={uploader}
                             type="file"
                             hidden
-                            onChange={(event) =>
-                                sendVersion(event.target.files)
-                            }
+                            onChange={(event) => {
+                                sendVersion(event.target.files);
+                                event.target.value = '';
+                            }}
                         />
                         <Button
                             variant="outline"
-                            onClick={() => uploader.current?.click()}
+                            onClick={() => setAdding(!adding)}
                             disabled={version.processing}
                         >
                             {version.processing ? (
@@ -267,7 +283,7 @@ export default function ContractShow({
                             ) : (
                                 <Upload className="size-4" />
                             )}
-                            Versiune nouă
+                            Adaugă document
                         </Button>
                         <Button
                             variant="outline"
@@ -720,6 +736,93 @@ export default function ContractShow({
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="grid gap-2">
+                                {adding && (
+                                    <div className="grid gap-2 rounded-md border bg-muted/30 p-3">
+                                        <div className="grid gap-1.5">
+                                            <Label>Ce încarci</Label>
+                                            <Select
+                                                value={version.data.kind}
+                                                onValueChange={(value) =>
+                                                    version.setData(
+                                                        'kind',
+                                                        value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="addendum">
+                                                        Act adițional
+                                                    </SelectItem>
+                                                    <SelectItem value="annex">
+                                                        Anexă
+                                                    </SelectItem>
+                                                    <SelectItem value="contract">
+                                                        Altă versiune a
+                                                        contractului
+                                                    </SelectItem>
+                                                    <SelectItem value="other">
+                                                        Alt document
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <div className="grid gap-1.5">
+                                                <Label htmlFor="doc-label">
+                                                    Număr
+                                                </Label>
+                                                <Input
+                                                    id="doc-label"
+                                                    placeholder="nr. 1"
+                                                    value={version.data.label}
+                                                    onChange={(event) =>
+                                                        version.setData(
+                                                            'label',
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="grid gap-1.5">
+                                                <Label htmlFor="doc-date">
+                                                    Semnat la
+                                                </Label>
+                                                <Input
+                                                    id="doc-date"
+                                                    type="date"
+                                                    value={
+                                                        version.data.signed_at
+                                                    }
+                                                    onChange={(event) =>
+                                                        version.setData(
+                                                            'signed_at',
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                        </div>
+                                        <Button
+                                            onClick={() =>
+                                                uploader.current?.click()
+                                            }
+                                            disabled={version.processing}
+                                        >
+                                            <Upload className="size-4" />
+                                            Alege fișierul
+                                        </Button>
+                                        <p className="text-xs text-muted-foreground">
+                                            Actul adițional nu înlocuiește
+                                            contractul: stă lângă el, se caută
+                                            odată cu el, iar ce schimbă (termen,
+                                            valoare) se scrie în jurnal, ca
+                                            propunere.
+                                        </p>
+                                    </div>
+                                )}
                                 {contract.files.map((file) => (
                                     <div
                                         key={file.id}
