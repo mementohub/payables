@@ -120,7 +120,6 @@ test('a contract is sent as a link with a right and a term, not as a file', func
     $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/share", [
         'emails' => 'nina.seretean@christiantour.ro, nu-e-mail, legal@christiantour.ro',
         'permission' => 'view',
-        'days' => 7,
     ])->assertRedirect();
 
     $shares = $contract->shares()->get();
@@ -129,6 +128,9 @@ test('a contract is sent as a link with a right and a term, not as a file', func
         ->and($shares->pluck('email')->all())->toContain('legal@christiantour.ro')
         ->and($shares->first()->token)->not->toBeEmpty()
         ->and($shares->first()->expires_at?->isFuture())->toBeTrue()
+        // Nespus, legătura ține cât scrie în configurare: 15 zile.
+        ->and($shares->first()->expires_at?->toDateString())
+        ->toBe(now()->addDays(config('contracts.share_days'))->toDateString())
         ->and($contract->events()->where('type', 'shared')->exists())->toBeTrue();
 });
 

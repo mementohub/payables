@@ -62,6 +62,9 @@ type Props = {
     people: { id: number; name: string; email: string }[];
 };
 
+/** Cât ține, din capul locului, legătura trimisă pe mail. */
+const defaultShareDays = 15;
+
 const dmy = (value: string | null) =>
     value === null ? '—' : new Date(value).toLocaleDateString('ro-RO');
 
@@ -138,7 +141,7 @@ export default function ContractShow({
     const share = useForm({
         emails: '',
         permission: 'view',
-        days: '30',
+        days: String(defaultShareDays),
         note: '',
     });
     const version = useForm<{ files: File[]; kind: string }>({
@@ -887,42 +890,57 @@ export default function ContractShow({
                                             )
                                         }
                                     />
-                                    <div className="flex gap-2">
-                                        <Select
-                                            value={share.data.permission}
-                                            onValueChange={(value) =>
-                                                share.setData(
-                                                    'permission',
-                                                    value,
-                                                )
-                                            }
-                                        >
-                                            <SelectTrigger className="w-40">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="view">
-                                                    Doar citire
-                                                </SelectItem>
-                                                <SelectItem value="comment">
-                                                    Comentariu
-                                                </SelectItem>
-                                                <SelectItem value="edit">
-                                                    Editare
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Input
-                                            className="w-24"
-                                            value={share.data.days}
-                                            onChange={(event) =>
-                                                share.setData(
-                                                    'days',
-                                                    event.target.value,
-                                                )
-                                            }
-                                            title="zile până expiră legătura"
-                                        />
+                                    <div className="flex flex-wrap items-end gap-2">
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="share-permission">
+                                                Ce poate face
+                                            </Label>
+                                            <Select
+                                                value={share.data.permission}
+                                                onValueChange={(value) =>
+                                                    share.setData(
+                                                        'permission',
+                                                        value,
+                                                    )
+                                                }
+                                            >
+                                                <SelectTrigger
+                                                    id="share-permission"
+                                                    className="w-40"
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="view">
+                                                        Doar citire
+                                                    </SelectItem>
+                                                    <SelectItem value="comment">
+                                                        Comentariu
+                                                    </SelectItem>
+                                                    <SelectItem value="edit">
+                                                        Editare
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="share-days">
+                                                Legătura ține (zile)
+                                            </Label>
+                                            <Input
+                                                id="share-days"
+                                                className="w-28"
+                                                inputMode="numeric"
+                                                value={share.data.days}
+                                                onChange={(event) =>
+                                                    share.setData(
+                                                        'days',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                title="După atâtea zile, legătura din mail nu mai deschide contractul."
+                                            />
+                                        </div>
                                         <Button
                                             type="submit"
                                             disabled={share.processing}
@@ -935,7 +953,8 @@ export default function ContractShow({
                                 <p className="mt-2 text-xs text-muted-foreground">
                                     Pleacă un e-mail cu o legătură către
                                     contract — fișierul nu se atașează. Se vede
-                                    cine a deschis și când.
+                                    cine a deschis și când, iar după zilele puse
+                                    mai sus legătura nu mai deschide nimic.
                                 </p>
                                 {contract.shares.length > 0 && (
                                     <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">

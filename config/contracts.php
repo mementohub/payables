@@ -60,6 +60,9 @@ return [
      * Partenerul e totdeauna cealaltă parte; ce seamănă cu numele casei nu e
      * niciodată partener, oricât ar umbla apostroful sau forma juridică.
      */
+    /** Cât ține legătura trimisă pe mail, dacă nu se spune altfel. */
+    'share_days' => (int) env('CONTRACTS_SHARE_DAYS', 15),
+
     'house_names' => [
         'Christian Tour',
         'Christian 76 Tour',

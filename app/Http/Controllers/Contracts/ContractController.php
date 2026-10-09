@@ -337,7 +337,9 @@ class ContractController extends Controller
                 'email' => $email,
                 'permission' => $validated['permission'],
                 'token' => Str::random(48),
-                'expires_at' => isset($validated['days']) ? now()->addDays((int) $validated['days']) : null,
+                // Nespus, legătura ține cât spune configurarea: destul cât să
+                // apuce omul s-o deschidă, nu cât să rămână uitată.
+                'expires_at' => now()->addDays((int) ($validated['days'] ?? config('contracts.share_days', 15))),
                 'created_by_id' => $request->user()?->id,
             ]);
 
