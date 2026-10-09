@@ -5,6 +5,7 @@ namespace App\Services\Contracts;
 use App\Ai\Agents\ContractAnalyst;
 use App\Models\Contract;
 use App\Models\ContractFile;
+use App\Services\Ai\Meter;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -32,41 +33,51 @@ class ContractAnswer
      */
     private const BUDGET = 60000;
 
-    public function __construct(private ContractAsk $ask) {}
+    public function __construct(private ContractAsk $ask, private Meter $meter) {}
 
     /**
-     * @return array{question: string, answer: ?string, answers: list<array>, searched: bool, by: string}
+     * @return array{question: string, answer: ?string, answers: list<array>, searched: bool, by: string, cost: ?array}
      */
     public function answer(Contract $contract, string $question): array
     {
         $found = $this->ask->ask($contract, $question);
 
         if (! $found['searched'] || ! $this->on()) {
-            return [...$found, 'answer' => null, 'by' => 'search'];
+            return $this->plain($found);
         }
 
         $text = $this->text($contract, $found['answers']);
 
         if ($text === '') {
-            return [...$found, 'answer' => null, 'by' => 'search'];
+            return $this->plain($found);
         }
 
         try {
-            $said = ContractAnalyst::make()
-                ->prompt($this->prompt($contract, $text, $question))
-                ->text;
+            $response = ContractAnalyst::make()->prompt($this->prompt($contract, $text, $question));
         } catch (Throwable $e) {
             // Agentul e un spor, nu o condiție: dacă tace, rămân clauzele.
             Log::warning('Contract '.$contract->number.': agentul n-a răspuns — '.$e->getMessage());
 
-            return [...$found, 'answer' => null, 'by' => 'search'];
+            return $this->plain($found);
         }
 
-        $said = trim($said);
+        $said = trim($response->text);
+        $cost = $this->meter->record(ContractAnalyst::class, $response, $contract->id);
 
         return $said === ''
-            ? [...$found, 'answer' => null, 'by' => 'search']
-            : [...$found, 'answer' => $said, 'by' => 'ai'];
+            ? $this->plain($found)
+            : [...$found, 'answer' => $said, 'by' => 'ai', 'cost' => $cost];
+    }
+
+    /**
+     * Răspunsul fără agent: clauzele găsite, fără cost, fiindcă n-a plecat
+     * nimic nicăieri.
+     *
+     * @param  array{question: string, answers: list<array>, searched: bool}  $found
+     */
+    private function plain(array $found): array
+    {
+        return [...$found, 'answer' => null, 'by' => 'search', 'cost' => null];
     }
 
     private function on(): bool

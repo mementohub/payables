@@ -9,7 +9,9 @@ use App\Models\ContractFile;
 use App\Models\Partner;
 use App\Services\Contracts\ContractFields;
 use App\Services\Contracts\ContractReader;
+use App\Services\Contracts\ScribeFields;
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
@@ -29,9 +31,24 @@ class ReadContractFile implements ShouldQueue
 
     public int $tries = 2;
 
-    public function __construct(public int $fileId) {}
+    /**
+     * @param  bool  $afresh  Citire din nou, peste ce-a pus tot mașina data
+     *                        trecută. Ce-a pus omul cu mâna rămâne neatins.
+     */
+    public function __construct(public int $fileId, public bool $afresh = false) {}
 
-    public function handle(ContractReader $reader, ContractFields $fields): void
+    /**
+     * Unde cele două citiri n-au căzut la învoială.
+     *
+     * Se trece în jurnal: când tiparul a văzut o dată, iar agentul alta, omul
+     * trebuie să afle — de obicei contractul însuși se contrazice, și atunci
+     * nu greșește nicio mașină, ci hârtia.
+     *
+     * @var array<string, array{tipare: string, agent: string}>
+     */
+    private array $disagreed = [];
+
+    public function handle(ContractReader $reader, ContractFields $fields, ScribeFields $scribe): void
     {
         $file = ContractFile::query()->with('contract')->find($this->fileId);
 
@@ -72,7 +89,10 @@ class ReadContractFile implements ShouldQueue
             ...Company::query()->pluck('name')->all(),
             ...(array) config('contracts.house_names', []),
         ];
-        $read = $fields->extract($result['text'], $houses);
+        $read = $this->merge(
+            $fields->extract($result['text'], $houses),
+            $scribe->extract($result['text'], $houses, $file->contract_id),
+        );
         $contract = $file->contract;
 
         if ($isAddendum) {
@@ -93,8 +113,19 @@ class ReadContractFile implements ShouldQueue
         ContractEvent::query()->create([
             'contract_id' => $contract->id,
             'type' => 'ocr_done',
-            'body' => sprintf('Citit cu %s: %d câmpuri propuse, %d puse în contract.', $result['engine'], count($read), count($filled)),
-            'payload' => ['file_id' => $file->id, 'filled' => $filled, 'unsure' => ContractFields::unsure($read)],
+            'body' => sprintf(
+                'Citit cu %s: %d câmpuri propuse, %d puse în contract.%s',
+                $result['engine'],
+                count($read),
+                count($filled),
+                $this->disagreed === [] ? '' : ' De verificat, fiindcă cele două citiri nu se potrivesc: '.implode(', ', array_keys($this->disagreed)).'.',
+            ),
+            'payload' => [
+                'file_id' => $file->id,
+                'filled' => $filled,
+                'unsure' => ContractFields::unsure($read),
+                'disagreed' => $this->disagreed,
+            ],
         ]);
     }
 
@@ -149,6 +180,75 @@ class ReadContractFile implements ShouldQueue
             : 'Spune '.implode(' · ', $says).'. Dacă așa e, schimbă datele contractului.';
     }
 
+    /** Câmpurile pe care le citește agentul, când ajunge să citească. */
+    private const SCRIBE = [
+        'partner_name', 'partner_tax_id', 'number', 'object', 'signed_at', 'expires_at',
+        'value', 'notice_days', 'payment_terms', 'governing_law', 'auto_renew',
+    ];
+
+    /**
+     * Ce-a citit agentul peste ce-au găsit tiparele.
+     *
+     * Agentul citește ca un om și prinde ce tiparele ratează: o durată spusă
+     * în cuvinte, un nume rupt de scaner pe două rânduri, un cod fiscal scris
+     * cu spații. Tot el știe și să tacă — lasă valoarea goală când prețul e pe
+     * zi, nu pe contract, acolo unde tiparul ar fi apucat primul număr văzut.
+     *
+     * De aceea, dacă s-a văzut că a citit documentul (a umplut câteva
+     * câmpuri), el hotărăște pe câmpurile lui, iar tăcerea lui înseamnă „nu
+     * scrie în contract”. Dacă n-a răspuns sau n-a priceput mare lucru, rămân
+     * tiparele, ca până acum.
+     *
+     * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $patterns
+     * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $agent
+     * @return array<string, array{value: mixed, confidence: float, source: ?string}>
+     */
+    private function merge(array $patterns, array $agent): array
+    {
+        foreach ($agent as $name => $field) {
+            $old = $patterns[$name] ?? null;
+
+            if ($old !== null && $this->flat($old['value']) !== $this->flat($field['value'])) {
+                $this->disagreed[$name] = ['tipare' => $this->flat($old['value']), 'agent' => $this->flat($field['value'])];
+            }
+        }
+
+        if (count($agent) < 3) {
+            return [...$patterns, ...$agent];
+        }
+
+        foreach (self::SCRIBE as $name) {
+            unset($patterns[$name]);
+        }
+
+        return [...$patterns, ...$agent];
+    }
+
+    /**
+     * A rămas câmpul așa cum îl pusese mașina data trecută?
+     *
+     * Dacă da, e al ei și-l poate îndrepta. Dacă nu, l-a scris un om și nu se
+     * atinge, oricât de sigură ar fi ea pe citirea nouă.
+     */
+    private function untouched(mixed $current, mixed $before): bool
+    {
+        return $before !== null && $this->flat($current) === $this->flat($before);
+    }
+
+    /** Aceeași valoare scrisă în două feluri (dată, număr, text) ajunge la același șir. */
+    private function flat(mixed $value): string
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+
+        if (is_numeric($value)) {
+            return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+        }
+
+        return trim((string) $value);
+    }
+
     /**
      * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $read
      * @return array<string, mixed>
@@ -164,14 +264,18 @@ class ReadContractFile implements ShouldQueue
      */
     private function fill(Contract $contract, array $read): array
     {
-        $ocr = $contract->ocr_fields ?? [];
+        // Ce propusese mașina data trecută: la o recitire, numai peste asta
+        // se scrie. Ce-a schimbat omul se cunoaște tocmai fiindcă nu mai
+        // seamănă cu ce propusese ea.
+        $was = $contract->ocr_fields ?? [];
+        $ocr = $was;
         $filled = [];
 
         foreach ($read as $name => $field) {
             $ocr[$name] = ['confidence' => round($field['confidence'], 2), 'source' => $field['source'], 'value' => $field['value']];
         }
 
-        $set = function (string $column, mixed $value) use ($contract, &$filled): void {
+        $set = function (string $column, mixed $value, ?string $name = null) use ($contract, &$filled, $was): void {
             $current = $contract->{$column};
 
             // Linia de dinainte („—”) e locul gol cu care se naște contractul
@@ -180,8 +284,18 @@ class ReadContractFile implements ShouldQueue
                 $current = null;
             }
 
+            if ($value === null || $value === '') {
+                return;
+            }
+
             // Numai ce e gol: o corectură de om nu se mai mișcă de la locul ei.
-            if ($value === null || $value === '' || filled($current)) {
+            // La o recitire se mișcă și ce pusese tot mașina, dacă acum vede
+            // altceva — dar numai dacă de atunci n-a umblat nimeni la câmp.
+            if (filled($current) && ! ($this->afresh && $this->untouched($current, $was[$name ?? $column]['value'] ?? null))) {
+                return;
+            }
+
+            if ((string) $this->flat($current) === (string) $this->flat($value)) {
                 return;
             }
 
@@ -198,10 +312,17 @@ class ReadContractFile implements ShouldQueue
         $set('payment_terms', $read['payment_terms']['value'] ?? null);
         $set('governing_law', $read['governing_law']['value'] ?? null);
 
-        if (isset($read['value']['value']['amount']) && ! filled($contract->value)) {
-            $contract->value = $read['value']['value']['amount'];
-            $contract->currency = $read['value']['value']['currency'];
-            $filled[] = 'value';
+        if (isset($read['value']['value']['amount'])) {
+            $before = $was['value']['value']['amount'] ?? null;
+
+            if (! filled($contract->value) || ($this->afresh && $this->untouched($contract->value, $before))) {
+                if ((float) $contract->value !== (float) $read['value']['value']['amount']) {
+                    $filled[] = 'value';
+                }
+
+                $contract->value = $read['value']['value']['amount'];
+                $contract->currency = $read['value']['value']['currency'];
+            }
         }
 
         if (($read['auto_renew']['value'] ?? false) === true && ! $contract->auto_renew) {

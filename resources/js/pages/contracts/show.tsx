@@ -55,6 +55,16 @@ import type {
     OcrField,
 } from './types';
 
+/** Ce a costat o întrebare, și cât s-a strâns de la întâi ale lunii. */
+type Cost = {
+    lei: number | null;
+    usd: number | null;
+    tokens_in: number;
+    tokens_out: number;
+    model: string | null;
+    month_lei: number;
+};
+
 type Props = {
     can: { delete: boolean };
     /** Dacă întrebările trec pe la agent — adică dacă textul pleacă de pe server. */
@@ -66,6 +76,17 @@ type Props = {
 
 /** Cât ține, din capul locului, legătura trimisă pe mail. */
 const defaultShareDays = 15;
+
+/** Bani mărunți: patru zecimale la bănuți, două când e deja leu. */
+const lei = (value: number) =>
+    value < 0.1
+        ? value.toLocaleString('ro-RO', { maximumFractionDigits: 4 })
+        : value.toLocaleString('ro-RO', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+          });
+
+const bani = (value: number) => value.toLocaleString('ro-RO');
 
 const dmy = (value: string | null) =>
     value === null ? '—' : new Date(value).toLocaleDateString('ro-RO');
@@ -194,6 +215,7 @@ export default function ContractShow({
     const [question, setQuestion] = useState('');
     const [asking, setAsking] = useState(false);
     const [said, setSaid] = useState<string | null>(null);
+    const [cost, setCost] = useState<Cost | null>(null);
     const [answers, setAnswers] = useState<
         | { text: string; score: number; words: string[]; document: string }[]
         | null
@@ -226,9 +248,11 @@ export default function ContractShow({
 
             const data = await response.json();
             setSaid(data.answer ?? null);
+            setCost(data.cost ?? null);
             setAnswers(data.answers ?? []);
         } catch {
             setSaid(null);
+            setCost(null);
             setAnswers([]);
         } finally {
             setAsking(false);
@@ -1026,6 +1050,14 @@ export default function ContractShow({
                                 {said !== null && (
                                     <p className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm whitespace-pre-line">
                                         {said}
+                                    </p>
+                                )}
+
+                                {cost !== null && (
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        {cost.lei === null
+                                            ? `${bani(cost.tokens_in + cost.tokens_out)} token — prețul modelului ${cost.model ?? ''} nu e trecut în config`
+                                            : `Întrebarea asta: ${lei(cost.lei)} lei · ${bani(cost.tokens_in)} token citiți, ${bani(cost.tokens_out)} scriși · luna asta, cu tot cu ceilalți agenți: ${lei(cost.month_lei)} lei`}
                                     </p>
                                 )}
 

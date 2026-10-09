@@ -10,6 +10,7 @@ use App\Models\Partner;
 use App\Models\User;
 use App\Services\Contracts\ContractFields;
 use App\Services\Contracts\ContractReader;
+use App\Services\Contracts\ScribeFields;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -107,7 +108,7 @@ test('reading a file fills the contract, without touching what a person wrote', 
     ]);
     Storage::disk(config('contracts.disk'))->put('contracts/1/x.pdf', 'oricum e citit de mock');
 
-    app(ReadContractFile::class, ['fileId' => $file->id])->handle(app(ContractReader::class), app(ContractFields::class));
+    app(ReadContractFile::class, ['fileId' => $file->id])->handle(app(ContractReader::class), app(ContractFields::class), app(ScribeFields::class));
 
     $contract->refresh();
 
@@ -140,7 +141,7 @@ test('a file that cannot be read says so instead of inventing', function () {
         'contract_id' => $contract->id, 'path' => 'contracts/2/y.pdf', 'original_name' => 'y.pdf', 'hash' => 'def',
     ]);
 
-    app(ReadContractFile::class, ['fileId' => $file->id])->handle(app(ContractReader::class), app(ContractFields::class));
+    app(ReadContractFile::class, ['fileId' => $file->id])->handle(app(ContractReader::class), app(ContractFields::class), app(ScribeFields::class));
 
     expect($file->fresh()->ocr_status)->toBe(ContractFile::OCR_FAILED)
         ->and($file->fresh()->ocr_error)->toContain('tesseract')
@@ -293,7 +294,7 @@ test('a contract taken in is active from the day it was signed', function () {
     expect($contract->status)->toBe(Contract::STATUS_ACTIVE);
 
     app(ReadContractFile::class, ['fileId' => $contract->files()->first()->id])
-        ->handle(app(ContractReader::class), app(ContractFields::class));
+        ->handle(app(ContractReader::class), app(ContractFields::class), app(ScribeFields::class));
 
     $contract->refresh();
 
@@ -360,7 +361,7 @@ test('the number and the date of an addendum are read from it, not typed', funct
     ]);
 
     app(ReadContractFile::class, ['fileId' => $file->id])
-        ->handle(app(ContractReader::class), app(ContractFields::class));
+        ->handle(app(ContractReader::class), app(ContractFields::class), app(ScribeFields::class));
 
     $file->refresh();
 
