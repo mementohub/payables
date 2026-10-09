@@ -214,7 +214,11 @@ class ContractController extends Controller
             'currency' => ['nullable', 'string', 'size:3'],
             'signed_at' => ['nullable', 'date'],
             'starts_at' => ['nullable', 'date'],
-            'expires_at' => ['nullable', 'date', 'after_or_equal:signed_at'],
+            // Scadența dinaintea semnării e ciudată, dar se întâmplă: o dată
+            // citită greșit de mașină sau un document încheiat retroactiv. Dacă
+            // o refuzăm, omul nu mai poate salva nimic — nici măcar ca s-o
+            // îndrepte. O primim și i-o arătăm pe ecran.
+            'expires_at' => ['nullable', 'date'],
             'notice_days' => ['nullable', 'integer', 'between:0,3650'],
             'auto_renew' => ['nullable', 'boolean'],
             'payment_terms' => ['nullable', 'string', 'max:200'],

@@ -66,6 +66,30 @@ test('the same file uploaded again is a new version, not a second contract', fun
         ->and(ContractFile::query()->orderByDesc('version')->first()->version)->toBe(2);
 });
 
+test('a contract that expires before it was signed can still be corrected', function () {
+    // Așa vin unele documente din citire: o dată prinsă greșit. Dacă formularul
+    // refuză să salveze din cauza ei, omul rămâne și fără departament, și fără
+    // putința de a îndrepta data.
+    $department = Department::query()->whereNotNull('code')->first();
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0026', 'title' => 'Parenting', 'partner_name' => 'All About Parenting Systems S.R.L.',
+        'status' => Contract::STATUS_ACTIVE, 'signed_at' => '2025-09-01', 'expires_at' => '2025-04-30',
+        'created_by_id' => $this->keeper->id,
+    ]);
+
+    $this->actingAs($this->keeper)->put("/contracts/{$contract->id}", [
+        'title' => 'Parenting',
+        'partner_name' => 'All About Parenting Systems S.R.L.',
+        'kind' => 'supplier',
+        'department_id' => $department->id,
+        'signed_at' => '2025-09-01',
+        'expires_at' => '2025-04-30',
+        'status' => Contract::STATUS_ACTIVE,
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    expect($contract->refresh()->department_id)->toBe($department->id);
+});
+
 test('the data of a contract can be corrected, and the change is kept in the log', function () {
     $department = Department::query()->whereNotNull('code')->first();
     $contract = Contract::query()->create([

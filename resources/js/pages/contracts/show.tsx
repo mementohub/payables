@@ -330,6 +330,11 @@ export default function ContractShow({
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={save} className="grid gap-3">
+                                {Object.values(form.errors).length > 0 && (
+                                    <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                                        {Object.values(form.errors).join(' · ')}
+                                    </p>
+                                )}
                                 <div className="grid gap-1.5">
                                     <Label htmlFor="title">Titlu</Label>
                                     <Input
@@ -704,6 +709,18 @@ export default function ContractShow({
                                         }
                                     />
                                 </div>
+
+                                {form.data.expires_at !== '' &&
+                                    form.data.signed_at !== '' &&
+                                    form.data.expires_at <
+                                        form.data.signed_at && (
+                                        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                                            Expirarea e înaintea semnării. Se
+                                            salvează oricum, dar merită o
+                                            privire — de obicei e o dată citită
+                                            greșit din document.
+                                        </p>
+                                    )}
 
                                 <div className="flex items-center gap-3">
                                     <Button
