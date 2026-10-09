@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { FileSignature, Loader2, Search, Upload } from 'lucide-react';
+import { FileSignature, Loader2, Search, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import {
+    destroy as contractDestroy,
     index as contractsIndex,
     show as contractShow,
     store as contractsStore,
@@ -33,6 +34,7 @@ import { KIND_LABELS, STATUS_LABELS } from './types';
 import type { ContractRow } from './types';
 
 type Props = {
+    can: { delete: boolean };
     filters: Record<string, string | number | boolean | null>;
     contracts: {
         data: ContractRow[];
@@ -108,6 +110,7 @@ function StatusBadge({ status }: { status: ContractRow['status'] }) {
 }
 
 export default function ContractsIndex({
+    can,
     filters,
     contracts,
     summary,
@@ -209,6 +212,12 @@ export default function ContractsIndex({
                         </CardContent>
                     </Card>
                 </div>
+
+                {Object.values(upload.errors).length > 0 && (
+                    <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                        {Object.values(upload.errors).join(' · ')}
+                    </p>
+                )}
 
                 {missing.length > 0 && (
                     <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
@@ -401,11 +410,13 @@ export default function ContractsIndex({
                             type="file"
                             multiple
                             hidden
+                            accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg,.tif,.tiff,.webp,.heic"
                             onChange={(event) => send(event.target.files)}
                         />
                         <Button
                             onClick={() => uploader.current?.click()}
                             disabled={upload.processing}
+                            title="PDF, Word, scanări sau poze"
                         >
                             {upload.processing ? (
                                 <Loader2 className="size-4 animate-spin" />
@@ -432,13 +443,14 @@ export default function ContractsIndex({
                                     <TableHead>Semnat</TableHead>
                                     <TableHead>Expiră</TableHead>
                                     <TableHead>Stare</TableHead>
+                                    {can.delete && <TableHead />}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {contracts.data.length === 0 && (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={8}
+                                            colSpan={can.delete ? 9 : 8}
                                             className="py-10 text-center text-muted-foreground"
                                         >
                                             <FileSignature className="mx-auto mb-2 size-6 opacity-40" />
@@ -501,6 +513,34 @@ export default function ContractsIndex({
                                         <TableCell>
                                             <StatusBadge status={row.status} />
                                         </TableCell>
+                                        {can.delete && (
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-7 text-muted-foreground hover:text-red-600"
+                                                    title="Șterge contractul"
+                                                    onClick={() => {
+                                                        if (
+                                                            window.confirm(
+                                                                `Ștergi ${row.number} cu totul, împreună cu fișierele lui?`,
+                                                            )
+                                                        ) {
+                                                            router.delete(
+                                                                contractDestroy(
+                                                                    row.id,
+                                                                ).url,
+                                                                {
+                                                                    preserveScroll: true,
+                                                                },
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="size-4" />
+                                                </Button>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>

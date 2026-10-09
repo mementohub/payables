@@ -34,6 +34,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ContractController extends Controller
 {
+    /**
+     * Ce feluri de fișiere se primesc.
+     *
+     * Se cere extensia, nu ghicitul MIME: un Word semnat cu poza semnăturii
+     * și cu ștampila vine, după server, când `application/msword`, când
+     * `application/octet-stream`, iar contractul era refuzat fără ca omul să
+     * afle de ce.
+     */
+    private const FORMATS = ['pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp', 'heic'];
+
     public function index(Request $request, ContractReader $reader): Response
     {
         $filters = $this->filters($request);
@@ -50,6 +60,7 @@ class ContractController extends Controller
             ->through(fn (Contract $contract) => $this->row($contract));
 
         return Inertia::render('contracts/index', [
+            'can' => ['delete' => (bool) $request->user()?->isAdmin()],
             'filters' => $filters,
             'contracts' => $contracts,
             'summary' => $this->summary(),
@@ -68,6 +79,7 @@ class ContractController extends Controller
         ]);
 
         return Inertia::render('contracts/show', [
+            'can' => ['delete' => (bool) $request->user()?->isAdmin()],
             'contract' => [
                 ...$this->row($contract),
                 'object' => $contract->object,
@@ -93,6 +105,9 @@ class ContractController extends Controller
                     'ocr_engine' => $file->ocr_engine,
                     'ocr_error' => $file->ocr_error,
                     'has_text' => $file->text !== null,
+                    // Un Word nu se deschide în browser; se arată textul citit
+                    // din el, atât cât încape într-o fereastră.
+                    'text' => $file->text !== null ? mb_substr($file->text, 0, 40000) : null,
                     'uploaded_by' => $file->uploadedBy?->name,
                     'uploaded_at' => $file->created_at?->toIso8601String(),
                 ])->values(),
@@ -123,9 +138,13 @@ class ContractController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if ($this->tooBig($request)) {
+            return $this->tooBigAnswer();
+        }
+
         $validated = $request->validate([
             'files' => ['required', 'array', 'min:1', 'max:20'],
-            'files.*' => ['file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'mimes:pdf,docx,doc,png,jpg,jpeg,tif,tiff,txt'],
+            'files.*' => ['file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
             'kind' => ['nullable', Rule::in(Contract::KINDS)],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
         ]);
@@ -192,8 +211,12 @@ class ContractController extends Controller
     /** O versiune nouă pe un contract care există deja. */
     public function addFile(Request $request, Contract $contract): RedirectResponse
     {
+        if ($this->tooBig($request)) {
+            return $this->tooBigAnswer();
+        }
+
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'mimes:pdf,docx,doc,png,jpg,jpeg,tif,tiff,txt'],
+            'file' => ['required', 'file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
             'label' => ['nullable', 'string', 'max:120'],
         ]);
 
@@ -213,7 +236,27 @@ class ContractController extends Controller
 
         $this->event($contract, $request->user(), 'downloaded', $file->original_name, ['file_id' => $file->id]);
 
-        return Storage::disk((string) config('contracts.disk', 'local'))->download($file->path, $file->original_name);
+        return Storage::disk((string) config('contracts.disk', 'contracts'))->download($file->path, $file->original_name);
+    }
+
+    /**
+     * Contractul, arătat în pagină, nu descărcat.
+     *
+     * Trimis cu „inline”, browserul îl deschide în fereastra de previzualizare;
+     * fișierul tot prin aplicație trece, deci dreptul se cere la fel ca la
+     * descărcare.
+     */
+    public function preview(Request $request, Contract $contract, ContractFile $file): StreamedResponse
+    {
+        if ($file->contract_id !== $contract->id) {
+            throw new AuthorizationException('Fișierul nu e al acestui contract.');
+        }
+
+        return Storage::disk((string) config('contracts.disk', 'contracts'))->response(
+            $file->path,
+            $file->original_name,
+            ['Content-Type' => $file->mime ?: 'application/octet-stream', 'Content-Disposition' => 'inline; filename="'.addslashes($file->original_name).'"'],
+        );
     }
 
     public function share(Request $request, Contract $contract): RedirectResponse
@@ -254,6 +297,34 @@ class ContractController extends Controller
         return back();
     }
 
+    /**
+     * Șterge contractul cu totul: rândurile și fișierele de pe disc.
+     *
+     * Numai administratorul, fiindcă nu e o arhivare — după ea nu mai e nimic
+     * de scos înapoi. Arhivarea rămâne pentru cazul obișnuit, când contractul
+     * s-a terminat, dar trebuie ținut minte.
+     */
+    public function destroy(Request $request, Contract $contract): RedirectResponse
+    {
+        if (! $request->user()?->isAdmin()) {
+            throw new AuthorizationException('Numai administratorul șterge contracte.');
+        }
+
+        $disk = Storage::disk((string) config('contracts.disk', 'contracts'));
+
+        foreach ($contract->files as $file) {
+            $disk->delete($file->path);
+        }
+
+        $disk->deleteDirectory(trim(trim((string) config('contracts.path', ''), '/').'/'.$contract->id, '/'));
+        $number = $contract->number;
+        $contract->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Contractul '.$number.' a fost șters cu totul.']);
+
+        return redirect()->route('contracts.index');
+    }
+
     public function archive(Request $request, Contract $contract): RedirectResponse
     {
         $archived = $contract->archived_at === null;
@@ -263,6 +334,43 @@ class ContractController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => $archived ? 'Contract arhivat.' : 'Contract scos din arhivă.']);
 
         return back();
+    }
+
+    /**
+     * Trimiterea a depășit cât primește PHP: atunci nu mai ajunge nimic la
+     * aplicație — nici fișierul, nici câmpurile — iar o validare obișnuită ar
+     * spune „câmp obligatoriu”, ceea ce nu ajută pe nimeni.
+     */
+    private function tooBig(Request $request): bool
+    {
+        $length = (int) $request->server('CONTENT_LENGTH', 0);
+        $limit = $this->bytes((string) ini_get('post_max_size'));
+
+        return $length > 0 && $limit > 0 && $length > $limit && $request->allFiles() === [];
+    }
+
+    private function tooBigAnswer(): RedirectResponse
+    {
+        Inertia::flash('toast', ['type' => 'error', 'message' => sprintf(
+            'Fișierul trece de cât primește serverul acum (%s). Spune-i administratorului să ridice limita, sau încarcă un fișier mai mic.',
+            ini_get('post_max_size'),
+        )]);
+
+        return back();
+    }
+
+    private function bytes(string $value): int
+    {
+        $value = trim($value);
+        $unit = mb_strtolower(mb_substr($value, -1));
+        $number = (int) $value;
+
+        return match ($unit) {
+            'g' => $number * 1024 ** 3,
+            'm' => $number * 1024 ** 2,
+            'k' => $number * 1024,
+            default => $number,
+        };
     }
 
     /**
@@ -375,6 +483,9 @@ class ContractController extends Controller
             'partner_name' => '—',
             'kind' => $validated['kind'] ?? Contract::KIND_SUPPLIER,
             'department_id' => $validated['department_id'] ?? null,
+            // Cine încarcă răspunde de contract până spune altcineva altfel:
+            // altfel repertoriul se umple de contracte ale nimănui.
+            'owner_id' => $user?->id,
             'status' => Contract::STATUS_DRAFT,
             'created_by_id' => $user?->id,
         ]);
@@ -383,7 +494,8 @@ class ContractController extends Controller
     private function attach(Contract $contract, mixed $upload, string $hash, ?User $user, ?string $label = null): void
     {
         $version = (int) ContractFile::query()->where('contract_id', $contract->id)->max('version') + 1;
-        $path = $upload->store(trim((string) config('contracts.path', 'contracts'), '/').'/'.$contract->id, (string) config('contracts.disk', 'local'));
+        $folder = trim((string) config('contracts.path', ''), '/');
+        $path = $upload->store(trim($folder.'/'.$contract->id, '/'), (string) config('contracts.disk', 'contracts'));
 
         $file = ContractFile::query()->create([
             'contract_id' => $contract->id,

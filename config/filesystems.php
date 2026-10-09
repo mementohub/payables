@@ -30,6 +30,21 @@ return [
 
     'disks' => [
 
+        /*
+         * Contractele nu pot sta în `storage` al aplicației: la fiecare punere
+         * pe server se face un director nou, iar fișierele de ieri rămân în
+         * cel vechi — aplicația le-ar pierde din ochi, iar lucrătorul din
+         * fundal n-ar mai găsi ce are de citit. Stau într-un loc al lor, lângă
+         * aplicație, dar în afara ei.
+         */
+        'contracts' => [
+            'driver' => 'local',
+            'root' => env('CONTRACTS_ROOT', env('HOME', '/home/ploi').'/payables-storage/contracts'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),

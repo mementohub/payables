@@ -82,7 +82,7 @@ test('what the machine is unsure about is named, so a person can look at it', fu
 });
 
 test('reading a file fills the contract, without touching what a person wrote', function () {
-    Storage::fake('local');
+    Storage::fake(config('contracts.disk'));
     Company::factory()->create(['name' => 'Christian Tour']);
     $partner = Partner::factory()->create(['name' => 'Memento Air Srl', 'cui' => 'RO38765432']);
 
@@ -103,7 +103,7 @@ test('reading a file fills the contract, without touching what a person wrote', 
     $file = ContractFile::query()->create([
         'contract_id' => $contract->id, 'path' => 'contracts/1/x.pdf', 'original_name' => 'x.pdf', 'hash' => 'abc',
     ]);
-    Storage::disk('local')->put('contracts/1/x.pdf', 'oricum e citit de mock');
+    Storage::disk(config('contracts.disk'))->put('contracts/1/x.pdf', 'oricum e citit de mock');
 
     app(ReadContractFile::class, ['fileId' => $file->id])->handle(app(ContractReader::class), app(ContractFields::class));
 
@@ -124,7 +124,7 @@ test('reading a file fills the contract, without touching what a person wrote', 
 });
 
 test('a file that cannot be read says so instead of inventing', function () {
-    Storage::fake('local');
+    Storage::fake(config('contracts.disk'));
 
     $this->mock(ContractReader::class, function (MockInterface $mock) {
         $mock->shouldReceive('read')->andReturn([

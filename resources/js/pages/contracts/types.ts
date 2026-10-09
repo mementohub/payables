@@ -49,6 +49,8 @@ export type ContractFile = {
     ocr_engine: string | null;
     ocr_error: string | null;
     has_text: boolean;
+    /** Textul citit, pentru fișierele care nu se pot arăta în browser. */
+    text?: string | null;
     uploaded_by: string | null;
     uploaded_at: string | null;
 };

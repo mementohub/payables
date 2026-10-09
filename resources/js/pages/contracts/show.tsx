@@ -3,17 +3,25 @@ import {
     Archive,
     ArrowLeft,
     Download,
+    Eye,
     FileText,
     Loader2,
     Send,
+    Trash2,
     Upload,
 } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -27,6 +35,7 @@ import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import {
     archive as archiveRoute,
+    destroy as destroyRoute,
     index as contractsIndex,
     share as shareRoute,
     show as contractShow,
@@ -34,12 +43,18 @@ import {
 } from '@/routes/contracts';
 import {
     download as downloadRoute,
+    preview as previewRoute,
     store as fileStore,
 } from '@/routes/contracts/files';
 import { KIND_LABELS, STATUS_LABELS } from './types';
-import type { Contract, OcrField } from './types';
+import type {
+    Contract,
+    ContractFile as ContractFileRow,
+    OcrField,
+} from './types';
 
 type Props = {
+    can: { delete: boolean };
     contract: Contract;
     departments: { id: number; name: string }[];
     people: { id: number; name: string; email: string }[];
@@ -84,8 +99,15 @@ function Confidence({ field }: { field: OcrField | undefined }) {
     );
 }
 
-export default function ContractShow({ contract, departments, people }: Props) {
+export default function ContractShow({
+    can,
+    contract,
+    departments,
+    people,
+}: Props) {
     const uploader = useRef<HTMLInputElement>(null);
+    // Contractul se citește în fereastră, nu se descarcă de fiecare dată.
+    const [previewing, setPreviewing] = useState<ContractFileRow | null>(null);
 
     const form = useForm({
         title: contract.title,
@@ -212,6 +234,26 @@ export default function ContractShow({ contract, departments, people }: Props) {
                                 ? 'Scoate din arhivă'
                                 : 'Arhivează'}
                         </Button>
+                        {can.delete && (
+                            <Button
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 dark:text-red-400"
+                                onClick={() => {
+                                    if (
+                                        window.confirm(
+                                            `Ștergi contractul ${contract.number} cu totul, împreună cu fișierele lui? Nu se mai poate scoate înapoi.`,
+                                        )
+                                    ) {
+                                        router.delete(
+                                            destroyRoute(contract.id).url,
+                                        );
+                                    }
+                                }}
+                            >
+                                <Trash2 className="size-4" />
+                                Șterge
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -635,9 +677,16 @@ export default function ContractShow({ contract, departments, people }: Props) {
                                     >
                                         <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                                         <div className="min-w-0 flex-1">
-                                            <div className="truncate font-medium">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setPreviewing(file)
+                                                }
+                                                className="block w-full truncate text-left font-medium hover:underline"
+                                                title="Deschide contractul"
+                                            >
                                                 v{file.version} · {file.name}
-                                            </div>
+                                            </button>
                                             <div className="text-xs text-muted-foreground">
                                                 {Math.round(file.size / 1024)}{' '}
                                                 KB
@@ -660,7 +709,17 @@ export default function ContractShow({ contract, departments, people }: Props) {
                                             variant="ghost"
                                             size="icon"
                                             className="size-7"
+                                            onClick={() => setPreviewing(file)}
+                                            title="Vezi"
+                                        >
+                                            <Eye className="size-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-7"
                                             asChild
+                                            title="Descarcă"
                                         >
                                             <a
                                                 href={
@@ -790,6 +849,86 @@ export default function ContractShow({ contract, departments, people }: Props) {
                     </div>
                 </div>
             </div>
+
+            <Dialog
+                open={previewing !== null}
+                onOpenChange={(open) => !open && setPreviewing(null)}
+            >
+                <DialogContent className="flex h-[90vh] flex-col gap-3 sm:max-w-5xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-3 pr-8 text-base">
+                            <span className="truncate">{previewing?.name}</span>
+                            {previewing && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a
+                                        href={
+                                            downloadRoute({
+                                                contract: contract.id,
+                                                file: previewing.id,
+                                            }).url
+                                        }
+                                    >
+                                        <Download className="size-4" />
+                                        Descarcă
+                                    </a>
+                                </Button>
+                            )}
+                        </DialogTitle>
+                    </DialogHeader>
+                    {previewing && (
+                        <Preview contract={contract.id} file={previewing} />
+                    )}
+                </DialogContent>
+            </Dialog>
         </AppLayout>
+    );
+}
+
+/**
+ * Ce se poate arăta în fereastră: PDF-urile și pozele, pe loc. Un Word nu se
+ * poate deschide în browser, așa că se arată textul citit din el — tot ce
+ * trebuie ca să vezi despre ce e vorba fără să-l descarci.
+ */
+function Preview({
+    contract,
+    file,
+}: {
+    contract: number;
+    file: ContractFileRow;
+}) {
+    const url = previewRoute({ contract, file: file.id }).url;
+    const name = file.name.toLowerCase();
+
+    if (name.endsWith('.pdf')) {
+        return (
+            <iframe
+                src={url}
+                title={file.name}
+                className="min-h-0 flex-1 rounded-md border"
+            />
+        );
+    }
+
+    if (/\.(png|jpe?g|gif|webp|tiff?)$/.test(name)) {
+        return (
+            <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 p-2">
+                <img src={url} alt={file.name} className="mx-auto" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border p-4">
+            {file.has_text ? (
+                <pre className="font-sans text-sm whitespace-pre-wrap">
+                    {file.text ?? ''}
+                </pre>
+            ) : (
+                <p className="text-sm text-muted-foreground">
+                    Fișierul nu se poate arăta în browser și n-are încă text
+                    citit. Descarcă-l ca să-l vezi.
+                </p>
+            )}
+        </div>
     );
 }

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
-    Storage::fake('local');
+    Storage::fake(config('contracts.disk'));
     Queue::fake();
 
     $this->keeper = User::factory()->withRoles('contract_management')->create();
@@ -42,9 +42,11 @@ test('an uploaded file becomes a contract, with its number, and goes off to be r
         ->and($contract->status)->toBe(Contract::STATUS_DRAFT)
         ->and($contract->files()->count())->toBe(1)
         ->and($contract->files()->first()->version)->toBe(1)
+        // Cine l-a încărcat răspunde de el, până îl trece altcuiva.
+        ->and($contract->owner_id)->toBe($this->keeper->id)
         ->and($contract->events()->where('type', 'uploaded')->exists())->toBeTrue();
 
-    Storage::disk('local')->assertExists($contract->files()->first()->path);
+    Storage::disk(config('contracts.disk'))->assertExists($contract->files()->first()->path);
     Queue::assertPushed(ReadContractFile::class);
 });
 
@@ -150,4 +152,45 @@ test('a signed contract past its term reads as expired, whatever the column says
 
     expect($contract->state())->toBe(Contract::STATUS_EXPIRED)
         ->and($contract->daysLeft())->toBeLessThan(0);
+});
+
+test('only an admin wipes a contract, and its files go with it', function () {
+    $admin = User::factory()->withRoles(['contract_management', 'admin'])->create();
+
+    $this->actingAs($this->keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->create('de-sters.pdf', 40, 'application/pdf')]])
+        ->assertRedirect();
+
+    $contract = Contract::query()->firstOrFail();
+    $path = $contract->files()->first()->path;
+
+    // Cine ține repertoriul arhivează, dar nu șterge.
+    $this->actingAs($this->keeper)->delete("/contracts/{$contract->id}")->assertForbidden();
+    expect(Contract::query()->count())->toBe(1);
+
+    $this->actingAs($admin)->delete("/contracts/{$contract->id}")->assertRedirect('/contracts');
+
+    expect(Contract::query()->count())->toBe(0)
+        ->and(ContractFile::query()->count())->toBe(0);
+
+    Storage::disk(config('contracts.disk'))->assertMissing($path);
+});
+
+test('a Word contract signed with a picture is taken in, like any other', function () {
+    foreach (['contract.docx', 'contract semnat.doc', 'scan.jpg', 'anexa.rtf'] as $name) {
+        $this->actingAs($this->keeper)
+            ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent($name, 'conținutul lui '.$name)]])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+    }
+
+    expect(Contract::query()->count())->toBe(4);
+});
+
+test('a file in a format nobody can read is refused, with a reason', function () {
+    $this->actingAs($this->keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->create('virus.exe', 10)]])
+        ->assertSessionHasErrors('files.0');
+
+    expect(Contract::query()->count())->toBe(0);
 });

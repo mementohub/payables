@@ -38,7 +38,7 @@ class ReadContractFile implements ShouldQueue
             return;
         }
 
-        $disk = Storage::disk((string) config('contracts.disk', 'local'));
+        $disk = Storage::disk((string) config('contracts.disk', 'contracts'));
         $result = $reader->read($disk->path($file->path), $file->mime);
 
         $file->forceFill([

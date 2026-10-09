@@ -16,8 +16,9 @@
 
 return [
 
-    'disk' => env('CONTRACTS_DISK', 'local'),
-    'path' => env('CONTRACTS_PATH', 'contracts'),
+    'disk' => env('CONTRACTS_DISK', 'contracts'),
+    /** Sub rădăcina discului; gol, fiindcă discul e deja numai al lor. */
+    'path' => env('CONTRACTS_PATH', ''),
 
     /** Cât se primește la încărcare (MB). */
     'max_upload_mb' => (int) env('CONTRACTS_MAX_UPLOAD_MB', 50),
