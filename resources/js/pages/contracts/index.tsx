@@ -54,6 +54,8 @@ type Props = {
     partners: string[];
     /** Ce unelte de citire are serverul; fără ele, datele se pun cu mâna. */
     ocr: Record<string, boolean>;
+    /** Cât primește serverul acum, ca omul să afle înainte de a trimite. */
+    limits: { upload_mb: number; post: string; upload: string };
 };
 
 const lei = (value: number) =>
@@ -117,8 +119,12 @@ export default function ContractsIndex({
     departments,
     partners,
     ocr,
+    limits,
 }: Props) {
     const [search, setSearch] = useState(String(filters.search ?? ''));
+    // Fișierul prea mare se oprește aici, nu după ce a urcat degeaba: serverul
+    // web îl taie înainte să ajungă la aplicație, iar omul n-ar afla de ce.
+    const [refused, setRefused] = useState<string | null>(null);
     const uploader = useRef<HTMLInputElement>(null);
     const upload = useForm<{ files: File[] }>({ files: [] });
 
@@ -139,7 +145,20 @@ export default function ContractsIndex({
             return;
         }
 
-        upload.setData('files', Array.from(files));
+        const chosen = Array.from(files);
+        const cap = limits.upload_mb * 1024 * 1024;
+        const heavy = chosen.filter((file) => file.size > cap);
+
+        if (heavy.length > 0) {
+            setRefused(
+                `${heavy.map((file) => `${file.name} (${Math.round(file.size / 1024 / 1024)} MB)`).join(', ')} — serverul primește acum cel mult ${limits.upload_mb} MB. Ridică limita din panoul de găzduire.`,
+            );
+
+            return;
+        }
+
+        setRefused(null);
+        upload.setData('files', chosen);
         upload.post(contractsStore().url, {
             forceFormData: true,
             preserveScroll: true,
@@ -212,6 +231,12 @@ export default function ContractsIndex({
                         </CardContent>
                     </Card>
                 </div>
+
+                {refused !== null && (
+                    <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                        {refused}
+                    </p>
+                )}
 
                 {Object.values(upload.errors).length > 0 && (
                     <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
@@ -425,6 +450,9 @@ export default function ContractsIndex({
                             )}
                             Încarcă contracte
                         </Button>
+                        <div className="mt-1 text-right text-xs text-muted-foreground">
+                            până la {limits.upload_mb} MB · PDF, Word, scanări
+                        </div>
                     </div>
                 </div>
 

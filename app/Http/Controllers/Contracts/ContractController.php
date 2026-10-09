@@ -67,6 +67,7 @@ class ContractController extends Controller
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name']),
             'partners' => (clone $query)->select('partner_name')->distinct()->orderBy('partner_name')->limit(300)->pluck('partner_name'),
             'ocr' => $reader->available(),
+            'limits' => $this->limits(),
         ]);
     }
 
@@ -337,6 +338,28 @@ class ContractController extends Controller
     }
 
     /**
+     * Cât primește serverul, pe bune: cea mai mică dintre limitele PHP.
+     *
+     * Serverul web are limita lui, pe care aplicația n-o poate citi; dacă e
+     * mai mică, fișierul e oprit înainte să ajungă aici, iar ecranul spune
+     * asta când se întâmplă.
+     *
+     * @return array{upload_mb: int, post: string, upload: string}
+     */
+    private function limits(): array
+    {
+        $post = $this->bytes((string) ini_get('post_max_size'));
+        $upload = $this->bytes((string) ini_get('upload_max_filesize'));
+        $smallest = min(array_filter([$post, $upload, (int) config('contracts.max_upload_mb', 50) * 1024 ** 2]));
+
+        return [
+            'upload_mb' => (int) floor($smallest / 1024 ** 2),
+            'post' => (string) ini_get('post_max_size'),
+            'upload' => (string) ini_get('upload_max_filesize'),
+        ];
+    }
+
+    /**
      * Trimiterea a depășit cât primește PHP: atunci nu mai ajunge nimic la
      * aplicație — nici fișierul, nici câmpurile — iar o validare obișnuită ar
      * spune „câmp obligatoriu”, ceea ce nu ajută pe nimeni.
@@ -346,13 +369,20 @@ class ContractController extends Controller
         $length = (int) $request->server('CONTENT_LENGTH', 0);
         $limit = $this->bytes((string) ini_get('post_max_size'));
 
-        return $length > 0 && $limit > 0 && $length > $limit && $request->allFiles() === [];
+        // Trimitere grea, dar niciun fișier ajuns: PHP a aruncat tot ce era în
+        // ea, fiindcă trecea de limita lui. O validare obișnuită ar spune
+        // „câmp obligatoriu”, ceea ce nu lămurește pe nimeni.
+        if ($request->allFiles() !== []) {
+            return false;
+        }
+
+        return $length > 0 && ($limit <= 0 || $length > $limit || $length > 1024 * 512);
     }
 
     private function tooBigAnswer(): RedirectResponse
     {
         Inertia::flash('toast', ['type' => 'error', 'message' => sprintf(
-            'Fișierul trece de cât primește serverul acum (%s). Spune-i administratorului să ridice limita, sau încarcă un fișier mai mic.',
+            'Fișierul trece de cât primește serverul acum (%s). Ridică limita din panoul de găzduire sau încarcă un fișier mai mic.',
             ini_get('post_max_size'),
         )]);
 

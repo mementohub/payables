@@ -194,3 +194,23 @@ test('a file in a format nobody can read is refused, with a reason', function ()
 
     expect(Contract::query()->count())->toBe(0);
 });
+
+test('a submission that arrives without its files says why, not "field required"', function () {
+    // Trimiterea ajunge cu greutate, dar fără niciun fișier: PHP le-a aruncat
+    // pe drum. „Câmpul files este obligatoriu” n-ar lămuri pe nimeni.
+    $this->actingAs($this->keeper)
+        ->withServerVariables(['CONTENT_LENGTH' => 1024 * 1024])
+        ->post('/contracts', [])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect(Contract::query()->count())->toBe(0);
+});
+
+test('the page says how much the server takes, before anyone tries', function () {
+    $limits = $this->actingAs($this->keeper)->get('/contracts')
+        ->viewData('page')['props']['limits'];
+
+    expect($limits['upload_mb'])->toBeGreaterThan(0)
+        ->and($limits['post'])->not->toBeEmpty();
+});
