@@ -9,6 +9,7 @@ use App\Models\ContractFile;
 use App\Models\Partner;
 use App\Services\Contracts\ContractFields;
 use App\Services\Contracts\ContractReader;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
@@ -62,12 +63,29 @@ class ReadContractFile implements ShouldQueue
 
         // Numele companiilor noastre, ca să nu le ia drept partener: cele din
         // aplicație plus felurile scrise în config.
+        // Un act adițional nu completează datele contractului: el le schimbă, iar
+        // ce schimbă hotărăște omul. Se citește, se poate căuta în el, iar ce a
+        // găsit mașina se scrie în jurnal, ca propunere.
+        $isAddendum = in_array($file->kind, [ContractFile::KIND_ADDENDUM, ContractFile::KIND_ANNEX], true);
+
         $houses = [
             ...Company::query()->pluck('name')->all(),
             ...(array) config('contracts.house_names', []),
         ];
         $read = $fields->extract($result['text'], $houses);
         $contract = $file->contract;
+
+        if ($isAddendum) {
+            ContractEvent::query()->create([
+                'contract_id' => $contract->id,
+                'type' => 'ocr_done',
+                'body' => sprintf('%s citit cu %s. %s', $file->title(), $result['engine'], $this->proposes($read)),
+                'payload' => ['file_id' => $file->id, 'kind' => $file->kind, 'read' => $this->plain($read)],
+            ]);
+
+            return;
+        }
+
         $filled = $this->fill($contract, $read);
 
         ContractEvent::query()->create([
@@ -76,6 +94,41 @@ class ReadContractFile implements ShouldQueue
             'body' => sprintf('Citit cu %s: %d câmpuri propuse, %d puse în contract.', $result['engine'], count($read), count($filled)),
             'payload' => ['file_id' => $file->id, 'filled' => $filled, 'unsure' => ContractFields::unsure($read)],
         ]);
+    }
+
+    /**
+     * Ce schimbă actul adițional, spus pe scurt în jurnal.
+     *
+     * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $read
+     */
+    private function proposes(array $read): string
+    {
+        $says = [];
+
+        if (isset($read['expires_at'])) {
+            $says[] = 'termen nou: '.CarbonImmutable::parse((string) $read['expires_at']['value'])->format('d.m.Y');
+        }
+
+        if (isset($read['value']['value']['amount'])) {
+            $says[] = 'valoare: '.number_format((float) $read['value']['value']['amount'], 2, ',', '.').' '.$read['value']['value']['currency'];
+        }
+
+        if (isset($read['signed_at'])) {
+            $says[] = 'semnat: '.CarbonImmutable::parse((string) $read['signed_at']['value'])->format('d.m.Y');
+        }
+
+        return $says === []
+            ? 'Nu am găsit în el un termen sau o valoare nouă.'
+            : 'Spune '.implode(' · ', $says).'. Dacă așa e, schimbă datele contractului.';
+    }
+
+    /**
+     * @param  array<string, array{value: mixed, confidence: float, source: ?string}>  $read
+     * @return array<string, mixed>
+     */
+    private function plain(array $read): array
+    {
+        return array_map(fn (array $field) => $field['value'], $read);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Services\Contracts;
 
 use App\Models\Contract;
+use App\Models\ContractFile;
 
 /**
  * Întrebări punctuale despre un contract anume.
@@ -43,36 +44,52 @@ class ContractAsk
     ];
 
     /**
-     * @return array{question: string, answers: list<array{text: string, score: float, words: list<string>}>, searched: bool}
+     * @return array{question: string, answers: list<array{text: string, score: float, words: list<string>, document: string}>, searched: bool}
      */
     public function ask(Contract $contract, string $question): array
     {
-        $text = $this->text($contract);
-
-        if ($text === '') {
-            return ['question' => $question, 'answers' => [], 'searched' => false];
-        }
-
         $words = $this->words($question);
 
         if ($words === []) {
             return ['question' => $question, 'answers' => [], 'searched' => true];
         }
 
+        // Se caută în contract și în actele lui adiționale: ce s-a schimbat
+        // printr-un act adițional e tot atât de în vigoare ca textul de bază,
+        // iar cine întreabă nu trebuie să știe în care hârtie scrie.
+        $documents = $contract->files
+            ->filter(fn (ContractFile $file) => $file->text !== null)
+            ->sortBy(fn (ContractFile $file) => $file->kind === ContractFile::KIND_CONTRACT ? 0 : 1);
+
+        if ($documents->isEmpty()) {
+            return ['question' => $question, 'answers' => [], 'searched' => false];
+        }
+
         $scored = [];
 
-        foreach ($this->paragraphs($text) as $paragraph) {
-            $flat = $this->fold($paragraph);
-            $hits = array_values(array_filter($words, fn (string $word) => str_contains($flat, $word)));
+        foreach ($documents as $document) {
+            // Actul adițional bate contractul: el e cel care a schimbat ceva.
+            $weight = $document->kind === ContractFile::KIND_CONTRACT ? 1.0 : 1.15;
 
-            if ($hits === []) {
-                continue;
+            foreach ($this->paragraphs((string) $document->text) as $paragraph) {
+                $flat = $this->fold($paragraph);
+                $hits = array_values(array_filter($words, fn (string $word) => str_contains($flat, $word)));
+
+                if ($hits === []) {
+                    continue;
+                }
+
+                // Contează câte cuvinte ale întrebării se regăsesc, nu de câte
+                // ori: un paragraf care le atinge pe toate bate unul care
+                // repetă unul.
+                $score = (count($hits) / count($words) + min(0.3, mb_strlen($paragraph) / 4000)) * $weight;
+                $scored[] = [
+                    'text' => $paragraph,
+                    'score' => round($score, 3),
+                    'words' => $hits,
+                    'document' => $document->title(),
+                ];
             }
-
-            // Contează câte cuvinte ale întrebării se regăsesc, nu de câte ori:
-            // un paragraf care le atinge pe toate bate unul care repetă unul.
-            $score = count($hits) / count($words) + min(0.3, mb_strlen($paragraph) / 4000);
-            $scored[] = ['text' => $paragraph, 'score' => round($score, 3), 'words' => $hits];
         }
 
         usort($scored, fn (array $a, array $b) => $b['score'] <=> $a['score']);
@@ -82,12 +99,6 @@ class ContractAsk
             'answers' => array_slice($scored, 0, 5),
             'searched' => true,
         ];
-    }
-
-    /** Textul citit din ultima versiune a contractului. */
-    private function text(Contract $contract): string
-    {
-        return (string) ($contract->current()?->text ?? '');
     }
 
     /**

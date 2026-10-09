@@ -179,7 +179,8 @@ export default function ContractShow({
     const [question, setQuestion] = useState('');
     const [asking, setAsking] = useState(false);
     const [answers, setAnswers] = useState<
-        { text: string; score: number; words: string[] }[] | null
+        | { text: string; score: number; words: string[]; document: string }[]
+        | null
     >(null);
 
     const askContract = async (event: FormEvent) => {
@@ -732,11 +733,14 @@ export default function ContractShow({
                                                     setPreviewing(file)
                                                 }
                                                 className="block w-full truncate text-left font-medium hover:underline"
-                                                title="Deschide contractul"
+                                                title="Deschide documentul"
                                             >
-                                                v{file.version} · {file.name}
+                                                {file.title} · {file.name}
                                             </button>
                                             <div className="text-xs text-muted-foreground">
+                                                {file.signed_at
+                                                    ? `semnat ${new Date(file.signed_at).toLocaleDateString('ro-RO')} · `
+                                                    : ''}
                                                 {Math.round(file.size / 1024)}{' '}
                                                 KB
                                                 {file.pages
@@ -925,6 +929,9 @@ export default function ContractShow({
                                                 key={index}
                                                 className="rounded-md border bg-muted/30 p-2 text-sm"
                                             >
+                                                <div className="mb-1 text-xs text-muted-foreground">
+                                                    {answer.document}
+                                                </div>
                                                 {answer.text}
                                             </li>
                                         ))}

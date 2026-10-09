@@ -106,6 +106,10 @@ class ContractController extends Controller
                 'files' => $contract->files->map(fn (ContractFile $file) => [
                     'id' => $file->id,
                     'version' => $file->version,
+                    'kind' => $file->kind,
+                    'kind_label' => ContractFile::KIND_LABELS[$file->kind] ?? 'Document',
+                    'title' => $file->title(),
+                    'signed_at' => $file->signed_at?->toDateString(),
                     'label' => $file->label,
                     'name' => $file->original_name,
                     'size' => $file->size,
@@ -231,12 +235,28 @@ class ContractController extends Controller
         $validated = $request->validate([
             'file' => ['required', 'file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
             'label' => ['nullable', 'string', 'max:120'],
+            'kind' => ['nullable', Rule::in(ContractFile::KINDS)],
+            'signed_at' => ['nullable', 'date'],
         ]);
 
         $upload = $validated['file'];
-        $this->attach($contract, $upload, hash_file('sha256', $upload->getRealPath()), $request->user(), $validated['label'] ?? null);
+        $kind = $validated['kind'] ?? ContractFile::KIND_CONTRACT;
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Versiune nouă încărcată; se citește acum.']);
+        $file = $this->attach(
+            $contract,
+            $upload,
+            hash_file('sha256', $upload->getRealPath()),
+            $request->user(),
+            $validated['label'] ?? null,
+            $kind,
+            $validated['signed_at'] ?? null,
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => match ($kind) {
+            ContractFile::KIND_ADDENDUM => 'Act adițional încărcat; se citește acum.',
+            ContractFile::KIND_ANNEX => 'Anexă încărcată; se citește acum.',
+            default => 'Versiune nouă a contractului, încărcată; se citește acum.',
+        }]);
 
         return back();
     }
@@ -707,15 +727,28 @@ class ContractController extends Controller
         ]);
     }
 
-    private function attach(Contract $contract, mixed $upload, string $hash, ?User $user, ?string $label = null): void
-    {
-        $version = (int) ContractFile::query()->where('contract_id', $contract->id)->max('version') + 1;
+    private function attach(
+        Contract $contract,
+        mixed $upload,
+        string $hash,
+        ?User $user,
+        ?string $label = null,
+        string $kind = ContractFile::KIND_CONTRACT,
+        ?string $signedAt = null,
+    ): ContractFile {
+        // Numai contractul însuși are versiuni: un act adițional nu e „v2”, e
+        // alt document, care stă lângă el.
+        $version = $kind === ContractFile::KIND_CONTRACT
+            ? (int) ContractFile::query()->where('contract_id', $contract->id)->where('kind', ContractFile::KIND_CONTRACT)->max('version') + 1
+            : 1;
         $folder = trim((string) config('contracts.path', ''), '/');
         $path = $upload->store(trim($folder.'/'.$contract->id, '/'), (string) config('contracts.disk', 'contracts'));
 
         $file = ContractFile::query()->create([
             'contract_id' => $contract->id,
             'version' => $version,
+            'kind' => $kind,
+            'signed_at' => $signedAt,
             'label' => $label,
             'path' => $path,
             'original_name' => $upload->getClientOriginalName(),
@@ -726,9 +759,18 @@ class ContractController extends Controller
             'uploaded_by_id' => $user?->id,
         ]);
 
-        $this->event($contract, $user, $version === 1 ? 'uploaded' : 'version', $upload->getClientOriginalName(), ['file_id' => $file->id, 'version' => $version]);
+        $type = match (true) {
+            $kind === ContractFile::KIND_ADDENDUM => 'addendum',
+            $kind === ContractFile::KIND_ANNEX => 'annex',
+            $version === 1 => 'uploaded',
+            default => 'version',
+        };
+
+        $this->event($contract, $user, $type, $upload->getClientOriginalName(), ['file_id' => $file->id, 'version' => $version, 'kind' => $kind]);
 
         ReadContractFile::dispatch($file->id);
+
+        return $file;
     }
 
     private function number(): string

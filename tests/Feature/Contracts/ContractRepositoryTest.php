@@ -324,3 +324,66 @@ test('a contract sent to a colleague opens for him in the application too', func
 
     $this->actingAs($colleague)->get("/contracts/{$contract->id}")->assertOk();
 });
+
+test('an addendum sits beside the contract, it does not replace it', function () {
+    $this->actingAs($this->keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent('contract.pdf', 'contractul de bază')]])
+        ->assertRedirect();
+
+    $contract = Contract::query()->firstOrFail();
+
+    $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/files", [
+        'file' => UploadedFile::fake()->createWithContent('act aditional 1.pdf', 'actul adițional'),
+        'kind' => 'addendum',
+        'label' => 'nr. 1',
+        'signed_at' => '2027-01-15',
+    ])->assertRedirect();
+
+    $contract->refresh()->load('files');
+    $addendum = $contract->files->firstWhere('kind', ContractFile::KIND_ADDENDUM);
+
+    expect($contract->files)->toHaveCount(2)
+        // Contractul rămâne la versiunea lui: actul adițional nu e „v2”.
+        ->and($contract->current()->kind)->toBe(ContractFile::KIND_CONTRACT)
+        ->and($contract->current()->version)->toBe(1)
+        ->and($addendum->version)->toBe(1)
+        ->and($addendum->title())->toBe('Act adițional nr. 1')
+        ->and($addendum->signed_at?->toDateString())->toBe('2027-01-15')
+        ->and($contract->addenda())->toHaveCount(1)
+        ->and($contract->events()->where('type', 'addendum')->exists())->toBeTrue();
+
+    // O versiune nouă a contractului însuși se numerotează mai departe.
+    $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/files", [
+        'file' => UploadedFile::fake()->createWithContent('contract semnat.pdf', 'exemplarul semnat'),
+        'kind' => 'contract',
+    ])->assertRedirect();
+
+    expect($contract->fresh()->current()->version)->toBe(2);
+});
+
+test('a question looks in the addenda too, and says which paper answers it', function () {
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0050', 'title' => 'Prestări', 'partner_name' => 'BVB',
+        'created_by_id' => $this->keeper->id,
+    ]);
+
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_CONTRACT, 'version' => 1,
+        'path' => 'a.pdf', 'original_name' => 'contract.pdf', 'hash' => 'h1',
+        'text' => "3.1. Pretul serviciilor este de 1.000 EUR pe luna.\n\n3.2. Plata se face in 30 de zile.",
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_ADDENDUM, 'version' => 1, 'label' => 'nr. 1',
+        'path' => 'b.pdf', 'original_name' => 'act.pdf', 'hash' => 'h2', 'signed_at' => '2027-01-15',
+        'text' => '1. Incepand cu 01.02.2027, pretul serviciilor se majoreaza la 1.250 EUR pe luna.',
+    ]);
+
+    $answers = $this->actingAs($this->keeper)
+        ->postJson("/contracts/{$contract->id}/ask", ['question' => 'care este pretul serviciilor?'])
+        ->json('answers');
+
+    // Actul adițional răspunde primul: el a schimbat prețul.
+    expect($answers[0]['document'])->toBe('Act adițional nr. 1')
+        ->and($answers[0]['text'])->toContain('1.250')
+        ->and(collect($answers)->pluck('document')->all())->toContain('Contract v1');
+});

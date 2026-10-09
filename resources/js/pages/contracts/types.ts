@@ -41,6 +41,11 @@ export type OcrField = {
 export type ContractFile = {
     id: number;
     version: number;
+    /** Contractul însuși, un act adițional, o anexă sau alt document. */
+    kind: 'contract' | 'addendum' | 'annex' | 'other';
+    kind_label: string;
+    title: string;
+    signed_at: string | null;
     label: string | null;
     name: string;
     size: number;

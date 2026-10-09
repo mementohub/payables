@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 /**
  * Un contract din repertoriu.
@@ -96,12 +97,27 @@ class Contract extends Model
         return $this->hasMany(ContractEvent::class)->latest();
     }
 
-    /** Fișierul în vigoare: ultima versiune încărcată. */
+    /** Fișierul în vigoare: ultima versiune a contractului însuși. */
     public function current(): ?ContractFile
     {
-        return $this->relationLoaded('files')
-            ? $this->files->first()
-            : $this->files()->first();
+        $files = $this->relationLoaded('files') ? $this->files : $this->files()->get();
+
+        return $files->firstWhere('kind', ContractFile::KIND_CONTRACT) ?? $files->first();
+    }
+
+    /**
+     * Actele adiționale, cele mai noi întâi: ele schimbă contractul, deci se
+     * citesc odată cu el.
+     *
+     * @return Collection<int, ContractFile>
+     */
+    public function addenda(): Collection
+    {
+        $files = $this->relationLoaded('files') ? $this->files : $this->files()->get();
+
+        return $files->whereIn('kind', [ContractFile::KIND_ADDENDUM, ContractFile::KIND_ANNEX])
+            ->sortByDesc(fn (ContractFile $file) => $file->signed_at?->toDateString() ?? $file->created_at?->toDateString())
+            ->values();
     }
 
     /**
