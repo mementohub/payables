@@ -1,5 +1,14 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { FileSignature, Loader2, Search, Trash2, Upload } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowUp,
+    ArrowUpDown,
+    FileSignature,
+    Loader2,
+    Search,
+    Trash2,
+    Upload,
+} from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +44,10 @@ import type { ContractRow } from './types';
 
 type Props = {
     can: { delete: boolean; all: boolean };
-    filters: Record<string, string | number | boolean | null>;
+    filters: Record<string, string | number | boolean | null> & {
+        sort?: string | null;
+        dir?: string | null;
+    };
     contracts: {
         data: ContractRow[];
         links: { url: string | null; label: string; active: boolean }[];
@@ -111,6 +123,51 @@ function StatusBadge({ status }: { status: ContractRow['status'] }) {
     );
 }
 
+/**
+ * Capul unei coloane care se poate rândui: o apăsare suie, încă una coboară.
+ */
+function SortableHead({
+    column,
+    label,
+    filters,
+    onSort,
+    className,
+}: {
+    column: string;
+    label: string;
+    filters: Props['filters'];
+    onSort: (column: string, dir: 'asc' | 'desc') => void;
+    className?: string;
+}) {
+    const active = filters.sort === column;
+    const dir = active && filters.dir === 'desc' ? 'desc' : 'asc';
+    const Icon = !active ? ArrowUpDown : dir === 'asc' ? ArrowUp : ArrowDown;
+
+    return (
+        <TableHead className={className}>
+            <button
+                type="button"
+                onClick={() =>
+                    onSort(column, active && dir === 'asc' ? 'desc' : 'asc')
+                }
+                className={cn(
+                    'inline-flex items-center gap-1 hover:text-foreground',
+                    className?.includes('text-right') && 'flex-row-reverse',
+                    active && 'text-foreground',
+                )}
+            >
+                {label}
+                <Icon
+                    className={cn(
+                        'size-3.5',
+                        active ? 'opacity-90' : 'opacity-40',
+                    )}
+                />
+            </button>
+        </TableHead>
+    );
+}
+
 export default function ContractsIndex({
     can,
     filters,
@@ -134,6 +191,9 @@ export default function ContractsIndex({
             { ...filters, ...next },
             { preserveState: true, preserveScroll: true },
         );
+
+    const sortBy = (column: string, dir: 'asc' | 'desc') =>
+        go({ sort: column, dir });
 
     const submitSearch = (event: FormEvent) => {
         event.preventDefault();
@@ -470,16 +530,27 @@ export default function ContractsIndex({
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Număr</TableHead>
-                                    <TableHead>Partener</TableHead>
-                                    <TableHead>Obiect</TableHead>
-                                    <TableHead>Departament</TableHead>
-                                    <TableHead className="text-right">
-                                        Valoare
-                                    </TableHead>
-                                    <TableHead>Semnat</TableHead>
-                                    <TableHead>Expiră</TableHead>
-                                    <TableHead>Stare</TableHead>
+                                    {(
+                                        [
+                                            ['number', 'Număr', ''],
+                                            ['partner', 'Partener', ''],
+                                            ['object', 'Obiect', ''],
+                                            ['department', 'Departament', ''],
+                                            ['value', 'Valoare', 'text-right'],
+                                            ['signed', 'Semnat', ''],
+                                            ['expires', 'Expiră', ''],
+                                            ['status', 'Stare', ''],
+                                        ] as [string, string, string][]
+                                    ).map(([column, label, className]) => (
+                                        <SortableHead
+                                            key={column}
+                                            column={column}
+                                            label={label}
+                                            filters={filters}
+                                            onSort={sortBy}
+                                            className={className}
+                                        />
+                                    ))}
                                     {can.delete && <TableHead />}
                                 </TableRow>
                             </TableHeader>

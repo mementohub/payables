@@ -414,3 +414,30 @@ test('a whole stack of annexes goes up at once', function () {
         ->and($contract->current()->version)->toBe(1)
         ->and($contract->addenda())->toHaveCount(3);
 });
+
+test('the list can be ordered by any column it shows', function () {
+    $department = Department::query()->whereNotNull('code')->first();
+
+    Contract::query()->create(['number' => 'CTR-B', 'title' => 'Beta', 'partner_name' => 'Zodiac SRL', 'value' => 100, 'currency' => 'EUR', 'signed_at' => '2026-01-05', 'expires_at' => '2027-05-05', 'status' => 'active', 'created_by_id' => $this->keeper->id]);
+    Contract::query()->create(['number' => 'CTR-A', 'title' => 'Alfa', 'partner_name' => 'Alfa SRL', 'value' => 900, 'currency' => 'EUR', 'signed_at' => '2026-03-09', 'expires_at' => '2027-01-01', 'status' => 'draft', 'created_by_id' => $this->keeper->id, 'department_id' => $department->id]);
+    // Fără termen: stă la coadă, oricum ar fi rânduită lista.
+    Contract::query()->create(['number' => 'CTR-C', 'title' => 'Gama', 'partner_name' => 'Mamut SRL', 'status' => 'active', 'created_by_id' => $this->keeper->id]);
+
+    $order = fn (array $query) => collect(
+        $this->actingAs($this->keeper)->get('/contracts?'.http_build_query($query))
+            ->viewData('page')['props']['contracts']['data']
+    )->pluck('number')->all();
+
+    expect($order(['sort' => 'number', 'dir' => 'asc']))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        ->and($order(['sort' => 'number', 'dir' => 'desc']))->toBe(['CTR-C', 'CTR-B', 'CTR-A'])
+        ->and($order(['sort' => 'partner', 'dir' => 'asc']))->toBe(['CTR-A', 'CTR-C', 'CTR-B'])
+        ->and($order(['sort' => 'value', 'dir' => 'desc']))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        ->and($order(['sort' => 'signed', 'dir' => 'asc']))->toBe(['CTR-B', 'CTR-A', 'CTR-C'])
+        // Cel fără scadență rămâne ultimul, și la suit, și la coborât.
+        ->and($order(['sort' => 'expires', 'dir' => 'asc']))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        ->and($order(['sort' => 'expires', 'dir' => 'desc']))->toBe(['CTR-B', 'CTR-A', 'CTR-C'])
+        // Fără alegere, întâi ce expiră mai repede.
+        ->and($order([]))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        // Departamentul se rânduiește după nume, iar cei fără departament stau la coadă.
+        ->and($order(['sort' => 'department', 'dir' => 'asc'])[0])->toBe('CTR-A');
+});

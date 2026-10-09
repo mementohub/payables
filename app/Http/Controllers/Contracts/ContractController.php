@@ -49,17 +49,31 @@ class ContractController extends Controller
      */
     private const FORMATS = ['pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp', 'heic'];
 
+    /**
+     * După ce se poate rândui lista, și pe ce coloană din tabel cade fiecare.
+     *
+     * Departamentul se rânduiește după numele lui, nu după numărul din cheie:
+     * omul citește nume, nu chei.
+     */
+    private const SORTS = [
+        'number' => 'contracts.number',
+        'partner' => 'contracts.partner_name',
+        'object' => 'contracts.title',
+        'department' => 'departments.name',
+        'value' => 'contracts.value',
+        'signed' => 'contracts.signed_at',
+        'expires' => 'contracts.expires_at',
+        'status' => 'contracts.status',
+    ];
+
     public function index(Request $request, ContractReader $reader): Response
     {
         $filters = $this->filters($request);
         $query = $this->mine($request, $this->filtered($filters));
 
-        $contracts = (clone $query)
+        $contracts = $this->sorted((clone $query), $filters)
             ->with(['department:id,name', 'owner:id,name', 'partner:id,name'])
             ->withCount('files')
-            ->orderByRaw('case when expires_at is null then 1 else 0 end')
-            ->orderBy('expires_at')
-            ->orderByDesc('id')
             ->paginate(40)
             ->withQueryString()
             ->through(fn (Contract $contract) => $this->row($contract));
@@ -570,6 +584,39 @@ class ContractController extends Controller
     }
 
     /**
+     * Lista, rânduită după coloana apăsată.
+     *
+     * Fără alegerea omului, întâi ce expiră mai repede — asta caută cineva
+     * care deschide repertoriul. Contractele fără termen stau la coadă,
+     * oricare ar fi rânduiala: altfel ar ocupa primele rânduri degeaba.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function sorted(Builder $query, array $filters): Builder
+    {
+        $column = self::SORTS[$filters['sort'] ?? ''] ?? null;
+
+        if ($column === null) {
+            return $query
+                ->orderByRaw('case when contracts.expires_at is null then 1 else 0 end')
+                ->orderBy('contracts.expires_at')
+                ->orderByDesc('contracts.id');
+        }
+
+        $direction = ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
+        if ($column === 'departments.name') {
+            $query->leftJoin('departments', 'departments.id', '=', 'contracts.department_id')
+                ->select('contracts.*');
+        }
+
+        return $query
+            ->orderByRaw(sprintf('case when %s is null then 1 else 0 end', $column))
+            ->orderBy($column, $direction)
+            ->orderByDesc('contracts.id');
+    }
+
+    /**
      * Numai contractele omului, dacă n-are drept peste tot.
      *
      * „Ale lui” înseamnă cele aduse de el și cele date în grija lui: dacă un
@@ -665,6 +712,8 @@ class ContractController extends Controller
             'value_from' => $request->filled('value_from') ? (float) $request->string('value_from')->toString() : null,
             'value_to' => $request->filled('value_to') ? (float) $request->string('value_to')->toString() : null,
             'archived' => $request->boolean('archived'),
+            'sort' => array_key_exists($request->string('sort')->toString(), self::SORTS) ? $request->string('sort')->toString() : null,
+            'dir' => $request->string('dir')->toString() === 'desc' ? 'desc' : 'asc',
         ];
     }
 
