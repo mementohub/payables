@@ -40,7 +40,9 @@ class ContractAnalyst implements Agent
            atât: „În contract nu scrie nimic despre asta.” — și, dacă e cazul, arăți ce
            lucru apropiat scrie.
         2) Citezi. După răspuns, pui între ghilimele fraza din contract pe care te-ai
-           sprijinit, cu articolul ei dacă e numerotat (ex: „art. 7.2”).
+           sprijinit, cu articolul ei dacă e numerotat (ex: „art. 7.2”). Între ghilimele
+           intră NUMAI text copiat cuvânt cu cuvânt din ce ai primit — niciodată o frază
+           de-a ta. Dacă n-ai ce cita, nu citezi nimic.
         3) Dacă un act adițional a schimbat ceva, răspunzi după actul adițional și spui
            limpede că textul de bază a fost modificat și prin ce document.
         4) Dacă textul e tăiat sau citit prost de mașină (OCR) și din asta nu se înțelege
