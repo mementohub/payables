@@ -10,6 +10,7 @@ import { show as partnerShow } from '@/routes/partners';
 import { show as paymentRequestShow } from '@/routes/payment-requests';
 import { InvoiceTimeline } from './invoice-timeline';
 import { InvoiceWorkflowCard } from './invoice-workflow-card';
+import { FinalSuppliersCard } from './final-suppliers-card';
 import { SupplierHistoryCard } from './supplier-history-card';
 import type { Invoice, ShowProps } from './types';
 
@@ -227,7 +228,9 @@ export default function InvoiceShow({
                                                 row.account
                                                     ? `cont ${row.account}${row.analytic ? `.${row.analytic}` : ''}`
                                                     : null,
-                                                row.loc ? `loc ${row.loc}` : null,
+                                                row.loc
+                                                    ? `loc ${row.loc}`
+                                                    : null,
                                                 row.com_int
                                                     ? `ref. ${row.com_int}`
                                                     : null,
@@ -481,6 +484,10 @@ export default function InvoiceShow({
                                 </table>
                             </div>
                         </div>
+
+                        {invoice.sources && (
+                            <FinalSuppliersCard sources={invoice.sources} />
+                        )}
 
                         {isFurnizor && supplier && (
                             <SupplierHistoryCard

@@ -272,6 +272,7 @@ export default function InvoicesIndex({
     currentUser,
     departments,
     selectedPartner,
+    finalSuppliers,
 }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
     const [routing, setRouting] = useState<{
@@ -349,6 +350,7 @@ export default function InvoicesIndex({
         approval: filters.approval,
         department_id: filters.department_id,
         partner_id: filters.partner_id,
+        final_supplier: filters.final_supplier,
     };
 
     const btRequest = useMemo<BtPrepareRequest>(
@@ -493,6 +495,50 @@ export default function InvoicesIndex({
                                     className="min-h-11 sm:w-[260px]"
                                 />
                             </FilterField>
+                            {finalSuppliers.length > 0 && (
+                                <FilterField
+                                    label="Furnizor final"
+                                    active={!!filters.final_supplier}
+                                    onClear={() =>
+                                        applyFilter({ final_supplier: null })
+                                    }
+                                >
+                                    <Select
+                                        value={filters.final_supplier ?? 'all'}
+                                        onValueChange={(v) =>
+                                            applyFilter({
+                                                final_supplier:
+                                                    v === 'all' ? null : v,
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger
+                                            className={cn(
+                                                'min-h-11 w-full sm:w-[230px]',
+                                                filterTriggerClass(
+                                                    !!filters.final_supplier,
+                                                ),
+                                            )}
+                                            title="Cine stă, de fapt, în spatele facturilor refacturate de Memento Air, International sau M&L"
+                                        >
+                                            <SelectValue placeholder="Furnizor final" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">
+                                                Oricare
+                                            </SelectItem>
+                                            {finalSuppliers.map((one) => (
+                                                <SelectItem
+                                                    key={one.name}
+                                                    value={one.name}
+                                                >
+                                                    {one.name} ({one.invoices})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </FilterField>
+                            )}
                             <FilterField
                                 label="Aprobare"
                                 active={!!filters.approval}

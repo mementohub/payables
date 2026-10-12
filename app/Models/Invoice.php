@@ -140,6 +140,15 @@ class Invoice extends Model
         return $this->hasMany(InvoiceEvent::class)->where('type', InvoiceEvent::TYPE_COMMENTED);
     }
 
+    /**
+     * Furnizorii adevărați din spatele facturii, când ea vine de la o casă
+     * care refacturează. Cea mai mare parte stă prima.
+     */
+    public function sources(): HasMany
+    {
+        return $this->hasMany(InvoiceSource::class)->orderByDesc('val_lei');
+    }
+
     public function sourceCompany(): BelongsTo
     {
         return $this->belongsTo(Company::class, 'source_company_id');

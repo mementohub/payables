@@ -112,6 +112,8 @@ export type IndexFilters = {
     approval: string | null;
     department_id: number | null;
     partner_id: number | null;
+    /** Furnizorul adevărat din spatele facturilor refacturate. */
+    final_supplier: string | null;
 };
 
 export type CurrentUser = {
@@ -131,6 +133,8 @@ export type IndexProps = {
     currentUser: CurrentUser;
     departments: DepartmentRef[];
     selectedPartner: { id: number; name: string; cui: string | null } | null;
+    /** Furnizorii adevărați pe care îi avem găsiți, cei mai mari întâi. */
+    finalSuppliers: { name: string; lei: number; invoices: number }[];
 };
 
 export type Detail = {
@@ -220,6 +224,27 @@ export type Invoice = {
     workflow: Workflow;
     routing: RoutedLine[];
     timeline: TimelineEvent[];
+    /** Furnizorii adevărați, când factura vine de la o casă care refacturează. */
+    sources: FinalSuppliers | null;
+};
+
+/** Ce s-a găsit în baza casei care a refacturat. */
+export type FinalSuppliers = {
+    basis: 'order' | 'booking' | 'article';
+    basis_label: string | null;
+    /** Fals la charter: acolo suma e repartizată pe luna de zbor. */
+    exact: boolean;
+    net_lei: number;
+    covered: number;
+    suppliers: {
+        name: string;
+        tax_id: string | null;
+        lei: number;
+        share: number;
+        exact: boolean;
+        documents: string[];
+        references: string[];
+    }[];
 };
 
 /** Furnizorul facturii, cu ce a mai trimis până acum. */

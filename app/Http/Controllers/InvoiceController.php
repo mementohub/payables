@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceLineDepartment;
+use App\Models\InvoiceSource;
 use App\Models\Partner;
 use App\Models\PaymentRequest;
 use App\Models\User;
@@ -19,6 +20,7 @@ use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -70,7 +72,34 @@ class InvoiceController extends Controller
             'currentUser' => $this->currentUserContext($request),
             'departments' => Department::query()->whereNotNull('code')->orderBy('sort')->get(['id', 'name', 'group', 'parent_id']),
             'selectedPartner' => $filters['partner_id'] ? Partner::query()->whereKey($filters['partner_id'])->first(['id', 'name', 'cui']) : null,
+            // Furnizorii adevărați din spatele facturilor refacturate, pentru
+            // filtrul „arată-mi tot ce vine, în fond, de la Anima Wings”.
+            'finalSuppliers' => $this->finalSuppliers(),
         ]);
+    }
+
+    /**
+     * Furnizorii adevărați pe care îi avem deja găsiți, cei mai mari întâi.
+     *
+     * Lista se ține un sfert de oră în raft: se schimbă o dată pe zi, când
+     * trece căutarea, iar ecranul se deschide de sute de ori.
+     *
+     * @return list<array{name: string, lei: float, invoices: int}>
+     */
+    private function finalSuppliers(): array
+    {
+        return Cache::remember('invoices.final-suppliers', now()->addMinutes(15), fn () => InvoiceSource::query()
+            ->selectRaw('supplier_name as name, sum(val_lei) as lei, count(distinct invoice_id) as invoices')
+            ->groupBy('supplier_name')
+            ->orderByDesc('lei')
+            ->limit(200)
+            ->get()
+            ->map(fn ($row) => [
+                'name' => (string) $row->name,
+                'lei' => round((float) $row->lei, 2),
+                'invoices' => (int) $row->invoices,
+            ])
+            ->all());
     }
 
     private function export(Request $request, string $scope): StreamedResponse
@@ -152,6 +181,46 @@ class InvoiceController extends Controller
         return InvoiceListQuery::parseFilters($request);
     }
 
+    /**
+     * Furnizorii adevărați din spatele unei facturi refacturate, strânși pe
+     * nume și puși în ordinea banilor.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function sources(Invoice $invoice): ?array
+    {
+        if ($invoice->sources->isEmpty()) {
+            return null;
+        }
+
+        $net = ((float) $invoice->val_mon - (float) $invoice->val_mon_tva) * (float) ($invoice->curs ?: 1);
+
+        $suppliers = $invoice->sources
+            ->groupBy('supplier_name')
+            ->map(fn ($rows, $name) => [
+                'name' => $name,
+                'tax_id' => $rows->first()->supplier_tax_id,
+                'lei' => round($rows->sum('val_lei'), 2),
+                'share' => $net > 0 ? round($rows->sum('val_lei') / $net, 4) : 0,
+                'exact' => $rows->contains('exact', true),
+                'documents' => $rows->pluck('doc_ref')->filter()->unique()->take(4)->values(),
+                'references' => $rows->pluck('reference')->filter()->unique()->take(4)->values(),
+            ])
+            ->sortByDesc('lei')
+            ->values();
+
+        return [
+            'basis' => $invoice->sources->first()->basis,
+            'basis_label' => InvoiceSource::BASIS_LABELS[$invoice->sources->first()->basis] ?? null,
+            // La charter nu e o egalitate, ci o repartizare pe luna de zbor:
+            // se spune pe față, ca cine aprobă să știe ce citește.
+            'exact' => $invoice->sources->contains('exact', true),
+            'net_lei' => round($net, 2),
+            'covered' => $net > 0 ? round($invoice->sources->sum('val_lei') / $net, 4) : 0,
+            'suppliers' => $suppliers,
+        ];
+    }
+
     public function show(Request $request, Invoice $invoice): Response
     {
         $this->seeable($request, $invoice);
@@ -167,6 +236,7 @@ class InvoiceController extends Controller
             'events' => fn ($q) => $q->orderByDesc('created_at')->orderByDesc('id'),
             'events.user:id,name,email',
             'events.department:id,name',
+            'sources',
             'sourceCompany:id,name',
             'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
             'sourceInvoice.partner:id,name,cui',
@@ -241,6 +311,10 @@ class InvoiceController extends Controller
                         ] : null,
                     ];
                 }),
+                // Cine stă, de fapt, în spatele facturii, când ea vine de la o
+                // casă care refacturează. Se strâng pe furnizor: omul vrea să
+                // vadă companiile aeriene, nu fiecare zbor în parte.
+                'sources' => $this->sources($invoice),
                 'workflow' => $this->presenter->workflowPayload($invoice),
                 'routing' => $this->routingPayload($invoice),
                 'timeline' => $this->presenter->timelinePayload($invoice),

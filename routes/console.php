@@ -18,6 +18,16 @@ Schedule::command('erp:sync', ['--days' => (int) config('sync.window_days', 400)
     ->withoutOverlapping(180)
     ->runInBackground();
 Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping();
+
+/*
+ * Cine stă în spatele facturilor refacturate de Memento Air, International și
+ * M&L. Noaptea, după ce s-a adus ce e nou din ERP: interogările bat în bazele
+ * celorlalte case, iar acolo ziua se lucrează.
+ */
+Schedule::command('invoices:trace-suppliers', ['--months' => 3])
+    ->dailyAt('04:15')
+    ->withoutOverlapping(120)
+    ->runInBackground();
 // Raportul de trezorerie pleacă pe mail dimineața, după construirea de noapte.
 $cashFlowMail = Schedule::command('cashflow:mail')
     ->dailyAt((string) config('notifications.cash_flow.hour', '08:00'))
