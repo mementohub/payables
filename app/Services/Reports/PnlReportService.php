@@ -50,6 +50,12 @@ class PnlReportService
 
     public const MODES = [self::MODE_OPERATIONAL, self::MODE_FINANCIAL];
 
+    /** Rândul pe care stau cheltuielile trecute în avans, pe operațional. */
+    public const LINE_PARKED = '99100';
+
+    /** Și cel pe care se întorc din avans, când pleacă efectiv cursa. */
+    public const LINE_RELEASED = '99200';
+
     /** Contabilitatea statutară, așa cum e ținută în OMC. */
     public const BASIS_RAS = 'ras';
 
@@ -623,7 +629,19 @@ class PnlReportService
         $direct = 0.0;
         $unmapped = 0.0;
 
-        foreach ($report['lines'] as $line) {
+        /*
+         * Vederea operațională ia cheltuielile cu mutările în avans scoase pe
+         * rândurile lor: linia spune atunci cât s-a consumat în lună.
+         *
+         * Cea financiară le ia ca în registru, cont cu cont — ea trebuie să
+         * rămână oglinda situațiilor depuse, iar acolo cheltuiala chiar a
+         * plecat din lună. Totalul e același în amândouă.
+         */
+        $costLines = $mode === self::MODE_OPERATIONAL
+            ? ($report['lines_apart'] ?? $report['lines'])
+            : $report['lines'];
+
+        foreach ($costLines as $line) {
             $row = [
                 'saf' => $line['saf'],
                 'group' => $line['group'],
@@ -873,7 +891,7 @@ class PnlReportService
      *
      * @return array{saf: string, label: string, group: string, period: string, total: float, items: list<array<string, mixed>>, documents: list<array<string, mixed>>}
      */
-    public function costDetails(Company $company, int $year, string $saf, string $period, ?string $column = null, string $axis = 'channel', ?string $group = null, int $limit = 400): array
+    public function costDetails(Company $company, int $year, string $saf, string $period, ?string $column = null, string $axis = 'channel', ?string $group = null, int $limit = 400, string $mode = self::MODE_OPERATIONAL): array
     {
         $this->map->withOverrides(PnlCostOverride::query()->where('company_id', $company->getKey())->get());
 
@@ -885,10 +903,29 @@ class PnlReportService
         $byMonth = [];
         $total = 0.0;
 
+        // Rândurile mutărilor nu se nasc din hartă, ci din felul mișcării: ele
+        // adună documentele care duc cheltuiala în avans sau o aduc înapoi,
+        // oricare ar fi linia de care țin.
+        $kind = match ($saf) {
+            self::LINE_PARKED => 'in_avans',
+            self::LINE_RELEASED => 'din_avans',
+            default => null,
+        };
+
         foreach ($this->costs->details($company, $year, $months) as $row) {
             $line = $this->map->map($row['account'], $row['note'], $row['sediu'], $row['partner']);
 
-            if ($line['saf'] !== $saf) {
+            if ($kind !== null) {
+                if (($row['kind'] ?? 'consum') !== $kind) {
+                    continue;
+                }
+
+                $line = $this->map->lineFor($saf);
+            } elseif ($line['saf'] !== $saf) {
+                continue;
+            } elseif ($mode === self::MODE_OPERATIONAL && ($row['kind'] ?? 'consum') !== 'consum') {
+                // Pe operațional, mutarea a plecat pe rândul ei: dacă ar
+                // rămâne și aici, documentele n-ar mai aduna cât scrie în linie.
                 continue;
             }
 
@@ -1335,6 +1372,11 @@ class PnlReportService
         $payrollByMonthBranch = $this->payrollKey($company, $year, $netByMonthBranch);
 
         [$lines, $trip] = $this->allocate($costRows, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels, $payrollByMonthBranch);
+
+        // Aceleași cheltuieli, așezate altfel: cu mutările în avans scoase pe
+        // rândurile lor. Se face o dată, la construire, fiindcă vederea se
+        // alege abia la citire, iar raportul stă în raft gata făcut.
+        [$apart] = $this->allocate($costRows, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels, $payrollByMonthBranch, apart: true);
         $below = $this->allocateBelow($company, $year, $netByMonthChannel, $netByMonthChannelProduct, $netByMonthBranch, $netByChannel, $channels, $payrollByMonthBranch);
         $financial = [];
 
@@ -1372,6 +1414,8 @@ class PnlReportService
             // necontată se citește ca o lună slabă.
             'posting' => $this->posting($revenueMonths, $financial, $costRows),
             'lines' => $lines,
+            // Aceleași cheltuieli, cu mutările în avans pe rândurile lor.
+            'lines_apart' => $apart,
             'trip' => $trip,
             'below' => $below,
             'groups' => $this->map->groups(),
@@ -1609,7 +1653,12 @@ class PnlReportService
      * @param  list<string>  $channels
      * @return list<array<string, mixed>>
      */
-    private function allocate(array $costs, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels, array $payrollByMonthBranch = []): array
+    /**
+     * @param  bool  $apart  Mișcările către și dinspre cheltuieli în avans
+     *                       (471) se duc pe rândurile lor, nu în linia
+     *                       cheltuielii. Așa arată vederea operațională.
+     */
+    private function allocate(array $costs, array $netByMonthChannel, array $netByMonthChannelProduct, array $netByMonthBranch, array $netByChannel, array $channels, array $payrollByMonthBranch = [], bool $apart = false): array
     {
         $lines = [];
         $trip = ['months' => [], 'accounts' => []];
@@ -1629,6 +1678,15 @@ class PnlReportService
             if (($cost['force_product'] ?? null) !== null) {
                 $line['product'] = $cost['force_product'];
             }
+
+            // Pe vederea operațională, mutarea în avans nu e cheltuiala lunii:
+            // nu are ce căuta în linia ei. Se duce pe rândul mutărilor, iar
+            // linia rămâne cu ce s-a consumat cu adevărat. Totalul nu se
+            // schimbă, fiindcă rândul mutărilor intră în aceeași sumă.
+            if ($apart && ($cost['kind'] ?? 'consum') !== 'consum') {
+                $line = $this->map->lineFor($cost['kind'] === 'in_avans' ? self::LINE_PARKED : self::LINE_RELEASED);
+            }
+
             $saf = $line['saf'];
             $month = $cost['month'];
             $lei = $cost['lei'];

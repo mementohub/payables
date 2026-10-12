@@ -163,4 +163,19 @@ return [
         '26100' => 'Cheltuieli utilitati energie (Utilitati)',
         '26200' => 'Cheltuieli utilitati gaz (Utilitati)',
     ],
+
+    /*
+     | Mutările între cheltuială și cheltuieli în avans (471).
+     |
+     | Se arată numai pe vederea operațională, pe rândurile lor: acolo linia
+     | de cheltuială trebuie să spună cât s-a consumat în lună, nu cât a mai
+     | rămas după ce contabilitatea a mutat o parte în altă lună. Pe vederea
+     | financiară mișcările stau, ca în registru, în chiar linia cheltuielii —
+     | altfel raportul n-ar mai fi oglinda situațiilor depuse.
+     */
+    'Mutări în avans' => [
+        '99100' => 'Trecut în cheltuieli în avans (471)',
+        '99200' => 'Reluat din cheltuieli în avans (471)',
+    ],
+
 ];

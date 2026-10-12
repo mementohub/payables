@@ -56,6 +56,25 @@ class OmcPnlCostReader
         $tripSelect = $this->tripCostsEnabled() ? 'COALESCE(tr.share, 0)' : '0';
         $window = [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)];
 
+        /*
+         * Documentele care parchează cheltuială pe 471.
+         *
+         * Notele „Diverși furnizori” scot cheltuieli din conturile de clasa 6
+         * și le trec în avans, ca să fie recunoscute în luna în care pleacă
+         * efectiv cursa. Rândul scos are drept contrapartidă furnizorul, nu
+         * 471 — mutarea se vede numai la nivel de document.
+         */
+        $parked = sprintf(<<<'SQL'
+            LEFT JOIN (
+                SELECT data_doc, tip_doc, nr_doc
+                FROM reg_jurnal
+                WHERE conts_db LIKE '471%%'
+                  AND data_reg_jurnal >= '%s'::date AND data_reg_jurnal < '%s'::date
+                GROUP BY 1, 2, 3
+                HAVING SUM(valoare_lei) > 0
+            ) av ON (av.data_doc, av.tip_doc, av.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+            SQL, $window[0], $window[1]);
+
         $rows = $this->connection->connection($company)->select(<<<SQL
             SELECT BTRIM(j.conts_db) AS account,
                    COALESCE(BTRIM(j.eu_punct_lucru), '') AS sediu,
@@ -63,14 +82,20 @@ class OmcPnlCostReader
                    COALESCE(BTRIM(j.explicatie), '') AS note,
                    EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month,
                    {$tripSelect} AS trip_share,
+                   CASE
+                       WHEN j.conts_cr LIKE '471%' THEN 'din_avans'
+                       WHEN av.nr_doc IS NOT NULL THEN 'in_avans'
+                       ELSE 'consum'
+                   END AS kind,
                    SUM(j.valoare_lei)::numeric(20,2) AS lei
             FROM reg_jurnal j
             LEFT JOIN doc d ON (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
             {$tripJoin}
+            {$parked}
             WHERE j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
               AND j.conts_db LIKE '6%'
               {$excluded}
-            GROUP BY 1, 2, 3, 4, 5, 6
+            GROUP BY 1, 2, 3, 4, 5, 6, 7
             SQL,
             [...($this->tripCostsEnabled() ? $window : []), ...$window],
         );
@@ -82,6 +107,11 @@ class OmcPnlCostReader
             'note' => (string) $row->note,
             'month' => (int) $row->month,
             'trip_share' => round((float) $row->trip_share, 6),
+            // Ce fel de mișcare e: consumul lunii, o cheltuială trecută în
+            // avans sau una întoarsă din avans. Vederea operațională le arată
+            // pe rânduri deosebite; cea financiară le ține laolaltă, ca în
+            // registru.
+            'kind' => (string) $row->kind,
             'lei' => round((float) $row->lei, 2),
         ], $rows);
     }
@@ -219,6 +249,11 @@ class OmcPnlCostReader
                    j.data_reg_jurnal::date AS booked,
                    COALESCE(BTRIM(j.conts_cr), '') AS counterpart,
                    COALESCE(av.lei, 0) AS deferred,
+                   CASE
+                       WHEN j.conts_cr LIKE '471%' THEN 'din_avans'
+                       WHEN av.nr_doc IS NOT NULL THEN 'in_avans'
+                       ELSE 'consum'
+                   END AS kind,
                    {$tripSelect} AS trip_share,
                    COALESCE(BTRIM(d.moneda), '') AS currency,
                    COALESCE(d.curs, 1) AS rate,
@@ -240,7 +275,7 @@ class OmcPnlCostReader
               AND EXTRACT(MONTH FROM j.data_reg_jurnal)::int IN ({$monthList})
               AND j.conts_db LIKE '6%'
               {$excluded}
-            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23
+            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
             SQL,
             [...($this->tripCostsEnabled() ? $window : []), ...$window, ...$months],
         );
@@ -261,6 +296,7 @@ class OmcPnlCostReader
             // Cât a trecut documentul în cheltuieli în avans (471). Pe un rând
             // negativ, asta e perechea care lipsea.
             'deferred' => round((float) $row->deferred, 2),
+            'kind' => (string) $row->kind,
             // Cât din document e cost de cursă: partea aia nu e în linie.
             'trip_share' => round((float) $row->trip_share, 6),
             // Factura întreagă, pe lângă felia care a căzut pe linia asta:

@@ -90,6 +90,8 @@ export function useCostDetails(
     column: string | null = null,
     axis: 'channel' | 'product' | 'branch' = 'channel',
     item: string | null = null,
+    /** Vederea din care s-a apăsat: pe operațional, mutările stau deoparte. */
+    mode: string = 'operational',
 ) {
     const [loaded, setLoaded] = useState<{
         saf: string;
@@ -111,6 +113,7 @@ export function useCostDetails(
                 year: String(year),
                 saf,
                 period,
+                mode,
                 ...(column ? { column, axis } : {}),
                 ...(item ? { item } : {}),
             })}`,

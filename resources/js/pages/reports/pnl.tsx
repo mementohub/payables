@@ -750,6 +750,7 @@ export default function Pnl({
                         catalogue={lines}
                         axis={view}
                         products={report?.products ?? []}
+                        mode={filters.mode}
                         onClose={() => {
                             setDocumentsSaf(null);
                             setDocumentsItem(null);

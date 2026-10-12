@@ -70,6 +70,7 @@ export function CostDetailsSheet({
     catalogue,
     axis,
     products,
+    mode,
     onClose,
 }: {
     companyId: number;
@@ -81,6 +82,8 @@ export function CostDetailsSheet({
     /** Grupa apăsată („cont · sediu · partener”), dacă s-a cerut una. */
     item?: { key: string; label: string } | null;
     detailsAxis: 'channel' | 'product' | 'branch';
+    /** Vederea deschisă: documentele trebuie să adune cât scrie în linie. */
+    mode: string;
     catalogue: Record<string, { group: string; label: string }>;
     axis: 'channel' | 'product';
     products: string[];
@@ -97,6 +100,7 @@ export function CostDetailsSheet({
         column,
         detailsAxis,
         item?.key ?? null,
+        mode,
     );
 
     return (

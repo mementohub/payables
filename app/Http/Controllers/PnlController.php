@@ -149,6 +149,9 @@ class PnlController extends Controller
             'axis' => ['nullable', Rule::in(['channel', 'product', 'branch'])],
             // Grupa apăsată („cont · sediu · partener”): documentele ei.
             'item' => ['nullable', 'string', 'max:300'],
+            // Vederea din care s-a apăsat: pe operațional, mutările în avans
+            // stau pe rândurile lor, deci nu au ce căuta în linia cheltuielii.
+            'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
         ]);
 
         return $this->service->costDetails(
@@ -159,6 +162,7 @@ class PnlController extends Controller
             $validated['column'] ?? null,
             $validated['axis'] ?? 'channel',
             $validated['item'] ?? null,
+            mode: $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL,
         );
     }
 
