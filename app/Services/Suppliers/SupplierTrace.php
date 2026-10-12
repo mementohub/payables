@@ -110,8 +110,10 @@ class SupplierTrace
     {
         return collect($db->select(<<<'SQL'
             select trim(d.nr_doc) as nr_doc,
-                   nullif(regexp_replace(trim(coalesce(p.com_int, '')), '[^[:alnum:]]+$', ''), '') as com_int,
+                   nullif(trim(coalesce(p.com_int, '')), '') as com_int,
+                   nullif(regexp_replace(trim(coalesce(p.com_int, '')), '[^[:alnum:]]+$', ''), '') as com_int_bare,
                    nullif(trim(coalesce(p.articol, '')), '') as articol,
+                   nullif(trim(coalesce(p.articol, '')), '') as articol_bare,
                    to_char(d.data_doc, 'YYYY-MM') as month,
                    coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1) as lei
             from doc_poz p
@@ -292,7 +294,9 @@ class SupplierTrace
             return [];
         }
 
-        $keys = $keyed->pluck($field)->unique()->values();
+        $keys = $keyed->pluck($field)
+            ->merge($keyed->pluck($field.'_bare'))
+            ->filter()->unique()->values();
         $window = $this->window($basis, $from, $to);
         $buys = $this->purchases($db, $field, $keys, $basis, $window);
 
@@ -312,17 +316,30 @@ class SupplierTrace
                 continue;
             }
 
-            $total = (float) $own->sum('lei');
-
             foreach ($own as $line) {
+                // Întâi cheia așa cum e scrisă: dacă pe ea s-a cumpărat, aia
+                // e. Abia dacă nu găsește nimic se încearcă fără codița de la
+                // capăt — altfel am lipi la un loc rezervări care chiar sunt
+                // deosebite, și împărțirea ar ieși strâmbă.
                 $key = $this->key($basis, $line->{$field}, $line->month);
-                $found = $buys[$key] ?? null;
+                $found = $buys['raw'][$key] ?? null;
+                $total = $whole['raw'][$key] ?? 0.0;
 
-                if ($found === null || ($whole[$key] ?? 0.0) <= 0) {
+                if ($found === null) {
+                    $key = $this->key($basis, $line->{$field.'_bare'}, $line->month);
+                    $found = $buys['bare'][$key] ?? $buys['raw'][$key] ?? null;
+                    $total = $whole['bare'][$key] ?? 0.0;
+                }
+
+                if ($found === null || $total <= 0) {
                     continue;
                 }
 
-                $part = (float) $line->lei / $whole[$key];
+                // O linie nu poate lua mai mult decât toată cheltuiala cheii
+                // ei, nici în plus, nici în minus. Fără marginea asta, o
+                // vânzare mare pe un numitor mărunt scotea sume fără noimă,
+                // pe care baza oricum le refuza.
+                $part = max(-1.0, min(1.0, (float) $line->lei / $total));
 
                 foreach ($found as $buy) {
                     $lei = round((float) $buy->lei * $part, 2);
@@ -365,7 +382,7 @@ class SupplierTrace
 
         foreach ($keys->chunk(300) as $chunk) {
             $rows = $db->select(<<<SQL
-                select nullif({$column}, '') as key_value,
+                select nullif(trim(coalesce(p.{$field}, '')), '') as key_value,
                        to_char(d.data_doc, 'YYYY-MM') as month,
                        d.partener, max(pa.cod_cci) as cod_cci,
                        count(distinct d.tip_doc || ' ' || d.nr_doc) as docs,
@@ -385,11 +402,24 @@ class SupplierTrace
             SQL, [...$window, ...$chunk->values()->all(), self::OURS[0]]);
 
             foreach ($rows as $row) {
-                $found[$this->key($basis, $row->key_value, $row->month)][] = $row;
+                $key = $this->key($basis, $row->key_value, $row->month);
+                $bare = $this->key($basis, $this->bare((string) $row->key_value), $row->month);
+
+                $found['raw'][$key][] = $row;
+
+                if ($bare !== $key) {
+                    $found['bare'][$bare][] = $row;
+                }
             }
         }
 
         return $found;
+    }
+
+    /** Cheia fără semnele de la coadă. */
+    private function bare(string $value): string
+    {
+        return (string) preg_replace('~[^\p{L}\p{N}]+$~u', '', $value);
     }
 
     /**
@@ -422,7 +452,7 @@ class SupplierTrace
 
         foreach ($keys->chunk(300) as $chunk) {
             $rows = $db->select(<<<SQL
-                select nullif({$column}, '') as key_value,
+                select nullif(trim(coalesce(p.{$field}, '')), '') as key_value,
                        to_char(d.data_doc, 'YYYY-MM') as month,
                        sum(coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1)) as lei
                 from doc_poz p
@@ -436,7 +466,24 @@ class SupplierTrace
 
             foreach ($rows as $row) {
                 $key = $this->key($basis, $row->key_value, $row->month);
-                $totals[$key] = ($totals[$key] ?? 0) + (float) $row->lei;
+                $bare = $this->key($basis, $this->bare((string) $row->key_value), $row->month);
+
+                // Numai vânzările pozitive fac numitorul.
+                //
+                // O rezervare vândută și stornată are suma pe zero, iar
+                // împărțind la zero se pierdea legătura cu totul — în iunie,
+                // jumătate din facturi. Așa, vânzarea bună ia cheltuiala
+                // întreagă, iar stornarea o ia cu minus: exact ce s-a
+                // întâmplat.
+                if ((float) $row->lei <= 0) {
+                    continue;
+                }
+
+                $totals['raw'][$key] = ($totals['raw'][$key] ?? 0) + (float) $row->lei;
+                // Pe raftul curățat se adună toate felurile în care s-a scris
+                // aceeași rezervare: altfel numitorul ar fi mai mic decât
+                // întregul și bucățile ar primi prea mult.
+                $totals['bare'][$bare] = ($totals['bare'][$bare] ?? 0) + (float) $row->lei;
             }
         }
 
@@ -444,16 +491,16 @@ class SupplierTrace
     }
 
     /**
-     * Cheia, curățată de codița de la capăt.
+     * Coloana după care se caută, așa cum e scrisă.
      *
-     * Aceeași rezervare apare pe vânzare ca „1244079~” și pe cumpărare ca
-     * „1244079”: semnele puse la coadă sunt urme de la tastat, nu parte din
-     * număr. Dacă nu le-am șterge, cele două fețe ale aceleiași rezervări nu
-     * s-ar găsi niciodată.
+     * Curățarea codiței („1244079~” → „1244079”) nu se face aici, ci pe
+     * amândouă fețele în PHP: se caută întâi cheia întreagă și abia pe urmă
+     * cea curățată, ca să nu lipim la un loc rezervări care chiar sunt
+     * deosebite.
      */
     private function column(string $field): string
     {
-        return "regexp_replace(trim(coalesce(p.{$field}, '')), '[^[:alnum:]]+$', '')";
+        return "trim(coalesce(p.{$field}, ''))";
     }
 
     /** Rezervarea se potrivește oricând; articolul, numai în luna lui. */
