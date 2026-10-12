@@ -28,6 +28,17 @@ Schedule::command('invoices:trace-suppliers', ['--months' => 3])
     ->dailyAt('04:15')
     ->withoutOverlapping(120)
     ->runInBackground();
+
+/*
+ * Și o trecere largă, duminica: hotelul grecesc facturează uneori la câteva
+ * luni după ce sejurul s-a vândut, iar trecerea zilnică nu se mai uită atât
+ * de departe înapoi. Fără ea, cheltuiala venită târziu n-ar fi găsită
+ * niciodată.
+ */
+Schedule::command('invoices:trace-suppliers', ['--months' => 14])
+    ->weeklyOn(0, '02:00')
+    ->withoutOverlapping(600)
+    ->runInBackground();
 // Raportul de trezorerie pleacă pe mail dimineața, după construirea de noapte.
 $cashFlowMail = Schedule::command('cashflow:mail')
     ->dailyAt((string) config('notifications.cash_flow.hour', '08:00'))

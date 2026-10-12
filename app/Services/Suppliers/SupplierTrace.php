@@ -110,7 +110,7 @@ class SupplierTrace
     {
         return collect($db->select(<<<'SQL'
             select trim(d.nr_doc) as nr_doc,
-                   nullif(trim(coalesce(p.com_int, '')), '') as com_int,
+                   nullif(regexp_replace(trim(coalesce(p.com_int, '')), '[^[:alnum:]]+$', ''), '') as com_int,
                    nullif(trim(coalesce(p.articol, '')), '') as articol,
                    to_char(d.data_doc, 'YYYY-MM') as month,
                    coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1) as lei
@@ -360,12 +360,12 @@ class SupplierTrace
      */
     private function purchases(ConnectionInterface $db, string $field, Collection $keys, string $basis, array $window): array
     {
-        $column = $field === 'com_int' ? 'p.com_int' : 'p.articol';
+        $column = $this->column($field);
         $found = [];
 
         foreach ($keys->chunk(300) as $chunk) {
             $rows = $db->select(<<<SQL
-                select nullif(trim({$column}), '') as key_value,
+                select nullif({$column}, '') as key_value,
                        to_char(d.data_doc, 'YYYY-MM') as month,
                        d.partener, max(pa.cod_cci) as cod_cci,
                        count(distinct d.tip_doc || ' ' || d.nr_doc) as docs,
@@ -378,7 +378,7 @@ class SupplierTrace
                 left join partener pa on pa.partener = d.partener
                 where t.grupa = 'furnizor'
                   and d.data_doc between ? and ?
-                  and trim({$column}) in ({$this->marks($chunk)})
+                  and {$column} in ({$this->marks($chunk)})
                   and replace(upper(coalesce(pa.cod_cci, '')), 'RO', '') <> ?
                 group by 1, 2, d.partener
                 having sum(coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1)) <> 0
@@ -417,12 +417,12 @@ class SupplierTrace
      */
     private function salesTotals(ConnectionInterface $db, string $us, string $field, Collection $keys, string $basis, array $window): array
     {
-        $column = $field === 'com_int' ? 'p.com_int' : 'p.articol';
+        $column = $this->column($field);
         $totals = [];
 
         foreach ($keys->chunk(300) as $chunk) {
             $rows = $db->select(<<<SQL
-                select nullif(trim({$column}), '') as key_value,
+                select nullif({$column}, '') as key_value,
                        to_char(d.data_doc, 'YYYY-MM') as month,
                        sum(coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1)) as lei
                 from doc_poz p
@@ -430,7 +430,7 @@ class SupplierTrace
                 join tip_doc t on t.tip_doc = d.tip_doc
                 where d.partener = ? and t.grupa = 'client' and d.tip_doc <> 'FactINT'
                   and d.data_doc between ? and ?
-                  and trim({$column}) in ({$this->marks($chunk)})
+                  and {$column} in ({$this->marks($chunk)})
                 group by 1, 2
             SQL, [$us, ...$window, ...$chunk->values()->all()]);
 
@@ -441,6 +441,19 @@ class SupplierTrace
         }
 
         return $totals;
+    }
+
+    /**
+     * Cheia, curățată de codița de la capăt.
+     *
+     * Aceeași rezervare apare pe vânzare ca „1244079~” și pe cumpărare ca
+     * „1244079”: semnele puse la coadă sunt urme de la tastat, nu parte din
+     * număr. Dacă nu le-am șterge, cele două fețe ale aceleiași rezervări nu
+     * s-ar găsi niciodată.
+     */
+    private function column(string $field): string
+    {
+        return "regexp_replace(trim(coalesce(p.{$field}, '')), '[^[:alnum:]]+$', '')";
     }
 
     /** Rezervarea se potrivește oricând; articolul, numai în luna lui. */
