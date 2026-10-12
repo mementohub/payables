@@ -182,9 +182,9 @@ class SupplierTrace
                 }
 
                 foreach ($mix['suppliers'] as $supplier) {
-                    $share = ($part / $total) * ($supplier->lei / $mix['total']);
+                    $share = max(-999.0, min(999.0, ($part / $total) * ($supplier->lei / $mix['total'])));
 
-                    if ($share < 0.0005) {
+                    if (abs($share) < 0.0005) {
                         continue;
                     }
 
@@ -339,7 +339,7 @@ class SupplierTrace
                         'reference' => mb_substr((string) $line->{$field}, 0, 200),
                         'doc_ref' => $buy->docs > 1 ? $buy->docs.' documente' : mb_substr((string) $buy->doc_ref, 0, 160),
                         'doc_date' => $buy->docs > 1 ? null : $buy->doc_date,
-                        'share' => $total > 0 ? round($lei / max($this->lei($invoice), 0.01), 6) : 0,
+                        'share' => $this->share($lei, $this->lei($invoice)),
                         'val_lei' => $lei,
                         // Potrivirea e la document cât timp cheia e numai a
                         // acestei facturi; împărțită, rămâne o repartizare.
@@ -473,6 +473,23 @@ class SupplierTrace
         $net = (float) $invoice->val_mon - (float) $invoice->val_mon_tva;
 
         return round($net * (float) ($invoice->curs ?: 1), 2);
+    }
+
+    /**
+     * Cât din factură îi revine furnizorului, ca parte din întreg.
+     *
+     * O factură poate fi pe zero — o stornare care se închide singură, o
+     * corecție. Împărțind la ea, partea sărea la milioane și baza refuza
+     * rândul; mai bine o parte nespusă decât una fără noimă. Suma în lei
+     * rămâne oricum scrisă, și ea e ce contează.
+     */
+    private function share(float $lei, float $net): float
+    {
+        if (abs($net) < 1.0) {
+            return 0.0;
+        }
+
+        return round(max(-999.0, min(999.0, $lei / $net)), 6);
     }
 
     private function tax(?string $value): ?string

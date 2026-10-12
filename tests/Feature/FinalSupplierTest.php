@@ -69,6 +69,26 @@ test('an invoice with nothing behind it says nothing', function () {
         ->assertInertia(fn ($page) => $page->where('invoice.sources', null));
 });
 
+test('an invoice worth nothing gets a sum, but no share of it', function () {
+    // O stornare care se închide singură: împărțind la zero, partea sărea la
+    // milioane și baza refuza rândul cu totul.
+    $invoice = invoiceFrom($this->air, net: 0, vat: 0);
+
+    InvoiceSource::query()->create([
+        'invoice_id' => $invoice->id, 'supplier_name' => 'Anima Wings Aviation SA',
+        'basis' => 'booking', 'share' => 0, 'val_lei' => 530.10, 'exact' => true,
+    ]);
+
+    $this->actingAs($this->user)
+        ->get("/invoices/{$invoice->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('invoice.sources.suppliers.0.lei', fn ($lei) => (float) $lei === 530.10)
+            ->where('invoice.sources.suppliers.0.share', fn ($share) => (float) $share === 0.0)
+            ->where('invoice.sources.covered', fn ($covered) => (float) $covered === 0.0)
+        );
+});
+
 test('the list can be narrowed to what comes, in truth, from one supplier', function () {
     $mine = invoiceFrom($this->air);
     $hers = invoiceFrom($this->air);
