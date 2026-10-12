@@ -114,6 +114,55 @@ return [
             'sslmode' => env('DB_OMC_SSLMODE', 'prefer'),
         ],
 
+        /*
+         * Celelalte case din grup își țin contabilitatea în câte o bază OMC a
+         * lor. Aceleași chei ca la Christian Tour, cu numele casei în mijloc.
+         */
+        'omc_mem_air' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_OMC_MEM_AIR_URL'),
+            'host' => env('DB_OMC_MEM_AIR_HOST', '127.0.0.1'),
+            'port' => env('DB_OMC_MEM_AIR_PORT', '5432'),
+            'database' => env('DB_OMC_MEM_AIR_DATABASE', 'omc'),
+            'username' => env('DB_OMC_MEM_AIR_USERNAME', ''),
+            'password' => env('DB_OMC_MEM_AIR_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_OMC_MEM_AIR_SCHEMA', 'public'),
+            'sslmode' => env('DB_OMC_MEM_AIR_SSLMODE', 'prefer'),
+        ],
+
+        'omc_mem_int' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_OMC_MEM_INT_URL'),
+            'host' => env('DB_OMC_MEM_INT_HOST', '127.0.0.1'),
+            'port' => env('DB_OMC_MEM_INT_PORT', '5432'),
+            'database' => env('DB_OMC_MEM_INT_DATABASE', 'omc'),
+            'username' => env('DB_OMC_MEM_INT_USERNAME', ''),
+            'password' => env('DB_OMC_MEM_INT_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_OMC_MEM_INT_SCHEMA', 'public'),
+            'sslmode' => env('DB_OMC_MEM_INT_SSLMODE', 'prefer'),
+        ],
+
+        'omc_mem_log' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_OMC_MEM_LOG_URL'),
+            'host' => env('DB_OMC_MEM_LOG_HOST', '127.0.0.1'),
+            'port' => env('DB_OMC_MEM_LOG_PORT', '5432'),
+            'database' => env('DB_OMC_MEM_LOG_DATABASE', 'omc'),
+            'username' => env('DB_OMC_MEM_LOG_USERNAME', ''),
+            'password' => env('DB_OMC_MEM_LOG_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => env('DB_OMC_MEM_LOG_SCHEMA', 'public'),
+            'sslmode' => env('DB_OMC_MEM_LOG_SSLMODE', 'prefer'),
+        ],
+
         'etrip_vcz' => [
             'driver' => 'pgsql',
             'url' => env('DB_ETRIP_VCZ_URL'),
@@ -195,7 +244,10 @@ return [
     'status' => [
 
         'connections' => [
-            'omc' => 'OMC',
+            'omc' => 'OMC Christian Tour',
+            'omc_mem_air' => 'OMC Memento Air',
+            'omc_mem_int' => 'OMC Memento International',
+            'omc_mem_log' => 'OMC Memento Management & Logistics',
             'etrip_vcz' => 'eTrip Vacanza',
             'etrip_chr' => 'eTrip Christian Tour',
             'tina' => 'Tina',

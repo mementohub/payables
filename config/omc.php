@@ -21,6 +21,9 @@ return [
     */
     'connections' => [
         'omc' => 'OMC Christian Tour',
+        'omc_mem_air' => 'OMC Memento Air',
+        'omc_mem_int' => 'OMC Memento International',
+        'omc_mem_log' => 'OMC Memento Management & Logistics',
     ],
 
     /*
