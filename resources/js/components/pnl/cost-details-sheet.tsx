@@ -284,6 +284,21 @@ export function CostDetailsSheet({
                                             )}
                                         </dl>
 
+                                        {doc.lei < 0 && doc.deferred > 0 && (
+                                            <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                                                Minusul nu e o greșeală:
+                                                documentul mută cheltuiala în{' '}
+                                                <b>cheltuieli în avans (471)</b>{' '}
+                                                — {lei(doc.deferred)} lei pe tot
+                                                documentul — ca să fie
+                                                recunoscută în luna în care
+                                                pleacă efectiv cursele. Aici se
+                                                vede numai plecarea, fiindcă 471
+                                                e cont de bilanț, nu de
+                                                cheltuială.
+                                            </p>
+                                        )}
+
                                         {(doc.note || doc.observation) && (
                                             <p className="mt-2 text-xs text-muted-foreground">
                                                 {[doc.note, doc.observation]

@@ -23,6 +23,14 @@ export type CostDocument = {
     booked: string;
     /** Contul din care a venit: 401 direct de la furnizor, 471 dintr-un avans. */
     counterpart: string;
+    /**
+     * Cât a trecut documentul în cheltuieli în avans (471).
+     *
+     * Pe un rând negativ, asta e perechea care lipsea: cheltuiala n-a
+     * dispărut, s-a mutat ca să fie recunoscută în luna în care pleacă
+     * efectiv cursele.
+     */
+    deferred: number;
     /** Factura întreagă, din registrul OMC. */
     currency: string;
     rate: number;

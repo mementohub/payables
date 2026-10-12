@@ -184,6 +184,29 @@ class OmcPnlCostReader
         $tripSelect = $this->tripCostsEnabled() ? 'COALESCE(tr.share, 0)' : '0';
         $window = [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)];
 
+        /*
+         * Cheltuiala pe care documentul a trecut-o în avans.
+         *
+         * Notele de tipul „Diverși furnizori” scot cheltuieli din conturile de
+         * clasa 6 și le parchează pe 471, ca să fie recunoscute în luna în
+         * care pleacă efectiv cursele. Rândul negativ are drept contrapartidă
+         * furnizorul (401), nu 471 — mutarea se vede numai la nivel de
+         * document. De aceea o aducem de acolo: altfel omul citește un minus
+         * fără pereche și crede că raportul greșește.
+         *
+         * Datele se pun în clar, nu ca parametri: vin dintr-un an întreg.
+         */
+        $deferred = sprintf(<<<'SQL'
+            LEFT JOIN (
+                SELECT data_doc, tip_doc, nr_doc, SUM(valoare_lei) AS lei
+                FROM reg_jurnal
+                WHERE conts_db LIKE '471%%'
+                  AND data_reg_jurnal >= '%s'::date AND data_reg_jurnal < '%s'::date
+                GROUP BY 1, 2, 3
+                HAVING SUM(valoare_lei) > 0
+            ) av ON (av.data_doc, av.tip_doc, av.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+            SQL, $window[0], $window[1]);
+
         $rows = $this->connection->connection($company)->select(<<<SQL
             SELECT j.data_doc::date AS data_doc,
                    COALESCE(BTRIM(j.tip_doc), '') AS tip_doc,
@@ -195,6 +218,7 @@ class OmcPnlCostReader
                    EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month,
                    j.data_reg_jurnal::date AS booked,
                    COALESCE(BTRIM(j.conts_cr), '') AS counterpart,
+                   COALESCE(av.lei, 0) AS deferred,
                    {$tripSelect} AS trip_share,
                    COALESCE(BTRIM(d.moneda), '') AS currency,
                    COALESCE(d.curs, 1) AS rate,
@@ -211,11 +235,12 @@ class OmcPnlCostReader
             FROM reg_jurnal j
             LEFT JOIN doc d ON (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
             {$tripJoin}
+            {$deferred}
             WHERE j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
               AND EXTRACT(MONTH FROM j.data_reg_jurnal)::int IN ({$monthList})
               AND j.conts_db LIKE '6%'
               {$excluded}
-            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
+            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23
             SQL,
             [...($this->tripCostsEnabled() ? $window : []), ...$window, ...$months],
         );
@@ -233,6 +258,9 @@ class OmcPnlCostReader
             // care a venit: pe 471 se vede că e o tranșă dintr-o plată în avans.
             'booked' => (string) $row->booked,
             'counterpart' => (string) $row->counterpart,
+            // Cât a trecut documentul în cheltuieli în avans (471). Pe un rând
+            // negativ, asta e perechea care lipsea.
+            'deferred' => round((float) $row->deferred, 2),
             // Cât din document e cost de cursă: partea aia nu e în linie.
             'trip_share' => round((float) $row->trip_share, 6),
             // Factura întreagă, pe lângă felia care a căzut pe linia asta:
