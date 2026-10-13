@@ -28,6 +28,8 @@ export type ContractRow = {
     days_left: number | null;
     status: ContractStatus;
     archived: boolean;
+    /** Când a intrat contractul în repertoriu. */
+    added_at: string | null;
     files_count: number;
 };
 

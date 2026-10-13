@@ -900,6 +900,7 @@ export default function ContractsIndex({
                                             ['signed', 'Semnat', ''],
                                             ['expires', 'Expiră', ''],
                                             ['status', 'Stare', ''],
+                                            ['added', 'Introdus', ''],
                                         ] as [string, string, string][]
                                     ).map(([column, label, className]) => (
                                         <SortableHead
@@ -918,7 +919,7 @@ export default function ContractsIndex({
                                 {contracts.data.length === 0 && (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={can.delete ? 10 : 9}
+                                            colSpan={can.delete ? 11 : 10}
                                             className="py-10 text-center text-muted-foreground"
                                         >
                                             <FileSignature className="mx-auto mb-2 size-6 opacity-40" />
@@ -996,6 +997,9 @@ export default function ContractsIndex({
                                         </TableCell>
                                         <TableCell>
                                             <StatusBadge status={row.status} />
+                                        </TableCell>
+                                        <TableCell className="text-xs text-muted-foreground tabular-nums">
+                                            {dmy(row.added_at)}
                                         </TableCell>
                                         {can.delete && (
                                             <TableCell className="text-right">

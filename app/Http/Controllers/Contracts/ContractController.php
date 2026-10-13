@@ -66,6 +66,7 @@ class ContractController extends Controller
         'signed' => 'contracts.signed_at',
         'expires' => 'contracts.expires_at',
         'status' => 'contracts.status',
+        'added' => 'contracts.created_at',
     ];
 
     public function index(Request $request, ContractReader $reader): Response
@@ -810,10 +811,12 @@ class ContractController extends Controller
     {
         $column = self::SORTS[$filters['sort'] ?? ''] ?? null;
 
+        // Fără o altă rânduială cerută, deasupra stă ce s-a încărcat ultima
+        // dată: omul vine în repertoriu tocmai după ce a pus un contract nou
+        // și vrea să-l vadă, nu să-l caute.
         if ($column === null) {
             return $query
-                ->orderByRaw('case when contracts.expires_at is null then 1 else 0 end')
-                ->orderBy('contracts.expires_at')
+                ->orderByDesc('contracts.created_at')
                 ->orderByDesc('contracts.id');
         }
 
@@ -954,6 +957,7 @@ class ContractController extends Controller
             'days_left' => $contract->daysLeft(),
             'status' => $contract->state(),
             'archived' => $contract->archived_at !== null,
+            'added_at' => $contract->created_at?->toIso8601String(),
             'files_count' => $contract->files_count ?? $contract->files()->count(),
         ];
     }

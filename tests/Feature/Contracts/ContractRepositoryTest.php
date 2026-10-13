@@ -524,13 +524,33 @@ test('a whole stack of annexes goes up at once', function () {
         ->and($contract->addenda())->toHaveCount(3);
 });
 
+test('a contract just taken in sits at the top, with the day it came', function () {
+    // Omul vine în repertoriu tocmai după ce a încărcat ceva: să-l vadă, nu
+    // să-l caute printre cele cu scadența aproape.
+    Contract::query()->create(['number' => 'CTR-VECHI', 'title' => 'Vechi', 'partner_name' => 'Alfa SRL',
+        'expires_at' => '2026-11-01', 'status' => 'active', 'created_by_id' => $this->keeper->id,
+        'created_at' => now()->subYear(), 'updated_at' => now()->subYear()]);
+
+    $this->actingAs($this->keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent('nou.pdf', 'un contract nou')]])
+        ->assertRedirect();
+
+    $rows = collect($this->actingAs($this->keeper)->get('/contracts')
+        ->viewData('page')['props']['contracts']['data']);
+
+    expect($rows->first()['number'])->not->toBe('CTR-VECHI')
+        // Ziua intrării se vede în listă, nu doar în fișă.
+        ->and($rows->first()['added_at'])->not->toBeNull()
+        ->and($rows->last()['number'])->toBe('CTR-VECHI');
+});
+
 test('the list can be ordered by any column it shows', function () {
     $department = Department::query()->whereNotNull('code')->first();
 
-    Contract::query()->create(['number' => 'CTR-B', 'title' => 'Beta', 'partner_name' => 'Zodiac SRL', 'value' => 100, 'currency' => 'EUR', 'signed_at' => '2026-01-05', 'expires_at' => '2027-05-05', 'status' => 'active', 'created_by_id' => $this->keeper->id]);
-    Contract::query()->create(['number' => 'CTR-A', 'title' => 'Alfa', 'partner_name' => 'Alfa SRL', 'value' => 900, 'currency' => 'EUR', 'signed_at' => '2026-03-09', 'expires_at' => '2027-01-01', 'status' => 'draft', 'created_by_id' => $this->keeper->id, 'department_id' => $department->id]);
+    Contract::query()->create(['number' => 'CTR-B', 'title' => 'Beta', 'partner_name' => 'Zodiac SRL', 'value' => 100, 'currency' => 'EUR', 'signed_at' => '2026-01-05', 'expires_at' => '2027-05-05', 'status' => 'active', 'created_by_id' => $this->keeper->id, 'created_at' => now()->subDays(3)]);
+    Contract::query()->create(['number' => 'CTR-A', 'title' => 'Alfa', 'partner_name' => 'Alfa SRL', 'value' => 900, 'currency' => 'EUR', 'signed_at' => '2026-03-09', 'expires_at' => '2027-01-01', 'status' => 'draft', 'created_by_id' => $this->keeper->id, 'department_id' => $department->id, 'created_at' => now()->subDays(2)]);
     // Fără termen: stă la coadă, oricum ar fi rânduită lista.
-    Contract::query()->create(['number' => 'CTR-C', 'title' => 'Gama', 'partner_name' => 'Mamut SRL', 'status' => 'active', 'created_by_id' => $this->keeper->id]);
+    Contract::query()->create(['number' => 'CTR-C', 'title' => 'Gama', 'partner_name' => 'Mamut SRL', 'status' => 'active', 'created_by_id' => $this->keeper->id, 'created_at' => now()->subDay()]);
 
     $order = fn (array $query) => collect(
         $this->actingAs($this->keeper)->get('/contracts?'.http_build_query($query))
@@ -545,8 +565,9 @@ test('the list can be ordered by any column it shows', function () {
         // Cel fără scadență rămâne ultimul, și la suit, și la coborât.
         ->and($order(['sort' => 'expires', 'dir' => 'asc']))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
         ->and($order(['sort' => 'expires', 'dir' => 'desc']))->toBe(['CTR-B', 'CTR-A', 'CTR-C'])
-        // Fără alegere, întâi ce expiră mai repede.
-        ->and($order([]))->toBe(['CTR-A', 'CTR-B', 'CTR-C'])
+        // Fără alegere, deasupra stă ce s-a încărcat ultima dată.
+        ->and($order([]))->toBe(['CTR-C', 'CTR-A', 'CTR-B'])
+        ->and($order(['sort' => 'added', 'dir' => 'asc']))->toBe(['CTR-B', 'CTR-A', 'CTR-C'])
         // Departamentul se rânduiește după nume, iar cei fără departament stau la coadă.
         ->and($order(['sort' => 'department', 'dir' => 'asc'])[0])->toBe('CTR-A');
 });
