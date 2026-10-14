@@ -872,6 +872,17 @@ class ContractController extends Controller
      * contract i-a fost trecut altcuiva, cel care l-a adus îl vede mai departe,
      * fiindcă el știe povestea lui.
      */
+    /**
+     * Ce vede omul din repertoriu.
+     *
+     * Ce a adus el și ce i s-a dat în grijă — și, pe lângă acestea,
+     * contractele departamentului din care face parte: cine ține charterele
+     * are treabă cu toate contractele de charter, nu doar cu cele încărcate
+     * de mâna lui. Cui nu i s-a pus niciun departament îi rămân doar ale
+     * sale, ca până acum.
+     *
+     * Peste tot se uită numai Top Management și administratorul.
+     */
     private function mine(Request $request, Builder $query): Builder
     {
         $user = $request->user();
@@ -880,9 +891,12 @@ class ContractController extends Controller
             return $query;
         }
 
+        $departments = $user->departmentIds();
+
         return $query->where(fn (Builder $inner) => $inner
             ->where('created_by_id', $user->id)
-            ->orWhere('owner_id', $user->id));
+            ->orWhere('owner_id', $user->id)
+            ->when($departments !== [], fn (Builder $his) => $his->orWhereIn('contracts.department_id', $departments)));
     }
 
     /** Are omul voie la contractul ăsta? */
@@ -895,6 +909,12 @@ class ContractController extends Controller
         }
 
         if ($user->seesAllContracts() || $contract->created_by_id === $user->id || $contract->owner_id === $user->id) {
+            return;
+        }
+
+        // Contractul departamentului lui e și al lui: altfel l-ar vedea în
+        // listă și s-ar lovi de un refuz când l-ar deschide.
+        if ($contract->department_id !== null && $user->approvesFor($contract->department_id)) {
             return;
         }
 

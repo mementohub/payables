@@ -283,6 +283,42 @@ test('a keeper of contracts sees only his own; Top Management and the admin see 
     $this->actingAs($this->keeper)->get("/contracts/{$shared->id}")->assertOk();
 });
 
+test('a keeper sees the contracts of his department, not only his own', function () {
+    // Omul care ține charterele are treabă cu toate contractele de charter,
+    // nu doar cu cele încărcate de mâna lui.
+    $charters = Department::query()->whereNotNull('code')->first();
+    $altul = Department::query()->whereNotNull('code')->where('id', '<>', $charters->id)->first();
+
+    $keeper = User::factory()->withRoles('contract_management')->create();
+    $keeper->departments()->sync([$charters->id]);
+
+    $other = User::factory()->withRoles('contract_management')->create();
+
+    $his = Contract::query()->create(['number' => 'CTR-AL-LUI', 'title' => 'Charter', 'partner_name' => 'Memento Air SRL',
+        'department_id' => $charters->id, 'created_by_id' => $other->id]);
+    $strain = Contract::query()->create(['number' => 'CTR-STRAIN', 'title' => 'Altceva', 'partner_name' => 'Cineva',
+        'department_id' => $altul->id, 'created_by_id' => $other->id]);
+    $fara = Contract::query()->create(['number' => 'CTR-FARA', 'title' => 'Nealocat', 'partner_name' => 'Nimeni',
+        'created_by_id' => $other->id]);
+
+    $seen = collect($this->actingAs($keeper)->get('/contracts')
+        ->viewData('page')['props']['contracts']['data'])->pluck('number')->all();
+
+    expect($seen)->toContain('CTR-AL-LUI')
+        ->and($seen)->not->toContain('CTR-STRAIN')
+        ->and($seen)->not->toContain('CTR-FARA');
+
+    // Și se deschide, nu doar se vede în listă.
+    $this->actingAs($keeper)->get("/contracts/{$his->id}")->assertOk();
+    $this->actingAs($keeper)->get("/contracts/{$strain->id}")->assertForbidden();
+    $this->actingAs($keeper)->get("/contracts/{$fara->id}")->assertForbidden();
+
+    // Cui nu i s-a pus niciun departament îi rămân doar ale sale.
+    $singur = User::factory()->withRoles('contract_management')->create();
+    expect(collect($this->actingAs($singur)->get('/contracts')
+        ->viewData('page')['props']['contracts']['data']))->toBeEmpty();
+});
+
 test('the numbers at the top count what the person can see', function () {
     $other = User::factory()->withRoles('contract_management')->create();
 
