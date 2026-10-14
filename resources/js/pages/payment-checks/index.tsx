@@ -279,6 +279,186 @@ function LinesTable({ check }: { check: CheckinCheck }) {
     );
 }
 
+/** Ce i-am facturat și ce i-am plătit furnizorului, din registrul ERP. */
+type SupplierPayments = {
+    linked: boolean;
+    supplier: { name: string; cui?: string | null; code?: string };
+    open?: PaidInvoice[];
+    open_totals?: { moneda: string; count: number; rest: number }[];
+    recent?: PaidInvoice[];
+    average_month_lei?: number;
+    requested?: {
+        amount: number;
+        currency: string | null;
+        open_sum: number;
+        open_count: number;
+        verdict: string;
+        level: string;
+        message: string;
+    } | null;
+};
+
+type PaidInvoice = {
+    nr_doc: string;
+    data_doc: string;
+    data_scadenta: string | null;
+    moneda: string | null;
+    val_mon: number;
+    val_mon_paid: number;
+    rest: number;
+    payment_status: string;
+};
+
+/**
+ * Ce s-a dat deja furnizorului, lângă ce arată eTrip că s-a consumat.
+ *
+ * Fără partea asta, consumul se citea singur: omul vedea cât face serviciul,
+ * dar nu și cât s-a plătit pe el, așa că nu putea spune dacă suma cerută e
+ * îndreptățită.
+ */
+function PaymentsCard({
+    payments,
+    loading,
+}: {
+    payments: SupplierPayments | null;
+    loading: boolean;
+}) {
+    if (loading) {
+        return <Skeleton className="h-28 animate-pulse rounded-xl" />;
+    }
+
+    if (payments === null) {
+        return null;
+    }
+
+    if (!payments.linked) {
+        return (
+            <Card>
+                <CardContent className="p-4 text-sm text-muted-foreground">
+                    Furnizorul din eTrip nu e legat de niciun partener din ERP,
+                    așa că nu se știe ce i s-a plătit. Leagă-l din fișa
+                    partenerului și verificarea se completează singură.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const open = payments.open_totals ?? [];
+    const recent = (payments.recent ?? []).slice(0, 6);
+
+    return (
+        <Card>
+            <CardHeader className="pb-3">
+                <CardTitle className="text-base">
+                    Ce i-am plătit până acum
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                    Din registrul ERP, pe partenerul{' '}
+                    <b>{payments.supplier.name}</b>
+                    {payments.supplier.cui ? ` · ${payments.supplier.cui}` : ''}
+                    .
+                </p>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+                {payments.requested && (
+                    <p
+                        className={cn(
+                            'rounded-md border p-2 text-sm',
+                            payments.requested.level === 'ok'
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+                                : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
+                        )}
+                    >
+                        {payments.requested.message}
+                    </p>
+                )}
+
+                <div className="flex flex-wrap gap-4 text-sm">
+                    {open.length === 0 ? (
+                        <span className="text-muted-foreground">
+                            Nu are nicio factură neachitată.
+                        </span>
+                    ) : (
+                        open.map((one) => (
+                            <span key={one.moneda}>
+                                <span className="text-muted-foreground">
+                                    Neachitat{' '}
+                                </span>
+                                <b className="tabular-nums">
+                                    {one.rest.toLocaleString('ro-RO', {
+                                        maximumFractionDigits: 2,
+                                    })}{' '}
+                                    {one.moneda}
+                                </b>
+                                <span className="text-muted-foreground">
+                                    {' '}
+                                    ({one.count}{' '}
+                                    {one.count === 1 ? 'factură' : 'facturi'})
+                                </span>
+                            </span>
+                        ))
+                    )}
+                </div>
+
+                {recent.length > 0 && (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="text-xs text-muted-foreground">
+                                <tr className="border-b">
+                                    <th className="py-1 text-left">Factură</th>
+                                    <th className="py-1 text-left">Data</th>
+                                    <th className="py-1 text-right">Valoare</th>
+                                    <th className="py-1 text-right">Plătit</th>
+                                    <th className="py-1 text-right">Rest</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recent.map((row) => (
+                                    <tr
+                                        key={`${row.nr_doc}-${row.data_doc}`}
+                                        className="border-b last:border-0"
+                                    >
+                                        <td className="py-1 font-mono text-xs">
+                                            {row.nr_doc}
+                                        </td>
+                                        <td className="py-1 text-xs text-muted-foreground">
+                                            {row.data_doc}
+                                        </td>
+                                        <td className="py-1 text-right tabular-nums">
+                                            {row.val_mon.toLocaleString(
+                                                'ro-RO',
+                                                { maximumFractionDigits: 2 },
+                                            )}{' '}
+                                            {row.moneda}
+                                        </td>
+                                        <td className="py-1 text-right tabular-nums">
+                                            {row.val_mon_paid.toLocaleString(
+                                                'ro-RO',
+                                                { maximumFractionDigits: 2 },
+                                            )}
+                                        </td>
+                                        <td
+                                            className={cn(
+                                                'py-1 text-right tabular-nums',
+                                                row.rest > 0.01 &&
+                                                    'font-medium text-amber-700 dark:text-amber-400',
+                                            )}
+                                        >
+                                            {row.rest.toLocaleString('ro-RO', {
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 function fetchJson<T>(url: string): Promise<T> {
     return fetch(url, { headers: { Accept: 'application/json' } }).then(
         async (res) => {
@@ -324,6 +504,8 @@ export default function PaymentChecksIndex({
         ),
     );
     const [checkError, setCheckError] = useState<string | null>(null);
+    const [payments, setPayments] = useState<SupplierPayments | null>(null);
+    const [paying, setPaying] = useState(false);
     const [mode, setMode] = useState<BreakdownMode>('hotel');
     const [view, setView] = useState<CheckView>(filters.view);
 
@@ -379,6 +561,28 @@ export default function PaymentChecksIndex({
             .then(setCheck)
             .catch((err: Error) => setCheckError(err.message))
             .finally(() => setChecking(false));
+
+        // Ce i s-a plătit până acum, din registrul ERP: fără asta, consumul
+        // din eTrip se citește singur, iar suma cerută nu se poate judeca.
+        setPayments(null);
+        setPaying(true);
+
+        const query: Record<string, string> = {
+            connection: params.connection,
+            supplier: params.supplier,
+        };
+
+        if (params.amount.trim()) {
+            query.amount = params.amount.trim();
+            query.currency = params.currency;
+        }
+
+        fetchJson<SupplierPayments>(
+            PaymentCheckController.payments({ query }).url,
+        )
+            .then(setPayments)
+            .catch(() => setPayments(null))
+            .finally(() => setPaying(false));
     }
 
     /**
@@ -1104,6 +1308,11 @@ export default function PaymentChecksIndex({
                                     }}
                                 />
                             )}
+
+                            <PaymentsCard
+                                payments={payments}
+                                loading={paying}
+                            />
 
                             <LinesTable check={check} />
                         </>

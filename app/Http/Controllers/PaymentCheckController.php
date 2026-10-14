@@ -8,6 +8,7 @@ use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\Etrip\EtripReader;
 use App\Services\Etrip\EtripSupplierSyncService;
 use App\Services\Etrip\SupplierReconciliationService;
+use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -121,6 +122,56 @@ class PaymentCheckController extends Controller
             Carbon::parse($validated['from'])->startOfDay(),
             Carbon::parse($validated['to'])->startOfDay(),
         ));
+    }
+
+    /**
+     * Ce i-am facturat și ce i-am plătit furnizorului, din registrul OMC.
+     *
+     * Verificarea de până acum spunea cât face serviciul după eTrip, dar nu
+     * și cât i s-a dat deja. Fără partea asta, omul nu poate judeca dacă
+     * suma cerută e îndreptățită: se uita la consum și ghicea restul.
+     *
+     * Furnizorul din eTrip se leagă de partenerul din ERP prin fișa lui; dacă
+     * legătura lipsește, se spune pe față, fiindcă atunci nu e nimic de
+     * socotit.
+     *
+     * @return array<string, mixed>
+     */
+    public function payments(Request $request, SupplierPaymentCheckService $payments, EtripSupplierSyncService $sync): array
+    {
+        $validated = $request->validate([
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
+            'supplier' => ['required', 'string', 'max:50'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', 'max:5'],
+        ]);
+
+        $supplier = EtripSupplier::query()
+            ->forConnection($validated['connection'])
+            ->where('code', $validated['supplier'])
+            ->with('partner')
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($validated['connection'], $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
+
+        $partner = $supplier->partner;
+
+        if ($partner === null) {
+            return [
+                'linked' => false,
+                'supplier' => ['code' => $supplier->code, 'name' => $supplier->name],
+            ];
+        }
+
+        $requested = isset($validated['amount']) && $validated['amount'] !== ''
+            ? (float) $validated['amount']
+            : null;
+
+        return [
+            'linked' => true,
+            ...$payments->check($partner, $requested, $validated['currency'] ?? null),
+        ];
     }
 
     /**
