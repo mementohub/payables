@@ -650,7 +650,6 @@ class ContractController extends Controller
         }
 
         $contract = $share->contract;
-        $file = $contract->files->first();
 
         return Inertia::render('contracts/shared', [
             'share' => [
@@ -667,17 +666,44 @@ class ContractController extends Controller
                 'currency' => $contract->currency,
                 'signed_at' => $contract->signed_at?->toDateString(),
                 'expires_at' => $contract->expires_at?->toDateString(),
-                'file' => $file === null ? null : [
-                    'name' => $file->original_name,
-                    'size' => $file->size,
-                    'text' => $file->text !== null ? mb_substr($file->text, 0, 40000) : null,
-                ],
+                // Tot teancul, nu doar o hârtie din el: contractul, actele
+                // adiționale și anexele. Se trimitea până acum `files->first()`,
+                // iar relația e rânduită după versiune descrescător — așa că
+                // omul primea ultimul fișier încărcat, de obicei o anexă, și
+                // credea că ăsta e tot contractul.
+                'files' => $this->sharedFiles($contract),
             ],
             'token' => $token,
         ]);
     }
 
     /** Fișierul contractului trimis, tot pe legătura aia. */
+    /**
+     * Documentele unui contract, în ordinea în care le citește un om:
+     * contractul întâi, apoi actele adiționale și anexele, de la vechi la nou.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function sharedFiles(Contract $contract): array
+    {
+        return $contract->files
+            ->sortBy([
+                fn (ContractFile $a, ContractFile $b) => ($a->kind === ContractFile::KIND_CONTRACT ? 0 : 1) <=> ($b->kind === ContractFile::KIND_CONTRACT ? 0 : 1),
+                fn (ContractFile $a, ContractFile $b) => ($a->signed_at ?? $a->created_at) <=> ($b->signed_at ?? $b->created_at),
+            ])
+            ->map(fn (ContractFile $file) => [
+                'id' => $file->id,
+                'title' => $file->title(),
+                'kind_label' => ContractFile::KIND_LABELS[$file->kind] ?? 'Document',
+                'name' => $file->original_name,
+                'size' => $file->size,
+                'signed_at' => $file->signed_at?->toDateString(),
+                'text' => $file->text !== null ? mb_substr($file->text, 0, 40000) : null,
+            ])
+            ->values()
+            ->all();
+    }
+
     public function sharedFile(Request $request, string $token): StreamedResponse
     {
         $share = ContractShare::query()->where('token', $token)->with('contract.files')->first();
@@ -686,7 +712,13 @@ class ContractController extends Controller
             abort(404, 'Legătura nu mai e bună.');
         }
 
-        $file = $share->contract->files->first();
+        $files = $share->contract->files;
+
+        // Fișierul cerut, dacă e unul dintre ale contractului; altfel
+        // contractul propriu-zis, nu ce s-a nimerit să fie încărcat ultima dată.
+        $file = $request->integer('file') > 0
+            ? $files->firstWhere('id', $request->integer('file'))
+            : ($files->firstWhere('kind', ContractFile::KIND_CONTRACT) ?? $files->first());
 
         if ($file === null) {
             abort(404, 'Contractul n-are niciun fișier.');

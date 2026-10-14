@@ -1,7 +1,9 @@
 import { Head } from '@inertiajs/react';
 import { Download, FileText } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 type Props = {
     share: {
@@ -18,7 +20,15 @@ type Props = {
         currency: string | null;
         signed_at: string | null;
         expires_at: string | null;
-        file: { name: string; size: number; text: string | null } | null;
+        files: {
+            id: number;
+            title: string;
+            kind_label: string;
+            name: string;
+            size: number;
+            signed_at: string | null;
+            text: string | null;
+        }[];
     };
     token: string;
 };
@@ -37,8 +47,15 @@ const money = (value: number | null, currency: string | null) =>
  * deschide poate să nu aibă cont.
  */
 export default function ContractShared({ share, contract, token }: Props) {
-    const file = `/contracte/${token}/fisier`;
-    const name = contract.file?.name.toLowerCase() ?? '';
+    // Teancul vine întreg; se citește o hârtie pe rând, cu contractul deschis
+    // din capul locului.
+    const [openId, setOpenId] = useState<number | null>(
+        contract.files[0]?.id ?? null,
+    );
+
+    const open = contract.files.find((one) => one.id === openId) ?? null;
+    const url = (id: number) => `/contracte/${token}/fisier?file=${id}`;
+    const name = open?.name.toLowerCase() ?? '';
     const isPdf = name.endsWith('.pdf');
     const isImage = /\.(png|jpe?g|gif|webp|tiff?)$/.test(name);
 
@@ -61,9 +78,9 @@ export default function ContractShared({ share, contract, token }: Props) {
                             {contract.title}
                         </h1>
                     </div>
-                    {contract.file && (
+                    {open && (
                         <Button variant="outline" className="ml-auto" asChild>
-                            <a href={`${file}?download=1`}>
+                            <a href={`${url(open.id)}&download=1`}>
                                 <Download className="size-4" />
                                 Descarcă
                             </a>
@@ -112,20 +129,61 @@ export default function ContractShared({ share, contract, token }: Props) {
                     </CardContent>
                 </Card>
 
-                {contract.file === null ? (
+                {contract.files.length > 1 && (
+                    <Card>
+                        <CardContent className="grid gap-1 p-2">
+                            {contract.files.map((one) => (
+                                <button
+                                    key={one.id}
+                                    type="button"
+                                    onClick={() => setOpenId(one.id)}
+                                    className={cn(
+                                        'flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted',
+                                        one.id === openId && 'bg-muted',
+                                    )}
+                                >
+                                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                                    <span className="min-w-0 flex-1">
+                                        <span className="font-medium">
+                                            {one.title}
+                                        </span>
+                                        <span className="block truncate text-xs text-muted-foreground">
+                                            {one.name}
+                                            {one.signed_at
+                                                ? ` · ${dmy(one.signed_at)}`
+                                                : ''}
+                                        </span>
+                                    </span>
+                                    <a
+                                        href={`${url(one.id)}&download=1`}
+                                        onClick={(event) =>
+                                            event.stopPropagation()
+                                        }
+                                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                                        title={`Descarcă ${one.name}`}
+                                    >
+                                        <Download className="size-4" />
+                                    </a>
+                                </button>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {open === null ? (
                     <p className="text-sm text-muted-foreground">
                         Contractul n-are încă niciun fișier încărcat.
                     </p>
                 ) : isPdf ? (
                     <iframe
-                        src={file}
-                        title={contract.file.name}
+                        src={url(open.id)}
+                        title={open.name}
                         className="h-[75vh] w-full rounded-md border bg-background"
                     />
                 ) : isImage ? (
                     <img
-                        src={file}
-                        alt={contract.file.name}
+                        src={url(open.id)}
+                        alt={open.name}
                         className="mx-auto rounded-md border bg-background"
                     />
                 ) : (
@@ -133,11 +191,11 @@ export default function ContractShared({ share, contract, token }: Props) {
                         <CardContent className="p-4">
                             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                                 <FileText className="size-4" />
-                                {contract.file.name}
+                                {open.name}
                             </div>
-                            {contract.file.text ? (
+                            {open.text ? (
                                 <pre className="max-h-[70vh] overflow-auto font-sans text-sm whitespace-pre-wrap">
-                                    {contract.file.text}
+                                    {open.text}
                                 </pre>
                             ) : (
                                 <p className="text-sm text-muted-foreground">

@@ -335,6 +335,58 @@ test('sharing a contract sends the mail and opens from the link, without an acco
     $this->get('/contracte/habar-n-am-ce-token')->assertNotFound();
 });
 
+test('the link carries the whole stack, and opens on the contract itself', function () {
+    // Se trimitea `files->first()`, iar relația e rânduită după versiune
+    // descrescător: omul primea ultimul fișier încărcat — de obicei o anexă —
+    // și credea că ăla e tot contractul.
+    $contract = Contract::query()->create([
+        'number' => 'CTR-2026-0300', 'title' => 'Charter', 'partner_name' => 'Memento Air SRL',
+        'created_by_id' => $this->keeper->id,
+    ]);
+
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_CONTRACT, 'version' => 1,
+        'path' => 'c.pdf', 'original_name' => 'contract.pdf', 'hash' => 'w1', 'mime' => 'application/pdf',
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_ANNEX, 'version' => 3, 'label' => 'nr. 2',
+        'path' => 'a2.pdf', 'original_name' => 'anexa2.pdf', 'hash' => 'w2', 'mime' => 'application/pdf',
+    ]);
+    ContractFile::query()->create([
+        'contract_id' => $contract->id, 'kind' => ContractFile::KIND_ADDENDUM, 'version' => 2, 'label' => 'nr. 1',
+        'path' => 'ad1.pdf', 'original_name' => 'act1.pdf', 'hash' => 'w3', 'mime' => 'application/pdf',
+    ]);
+
+    Storage::disk(config('contracts.disk'))->put('c.pdf', 'contractul');
+    Storage::disk(config('contracts.disk'))->put('a2.pdf', 'anexa');
+
+    $this->actingAs($this->keeper)->post("/contracts/{$contract->id}/share", [
+        'emails' => 'cineva@christiantour.ro', 'permission' => 'view',
+    ])->assertRedirect();
+
+    $share = $contract->shares()->firstOrFail();
+
+    $files = collect($this->get("/contracte/{$share->token}")->assertOk()
+        ->viewData('page')['props']['contract']['files']);
+
+    expect($files)->toHaveCount(3)
+        // Contractul se citește primul, actele vin după el.
+        ->and($files->first()['name'])->toBe('contract.pdf')
+        ->and($files->pluck('name')->all())->toContain('anexa2.pdf', 'act1.pdf');
+
+    // Fără să se ceară un anume fișier, se dă contractul — nu ce s-a încărcat
+    // ultima dată.
+    $this->get("/contracte/{$share->token}/fisier")
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'inline; filename="contract.pdf"');
+
+    // Dar fiecare hârtie se poate lua și singură.
+    $annex = $files->firstWhere('name', 'anexa2.pdf');
+    $this->get("/contracte/{$share->token}/fisier?file={$annex['id']}&download=1")
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'attachment; filename="anexa2.pdf"');
+});
+
 test('a contract sent to a colleague opens for him in the application too', function () {
     $colleague = User::factory()->withRoles('contract_management')->create();
     $contract = Contract::query()->create([

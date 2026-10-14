@@ -77,6 +77,13 @@
                                             <td style="padding:3px 0;color:{{ $muted }};">Expiră</td>
                                             <td align="right" style="padding:3px 0;">{{ $contract->expires_at?->format('d.m.Y') ?? 'fără termen' }}</td>
                                         </tr>
+                                        @php($documents = $contract->files->count())
+                                        @if ($documents > 1)
+                                            <tr>
+                                                <td style="padding:3px 0;color:{{ $muted }};">Documente</td>
+                                                <td align="right" style="padding:3px 0;">{{ $documents }}, cu acte adiționale și anexe</td>
+                                            </tr>
+                                        @endif
                                     </table>
                                 </td>
                             </tr>
