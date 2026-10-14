@@ -53,6 +53,33 @@ test('the check shows what we already paid the supplier', function () {
         ->and($said['requested']['level'])->toBe('ok');
 });
 
+test('the open balance carries the soonest due date, and says when it is late', function () {
+    $partner = Partner::factory()->create(['company_id' => $this->company->id, 'name' => 'Rida International']);
+
+    EtripSupplier::query()->create([
+        'etrip_connection' => $this->connection, 'code' => 'RI1', 'name' => 'Rida',
+        'company_id' => $this->company->id, 'partner_id' => $partner->id,
+    ]);
+
+    Invoice::factory()->create([
+        'company_id' => $this->company->id, 'partner_id' => $partner->id, 'partener_type' => 'furnizor',
+        'tip_doc' => 'FactFI', 'nr_doc' => 'RI-1', 'moneda' => 'EUR', 'curs' => 5,
+        'val_mon' => 5000, 'val_mon_tva' => 0, 'val_mon_paid' => 0, 'val_mon_storno' => 0,
+        'data_doc' => '2026-06-01', 'data_scadenta' => '2026-06-08',
+    ]);
+
+    $said = $this->actingAs($this->user)
+        ->getJson('/payment-checks/payments?'.http_build_query([
+            'connection' => $this->connection, 'supplier' => 'RI1',
+        ]))
+        ->assertOk()
+        ->json();
+
+    expect($said['first_due']['date'])->toBe('2026-06-08')
+        // Trecută de mult: nu e un sold care așteaptă termenul, e o restanță.
+        ->and($said['first_due']['overdue'])->toBeTrue();
+});
+
 test('a supplier not tied to a partner says so, instead of showing nothing', function () {
     EtripSupplier::query()->create([
         'etrip_connection' => $this->connection, 'code' => 'FARA', 'name' => 'Nelegat',

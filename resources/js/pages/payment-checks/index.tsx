@@ -286,6 +286,8 @@ type SupplierPayments = {
     open?: PaidInvoice[];
     open_totals?: { moneda: string; count: number; rest: number }[];
     recent?: PaidInvoice[];
+    /** Scadența cea mai apropiată dintre facturile neachitate. */
+    first_due?: { date: string; days: number; overdue: boolean } | null;
     average_month_lei?: number;
     requested?: {
         amount: number;
@@ -849,6 +851,54 @@ export default function PaymentChecksIndex({
               .slice(0, 3)
         : [];
 
+    /**
+     * Soldul furnizorului, strâns în trei rânduri pentru indicatorul de sus:
+     * cât a rămas neachitat, pe monede, și de când așteaptă cea mai veche.
+     */
+    const unpaid = (() => {
+        if (payments === null) {
+            return {
+                lines: ['–'],
+                detail: 'Se citește din registrul ERP…',
+                level: null as 'ok' | 'warn' | 'crit' | null,
+            };
+        }
+
+        if (!payments.linked) {
+            return {
+                lines: ['–'],
+                detail: 'Furnizorul nu e legat de un partener din ERP, așa că soldul nu se poate citi.',
+                level: null as 'ok' | 'warn' | 'crit' | null,
+            };
+        }
+
+        const totals = payments.open_totals ?? [];
+
+        if (totals.length === 0) {
+            return {
+                lines: ['0'],
+                detail: 'N-are nicio factură neachitată în registru.',
+                level: 'ok' as const,
+            };
+        }
+
+        const count = totals.reduce((sum, one) => sum + one.count, 0);
+        const due = payments.first_due ?? null;
+
+        return {
+            lines: totals
+                .slice(0, 3)
+                .map((one) => `${fmt(one.rest)} ${one.moneda || ''}`.trim()),
+            detail: `${count} ${count === 1 ? 'factură' : 'facturi'}${
+                due
+                    ? ` · ${due.overdue ? 'restantă din' : 'scadentă la'} ${dmy(due.date)}`
+                    : ''
+            }`,
+            // O restanță e altceva decât un sold care încă n-a ajuns la termen.
+            level: due?.overdue ? ('crit' as const) : ('warn' as const),
+        };
+    })();
+
     return (
         <>
             <Head
@@ -1131,7 +1181,7 @@ export default function PaymentChecksIndex({
                                     →
                                 </Button>
                             </div>
-                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                                 <Tile
                                     label="Valoare eTrip"
                                     value={
@@ -1198,6 +1248,35 @@ export default function PaymentChecksIndex({
                                         detail="Introdu suma din cerere pentru a vedea diferența."
                                     />
                                 )}
+                                {/*
+                                 * Ce i-a rămas neachitat furnizorului: fără
+                                 * asta, suma cerută se citea pe lângă consum
+                                 * și atât, deși ea se plătește din soldul lui,
+                                 * nu din serviciile dintr-un interval.
+                                 */}
+                                <Tile
+                                    label="Facturi neachitate"
+                                    level={unpaid.level}
+                                    value={
+                                        paying ? (
+                                            <span className="text-muted-foreground">
+                                                …
+                                            </span>
+                                        ) : (
+                                            <span className="text-base leading-snug font-semibold">
+                                                {unpaid.lines.map((line) => (
+                                                    <span
+                                                        key={line}
+                                                        className="block"
+                                                    >
+                                                        {line}
+                                                    </span>
+                                                ))}
+                                            </span>
+                                        )
+                                    }
+                                    detail={unpaid.detail}
+                                />
                                 <Tile
                                     label="Compoziție"
                                     value={
