@@ -27,6 +27,20 @@ class SupplierTrace
     /** Cum ne cheamă pe noi, ca să nu ne socotim propriul furnizor. */
     private const OURS = ['9617078', 'RO9617078'];
 
+    /** Câte legături se adună înainte de a fi scrise deodată. */
+    private const BATCH = 500;
+
+    /** Câte chei se cercetează într-un lot, ca să nu intre toată luna deodată. */
+    private const KEYS_AT_A_TIME = 300;
+
+    /** @var list<array<string, mixed>> */
+    private array $buffer = [];
+
+    /** @var array<int, true> */
+    private array $matched = [];
+
+    private int $written = 0;
+
     /**
      * Caută furnizorii din spatele facturilor unei case, pe o fereastră de timp.
      *
@@ -64,22 +78,27 @@ class SupplierTrace
             return ['invoices' => $invoices->count(), 'matched' => 0, 'sources' => 0, 'skipped' => 'în baza casei nu apare Christian Tour'];
         }
 
-        // Liniile cu care casa ne-a facturat: de aici pornește totul.
-        $lines = $this->salesLines($db, $us, $from, $to);
+        // Legăturile vechi ies din capul locului, iar cele noi se scriu pe
+        // măsură ce se găsesc. Înainte se strângea toată luna în memorie și
+        // abia la urmă se salva — de acolo veneau gigabyte-ii.
+        $this->clear($invoices->pluck('id')->all());
+        $this->written = 0;
+        $this->matched = [];
+        $this->buffer = [];
 
-        $sources = match ($house['basis']) {
-            InvoiceSource::BASIS_ORDER => $this->byOrder($db, $invoices, $lines),
-            InvoiceSource::BASIS_BOOKING => $this->byKey($db, $invoices, $lines, 'com_int', InvoiceSource::BASIS_BOOKING, $from, $to),
-            InvoiceSource::BASIS_ARTICLE => $this->byKey($db, $invoices, $lines, 'articol', InvoiceSource::BASIS_ARTICLE, $from, $to),
-            default => [],
+        match ($house['basis']) {
+            InvoiceSource::BASIS_ORDER => $this->byOrder($db, $invoices, $us, $from, $to),
+            InvoiceSource::BASIS_BOOKING => $this->byKey($db, $invoices, $us, 'com_int', InvoiceSource::BASIS_BOOKING, $from, $to),
+            InvoiceSource::BASIS_ARTICLE => $this->byKey($db, $invoices, $us, 'articol', InvoiceSource::BASIS_ARTICLE, $from, $to),
+            default => null,
         };
 
-        $this->store($invoices->pluck('id')->all(), $sources);
+        $this->flush();
 
         return [
             'invoices' => $invoices->count(),
-            'matched' => count(array_unique(array_column($sources, 'invoice_id'))),
-            'sources' => count($sources),
+            'matched' => count($this->matched),
+            'sources' => $this->written,
             'skipped' => null,
         ];
     }
@@ -106,14 +125,23 @@ class SupplierTrace
      *
      * @return Collection<int, object>
      */
-    private function salesLines(ConnectionInterface $db, string $us, Carbon $from, Carbon $to): Collection
+    /**
+     * Liniile facturilor pe care casa ni le-a emis, date una câte una.
+     *
+     * Se citesc în flux, nu se strâng într-o colecție: o lună de cazări are
+     * zeci de mii de linii, iar ele n-au de ce să stea toate deodată în
+     * memorie. Facturile de întocmit (`FactINT`) rămân afară: poartă același
+     * număr ca cea adevărată și ar dubla sumele.
+     *
+     * @return \Generator<int, object>
+     */
+    private function salesLines(ConnectionInterface $db, string $us, Carbon $from, Carbon $to, string $field): \Generator
     {
-        return collect($db->select(<<<'SQL'
+        $column = $field === 'com_int' ? 'p.com_int' : 'p.articol';
+
+        yield from $db->cursor(<<<SQL
             select trim(d.nr_doc) as nr_doc,
-                   nullif(trim(coalesce(p.com_int, '')), '') as com_int,
-                   nullif(regexp_replace(trim(coalesce(p.com_int, '')), '[^[:alnum:]]+$', ''), '') as com_int_bare,
-                   nullif(trim(coalesce(p.articol, '')), '') as articol,
-                   nullif(trim(coalesce(p.articol, '')), '') as articol_bare,
+                   nullif(trim(coalesce({$column}, '')), '') as key_value,
                    to_char(d.data_doc, 'YYYY-MM') as month,
                    coalesce(p.cant, 0) * coalesce(p.pret, 0) * coalesce(d.curs, 1) as lei
             from doc_poz p
@@ -121,7 +149,7 @@ class SupplierTrace
             join tip_doc t on t.tip_doc = d.tip_doc
             where d.partener = ? and t.grupa = 'client' and d.tip_doc <> 'FactINT'
               and d.data_doc between ? and ?
-        SQL, [$us, $from->toDateString(), $to->toDateString()]));
+        SQL, [$us, $from->toDateString(), $to->toDateString()]);
     }
 
     /**
@@ -132,31 +160,44 @@ class SupplierTrace
      * cheltuiala lunii.
      *
      * @param  Collection<int, Invoice>  $invoices
-     * @param  Collection<int, object>  $lines
-     * @return list<array<string, mixed>>
      */
-    private function byOrder(ConnectionInterface $db, Collection $invoices, Collection $lines): array
+    private function byOrder(ConnectionInterface $db, Collection $invoices, string $us, Carbon $from, Carbon $to): void
     {
-        $orders = $lines->pluck('com_int')->filter()->unique()->values();
-
-        if ($orders->isEmpty()) {
-            return [];
-        }
-
-        $root = $this->roots($db, $orders);
-
-        $mixes = [];
-        $byInvoice = $lines->groupBy('nr_doc');
-        $rows = [];
+        $byNumber = [];
 
         foreach ($invoices as $invoice) {
-            $own = $byInvoice->get(trim((string) $invoice->nr_doc));
+            $byNumber[trim((string) $invoice->nr_doc)] = $invoice;
+        }
 
-            if ($own === null) {
+        // Liniile, strânse pe factură ca perechi comandă-sumă: tot ce trebuie
+        // pentru cântărire, fără obiecte ținute degeaba.
+        $weightsOf = [];
+        $totals = [];
+        $orders = [];
+
+        foreach ($this->salesLines($db, $us, $from, $to, 'com_int') as $line) {
+            $number = trim((string) $line->nr_doc);
+
+            if (! isset($byNumber[$number]) || $line->key_value === null) {
                 continue;
             }
 
-            $total = (float) $own->sum('lei');
+            $weightsOf[$number][$line->key_value] = ($weightsOf[$number][$line->key_value] ?? 0.0) + (float) $line->lei;
+            $totals[$number] = ($totals[$number] ?? 0.0) + (float) $line->lei;
+            $orders[$line->key_value] = true;
+        }
+
+        if ($orders === []) {
+            return;
+        }
+
+        $root = $this->roots($db, collect(array_keys($orders)));
+        unset($orders);
+        $mixes = [];
+
+        foreach ($weightsOf as $number => $own) {
+            $invoice = $byNumber[$number];
+            $total = $totals[$number];
 
             if (abs($total) < 0.01) {
                 continue;
@@ -165,14 +206,9 @@ class SupplierTrace
             // Cât cântărește fiecare lună de charter în factura asta.
             $weights = [];
 
-            foreach ($own as $line) {
-                $order = $root[$line->com_int] ?? $line->com_int;
-
-                if ($order === null) {
-                    continue;
-                }
-
-                $weights[$order] = ($weights[$order] ?? 0) + (float) $line->lei;
+            foreach ($own as $order => $lei) {
+                $order = $root[$order] ?? $order;
+                $weights[$order] = ($weights[$order] ?? 0) + $lei;
             }
 
             foreach ($weights as $order => $part) {
@@ -190,7 +226,7 @@ class SupplierTrace
                         continue;
                     }
 
-                    $rows[] = [
+                    $this->write([
                         'invoice_id' => $invoice->id,
                         'supplier_name' => mb_substr((string) $supplier->partener, 0, 200),
                         'supplier_tax_id' => $this->tax($supplier->cod_cci ?? null),
@@ -201,12 +237,10 @@ class SupplierTrace
                         'share' => round($share, 6),
                         'val_lei' => round($this->lei($invoice) * $share, 2),
                         'exact' => false,
-                    ];
+                    ]);
                 }
             }
         }
-
-        return $rows;
     }
 
     /**
@@ -283,90 +317,119 @@ class SupplierTrace
      * cheltuială ar apărea întreagă de mai multe ori.
      *
      * @param  Collection<int, Invoice>  $invoices
-     * @param  Collection<int, object>  $lines
-     * @return list<array<string, mixed>>
      */
-    private function byKey(ConnectionInterface $db, Collection $invoices, Collection $lines, string $field, string $basis, Carbon $from, Carbon $to): array
+    private function byKey(ConnectionInterface $db, Collection $invoices, string $us, string $field, string $basis, Carbon $from, Carbon $to): void
     {
-        $keyed = $lines->filter(fn ($line) => $line->{$field} !== null);
+        $net = [];
+        $byNumber = [];
 
-        if ($keyed->isEmpty()) {
-            return [];
+        foreach ($invoices as $invoice) {
+            $number = trim((string) $invoice->nr_doc);
+            $byNumber[$number] = $invoice->id;
+            $net[$invoice->id] = $this->lei($invoice);
         }
 
-        $keys = $keyed->pluck($field)
-            ->merge($keyed->pluck($field.'_bare'))
-            ->filter()->unique()->values();
-        $window = $this->window($basis, $from, $to);
-        $buys = $this->purchases($db, $field, $keys, $basis, $window);
+        // Liniile, strânse pe cheie și păstrate ca numere goale, nu ca
+        // obiecte: dintr-o lună de cazări ies zeci de mii, iar un obiect
+        // costă de câteva ori cât trei numere.
+        $byKey = [];
+        $bareOf = [];
 
-        // Cât s-a vândut cu totul pe fiecare cheie — nu numai în luna asta.
-        // O rezervare se poate factura în două luni; dacă numitorul ar fi doar
-        // ce prindem acum, fiecare bucată ar primi mai mult decât i se cuvine
-        // și factura ar ieși acoperită de două ori.
-        $whole = $this->salesTotals($db, $this->ourName($db) ?? '', $field, $keys, $basis, $window);
+        foreach ($this->salesLines($db, $us, $from, $to, $field) as $line) {
+            $raw = $line->key_value;
+            $id = $byNumber[trim((string) $line->nr_doc)] ?? null;
 
-        $byNumber = $invoices->keyBy(fn (Invoice $invoice) => trim((string) $invoice->nr_doc));
-        $rows = [];
-
-        foreach ($keyed->groupBy('nr_doc') as $number => $own) {
-            $invoice = $byNumber->get((string) $number);
-
-            if ($invoice === null) {
+            if ($raw === null || $id === null) {
                 continue;
             }
 
-            foreach ($own as $line) {
-                // Întâi cheia așa cum e scrisă: dacă pe ea s-a cumpărat, aia
-                // e. Abia dacă nu găsește nimic se încearcă fără codița de la
-                // capăt — altfel am lipi la un loc rezervări care chiar sunt
-                // deosebite, și împărțirea ar ieși strâmbă.
-                $key = $this->key($basis, $line->{$field}, $line->month);
-                $found = $buys['raw'][$key] ?? null;
-                $total = $whole['raw'][$key] ?? 0.0;
-
-                if ($found === null) {
-                    $key = $this->key($basis, $line->{$field.'_bare'}, $line->month);
-                    $found = $buys['bare'][$key] ?? $buys['raw'][$key] ?? null;
-                    $total = $whole['bare'][$key] ?? 0.0;
-                }
-
-                if ($found === null || $total <= 0) {
-                    continue;
-                }
-
-                // O linie nu poate lua mai mult decât toată cheltuiala cheii
-                // ei, nici în plus, nici în minus. Fără marginea asta, o
-                // vânzare mare pe un numitor mărunt scotea sume fără noimă,
-                // pe care baza oricum le refuza.
-                $part = max(-1.0, min(1.0, (float) $line->lei / $total));
-
-                foreach ($found as $buy) {
-                    $lei = round((float) $buy->lei * $part, 2);
-
-                    if (abs($lei) < 0.01) {
-                        continue;
-                    }
-
-                    $rows[] = [
-                        'invoice_id' => $invoice->id,
-                        'supplier_name' => mb_substr((string) $buy->partener, 0, 200),
-                        'supplier_tax_id' => $this->tax($buy->cod_cci ?? null),
-                        'basis' => $basis,
-                        'reference' => mb_substr((string) $line->{$field}, 0, 200),
-                        'doc_ref' => $buy->docs > 1 ? $buy->docs.' documente' : mb_substr((string) $buy->doc_ref, 0, 160),
-                        'doc_date' => $buy->docs > 1 ? null : $buy->doc_date,
-                        'share' => $this->share($lei, $this->lei($invoice)),
-                        'val_lei' => $lei,
-                        // Potrivirea e la document cât timp cheia e numai a
-                        // acestei facturi; împărțită, rămâne o repartizare.
-                        'exact' => abs($part - 1.0) < 0.0001,
-                    ];
-                }
-            }
+            $byKey[$raw][] = [$id, (float) $line->lei, (string) $line->month];
+            $bareOf[$raw] ??= $this->bare($raw);
         }
 
-        return $rows;
+        if ($byKey === []) {
+            return;
+        }
+
+        // Cheile scrise altfel, dar aceleași, merg în același lot: altfel
+        // numitorul s-ar socoti pe jumătate din ele.
+        $groups = [];
+
+        foreach ($bareOf as $raw => $bare) {
+            $groups[$bare][] = $raw;
+        }
+
+        $window = $this->window($basis, $from, $to);
+
+        foreach (array_chunk($groups, self::KEYS_AT_A_TIME, true) as $batch) {
+            $keys = collect($batch)->flatten()->merge(array_keys($batch))->filter()->unique()->values();
+            $buys = $this->purchases($db, $field, $keys, $basis, $window);
+            $whole = $this->salesTotals($db, $us, $field, $keys, $basis, $window);
+
+            foreach ($batch as $bare => $raws) {
+                foreach ($raws as $raw) {
+                    foreach ($byKey[$raw] as [$id, $lei, $month]) {
+                        $this->emit($basis, $raw, (string) $bare, $month, $id, $lei, $net[$id] ?? 0.0, $buys, $whole);
+                    }
+                }
+            }
+
+            unset($buys, $whole, $keys);
+        }
+    }
+
+    /**
+     * O linie de vânzare, pusă în dreptul cheltuielii ei.
+     *
+     * Întâi cheia așa cum e scrisă: dacă pe ea s-a cumpărat, aia e. Abia dacă
+     * nu găsește nimic se încearcă fără codița de la capăt — altfel am lipi
+     * la un loc rezervări care chiar sunt deosebite.
+     *
+     * @param  array<string, array<string, list<object>>>  $buys
+     * @param  array<string, array<string, float>>  $whole
+     */
+    private function emit(string $basis, string $raw, string $bare, string $month, int $invoiceId, float $lei, float $net, array $buys, array $whole): void
+    {
+        $key = $this->key($basis, $raw, $month);
+        $found = $buys['raw'][$key] ?? null;
+        $total = $whole['raw'][$key] ?? 0.0;
+
+        if ($found === null) {
+            $key = $this->key($basis, $bare, $month);
+            $found = $buys['bare'][$key] ?? $buys['raw'][$key] ?? null;
+            $total = $whole['bare'][$key] ?? 0.0;
+        }
+
+        if ($found === null || $total <= 0) {
+            return;
+        }
+
+        // O linie nu poate lua mai mult decât toată cheltuiala cheii ei, nici
+        // în plus, nici în minus.
+        $part = max(-1.0, min(1.0, $lei / $total));
+
+        foreach ($found as $buy) {
+            $amount = round((float) $buy->lei * $part, 2);
+
+            if (abs($amount) < 0.01) {
+                continue;
+            }
+
+            $this->write([
+                'invoice_id' => $invoiceId,
+                'supplier_name' => mb_substr((string) $buy->partener, 0, 200),
+                'supplier_tax_id' => $this->tax($buy->cod_cci ?? null),
+                'basis' => $basis,
+                'reference' => mb_substr($raw, 0, 200),
+                'doc_ref' => $buy->docs > 1 ? $buy->docs.' documente' : mb_substr((string) $buy->doc_ref, 0, 160),
+                'doc_date' => $buy->docs > 1 ? null : $buy->doc_date,
+                'share' => $this->share($amount, $net),
+                'val_lei' => $amount,
+                // Potrivirea e la document cât timp cheia e numai a acestei
+                // facturi; împărțită, rămâne o repartizare.
+                'exact' => abs($part - 1.0) < 0.0001,
+            ]);
+        }
     }
 
     /**
@@ -563,21 +626,49 @@ class SupplierTrace
      * @param  list<int>  $invoiceIds
      * @param  list<array<string, mixed>>  $rows
      */
-    private function store(array $invoiceIds, array $rows): void
+    /**
+     * Legăturile vechi ale facturilor cercetate, scoase înainte de a căuta
+     * din nou.
+     *
+     * @param  list<int>  $invoiceIds
+     */
+    private function clear(array $invoiceIds): void
     {
+        foreach (array_chunk($invoiceIds, 1000) as $chunk) {
+            InvoiceSource::query()->whereIn('invoice_id', $chunk)->delete();
+        }
+    }
+
+    /**
+     * O legătură găsită. Se ține în mână doar până se strâng cinci sute, apoi
+     * pleacă în baza de date și memoria se eliberează.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function write(array $row): void
+    {
+        $this->buffer[] = $row;
+        $this->matched[$row['invoice_id']] = true;
+
+        if (count($this->buffer) >= self::BATCH) {
+            $this->flush();
+        }
+    }
+
+    private function flush(): void
+    {
+        if ($this->buffer === []) {
+            return;
+        }
+
         $now = now();
 
-        DB::transaction(function () use ($invoiceIds, $rows, $now) {
-            foreach (array_chunk($invoiceIds, 1000) as $chunk) {
-                InvoiceSource::query()->whereIn('invoice_id', $chunk)->delete();
-            }
+        InvoiceSource::query()->insert(array_map(
+            fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now],
+            $this->buffer,
+        ));
 
-            foreach (array_chunk($rows, 500) as $chunk) {
-                InvoiceSource::query()->insert(array_map(
-                    fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now],
-                    $chunk,
-                ));
-            }
-        });
+        $this->written += count($this->buffer);
+        $this->buffer = [];
     }
 }

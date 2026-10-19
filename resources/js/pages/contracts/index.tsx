@@ -90,6 +90,8 @@ type Props = {
     };
     departments: { id: number; name: string }[];
     people: { id: number; name: string; email: string }[];
+    /** Departamentul omului care încarcă; se propune la fiecare contract nou. */
+    myDepartment: number | null;
     partners: string[];
     /** Ce unelte de citire are serverul; fără ele, datele se pun cu mâna. */
     ocr: Record<string, boolean>;
@@ -203,6 +205,7 @@ export default function ContractsIndex({
     departments,
     people,
     partners,
+    myDepartment,
     ocr,
     limits,
 }: Props) {
@@ -211,7 +214,15 @@ export default function ContractsIndex({
     // web îl taie înainte să ajungă la aplicație, iar omul n-ar afla de ce.
     const [refused, setRefused] = useState<string | null>(null);
     const uploader = useRef<HTMLInputElement>(null);
-    const upload = useForm<{ files: File[] }>({ files: [] });
+    // Departamentul cu care intră contractul: al omului, din capul locului,
+    // ca niciun contract să nu rămână al nimănui.
+    const [forDepartment, setForDepartment] = useState(
+        myDepartment ? String(myDepartment) : '',
+    );
+    const upload = useForm<{ files: File[]; department_id: string }>({
+        files: [],
+        department_id: '',
+    });
 
     // Alegerea ține cât stă omul pe pagină: trece la pagina următoare și se
     // golește, fiindcă n-ar mai vedea pe ce lucrează.
@@ -293,7 +304,10 @@ export default function ContractsIndex({
         // Fișierele se dau chiar trimiterii, nu prin starea formularului:
         // `setData` se vede abia la randarea următoare, așa că prima apăsare
         // pleca fără ele, iar serverul răspundea „câmpul files e obligatoriu”.
-        upload.transform(() => ({ files: chosen }));
+        upload.transform(() => ({
+            files: chosen,
+            department_id: forDepartment,
+        }));
         upload.post(contractsStore().url, {
             forceFormData: true,
             preserveScroll: true,
@@ -578,6 +592,29 @@ export default function ContractsIndex({
                                 event.target.value = '';
                             }}
                         />
+                        <Select
+                            value={forDepartment || 'none'}
+                            onValueChange={(value) =>
+                                setForDepartment(value === 'none' ? '' : value)
+                            }
+                        >
+                            <SelectTrigger className="mr-2 inline-flex w-[200px]">
+                                <SelectValue placeholder="Departament" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">
+                                    Fără departament
+                                </SelectItem>
+                                {departments.map((one) => (
+                                    <SelectItem
+                                        key={one.id}
+                                        value={String(one.id)}
+                                    >
+                                        {one.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Button
                             onClick={() => uploader.current?.click()}
                             disabled={upload.processing}
@@ -593,6 +630,11 @@ export default function ContractsIndex({
                         <div className="mt-1 text-right text-xs text-muted-foreground">
                             până la {limits.upload_mb} MB · PDF, Word, scanări
                         </div>
+                        {upload.errors.department_id && (
+                            <div className="mt-1 text-right text-xs text-red-600">
+                                {upload.errors.department_id}
+                            </div>
+                        )}
                     </div>
                 </div>
 

@@ -5,6 +5,7 @@ use App\Jobs\ReadContractFile;
 use App\Models\AiUsage;
 use App\Models\Contract;
 use App\Models\ContractFile;
+use App\Models\Department;
 use App\Models\User;
 use App\Services\Ai\Meter;
 use App\Services\Contracts\ContractFields;
@@ -20,6 +21,9 @@ beforeEach(function () {
     config(['contracts.ai.enabled' => true, 'ai.providers.openai.key' => 'cheie-de-test']);
 
     $this->keeper = User::factory()->withRoles('contract_management')->create();
+    // Oamenii care țin contracte sunt repartizați pe departamente; contractul
+    // pe care îl aduc intră cu departamentul lor.
+    $this->keeper->departments()->sync([Department::query()->whereNotNull('code')->orderBy('sort')->value('id')]);
 });
 
 /** Un răspuns de-al agentului, cum vine el de la furnizor. */

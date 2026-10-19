@@ -16,6 +16,12 @@ return [
     'name' => env('APP_NAME', 'Laravel'),
 
     /*
+     | Cât poate lua o comandă din consolă. PHP n-are plafon acolo, iar o
+     | comandă scăpată ia mașina cu ea; vezi AppServiceProvider::capConsoleMemory.
+     */
+    'console_memory_limit' => env('CONSOLE_MEMORY_LIMIT', '1024M'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------

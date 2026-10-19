@@ -219,23 +219,35 @@ return [
             'maxProcesses' => 6,
             'maxTime' => 0,
             'maxJobs' => 0,
-            'memory' => 512,
+            // Peste atât, lucrătorul se stinge singur și repornește curat.
+            // Mai mult n-ar încăpea oricum lângă baza de date.
+            'memory' => 384,
             'tries' => 1,
             'timeout' => 1900,
             'nice' => 0,
         ],
     ],
 
+    /*
+     | Câți lucrători stau la treabă.
+     |
+     | Mașina are două procesoare și 3,7 GB. Doisprezece lucrători lungi, cu
+     | voie la 512 MB fiecare, puteau cere șase gigabyte — de trei ori cât are
+     | mașina. De obicei stau liniștiți la 25 MB, dar când prind deodată
+     | treabă grea, memoria se termină, totul intră în swap și Redis rămâne
+     | fără aer: atunci Horizon și lucrătorii pierd legătura cu el, iar noaptea
+     | se duce. Pe două procesoare oricum nu lucrează mai mult de doi odată.
+     */
     'environments' => [
         'production' => [
             'supervisor-1' => [
-                'maxProcesses' => 10,
+                'maxProcesses' => 5,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
             'supervisor-long' => [
-                'minProcesses' => 4,
-                'maxProcesses' => 12,
+                'minProcesses' => 1,
+                'maxProcesses' => 3,
             ],
         ],
 

@@ -17,6 +17,9 @@ beforeEach(function () {
     Queue::fake();
 
     $this->keeper = User::factory()->withRoles('contract_management')->create();
+    // Oamenii care țin contracte sunt repartizați pe departamente; contractul
+    // pe care îl aduc intră cu departamentul lor.
+    $this->keeper->departments()->sync([Department::query()->whereNotNull('code')->orderBy('sort')->value('id')]);
     $this->outsider = User::factory()->withRoles('operational')->create();
 });
 
@@ -281,6 +284,52 @@ test('a keeper of contracts sees only his own; Top Management and the admin see 
     ])->assertForbidden();
     $this->actingAs($boss)->get("/contracts/{$mine->id}")->assertOk();
     $this->actingAs($this->keeper)->get("/contracts/{$shared->id}")->assertOk();
+});
+
+test('a contract takes the department of the one who brought it', function () {
+    $charters = Department::query()->whereNotNull('code')->orderBy('sort')->first();
+    $altul = Department::query()->whereNotNull('code')->where('id', '<>', $charters->id)->first();
+
+    // Omul are două departamente: se propune cel dintâi.
+    $keeper = User::factory()->withRoles('contract_management')->create();
+    $keeper->departments()->sync([$altul->id, $charters->id]);
+
+    $this->actingAs($keeper)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent('a.pdf', 'unu')]])
+        ->assertRedirect();
+
+    expect(Contract::query()->latest('id')->first()->department_id)->toBe($charters->id);
+
+    // Dar poate alege altul la încărcare.
+    $this->actingAs($keeper)
+        ->post('/contracts', [
+            'files' => [UploadedFile::fake()->createWithContent('b.pdf', 'doi')],
+            'department_id' => $altul->id,
+        ])->assertRedirect();
+
+    expect(Contract::query()->latest('id')->first()->department_id)->toBe($altul->id);
+});
+
+test('nobody uploads a contract without a department', function () {
+    // Cine n-are departamentul lui trebuie să aleagă unul: altfel contractul
+    // ar intra fără, și n-ar fi al nimănui.
+    $singur = User::factory()->withRoles('contract_management')->create();
+
+    $this->actingAs($singur)
+        ->post('/contracts', ['files' => [UploadedFile::fake()->createWithContent('c.pdf', 'trei')]])
+        ->assertSessionHasErrors('department_id');
+
+    expect(Contract::query()->count())->toBe(0);
+
+    $department = Department::query()->whereNotNull('code')->first();
+
+    $this->actingAs($singur)
+        ->post('/contracts', [
+            'files' => [UploadedFile::fake()->createWithContent('c.pdf', 'trei')],
+            'department_id' => $department->id,
+        ])->assertRedirect();
+
+    expect(Contract::query()->latest('id')->first()->department_id)->toBe($department->id);
 });
 
 test('a keeper sees the contracts of his department, not only his own', function () {

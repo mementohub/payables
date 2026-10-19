@@ -90,6 +90,8 @@ class ContractController extends Controller
             // Pentru faptele pe teanc: cui i se dă un departament sau un
             // responsabil dintr-o mișcare.
             'people' => User::query()->orderBy('name')->get(['id', 'name', 'email']),
+            // Departamentul cu care vine contractul încărcat de omul ăsta.
+            'myDepartment' => $this->hisDepartment($request->user()),
             // Top Management citește repertoriul, dar nu umblă la el.
             'can' => ['delete' => (bool) $request->user()?->isAdmin(), 'all' => (bool) $request->user()?->seesAllContracts()],
             'ocr' => $reader->available(),
@@ -183,7 +185,12 @@ class ContractController extends Controller
             'files' => ['required', 'array', 'min:1', 'max:20'],
             'files.*' => ['file', 'max:'.((int) config('contracts.max_upload_mb', 50) * 1024), 'extensions:'.implode(',', self::FORMATS)],
             'kind' => ['nullable', Rule::in(Contract::KINDS)],
-            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            // Cerut doar de la cine n-are departamentul lui: altfel
+            // contractul ar intra fără, și n-ar mai fi al nimănui.
+            'department_id' => [
+                Rule::requiredIf(fn () => $this->hisDepartment($request->user()) === null),
+                'nullable', 'integer', 'exists:departments,id',
+            ],
         ]);
 
         $created = [];
@@ -1036,6 +1043,24 @@ class ContractController extends Controller
     }
 
     /**
+     * Primul departament al omului, în ordinea în care sunt așezate ele.
+     *
+     * Cei mai mulți au unul singur; cine are mai multe primește pe cel dintâi
+     * și îl schimbă dintr-un clic, în fișă sau chiar la încărcare.
+     */
+    private function hisDepartment(?User $user): ?int
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        return $user->departments()
+            ->orderBy('departments.sort')
+            ->orderBy('departments.id')
+            ->value('departments.id');
+    }
+
+    /**
      * @param  array<string, mixed>  $validated
      */
     private function blank(?User $user, string $name, array $validated): Contract
@@ -1047,7 +1072,10 @@ class ContractController extends Controller
             'title' => $title !== '' ? Str::limit($title, 290) : 'Contract fără titlu',
             'partner_name' => '—',
             'kind' => $validated['kind'] ?? Contract::KIND_SUPPLIER,
-            'department_id' => $validated['department_id'] ?? null,
+            // Departamentul omului care încarcă, dacă n-a ales el altul. Un
+            // contract fără departament nu se vede decât de cel care l-a adus,
+            // și nimeni nu-l caută acolo unde i-ar fi locul.
+            'department_id' => $validated['department_id'] ?? $this->hisDepartment($user),
             // Cine încarcă răspunde de contract până spune altcineva altfel:
             // altfel repertoriul se umple de contracte ale nimănui.
             'owner_id' => $user?->id,

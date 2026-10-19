@@ -28,11 +28,37 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->capConsoleMemory();
         $this->configureDefaults();
 
         Event::listen(function (SocialiteWasCalled $event): void {
             $event->extendSocialite('microsoft', MicrosoftProvider::class);
         });
+    }
+
+    /**
+     * Un plafon de memorie pentru comenzile din consolă.
+     *
+     * PHP pe linia de comandă vine cu `memory_limit = -1`: o comandă scăpată
+     * de sub control nu moare singură, ci înghite toată mașina. Atunci baza
+     * de date și Redis rămân fără aer, iar noaptea se duce — nu cade comanda,
+     * cade serverul.
+     *
+     * Cu plafon, aceeași comandă se oprește cu o eroare limpede, iar restul
+     * își vede de treabă. Se ridică din `CONSOLE_MEMORY_LIMIT` dacă un raport
+     * chiar are nevoie de mai mult.
+     */
+    protected function capConsoleMemory(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $limit = (string) config('app.console_memory_limit', '1024M');
+
+        if ($limit !== '' && (int) ini_get('memory_limit') === -1) {
+            ini_set('memory_limit', $limit);
+        }
     }
 
     /**

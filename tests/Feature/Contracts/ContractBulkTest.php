@@ -16,6 +16,9 @@ beforeEach(function () {
     Mail::fake();
 
     $this->keeper = User::factory()->withRoles('contract_management')->create();
+    // Oamenii care țin contracte sunt repartizați pe departamente; contractul
+    // pe care îl aduc intră cu departamentul lor.
+    $this->keeper->departments()->sync([Department::query()->whereNotNull('code')->orderBy('sort')->value('id')]);
     $this->other = User::factory()->withRoles('contract_management')->create();
 });
 

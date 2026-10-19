@@ -6,6 +6,7 @@ use App\Mail\ContractSharedMail;
 use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractFile;
+use App\Models\Department;
 use App\Models\Partner;
 use App\Models\User;
 use App\Services\Contracts\ContractFields;
@@ -283,6 +284,7 @@ test('a contract taken in is active from the day it was signed', function () {
     });
 
     $keeper = User::factory()->withRoles('contract_management')->create();
+    $keeper->departments()->sync([Department::query()->whereNotNull('code')->value('id')]);
 
     $this->actingAs($keeper)
         ->post('/contracts', ['files' => [UploadedFile::fake()->create('contract.pdf', 50, 'application/pdf')]])
