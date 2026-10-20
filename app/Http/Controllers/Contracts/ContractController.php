@@ -14,11 +14,13 @@ use App\Models\Department;
 use App\Models\User;
 use App\Services\Contracts\ContractAnswer;
 use App\Services\Contracts\ContractReader;
+use App\Services\Contracts\WordPreview;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as Page;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -326,12 +328,22 @@ class ContractController extends Controller
      * fișierul tot prin aplicație trece, deci dreptul se cere la fel ca la
      * descărcare.
      */
-    public function preview(Request $request, Contract $contract, ContractFile $file): StreamedResponse
+    public function preview(Request $request, Contract $contract, ContractFile $file, WordPreview $word): Page|StreamedResponse
     {
         $this->seen($request, $contract);
 
         if ($file->contract_id !== $contract->id) {
             throw new AuthorizationException('Fișierul nu e al acestui contract.');
+        }
+
+        // Browserul nu deschide documente Word. Pentru ele se face, aici, o
+        // pagină din chiar cuprinsul documentului — cu titluri, tabele și
+        // poze —, în loc să i se arate omului textul gol sau să fie trimis
+        // să descarce fișierul.
+        if ($word->supports($file)) {
+            return response((string) $word->html($file))
+                ->header('Content-Type', 'text/html; charset=utf-8')
+                ->header('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'");
         }
 
         return Storage::disk((string) config('contracts.disk', 'contracts'))->response(

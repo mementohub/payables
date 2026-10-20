@@ -1190,6 +1190,19 @@ function Preview({
         );
     }
 
+    // Documentele Word se arată ca pagină, nu ca text gol: serverul face din
+    // ele o pagină simplă, cu titluri, tabele și poze.
+    if (/\.docx?$/.test(name)) {
+        return (
+            <iframe
+                src={url}
+                title={file.name}
+                sandbox=""
+                className="min-h-0 flex-1 rounded-md border bg-white"
+            />
+        );
+    }
+
     if (/\.(png|jpe?g|gif|webp|tiff?)$/.test(name)) {
         return (
             <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 p-2">

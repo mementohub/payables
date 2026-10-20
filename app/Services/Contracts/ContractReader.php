@@ -41,6 +41,7 @@ class ContractReader
             return match (true) {
                 $this->is($path, $mime, ['pdf']) => $this->pdf($path),
                 $this->is($path, $mime, ['docx']) => $this->docx($path),
+                $this->is($path, $mime, ['doc']) => $this->doc($path),
                 $this->is($path, $mime, ['txt', 'md']) => ['engine' => 'text', 'text' => (string) file_get_contents($path), 'pages' => 1, 'status' => 'done', 'error' => null],
                 $this->is($path, $mime, ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp']) => $this->image($path),
                 default => $this->failed('fel de fișier necitit: '.($mime ?? pathinfo($path, PATHINFO_EXTENSION))),
@@ -187,6 +188,87 @@ class ContractReader
             'status' => 'done',
             'error' => null,
         ];
+    }
+
+    /**
+     * Word-ul vechi (.doc) n-are XML, ci un teanc de fluxuri binare.
+     *
+     * Nicio unealtă de pe server nu-l citește — nici măcar prin micromamba nu
+     * există una —, așa că textul se scoate de aici. Nu e o citire în toată
+     * regula: se caută bucățile de text, și în UTF-16, și în opt biți, iar
+     * dintre ele se păstrează cele care seamănă a frază. Pentru o privire și
+     * pentru căutat în contract e destul; cine vrea documentul întreg îl
+     * descarcă.
+     *
+     * @return array{engine: string, text: string, pages: ?int, status: string, error: ?string}
+     */
+    private function doc(string $path): array
+    {
+        $raw = (string) file_get_contents($path);
+
+        if ($raw === '') {
+            return $this->failed('fișierul Word e gol');
+        }
+
+        $best = '';
+
+        // Textul stă aliniat pe doi octeți, dar nu se știe de la care capăt;
+        // se încearcă amândouă și rămâne cea care scoate mai mult.
+        foreach ([0, 1] as $offset) {
+            $text = $this->readable((string) @iconv('UTF-16LE', 'UTF-8//IGNORE', substr($raw, $offset)));
+
+            if (mb_strlen($text) > mb_strlen($best)) {
+                $best = $text;
+            }
+        }
+
+        // Documentele mai vechi țin textul pe un octet, în pagina de cod a
+        // Windows-ului.
+        $single = $this->readable((string) @iconv('WINDOWS-1252', 'UTF-8//IGNORE', $raw));
+
+        if (mb_strlen($single) > mb_strlen($best)) {
+            $best = $single;
+        }
+
+        return $best === ''
+            ? $this->failed('din documentul Word vechi nu s-a putut citi text')
+            : ['engine' => 'doc', 'text' => $best, 'pages' => null, 'status' => 'done', 'error' => null];
+    }
+
+    /**
+     * Frazele dintr-un morman de octeți: bucăți destul de lungi, cu litere
+     * destule între ele, ca să nu rămână gunoiul binar.
+     */
+    private function readable(string $text): string
+    {
+        preg_match_all('~[\p{L}\p{N}][\p{L}\p{N} \t,.;:!?()\[\]{}«»„”"\'’\-–—/%&@+°\n]{24,}~u', $text, $found);
+
+        $lines = [];
+
+        foreach ($found[0] as $piece) {
+            // Word își ține numele de stiluri în aceleași fluxuri; ele apar
+            // la început și n-au nicio treabă cu contractul.
+            if (preg_match('~font de paragraf|default paragraph font|table normal|list paragraph|^ww-|subiect comentariu|comment reference|balloon text|footnote text|header char|footer char~iu', $piece) === 1) {
+                continue;
+            }
+
+            $piece = trim(preg_replace('~[ \t]{2,}~u', ' ', $piece) ?? $piece);
+
+            // Un șir de același semn („ÿÿÿÿ…”) trece drept litere în opt biți,
+            // dar nu e text: o frază are multe semne deosebite în ea.
+            if (count(array_unique(preg_split('~~u', $piece, -1, PREG_SPLIT_NO_EMPTY) ?: [])) < 8) {
+                continue;
+            }
+
+            $letters = preg_match_all('~\p{L}~u', $piece);
+
+            // Sub jumătate litere e zgomot, nu frază.
+            if ($letters > 12 && $letters > mb_strlen($piece) * 0.5) {
+                $lines[] = $piece;
+            }
+        }
+
+        return trim(implode("\n", $lines));
     }
 
     private function pdfPages(string $path): ?int
