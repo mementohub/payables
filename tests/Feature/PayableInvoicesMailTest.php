@@ -109,6 +109,10 @@ test('the list and the export say who gave the final approval, and when', functi
             ->where('invoices.data.0.workflow.final.at', fn ($at) => $at !== null)
         );
 
+    // Fără nicio bifă, exportul ia tot ce arată filtrele.
+    $all = $this->actingAs($admin)->post('/invoices/received/export', ['select_all' => true]);
+    $all->assertOk();
+
     // Și în foaia exportată, pe coloanele ei.
     $export = $this->actingAs($admin)->post('/invoices/received/export', ['ids' => [$invoice->id]]);
     $export->assertOk();

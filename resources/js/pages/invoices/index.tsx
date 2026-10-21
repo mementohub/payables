@@ -365,10 +365,22 @@ export default function InvoicesIndex({
         isPrimite &&
         (selection.selectAllAcrossPages || eligibleBtIdsOnPage.length > 0);
 
+    /**
+     * Exportul ia ce e bifat; fără nicio bifă, ia tot ce arată filtrele.
+     *
+     * Butonul stătea doar în bara de selecție, așa că, fără bifă, nu se vedea
+     * deloc — iar omul care voia lista întreagă trebuia întâi s-o bifeze
+     * toată, pagină cu pagină.
+     */
     const handleExport = () => {
         setExporting(true);
         const url = (scope === 'emise' ? exportPrimite() : exportPrimite()).url;
-        downloadXlsxFromForm(url, selection.payload(), exportFilters);
+        const picked =
+            selection.selectionCount > 0
+                ? selection.payload()
+                : { select_all: true };
+
+        downloadXlsxFromForm(url, picked, exportFilters);
         setTimeout(() => setExporting(false), 1500);
     };
 
@@ -637,6 +649,25 @@ export default function InvoicesIndex({
                         className="min-h-11 w-full sm:w-auto"
                     >
                         Caută
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11 w-full sm:w-auto"
+                        disabled={exporting}
+                        onClick={handleExport}
+                        title={
+                            selection.selectionCount > 0
+                                ? 'Exportă facturile bifate'
+                                : 'Exportă tot ce arată filtrele de mai sus'
+                        }
+                    >
+                        <Download className="size-4" />
+                        {exporting
+                            ? 'Export…'
+                            : selection.selectionCount > 0
+                              ? `Export (${selection.selectionCount})`
+                              : 'Export XLSX'}
                     </Button>
                 </form>
 
