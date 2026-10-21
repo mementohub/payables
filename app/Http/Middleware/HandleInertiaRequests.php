@@ -66,6 +66,7 @@ class HandleInertiaRequests extends Middleware
                     'dashboard' => $user->canSeeDashboard(),
                     'approvals' => $user->canSeeApprovals(),
                     'payments' => $user->canSeePayments(),
+                    'treasury' => $user->isTreasury(),
                     'invoices' => $user->canSeeInvoices(),
                     'routing' => $user->canSeeRouting(),
                     'reports' => $user->canSeeReports(),

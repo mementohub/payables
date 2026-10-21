@@ -37,6 +37,28 @@ class Recipients
     }
 
     /**
+     * Trezoreria: cine face plățile. Fără nimeni pe rolul ăsta, mailul merge
+     * la finanțe, iar dacă nici acolo nu e nimeni, la administrator — un
+     * teanc de facturi bune de plată nu trebuie să rămână nespus nimănui.
+     *
+     * @return Collection<int, User>
+     */
+    public function treasury(?User $except = null): Collection
+    {
+        $users = $this->withRole(User::ROLE_TREASURY);
+
+        if ($users->isEmpty()) {
+            $users = $this->withRole(User::ROLE_FINANCE);
+        }
+
+        if ($users->isEmpty()) {
+            $users = $this->withRole(User::ROLE_ADMIN);
+        }
+
+        return $this->without($users, $except);
+    }
+
+    /**
      * Șeful departamentului; nepus, tot departamentul.
      *
      * @return Collection<int, User>

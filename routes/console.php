@@ -35,6 +35,18 @@ Schedule::command('invoices:trace-suppliers', ['--months' => 3])
  * de departe înapoi. Fără ea, cheltuiala venită târziu n-ar fi găsită
  * niciodată.
  */
+/*
+ * Joia la prânz, trezoreria află ce s-a aprobat și așteaptă plata.
+ *
+ * Aprobarea se dă într-un loc, plata se face în altul, iar între ele nu
+ * trecea nimic: o factură bună de plată putea sta zile întregi fără ca
+ * nimeni s-o caute.
+ */
+Schedule::command('invoices:mail-payable')
+    ->weeklyOn(4, '12:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('invoices:trace-suppliers', ['--months' => 14])
     ->weeklyOn(0, '02:00')
     ->withoutOverlapping(600)

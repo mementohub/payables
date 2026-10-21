@@ -17,6 +17,8 @@ export type Capabilities = {
     dashboard: boolean;
     approvals: boolean;
     payments: boolean;
+    /** Trezoreria: lista cu ce s-a aprobat și așteaptă plata. */
+    treasury: boolean;
     invoices: boolean;
     routing: boolean;
     reports: boolean;

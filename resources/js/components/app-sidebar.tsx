@@ -21,6 +21,7 @@ import {
     Truck,
     Users,
     UserCog,
+    Wallet,
     Wrench,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
@@ -41,6 +42,7 @@ import { index as approvalsIndex } from '@/routes/approvals';
 import { index as bankStatementsIndex } from '@/routes/bank-statements';
 import { index as companiesIndex } from '@/routes/companies';
 import { index as databaseStatusIndex } from '@/routes/database-status';
+import { primite as facturiPrimite } from '@/routes/invoices';
 import { index as departmentsIndex } from '@/routes/departments';
 import { index as eInvoicesIndex } from '@/routes/e-invoices';
 import { index as maintenanceIndex } from '@/routes/maintenance';
@@ -100,6 +102,22 @@ const mainNavItems = (
     // Facturile se decid într-un singur loc, în Aprobări. „Primite” dubla
     // lista și acțiunile ei, așa că a ieșit din meniu; pagina rămâne, ca
     // arhivă căutabilă, legată din factura deschisă și din e-Facturi.
+    //
+    // Trezoreria o are însă înapoi, dar numai pe felia ei: ce a aprobat Top
+    // Management-ul și n-a fost încă plătit. Până acum se ajungea acolo doar
+    // din legătura de mail, iar cine face plățile trebuia să țină minte o
+    // adresă.
+    ...(can.treasury
+        ? [
+              {
+                  title: 'De plătit',
+                  href: facturiPrimite({
+                      query: { approval: 'approved', payment: 'unpaid' },
+                  }),
+                  icon: Wallet,
+              },
+          ]
+        : []),
     ...(can.payments
         ? [
               {

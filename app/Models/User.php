@@ -152,6 +152,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Trezoreria: cine pune la plată ce s-a aprobat.
+     *
+     * Lista ei are meniul ei — altfel se ajungea la ea numai dintr-o legătură
+     * de mail, iar cine face plățile trebuia să țină minte o adresă.
+     */
+    public function isTreasury(): bool
+    {
+        return $this->hasRole(self::ROLE_TREASURY) || $this->isAdmin();
+    }
+
+    /**
      * Fișa unei facturi: o deschide oricine are treabă cu ea — omul care o
      * aprobă, Financiarul care o ține, Trezoreria care o plătește. Ce vede
      * fiecare rămâne limitat la departamentele lui.
