@@ -10,7 +10,7 @@ import {
     RefreshCw,
     TriangleAlert,
 } from 'lucide-react';
-import { Fragment, useMemo, useState } from 'react';
+import { createContext, Fragment, useContext, useMemo, useState } from 'react';
 import {
     CostDetailsSheet,
     movePnlCost,
@@ -1653,479 +1653,577 @@ function PnlTable({
 
             <Card>
                 <CardContent className="p-0">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="sticky left-0 z-20 w-80 max-w-80 min-w-80 bg-card">
-                                    Linie
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Total
-                                </TableHead>
-                                {columns.map((key) => (
-                                    <TableHead key={key} className="text-right">
-                                        {view === 'channel' &&
-                                        !report.expand &&
-                                        report.expandable.includes(key) ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => onExpand(key)}
-                                                className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
-                                                title="Deschide pe sucursale"
-                                            >
-                                                {columnLabel(key)}
-                                                <ChevronRight className="size-3.5" />
-                                            </button>
-                                        ) : (
-                                            columnLabel(key)
-                                        )}
+                    <RevenueBase.Provider
+                        value={{
+                            total: report.revenue.total.net,
+                            values: columns.map((key) => revenueOf(key).net),
+                        }}
+                    >
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="sticky left-0 z-20 w-80 max-w-80 min-w-80 bg-card">
+                                        Linie
                                     </TableHead>
-                                ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            <Row
-                                label="Venit net"
-                                total={report.revenue.total.net}
-                                values={columns.map(
-                                    (key) => revenueOf(key).net,
-                                )}
-                                emphasis
-                                previousTotal={
-                                    previous?.revenue.total.net ?? null
-                                }
-                                previousValues={columns.map(
-                                    (key) => prevRevenueOf(key)?.net ?? null,
-                                )}
-                            />
-                            {report.revenue.cogs !== undefined && (
+                                    <TableHead className="text-right">
+                                        Total
+                                    </TableHead>
+                                    <TableHead
+                                        className="pr-3 pl-0 text-right text-xs font-normal text-muted-foreground"
+                                        title="Cât face linia din venitul net"
+                                    >
+                                        % venit
+                                    </TableHead>
+                                    {columns.flatMap((key) => [
+                                        <TableHead
+                                            key={key}
+                                            className="text-right"
+                                        >
+                                            {view === 'channel' &&
+                                            !report.expand &&
+                                            report.expandable.includes(key) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onExpand(key)
+                                                    }
+                                                    className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                                                    title="Deschide pe sucursale"
+                                                >
+                                                    {columnLabel(key)}
+                                                    <ChevronRight className="size-3.5" />
+                                                </button>
+                                            ) : (
+                                                columnLabel(key)
+                                            )}
+                                        </TableHead>,
+                                        <TableHead
+                                            key={`${key}-share`}
+                                            className="pr-3 pl-0 text-right text-xs font-normal text-muted-foreground"
+                                            title="Cât face linia din venitul net al coloanei"
+                                        >
+                                            % venit
+                                        </TableHead>,
+                                    ])}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
                                 <Row
-                                    label="Cost servicii vândute (628)"
-                                    total={report.revenue.cogs}
+                                    label="Venit net"
+                                    total={report.revenue.total.net}
                                     values={columns.map(
+                                        (key) => revenueOf(key).net,
+                                    )}
+                                    emphasis
+                                    previousTotal={
+                                        previous?.revenue.total.net ?? null
+                                    }
+                                    previousValues={columns.map(
                                         (key) =>
-                                            revenueOf(key).net -
-                                            revenueOf(key).margin,
+                                            prevRevenueOf(key)?.net ?? null,
                                     )}
-                                    previousTotal={
-                                        previous?.revenue.cogs ?? null
-                                    }
-                                    previousValues={columns.map((key) => {
-                                        const r = prevRevenueOf(key);
-
-                                        return r === null
-                                            ? null
-                                            : r.net - r.margin;
-                                    })}
-                                    costLike
                                 />
-                            )}
-                            {report.revenue.trip_costs !== undefined && (
-                                <Row
-                                    label={report.revenue.trip_costs.label}
-                                    total={report.revenue.trip_costs.total}
-                                    values={columns.map((key) => tripOf(key))}
-                                    previousTotal={
-                                        previous?.revenue.trip_costs?.total ??
-                                        null
-                                    }
-                                    previousValues={columns.map((key) =>
-                                        prevTripOf(key),
-                                    )}
-                                    costLike
-                                />
-                            )}
-                            {report.revenue.fx_commission !== undefined &&
-                                Math.abs(report.revenue.fx_commission.total) >
-                                    0.5 && (
+                                {report.revenue.cogs !== undefined && (
                                     <Row
-                                        label={
-                                            report.revenue.fx_commission.label
-                                        }
-                                        total={
-                                            report.revenue.fx_commission.total
-                                        }
-                                        values={columns.map((key) => fxOf(key))}
+                                        label="Cost servicii vândute (628)"
+                                        total={report.revenue.cogs}
+                                        values={columns.map(
+                                            (key) =>
+                                                revenueOf(key).net -
+                                                revenueOf(key).margin,
+                                        )}
                                         previousTotal={
-                                            previous?.revenue.fx_commission
+                                            previous?.revenue.cogs ?? null
+                                        }
+                                        previousValues={columns.map((key) => {
+                                            const r = prevRevenueOf(key);
+
+                                            return r === null
+                                                ? null
+                                                : r.net - r.margin;
+                                        })}
+                                        costLike
+                                    />
+                                )}
+                                {report.revenue.trip_costs !== undefined && (
+                                    <Row
+                                        label={report.revenue.trip_costs.label}
+                                        total={report.revenue.trip_costs.total}
+                                        values={columns.map((key) =>
+                                            tripOf(key),
+                                        )}
+                                        previousTotal={
+                                            previous?.revenue.trip_costs
                                                 ?.total ?? null
                                         }
                                         previousValues={columns.map((key) =>
-                                            prevFxOf(key),
+                                            prevTripOf(key),
                                         )}
-                                    />
-                                )}
-                            <Row
-                                label="Marjă brută"
-                                total={margin}
-                                values={columns.map(
-                                    (key) => revenueOf(key).margin,
-                                )}
-                                previousTotal={
-                                    previous?.revenue.total.margin ?? null
-                                }
-                                previousValues={columns.map(
-                                    (key) => prevRevenueOf(key)?.margin ?? null,
-                                )}
-                                hint={columns.map((key) =>
-                                    pct(
-                                        revenueOf(key).margin,
-                                        revenueOf(key).net,
-                                    ),
-                                )}
-                                totalHint={pct(
-                                    margin,
-                                    report.revenue.total.net,
-                                )}
-                                emphasis
-                            />
-
-                            {groups.map(([group, lines]) => (
-                                <Fragment key={group}>
-                                    <Row
-                                        label={group}
-                                        total={lines.reduce(
-                                            (s, l) => s + l.total,
-                                            0,
-                                        )}
-                                        values={columns.map((key) =>
-                                            lines.reduce(
-                                                (s, l) => s + costOf(l, key),
-                                                0,
-                                            ),
-                                        )}
-                                        previousTotal={
-                                            previous === null
-                                                ? null
-                                                : lines.reduce(
-                                                      (s, l) =>
-                                                          s +
-                                                          (prevLines.get(l.saf)
-                                                              ?.total ?? 0),
-                                                      0,
-                                                  )
-                                        }
-                                        previousValues={columns.map((key) =>
-                                            previous === null
-                                                ? null
-                                                : lines.reduce(
-                                                      (s, l) =>
-                                                          s +
-                                                          (prevCostOf(
-                                                              l.saf,
-                                                              key,
-                                                          ) ?? 0),
-                                                      0,
-                                                  ),
-                                        )}
-                                        group
-                                        groupOpen={openGroups.has(group)}
-                                        lineCount={lines.length}
-                                        onToggleGroup={() => toggleGroup(group)}
-                                        onDragOverGroup={() =>
-                                            !openGroups.has(group) &&
-                                            toggleGroup(group)
-                                        }
                                         costLike
                                     />
-                                    {openGroups.has(group) &&
-                                        lines
-                                            .sort((a, b) => b.total - a.total)
-                                            .map((line) => (
-                                                <Fragment key={line.saf}>
-                                                    <Row
-                                                        label={line.label}
-                                                        code={line.saf}
-                                                        total={line.total}
-                                                        values={columns.map(
-                                                            (key) =>
-                                                                costOf(
-                                                                    line,
-                                                                    key,
-                                                                ),
-                                                        )}
-                                                        saf={line.saf}
-                                                        columns={columns}
-                                                        expanded={
-                                                            open?.saf ===
-                                                            line.saf
-                                                        }
-                                                        onOpen={onOpen}
-                                                        onDrop={onDrop}
-                                                        previousTotal={
-                                                            previous === null
-                                                                ? null
-                                                                : (prevLines.get(
-                                                                      line.saf,
-                                                                  )?.total ?? 0)
-                                                        }
-                                                        previousValues={columns.map(
-                                                            (key) =>
-                                                                prevCostOf(
-                                                                    line.saf,
-                                                                    key,
-                                                                ),
-                                                        )}
-                                                        valueTitles={columns.map(
-                                                            (key) =>
-                                                                allocationTitle(
-                                                                    line,
-                                                                    key,
-                                                                ),
-                                                        )}
-                                                        costLike
-                                                    />
-                                                    {open?.saf === line.saf && (
-                                                        <CostBreakdown
-                                                            line={line}
-                                                            column={open.column}
-                                                            columnLabel={
-                                                                columnLabel
-                                                            }
-                                                            columnValue={
-                                                                open.column
-                                                                    ? costOf(
-                                                                          line,
-                                                                          open.column,
-                                                                      )
-                                                                    : null
-                                                            }
-                                                            details={details}
-                                                            loading={loading}
-                                                            catalogue={
-                                                                catalogue
-                                                            }
-                                                            onMove={onDrop}
-                                                            onMoveChannel={
-                                                                onMoveChannel
-                                                            }
-                                                            onMoveProduct={
-                                                                onMoveProduct
-                                                            }
-                                                            axis={view}
-                                                            products={
-                                                                report.products
-                                                            }
-                                                            span={
-                                                                columns.length +
-                                                                2
-                                                            }
-                                                            onDocuments={
-                                                                onDocuments
-                                                            }
-                                                        />
-                                                    )}
-                                                </Fragment>
-                                            ))}
-                                </Fragment>
-                            ))}
+                                )}
+                                {report.revenue.fx_commission !== undefined &&
+                                    Math.abs(
+                                        report.revenue.fx_commission.total,
+                                    ) > 0.5 && (
+                                        <Row
+                                            label={
+                                                report.revenue.fx_commission
+                                                    .label
+                                            }
+                                            total={
+                                                report.revenue.fx_commission
+                                                    .total
+                                            }
+                                            values={columns.map((key) =>
+                                                fxOf(key),
+                                            )}
+                                            previousTotal={
+                                                previous?.revenue.fx_commission
+                                                    ?.total ?? null
+                                            }
+                                            previousValues={columns.map((key) =>
+                                                prevFxOf(key),
+                                            )}
+                                        />
+                                    )}
+                                <Row
+                                    label="Marjă brută"
+                                    total={margin}
+                                    values={columns.map(
+                                        (key) => revenueOf(key).margin,
+                                    )}
+                                    previousTotal={
+                                        previous?.revenue.total.margin ?? null
+                                    }
+                                    previousValues={columns.map(
+                                        (key) =>
+                                            prevRevenueOf(key)?.margin ?? null,
+                                    )}
+                                    hint={columns.map((key) =>
+                                        pct(
+                                            revenueOf(key).margin,
+                                            revenueOf(key).net,
+                                        ),
+                                    )}
+                                    totalHint={pct(
+                                        margin,
+                                        report.revenue.total.net,
+                                    )}
+                                    emphasis
+                                />
 
-                            <Row
-                                label="Cheltuieli totale operaționale"
-                                total={report.totals.total}
-                                values={columns.map((key) => costTotalOf(key))}
-                                previousTotal={previous?.totals.total ?? null}
-                                previousValues={columns.map((key) =>
-                                    prevCostTotalOf(key),
-                                )}
-                                emphasis
-                                costLike
-                            />
-                            <Row
-                                label="EBITDA"
-                                total={ebitda}
-                                previousTotal={
-                                    previous === null
-                                        ? null
-                                        : previous.revenue.total.margin -
-                                          previous.totals.total
-                                }
-                                previousValues={columns.map((key) =>
-                                    previous === null
-                                        ? null
-                                        : (prevRevenueOf(key)?.margin ?? 0) -
-                                          (prevCostTotalOf(key) ?? 0),
-                                )}
-                                values={columns.map(
-                                    (key) =>
-                                        revenueOf(key).margin -
+                                {groups.map(([group, lines]) => (
+                                    <Fragment key={group}>
+                                        <Row
+                                            label={group}
+                                            total={lines.reduce(
+                                                (s, l) => s + l.total,
+                                                0,
+                                            )}
+                                            values={columns.map((key) =>
+                                                lines.reduce(
+                                                    (s, l) =>
+                                                        s + costOf(l, key),
+                                                    0,
+                                                ),
+                                            )}
+                                            previousTotal={
+                                                previous === null
+                                                    ? null
+                                                    : lines.reduce(
+                                                          (s, l) =>
+                                                              s +
+                                                              (prevLines.get(
+                                                                  l.saf,
+                                                              )?.total ?? 0),
+                                                          0,
+                                                      )
+                                            }
+                                            previousValues={columns.map(
+                                                (key) =>
+                                                    previous === null
+                                                        ? null
+                                                        : lines.reduce(
+                                                              (s, l) =>
+                                                                  s +
+                                                                  (prevCostOf(
+                                                                      l.saf,
+                                                                      key,
+                                                                  ) ?? 0),
+                                                              0,
+                                                          ),
+                                            )}
+                                            group
+                                            groupOpen={openGroups.has(group)}
+                                            lineCount={lines.length}
+                                            onToggleGroup={() =>
+                                                toggleGroup(group)
+                                            }
+                                            onDragOverGroup={() =>
+                                                !openGroups.has(group) &&
+                                                toggleGroup(group)
+                                            }
+                                            costLike
+                                        />
+                                        {openGroups.has(group) &&
+                                            lines
+                                                .sort(
+                                                    (a, b) => b.total - a.total,
+                                                )
+                                                .map((line) => (
+                                                    <Fragment key={line.saf}>
+                                                        <Row
+                                                            label={line.label}
+                                                            code={line.saf}
+                                                            total={line.total}
+                                                            values={columns.map(
+                                                                (key) =>
+                                                                    costOf(
+                                                                        line,
+                                                                        key,
+                                                                    ),
+                                                            )}
+                                                            saf={line.saf}
+                                                            columns={columns}
+                                                            expanded={
+                                                                open?.saf ===
+                                                                line.saf
+                                                            }
+                                                            onOpen={onOpen}
+                                                            onDrop={onDrop}
+                                                            previousTotal={
+                                                                previous ===
+                                                                null
+                                                                    ? null
+                                                                    : (prevLines.get(
+                                                                          line.saf,
+                                                                      )
+                                                                          ?.total ??
+                                                                      0)
+                                                            }
+                                                            previousValues={columns.map(
+                                                                (key) =>
+                                                                    prevCostOf(
+                                                                        line.saf,
+                                                                        key,
+                                                                    ),
+                                                            )}
+                                                            valueTitles={columns.map(
+                                                                (key) =>
+                                                                    allocationTitle(
+                                                                        line,
+                                                                        key,
+                                                                    ),
+                                                            )}
+                                                            costLike
+                                                        />
+                                                        {open?.saf ===
+                                                            line.saf && (
+                                                            <CostBreakdown
+                                                                line={line}
+                                                                column={
+                                                                    open.column
+                                                                }
+                                                                columnLabel={
+                                                                    columnLabel
+                                                                }
+                                                                columnValue={
+                                                                    open.column
+                                                                        ? costOf(
+                                                                              line,
+                                                                              open.column,
+                                                                          )
+                                                                        : null
+                                                                }
+                                                                details={
+                                                                    details
+                                                                }
+                                                                loading={
+                                                                    loading
+                                                                }
+                                                                catalogue={
+                                                                    catalogue
+                                                                }
+                                                                onMove={onDrop}
+                                                                onMoveChannel={
+                                                                    onMoveChannel
+                                                                }
+                                                                onMoveProduct={
+                                                                    onMoveProduct
+                                                                }
+                                                                axis={view}
+                                                                products={
+                                                                    report.products
+                                                                }
+                                                                span={
+                                                                    columns.length *
+                                                                        2 +
+                                                                    3
+                                                                }
+                                                                onDocuments={
+                                                                    onDocuments
+                                                                }
+                                                            />
+                                                        )}
+                                                    </Fragment>
+                                                ))}
+                                    </Fragment>
+                                ))}
+
+                                <Row
+                                    label="Cheltuieli totale operaționale"
+                                    total={report.totals.total}
+                                    values={columns.map((key) =>
                                         costTotalOf(key),
-                                )}
-                                hint={columns.map((key) =>
-                                    pct(
-                                        revenueOf(key).margin -
+                                    )}
+                                    previousTotal={
+                                        previous?.totals.total ?? null
+                                    }
+                                    previousValues={columns.map((key) =>
+                                        prevCostTotalOf(key),
+                                    )}
+                                    emphasis
+                                    costLike
+                                />
+                                <Row
+                                    label="EBITDA"
+                                    total={ebitda}
+                                    previousTotal={
+                                        previous === null
+                                            ? null
+                                            : previous.revenue.total.margin -
+                                              previous.totals.total
+                                    }
+                                    previousValues={columns.map((key) =>
+                                        previous === null
+                                            ? null
+                                            : (prevRevenueOf(key)?.margin ??
+                                                  0) -
+                                              (prevCostTotalOf(key) ?? 0),
+                                    )}
+                                    values={columns.map(
+                                        (key) =>
+                                            revenueOf(key).margin -
                                             costTotalOf(key),
-                                        revenueOf(key).net,
-                                    ),
-                                )}
-                                totalHint={pct(
-                                    ebitda,
-                                    report.revenue.total.net,
-                                )}
-                                emphasis
-                            />
-                            <BelowRow
-                                bucket="amortizare"
-                                label="Amortizare (net de reluări)"
-                                explanation="Rulajul debitor al conturilor 681 (amortizări, provizioane, ajustări) minus rulajul creditor al conturilor 781 și 786 (reluările lor). De aceea e „net”: într-un an în care se reiau provizioane mai mari decât amortizarea, linia iese negativă și adaugă la profit."
-                                report={report}
-                                previous={previous}
-                                columns={columns}
-                                belowOf={belowOf}
-                                prevBelowOf={prevBelowOf}
-                                open={openBelow === 'amortizare'}
-                                onToggle={() =>
-                                    setOpenBelow(
-                                        openBelow === 'amortizare'
+                                    )}
+                                    hint={columns.map((key) =>
+                                        pct(
+                                            revenueOf(key).margin -
+                                                costTotalOf(key),
+                                            revenueOf(key).net,
+                                        ),
+                                    )}
+                                    totalHint={pct(
+                                        ebitda,
+                                        report.revenue.total.net,
+                                    )}
+                                    emphasis
+                                />
+                                <BelowRow
+                                    bucket="amortizare"
+                                    label="Amortizare (net de reluări)"
+                                    explanation="Rulajul debitor al conturilor 681 (amortizări, provizioane, ajustări) minus rulajul creditor al conturilor 781 și 786 (reluările lor). De aceea e „net”: într-un an în care se reiau provizioane mai mari decât amortizarea, linia iese negativă și adaugă la profit."
+                                    report={report}
+                                    previous={previous}
+                                    columns={columns}
+                                    belowOf={belowOf}
+                                    prevBelowOf={prevBelowOf}
+                                    open={openBelow === 'amortizare'}
+                                    onToggle={() =>
+                                        setOpenBelow(
+                                            openBelow === 'amortizare'
+                                                ? null
+                                                : 'amortizare',
+                                        )
+                                    }
+                                    span={columns.length * 2 + 3}
+                                />
+                                <Row
+                                    label="EBIT"
+                                    total={ebit}
+                                    values={columns.map(
+                                        (key) =>
+                                            revenueOf(key).margin -
+                                            costTotalOf(key) -
+                                            belowOf('amortizare', key),
+                                    )}
+                                    emphasis
+                                    previousTotal={
+                                        previous === null
                                             ? null
-                                            : 'amortizare',
-                                    )
-                                }
-                                span={columns.length + 2}
-                            />
-                            <Row
-                                label="EBIT"
-                                total={ebit}
-                                values={columns.map(
-                                    (key) =>
-                                        revenueOf(key).margin -
-                                        costTotalOf(key) -
-                                        belowOf('amortizare', key),
-                                )}
-                                emphasis
-                                previousTotal={
-                                    previous === null
-                                        ? null
-                                        : previous.revenue.total.margin -
-                                          previous.totals.total -
-                                          (prevBelowOf('amortizare') ?? 0)
-                                }
-                                previousValues={columns.map((key) =>
-                                    previous === null
-                                        ? null
-                                        : (prevRevenueOf(key)?.margin ?? 0) -
-                                          (prevCostTotalOf(key) ?? 0) -
-                                          (prevBelowOf('amortizare', key) ?? 0),
-                                )}
-                            />
-                            <BelowRow
-                                bucket="financiar"
-                                label="Rezultat financiar (net)"
-                                explanation="Rulajul debitor al conturilor 665–668 (diferențe de curs, dobânzi, sconturi) minus rulajul creditor al conturilor 765–768. Comisionul de curs de pe încasările clientului nu e aici: e venit și stă sus, în marjă."
-                                report={report}
-                                previous={previous}
-                                columns={columns}
-                                belowOf={belowOf}
-                                prevBelowOf={prevBelowOf}
-                                open={openBelow === 'financiar'}
-                                onToggle={() =>
-                                    setOpenBelow(
-                                        openBelow === 'financiar'
+                                            : previous.revenue.total.margin -
+                                              previous.totals.total -
+                                              (prevBelowOf('amortizare') ?? 0)
+                                    }
+                                    previousValues={columns.map((key) =>
+                                        previous === null
                                             ? null
-                                            : 'financiar',
-                                    )
-                                }
-                                span={columns.length + 2}
-                            />
-                            <Row
-                                label="Profit înainte de impozitare"
-                                total={ebt}
-                                values={columns.map(
-                                    (key) =>
-                                        revenueOf(key).margin -
-                                        costTotalOf(key) -
-                                        belowOf('amortizare', key) -
-                                        belowOf('financiar', key),
-                                )}
-                                emphasis
-                                previousTotal={
-                                    previous === null
-                                        ? null
-                                        : previous.revenue.total.margin -
-                                          previous.totals.total -
-                                          (prevBelowOf('amortizare') ?? 0) -
-                                          (prevBelowOf('financiar') ?? 0)
-                                }
-                                previousValues={columns.map((key) =>
-                                    previous === null
-                                        ? null
-                                        : (prevRevenueOf(key)?.margin ?? 0) -
-                                          (prevCostTotalOf(key) ?? 0) -
-                                          (prevBelowOf('amortizare', key) ??
-                                              0) -
-                                          (prevBelowOf('financiar', key) ?? 0),
-                                )}
-                            />
-                            <BelowRow
-                                bucket="impozit"
-                                label="Impozit pe profit"
-                                explanation="Rulajul debitor al conturilor 691 și 698. E impozitul înregistrat în contabilitate în perioada afișată, nu unul recalculat de raport."
-                                report={report}
-                                previous={previous}
-                                columns={columns}
-                                belowOf={belowOf}
-                                prevBelowOf={prevBelowOf}
-                                open={openBelow === 'impozit'}
-                                onToggle={() =>
-                                    setOpenBelow(
-                                        openBelow === 'impozit'
+                                            : (prevRevenueOf(key)?.margin ??
+                                                  0) -
+                                              (prevCostTotalOf(key) ?? 0) -
+                                              (prevBelowOf('amortizare', key) ??
+                                                  0),
+                                    )}
+                                />
+                                <BelowRow
+                                    bucket="financiar"
+                                    label="Rezultat financiar (net)"
+                                    explanation="Rulajul debitor al conturilor 665–668 (diferențe de curs, dobânzi, sconturi) minus rulajul creditor al conturilor 765–768. Comisionul de curs de pe încasările clientului nu e aici: e venit și stă sus, în marjă."
+                                    report={report}
+                                    previous={previous}
+                                    columns={columns}
+                                    belowOf={belowOf}
+                                    prevBelowOf={prevBelowOf}
+                                    open={openBelow === 'financiar'}
+                                    onToggle={() =>
+                                        setOpenBelow(
+                                            openBelow === 'financiar'
+                                                ? null
+                                                : 'financiar',
+                                        )
+                                    }
+                                    span={columns.length * 2 + 3}
+                                />
+                                <Row
+                                    label="Profit înainte de impozitare"
+                                    total={ebt}
+                                    values={columns.map(
+                                        (key) =>
+                                            revenueOf(key).margin -
+                                            costTotalOf(key) -
+                                            belowOf('amortizare', key) -
+                                            belowOf('financiar', key),
+                                    )}
+                                    emphasis
+                                    previousTotal={
+                                        previous === null
                                             ? null
-                                            : 'impozit',
-                                    )
-                                }
-                                span={columns.length + 2}
-                            />
-                            <Row
-                                label="Profit net"
-                                total={netProfit}
-                                previousTotal={
-                                    previous === null
-                                        ? null
-                                        : previous.revenue.total.margin -
-                                          previous.totals.total -
-                                          (prevBelowOf('amortizare') ?? 0) -
-                                          (prevBelowOf('financiar') ?? 0) -
-                                          (prevBelowOf('impozit') ?? 0)
-                                }
-                                values={columns.map(
-                                    (key) =>
-                                        revenueOf(key).margin -
-                                        costTotalOf(key) -
-                                        belowOf('amortizare', key) -
-                                        belowOf('financiar', key) -
-                                        belowOf('impozit', key),
-                                )}
-                                hint={columns.map((key) =>
-                                    pct(
-                                        revenueOf(key).margin -
+                                            : previous.revenue.total.margin -
+                                              previous.totals.total -
+                                              (prevBelowOf('amortizare') ?? 0) -
+                                              (prevBelowOf('financiar') ?? 0)
+                                    }
+                                    previousValues={columns.map((key) =>
+                                        previous === null
+                                            ? null
+                                            : (prevRevenueOf(key)?.margin ??
+                                                  0) -
+                                              (prevCostTotalOf(key) ?? 0) -
+                                              (prevBelowOf('amortizare', key) ??
+                                                  0) -
+                                              (prevBelowOf('financiar', key) ??
+                                                  0),
+                                    )}
+                                />
+                                <BelowRow
+                                    bucket="impozit"
+                                    label="Impozit pe profit"
+                                    explanation="Rulajul debitor al conturilor 691 și 698. E impozitul înregistrat în contabilitate în perioada afișată, nu unul recalculat de raport."
+                                    report={report}
+                                    previous={previous}
+                                    columns={columns}
+                                    belowOf={belowOf}
+                                    prevBelowOf={prevBelowOf}
+                                    open={openBelow === 'impozit'}
+                                    onToggle={() =>
+                                        setOpenBelow(
+                                            openBelow === 'impozit'
+                                                ? null
+                                                : 'impozit',
+                                        )
+                                    }
+                                    span={columns.length * 2 + 3}
+                                />
+                                <Row
+                                    label="Profit net"
+                                    total={netProfit}
+                                    previousTotal={
+                                        previous === null
+                                            ? null
+                                            : previous.revenue.total.margin -
+                                              previous.totals.total -
+                                              (prevBelowOf('amortizare') ?? 0) -
+                                              (prevBelowOf('financiar') ?? 0) -
+                                              (prevBelowOf('impozit') ?? 0)
+                                    }
+                                    values={columns.map(
+                                        (key) =>
+                                            revenueOf(key).margin -
                                             costTotalOf(key) -
                                             belowOf('amortizare', key) -
                                             belowOf('financiar', key) -
                                             belowOf('impozit', key),
-                                        revenueOf(key).net,
-                                    ),
-                                )}
-                                totalHint={pct(
-                                    netProfit,
-                                    report.revenue.total.net,
-                                )}
-                                emphasis
-                                previousValues={columns.map((key) =>
-                                    previous === null
-                                        ? null
-                                        : (prevRevenueOf(key)?.margin ?? 0) -
-                                          (prevCostTotalOf(key) ?? 0) -
-                                          (prevBelowOf('amortizare', key) ??
-                                              0) -
-                                          (prevBelowOf('financiar', key) ?? 0) -
-                                          (prevBelowOf('impozit', key) ?? 0),
-                                )}
-                            />
-                        </TableBody>
-                    </Table>
+                                    )}
+                                    hint={columns.map((key) =>
+                                        pct(
+                                            revenueOf(key).margin -
+                                                costTotalOf(key) -
+                                                belowOf('amortizare', key) -
+                                                belowOf('financiar', key) -
+                                                belowOf('impozit', key),
+                                            revenueOf(key).net,
+                                        ),
+                                    )}
+                                    totalHint={pct(
+                                        netProfit,
+                                        report.revenue.total.net,
+                                    )}
+                                    emphasis
+                                    previousValues={columns.map((key) =>
+                                        previous === null
+                                            ? null
+                                            : (prevRevenueOf(key)?.margin ??
+                                                  0) -
+                                              (prevCostTotalOf(key) ?? 0) -
+                                              (prevBelowOf('amortizare', key) ??
+                                                  0) -
+                                              (prevBelowOf('financiar', key) ??
+                                                  0) -
+                                              (prevBelowOf('impozit', key) ??
+                                                  0),
+                                    )}
+                                />
+                            </TableBody>
+                        </Table>
+                    </RevenueBase.Provider>
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+/**
+ * Venitul net pe fiecare coloană, pentru procentele din tabel.
+ *
+ * Fiecare cifră are lângă ea cât face din venitul coloanei ei — altfel o
+ * cheltuială de două milioane nu spune nimic până nu cauți venitul în capul
+ * tabelului și împarți în minte. Stă în context fiindcă rândurile se nasc în
+ * treisprezece locuri, iar baza e aceeași pentru toate.
+ */
+const RevenueBase = createContext<{ total: number; values: number[] } | null>(
+    null,
+);
+
+/** Cât face cifra din venitul net al coloanei ei. */
+function Share({ value, base }: { value: number; base: number | undefined }) {
+    if (
+        base === undefined ||
+        Math.abs(base) < 0.005 ||
+        Math.abs(value) < 0.005
+    ) {
+        return <span className="text-xs text-muted-foreground">—</span>;
+    }
+
+    const share = (value / base) * 100;
+
+    return (
+        <span
+            className="text-xs text-muted-foreground tabular-nums"
+            title={`${share.toFixed(2)}% din venitul net al coloanei`}
+        >
+            {share.toFixed(1)}%
+        </span>
     );
 }
 
@@ -2179,6 +2277,7 @@ function Row({
     onDrop?: (payload: MovePayload, saf: string) => void;
 }) {
     const [over, setOver] = useState(false);
+    const base = useContext(RevenueBase);
     // Liniile de cheltuială primesc cheltuieli mutate din alte linii; ele
     // însele nu se trag nicăieri — se mută cheltuiala, nu rândul.
     const interactive = saf !== undefined && onOpen !== undefined;
@@ -2281,7 +2380,10 @@ function Row({
                 )}
                 <Delta now={total} before={previousTotal} invert={costLike} />
             </TableCell>
-            {values.map((value, i) => (
+            <TableCell className="pr-3 pl-0 text-right whitespace-nowrap">
+                <Share value={total} base={base?.total} />
+            </TableCell>
+            {values.flatMap((value, i) => [
                 <TableCell
                     key={i}
                     onClick={(event) => {
@@ -2310,8 +2412,14 @@ function Row({
                         before={previousValues?.[i]}
                         invert={costLike}
                     />
-                </TableCell>
-            ))}
+                </TableCell>,
+                <TableCell
+                    key={`${i}-share`}
+                    className="pr-3 pl-0 text-right whitespace-nowrap"
+                >
+                    <Share value={value} base={base?.values[i]} />
+                </TableCell>,
+            ])}
         </TableRow>
     );
 }
