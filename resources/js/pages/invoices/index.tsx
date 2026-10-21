@@ -923,6 +923,11 @@ function WorkflowCell({ invoice }: { invoice: InvoiceRow }) {
         return <span className="text-xs text-muted-foreground">—</span>;
     }
 
+    // Cine a dat aprobarea finală și când — ca la departamente, unde se vede
+    // cine a hotărât. „Bun de plată” fără nume nu spune nimănui pe cine să
+    // întrebe dacă e ceva de lămurit.
+    const final = workflow.final;
+
     return (
         <div className="flex flex-col items-start gap-1">
             <WorkflowStatusBadge status={workflow.approval_status} />
@@ -932,6 +937,14 @@ function WorkflowCell({ invoice }: { invoice: InvoiceRow }) {
                         până la {formatDate(workflow.postponed_until)}
                     </span>
                 )}
+            {final && (
+                <span
+                    className="text-xs text-muted-foreground"
+                    title={final.comment ?? undefined}
+                >
+                    {final.by ?? 'cineva'} · {formatDateTime(final.at)}
+                </span>
+            )}
         </div>
     );
 }

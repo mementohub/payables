@@ -120,7 +120,9 @@ class InvoiceController extends Controller
 
         $headers = $scope === 'emise'
             ? ['Data', 'Scadență', 'Tip doc', 'Număr', 'Client', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată']
-            : ['Data', 'Scadență', 'Tip doc', 'Număr', 'Furnizor', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată', 'Departament', 'Aprobare'];
+            // „Bun de plată” singur nu spune pe cine să întrebi: numele și
+            // ceasul aprobării merg mai departe, în coloanele lor.
+            : ['Data', 'Scadență', 'Tip doc', 'Număr', 'Furnizor', 'CUI', 'Companie', 'Monedă', 'Total', 'TVA', 'Plătit', 'Rest', 'Status plată', 'Departament', 'Aprobare', 'Aprobat de', 'Aprobat la'];
 
         $rows = function () use ($query, $scope) {
             foreach ($query->lazy(500) as $invoice) {
@@ -144,6 +146,8 @@ class InvoiceController extends Controller
                 if ($scope === 'primite') {
                     $row[] = $invoice->department?->name ?? '';
                     $row[] = $this->presenter->exportApprovalLabel($invoice);
+                    $row[] = $invoice->finalDecidedBy?->name ?? '';
+                    $row[] = $invoice->final_decided_at?->format('d.m.Y H:i') ?? '';
                 }
 
                 yield $row;

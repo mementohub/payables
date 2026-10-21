@@ -19,6 +19,9 @@ class InvoiceBuilder extends Builder
                 'company:id,name',
                 'department:id,name,group',
                 'departmentApprovals' => fn ($q) => $q->with(['department:id,name', 'decidedBy:id,name'])->orderByDesc('amount'),
+                // Cine a dat aprobarea finală se vede în listă, lângă stare,
+                // ca la departamente: altfel „bun de plată” nu spune de la cine.
+                'finalDecidedBy:id,name',
                 'sourceCompany:id,name',
                 'sourceInvoice:id,company_id,partner_id,data_doc,tip_doc,nr_doc,tip_doc_baza,nr_doc_baza,data_doc_baza',
                 'sourceInvoice.partner:id,name,cui',

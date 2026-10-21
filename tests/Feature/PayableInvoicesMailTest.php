@@ -5,6 +5,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
+use App\Services\Xlsx\XlsxReader;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 
@@ -92,6 +93,32 @@ test('the list travels as a spreadsheet too, for the work that follows', functio
             && str_contains($attachments[0]->as, 'facturi-de-platit')
             && str_ends_with($attachments[0]->as, '.xlsx');
     });
+});
+
+test('the list and the export say who gave the final approval, and when', function () {
+    $invoice = payable(['nr_doc' => 'F-OK']);
+
+    $admin = User::factory()->withRoles('admin')->create();
+
+    $this->actingAs($admin)
+        ->get('/invoices/received?approval=approved')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('invoices.data.0.workflow.approval_status', 'approved')
+            ->where('invoices.data.0.workflow.final.by', $this->boss->name)
+            ->where('invoices.data.0.workflow.final.at', fn ($at) => $at !== null)
+        );
+
+    // Și în foaia exportată, pe coloanele ei.
+    $export = $this->actingAs($admin)->post('/invoices/received/export', ['ids' => [$invoice->id]]);
+    $export->assertOk();
+
+    $file = tempnam(sys_get_temp_dir(), 'e').'.xlsx';
+    file_put_contents($file, $export->streamedContent());
+    $rows = XlsxReader::rows($file);
+
+    expect($rows[0])->toContain('Aprobat de', 'Aprobat la')
+        ->and($rows[1])->toContain($this->boss->name);
 });
 
 test('with nothing to pay, nobody is bothered', function () {
