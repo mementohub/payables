@@ -154,8 +154,9 @@
                 <tr>
                     <td style="padding:14px 28px 26px;border-top:1px solid {{ $line }};">
                         <p style="margin:14px 0 0;font-size:11px;line-height:1.6;color:{{ $muted }};text-align:center;">
-                            Mailul pleacă joia la prânz, către trezorerie. Sunt trecute numai facturile de furnizor care au primit
-                            aprobarea finală și n-au fost încă achitate; cele amânate apar abia când le vine ziua.
+                            Mailul pleacă joia dimineața, către trezorerie. Sunt trecute numai facturile de furnizor care au primit
+                            aprobarea finală de la Top Management și n-au fost încă achitate; cele amânate apar abia când le vine ziua,
+                            iar cele sub {{ number_format((float) ($digest['min_lei'] ?? 50), 0, ',', '.') }} de lei nu se trec deloc.
                         </p>
                     </td>
                 </tr>

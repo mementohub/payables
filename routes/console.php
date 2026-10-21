@@ -36,14 +36,14 @@ Schedule::command('invoices:trace-suppliers', ['--months' => 3])
  * niciodată.
  */
 /*
- * Joia la prânz, trezoreria află ce s-a aprobat și așteaptă plata.
+ * Joia dimineața, trezoreria află ce s-a aprobat și așteaptă plata.
  *
  * Aprobarea se dă într-un loc, plata se face în altul, iar între ele nu
  * trecea nimic: o factură bună de plată putea sta zile întregi fără ca
  * nimeni s-o caute.
  */
 Schedule::command('invoices:mail-payable')
-    ->weeklyOn(4, '12:00')
+    ->weeklyOn(4, '09:00')
     ->withoutOverlapping()
     ->runInBackground();
 

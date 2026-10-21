@@ -62,4 +62,22 @@ return [
         'enabled' => (bool) env('NOTIFICATIONS_ROUTED_ENABLED', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Vestea de joi către trezorerie
+    |--------------------------------------------------------------------------
+    |
+    | Facturile aprobate de Top Management care așteaptă plata.
+    |
+    | Sub pragul de mai jos nu se trec: printre ele se strânseseră firimituri
+    | vechi de ani — doi lei de la un magazin de bricolaj, rămași neplătiți
+    | din 2018 — care lungeau lista fără să merite drumul la bancă. Pragul e
+    | în lei, oricare ar fi moneda facturii.
+    |
+    */
+    'payable' => [
+        'enabled' => (bool) env('NOTIFICATIONS_PAYABLE_ENABLED', true),
+        'min_lei' => (float) env('NOTIFICATIONS_PAYABLE_MIN_LEI', 50),
+    ],
+
 ];

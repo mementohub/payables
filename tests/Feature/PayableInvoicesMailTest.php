@@ -125,6 +125,36 @@ test('the list and the export say who gave the final approval, and when', functi
         ->and($rows[1])->toContain($this->boss->name);
 });
 
+test('the crumbs are left out: they are not worth the trip to the bank', function () {
+    payable(['nr_doc' => 'MARUNT', 'val_mon' => 2.01]);
+    payable(['nr_doc' => 'MARUNT-EUR', 'moneda' => 'EUR', 'curs' => 5, 'val_mon' => 0.80]);
+    payable(['nr_doc' => 'MERITA', 'val_mon' => 60]);
+    // În valută, pragul se judecă tot în lei: 20 EUR fac o sută.
+    payable(['nr_doc' => 'MERITA-EUR', 'moneda' => 'EUR', 'curs' => 5, 'val_mon' => 20]);
+
+    $this->artisan('invoices:mail-payable')->assertSuccessful();
+
+    Mail::assertSent(PayableInvoicesMail::class, function (PayableInvoicesMail $mail) {
+        $numbers = collect($mail->digest['rows'])->pluck('nr_doc');
+
+        return $mail->digest['count'] === 2
+            && $numbers->contains('MERITA')
+            && $numbers->contains('MERITA-EUR')
+            && ! $numbers->contains('MARUNT')
+            && ! $numbers->contains('MARUNT-EUR');
+    });
+});
+
+test('the threshold can be moved without touching the code', function () {
+    config(['notifications.payable.min_lei' => 0]);
+
+    payable(['nr_doc' => 'MARUNT', 'val_mon' => 2.01]);
+
+    $this->artisan('invoices:mail-payable')->assertSuccessful();
+
+    Mail::assertSent(PayableInvoicesMail::class, fn (PayableInvoicesMail $mail) => $mail->digest['count'] === 1);
+});
+
 test('with nothing to pay, nobody is bothered', function () {
     $this->artisan('invoices:mail-payable')->assertSuccessful();
 

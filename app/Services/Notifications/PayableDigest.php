@@ -41,6 +41,10 @@ class PayableDigest
             ->orderByDesc('val_mon')
             ->get();
 
+        // Firimiturile nu merită drumul la bancă: lista ar fi mai lungă, nu
+        // mai de folos. Pragul se judecă pe valoarea în lei, oricare ar fi
+        // moneda, și aici, nu în interogare: cursul stă într-o coloană
+        // zecimală, iar înmulțirea cu el nu se poartă la fel în toate bazele.
         $rows = $invoices->map(fn (Invoice $invoice) => [
             'id' => $invoice->id,
             'nr_doc' => trim((string) $invoice->nr_doc),
@@ -56,7 +60,7 @@ class PayableDigest
             'days' => $invoice->data_scadenta?->diffInDays($today, false),
             'approved_at' => $invoice->final_decided_at,
             'approved_by' => $invoice->finalDecidedBy?->name,
-        ])->values();
+        ])->filter(fn (array $row) => abs($row['lei']) >= $this->threshold())->values();
 
         // Tablouri, nu colecții: vrafului ăsta i se uită și prin mail, și
         // într-o foaie de calcul, iar o colecție prefăcută în tablou nu dă
@@ -70,7 +74,14 @@ class PayableDigest
                 && $row['data_scadenta']->betweenIncluded($today, $today->copy()->addDays(7)))->values()->all(),
             'since' => $since,
             'today' => $today,
+            'min_lei' => $this->threshold(),
         ];
+    }
+
+    /** Sub cât nu se mai trece o factură pe listă, în lei. */
+    private function threshold(): float
+    {
+        return (float) config('notifications.payable.min_lei', 50);
     }
 
     /**
