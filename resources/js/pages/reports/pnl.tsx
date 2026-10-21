@@ -184,6 +184,8 @@ type Props = {
     previous: PnlReport | null;
     /** Anul pe luni, trimestre și total — doar în vederea de evoluție. */
     evolution: PnlEvolution | null;
+    /** Același tabel, anul trecut, când s-a cerut comparația. */
+    previousEvolution: PnlEvolution | null;
     lines: Record<string, { group: string; label: string }>;
     overrides: Override[];
     /** Corecturi făcute după ultima construcție: se văd abia după „Aplică”. */
@@ -242,6 +244,7 @@ export default function Pnl({
     report,
     previous,
     evolution,
+    previousEvolution,
     lines,
     overrides,
     pending,
@@ -657,6 +660,7 @@ export default function Pnl({
                         {filters.layout === 'evolution' && evolution ? (
                             <PnlEvolutionTable
                                 evolution={evolution}
+                                previous={previousEvolution}
                                 view={view}
                                 labelOf={(key) =>
                                     view === 'channel'

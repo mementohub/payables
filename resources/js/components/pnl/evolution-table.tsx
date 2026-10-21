@@ -29,6 +29,8 @@ export type EvolutionRow = {
     lines?: number;
     /** Rândul se citește și ca procent din altul (marja din venit). */
     of?: string;
+    /** Rând de cheltuială: creșterea e veste proastă, nu bună. */
+    cost?: boolean;
     cells: Record<string, EvolutionCell>;
 };
 
@@ -48,6 +50,39 @@ export type PnlEvolution = {
     rows: EvolutionRow[];
 };
 
+/**
+ * Cât s-a schimbat față de anul trecut, sub cifră.
+ *
+ * Verde unde e bine, roșu unde nu — iar la cheltuieli „bine” înseamnă mai
+ * puțin. La vârful cursorului stă și cifra de anul trecut, ca să nu fie
+ * nevoie de încă un tabel alături.
+ */
+function Against({
+    change,
+    unit,
+}: {
+    change: { text: string; good: boolean; was: number } | null;
+    unit: 'lei' | 'mii';
+}) {
+    if (change === null) {
+        return null;
+    }
+
+    return (
+        <span
+            className={cn(
+                'block text-[10px] leading-tight',
+                change.good
+                    ? 'text-emerald-600 dark:text-emerald-500'
+                    : 'text-red-600 dark:text-red-400',
+            )}
+            title={`Anul trecut: ${number(unit === 'mii' ? change.was / 1000 : change.was)}${unit === 'mii' ? ' mii' : ''} lei`}
+        >
+            {change.text}
+        </span>
+    );
+}
+
 const number = (value: number, decimals = 0) =>
     new Intl.NumberFormat('ro-RO', {
         maximumFractionDigits: decimals,
@@ -64,10 +99,13 @@ const number = (value: number, decimals = 0) =>
  */
 export function PnlEvolutionTable({
     evolution,
+    previous,
     view,
     labelOf,
 }: {
     evolution: PnlEvolution;
+    /** Același tabel, anul trecut; lipsește dacă nu s-a cerut comparația. */
+    previous?: PnlEvolution | null;
     view: 'channel' | 'product';
     labelOf: (key: string) => string;
 }) {
@@ -141,17 +179,68 @@ export function PnlEvolutionTable({
         );
     };
 
+    /**
+     * Cât face cifra din veniturile nete ale coloanei ei.
+     *
+     * Rândurile care-și declară baza o păstrează; toate celelalte se judecă
+     * după venituri — o cheltuială de trei milioane nu spune nimic până nu
+     * știi din cât.
+     */
     const share = (row: EvolutionRow, code: string, member: string | null) => {
-        if (row.of === undefined) {
+        if (row.key === 'revenue') {
             return null;
         }
 
-        const base = evolution.rows.find((other) => other.key === row.of);
+        const base = evolution.rows.find(
+            (other) => other.key === (row.of ?? 'revenue'),
+        );
         const of = base === undefined ? 0 : valueOf(base.cells[code], member);
 
         return of === 0
             ? null
             : `${((valueOf(row.cells[code], member) / of) * 100).toFixed(1)}%`;
+    };
+
+    /**
+     * Cât s-a schimbat față de anul trecut, pe aceeași perioadă.
+     *
+     * Se dă în procente, nu în lei: pe un tabel cu șaptesprezece coloane,
+     * cifrele mari una lângă alta nu se mai citesc, iar ochiul caută oricum
+     * dacă a crescut sau a scăzut.
+     */
+    const against = (
+        row: EvolutionRow,
+        code: string,
+        member: string | null,
+    ) => {
+        if (!previous) {
+            return null;
+        }
+
+        const before = previous.rows.find((other) => other.key === row.key);
+
+        if (before === undefined) {
+            return null;
+        }
+
+        const was = valueOf(before.cells[code], member);
+
+        if (Math.abs(was) < 0.0005) {
+            return null;
+        }
+
+        const now = valueOf(row.cells[code], member);
+        const change = ((now - was) / Math.abs(was)) * 100;
+
+        return {
+            text: `${change > 0 ? '+' : ''}${change.toFixed(1)}%`,
+            // La cheltuieli, creșterea e veste proastă.
+            good:
+                row.cost === true || row.kind === 'cost' || row.kind === 'line'
+                    ? change < 0
+                    : change > 0,
+            was,
+        };
     };
 
     // Trimestrul și anul se văd de departe: ele sunt reperele cu care se
@@ -407,6 +496,14 @@ export function PnlEvolutionTable({
                                                         )}
                                                     </span>
                                                 )}
+                                                <Against
+                                                    change={against(
+                                                        row,
+                                                        period.code,
+                                                        null,
+                                                    )}
+                                                    unit={unit}
+                                                />
                                             </TableCell>
                                             {split(period.code) &&
                                                 members.map((member) => (
@@ -425,6 +522,27 @@ export function PnlEvolutionTable({
                                                                 member,
                                                             ),
                                                         )}
+                                                        {share(
+                                                            row,
+                                                            period.code,
+                                                            member,
+                                                        ) !== null && (
+                                                            <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                {share(
+                                                                    row,
+                                                                    period.code,
+                                                                    member,
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                        <Against
+                                                            change={against(
+                                                                row,
+                                                                period.code,
+                                                                member,
+                                                            )}
+                                                            unit={unit}
+                                                        />
                                                     </TableCell>
                                                 ))}
                                         </Fragment>

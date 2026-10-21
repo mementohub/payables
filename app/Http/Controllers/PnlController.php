@@ -83,6 +83,11 @@ class PnlController extends Controller
             'evolution' => $built && $layout === 'evolution'
                 ? $this->service->evolution($built, $basis, $mode, $expand, $key)
                 : null,
+            // Anul trecut, pe aceleași perioade: altfel „evoluție” înseamnă
+            // doar cum a mers anul ăsta cu el însuși.
+            'previousEvolution' => $previousBuilt && $layout === 'evolution'
+                ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key)
+                : null,
             'lines' => $this->map->lines(),
             'overrides' => $company ? $this->overrides($company) : [],
             'pending' => $company ? $this->pending($company, $built) : 0,
