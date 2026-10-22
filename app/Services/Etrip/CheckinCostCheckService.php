@@ -40,6 +40,30 @@ class CheckinCostCheckService
      *   requested: array<string, mixed>|null
      * }
      */
+    /**
+     * Serviciile confirmate ale furnizorului, una câte una.
+     *
+     * Verificarea de pe ecran duce doar primele șase sute — atât încap
+     * într-o pagină fără s-o îngreuneze. Exportul le ia pe toate: acolo
+     * tocmai amănuntul e rostul.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function lines(
+        string $connection,
+        EtripSupplier $supplier,
+        Carbon $from,
+        Carbon $to,
+        string $category = 'hotel',
+    ): Collection {
+        $labels = $this->reader->productTypes($connection);
+
+        return collect($this->reader->costLines($connection, $supplier->code, $from, $to))
+            ->map(fn (array $row) => $this->line($row, $labels))
+            ->filter(fn (array $line) => $category === 'all' || $line['category'] === $category)
+            ->values();
+    }
+
     public function check(
         string $connection,
         EtripSupplier $supplier,
@@ -49,13 +73,7 @@ class CheckinCostCheckService
         ?float $requested = null,
         ?string $currency = null,
     ): array {
-        $labels = $this->reader->productTypes($connection);
-
-        $lines = collect($this->reader->costLines($connection, $supplier->code, $from, $to))
-            ->map(fn (array $row) => $this->line($row, $labels))
-            ->filter(fn (array $line) => $category === 'all' || $line['category'] === $category)
-            ->values();
-
+        $lines = $this->lines($connection, $supplier, $from, $to, $category);
         $totals = $this->totals($lines);
 
         return [

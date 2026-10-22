@@ -163,6 +163,9 @@ Route::middleware('auth')->group(function () {
         Route::get('payment-checks/check', [PaymentCheckController::class, 'check'])->name('payment-checks.check');
         Route::get('payment-checks/expected', [PaymentCheckController::class, 'expected'])->name('payment-checks.expected');
         Route::get('payment-checks/reconcile', [PaymentCheckController::class, 'reconcile'])->name('payment-checks.reconcile');
+        // Toate serviciile din verificare, într-o foaie: ecranul duce doar
+        // primele șase sute.
+        Route::get('payment-checks/export', [PaymentCheckController::class, 'exportCheck'])->name('payment-checks.export');
         // Ce i-am plătit până acum furnizorului, ca suma cerută să se poată
         // judeca, nu doar citi.
         Route::get('payment-checks/payments', [PaymentCheckController::class, 'payments'])->name('payment-checks.payments');

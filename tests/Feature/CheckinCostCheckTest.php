@@ -2,8 +2,10 @@
 
 use App\Models\Company;
 use App\Models\EtripSupplier;
+use App\Models\User;
 use App\Services\Etrip\CheckinCostCheckService;
 use App\Services\Etrip\EtripReader;
+use App\Services\Xlsx\XlsxReader;
 use Illuminate\Support\Carbon;
 use Mockery\MockInterface;
 
@@ -132,4 +134,49 @@ test('a request compared in the etrip currency after conversion can still be a s
         ->and($requested['diff_pct'])->toBe(8.7)
         ->and($requested['level'])->toBe('crit')
         ->and($requested['rate']['from'])->toBe('EUR');
+});
+
+test('the whole check can be taken as a spreadsheet, not just what the screen holds', function () {
+    $admin = User::factory()->withRoles('admin')->create();
+
+    $response = $this->actingAs($admin)->get('/payment-checks/export?'.http_build_query([
+        'connection' => 'etrip_chr',
+        'supplier' => '10',
+        'from' => '2026-09-16',
+        'to' => '2026-09-17',
+        'category' => 'all',
+    ]));
+
+    $response->assertOk()
+        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+    $file = tempnam(sys_get_temp_dir(), 'ck').'.xlsx';
+    file_put_contents($file, $response->streamedContent());
+    $rows = XlsxReader::rows($file);
+
+    // Antetul, plus fiecare serviciu — inclusiv transferul și zborul, pe care
+    // filtrul pe „hotel” le-ar fi lăsat afară.
+    expect($rows[0])->toContain('Dosar', 'Titular', 'Hotel', 'Cost')
+        ->and($rows)->toHaveCount(5)
+        // Titularul și camera ajung în foaie: după ele se caută un dosar.
+        ->and(collect($rows)->flatten()->all())->toContain('Popescu Ion', 'Doubla', 'Transfer Agadir');
+});
+
+test('a check for one category carries only that category into the sheet', function () {
+    $admin = User::factory()->withRoles('admin')->create();
+
+    $rows = (function () use ($admin) {
+        $response = $this->actingAs($admin)->get('/payment-checks/export?'.http_build_query([
+            'connection' => 'etrip_chr', 'supplier' => '10',
+            'from' => '2026-09-16', 'to' => '2026-09-17', 'category' => 'hotel',
+        ]));
+
+        $file = tempnam(sys_get_temp_dir(), 'ck').'.xlsx';
+        file_put_contents($file, $response->streamedContent());
+
+        return XlsxReader::rows($file);
+    })();
+
+    expect($rows)->toHaveCount(3)
+        ->and(collect($rows)->flatten()->all())->not->toContain('Transfer Agadir');
 });

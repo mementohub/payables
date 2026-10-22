@@ -10,12 +10,15 @@ use App\Services\Etrip\EtripSupplierSyncService;
 use App\Services\Etrip\SupplierReconciliationService;
 use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
+use App\Services\Xlsx\XlsxWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Verificare plăți → Check-in (eTrip): the supplier cost of the services
@@ -122,6 +125,74 @@ class PaymentCheckController extends Controller
             Carbon::parse($validated['from'])->startOfDay(),
             Carbon::parse($validated['to'])->startOfDay(),
         ));
+    }
+
+    /**
+     * Toate serviciile din verificare, într-o foaie de calcul.
+     *
+     * Ecranul duce primele șase sute de rânduri, cât încap fără să
+     * îngreuneze pagina; cine are de lucru cu ele — de bifat, de adunat, de
+     * pus lângă cererea furnizorului — le ia pe toate de aici.
+     */
+    public function exportCheck(Request $request, CheckinCostCheckService $check, EtripSupplierSyncService $sync): StreamedResponse
+    {
+        $validated = $request->validate([
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
+            'supplier' => ['required', 'string', 'max:50'],
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+            'category' => ['nullable', Rule::in(CheckinCostCheckService::CATEGORIES)],
+        ]);
+
+        $connection = $validated['connection'];
+
+        $supplier = EtripSupplier::query()
+            ->forConnection($connection)
+            ->where('code', $validated['supplier'])
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($connection, $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
+
+        $from = Carbon::parse($validated['from'])->startOfDay();
+        $to = Carbon::parse($validated['to'])->startOfDay();
+
+        $lines = $this->readingEtrip(fn () => $check->lines(
+            $connection,
+            $supplier,
+            $from,
+            $to,
+            $validated['category'] ?? 'hotel',
+        ));
+
+        $rows = function () use ($lines) {
+            foreach ($lines as $line) {
+                yield [
+                    (int) $line['booking'],
+                    (int) $line['item'],
+                    (string) ($line['lead'] ?? ''),
+                    (string) $line['product_label'],
+                    (string) $line['category'],
+                    (string) $line['start_date'],
+                    $line['nights'] !== null ? (int) $line['nights'] : '',
+                    (string) ($line['hotel'] ?? ''),
+                    (string) ($line['room'] ?? ''),
+                    (string) ($line['meal'] ?? ''),
+                    (string) ($line['transfer'] ?? ''),
+                    (string) $line['service'],
+                    (int) $line['pax'],
+                    (string) $line['currency'],
+                    (float) $line['cost'],
+                ];
+            }
+        };
+
+        return XlsxWriter::streamDownload(
+            sprintf('check-in-%s-%s-%s.xlsx', Str::slug($supplier->name), $from->format('Ymd'), $to->format('Ymd')),
+            ['Dosar', 'Poziție', 'Titular', 'Tip serviciu', 'Categorie', 'Check-in', 'Nopți', 'Hotel', 'Cameră', 'Masă', 'Transfer', 'Serviciu', 'Pax', 'Monedă', 'Cost'],
+            $rows(),
+            'Check-in',
+        );
     }
 
     /**

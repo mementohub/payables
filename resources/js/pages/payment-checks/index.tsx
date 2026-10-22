@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { ExternalLink, RefreshCw, Search } from 'lucide-react';
+import { Download, ExternalLink, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import EtripSupplierController from '@/actions/App/Http/Controllers/EtripSupplierController';
@@ -1304,13 +1304,51 @@ export default function PaymentChecksIndex({
                             </div>
 
                             <Card>
-                                <CardHeader>
-                                    <CardTitle>Ce intră în sumă</CardTitle>
-                                    <CardDescription>
-                                        Cost pe hotel / serviciu, pe zi de
-                                        check-in sau pe tip de produs, cu
-                                        numărul de dosare.
-                                    </CardDescription>
+                                <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                                    <div className="space-y-1.5">
+                                        <CardTitle>Ce intră în sumă</CardTitle>
+                                        <CardDescription>
+                                            Cost pe hotel / serviciu, pe zi de
+                                            check-in sau pe tip de produs, cu
+                                            numărul de dosare.
+                                        </CardDescription>
+                                    </div>
+                                    {/*
+                                     * Ecranul duce primele șase sute de
+                                     * rânduri; foaia le ia pe toate, cu
+                                     * dosarul, titularul și camera fiecăruia.
+                                     */}
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="shrink-0"
+                                        asChild
+                                    >
+                                        <a
+                                            href={
+                                                PaymentCheckController.exportCheck(
+                                                    {
+                                                        query: {
+                                                            connection:
+                                                                connection ??
+                                                                '',
+                                                            supplier:
+                                                                check.supplier
+                                                                    .code,
+                                                            from: check.from,
+                                                            to: check.to,
+                                                            category:
+                                                                check.category,
+                                                        },
+                                                    },
+                                                ).url
+                                            }
+                                            title={`Descarcă toate cele ${check.lines_total} servicii`}
+                                        >
+                                            <Download className="size-4" />
+                                            Export XLSX
+                                        </a>
+                                    </Button>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     <Tabs
