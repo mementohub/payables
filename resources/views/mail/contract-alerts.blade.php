@@ -7,7 +7,7 @@
     $wash = '#eef1f7';
     $red = '#c8102e';
     $sans = "'Nunito Sans','Segoe UI',Helvetica,Arial,sans-serif";
-    $heading = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
+    $titleFont = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
 
     $logoPath = public_path('img/logo.png');
     $logo = isset($message)
@@ -39,7 +39,7 @@
                                     <img src="{{ $logo }}" width="40" height="41" alt="Christian Tour" style="display:block;width:40px;height:41px;border:0;">
                                 </td>
                                 <td style="padding-left:12px;vertical-align:middle;">
-                                    <div style="font-family:{{ $heading }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
+                                    <div style="font-family:{{ $titleFont }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
                                     <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">Contract Management</div>
                                 </td>
                             </tr>
@@ -49,7 +49,7 @@
 
                 <tr>
                     <td style="padding:26px 28px 0;">
-                        <h1 style="margin:0 0 4px;font-family:{{ $heading }};font-size:20px;font-weight:800;color:{{ $ink }};">{{ $heading }}</h1>
+                        <h1 style="margin:0 0 4px;font-family:{{ $titleFont }};font-size:20px;font-weight:800;color:{{ $ink }};">{{ $heading }}</h1>
                         @if ($intro)
                             <p style="margin:0 0 6px;font-size:13px;color:{{ $muted }};">{{ $intro }}</p>
                         @endif
@@ -68,7 +68,7 @@
                             @foreach ($rows as $row)
                                 <tr>
                                     <td style="padding:9px 8px;border-bottom:1px solid {{ $line }};">
-                                        <strong style="font-family:{{ $heading }};">{{ $row['number'] }}</strong>
+                                        <strong style="font-family:{{ $titleFont }};">{{ $row['number'] }}</strong>
                                         <div style="font-size:11px;color:{{ $muted }};">{{ \Illuminate\Support\Str::limit($row['title'], 46) }}</div>
                                         @if (! empty($row['notice']))
                                             <div style="font-size:11px;color:{{ $red }};">preaviz până la {{ $row['notice'] }}</div>
@@ -93,7 +93,7 @@
 
                 <tr>
                     <td align="center" style="padding:24px 28px 8px;">
-                        <a href="{{ $url }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $heading }};font-size:14px;font-weight:700;">Deschide repertoriul</a>
+                        <a href="{{ $url }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $titleFont }};font-size:14px;font-weight:700;">Deschide repertoriul</a>
                     </td>
                 </tr>
                 <tr>

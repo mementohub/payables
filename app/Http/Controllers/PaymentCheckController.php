@@ -10,7 +10,7 @@ use App\Services\Etrip\EtripSupplierSyncService;
 use App\Services\Etrip\SupplierReconciliationService;
 use App\Services\Invoices\SupplierPaymentCheckService;
 use App\Services\Omc\OmcReader;
-use App\Services\Xlsx\XlsxWriter;
+use App\Services\Xlsx\XlsxWorkbook;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -165,7 +165,16 @@ class PaymentCheckController extends Controller
             $validated['category'] ?? 'hotel',
         ));
 
-        $rows = function () use ($lines) {
+        $summaries = $check->summaries($lines);
+        $totals = $lines->groupBy('currency')->map(fn ($group, $currency) => [
+            'currency' => (string) $currency,
+            'cost' => round((float) $group->sum('cost'), 2),
+            'items' => $group->count(),
+            'bookings' => $group->pluck('booking')->unique()->count(),
+            'pax' => (int) $group->sum('pax'),
+        ])->sortBy('currency')->values();
+
+        $detail = function () use ($lines) {
             foreach ($lines as $line) {
                 yield [
                     (int) $line['booking'],
@@ -187,11 +196,86 @@ class PaymentCheckController extends Controller
             }
         };
 
-        return XlsxWriter::streamDownload(
+        $money = $totals->count() === 1 ? ' ('.$totals->first()['currency'].')' : '';
+
+        $sheets = [
+            [
+                'name' => 'Sinteză',
+                'headers' => ['Indicator', 'Valoare'],
+                'widths' => [34, 46],
+                'rows' => [
+                    ['Furnizor', $supplier->name],
+                    ['Cod furnizor', $supplier->code],
+                    ['Bază eTrip', (string) config('etrip.connections.'.$connection, $connection)],
+                    ['Check-in între', $from->format('d.m.Y').' și '.$to->format('d.m.Y')],
+                    ['Categorie', match ($validated['category'] ?? 'hotel') {
+                        'hotel' => 'Cazare',
+                        'transfer' => 'Transferuri',
+                        'all' => 'Toate serviciile',
+                        default => (string) ($validated['category'] ?? 'hotel'),
+                    }],
+                    ['Servicii', $lines->count()],
+                    ['Dosare', $lines->pluck('booking')->unique()->count()],
+                    ['Pax', (int) $lines->sum('pax')],
+                    ['Extras la', now()->format('d.m.Y H:i')],
+                    [null, null],
+                    ['Cost pe monedă', null],
+                    ...$totals->map(fn (array $row) => [$row['currency'], (float) $row['cost']])->all(),
+                ],
+            ],
+            [
+                'name' => 'Pe hotel',
+                'headers' => ['Hotel / serviciu', 'Monedă', 'Cost', 'Dosare', 'Servicii', 'Pax'],
+                'widths' => [46, 9, 14, 9, 9, 8],
+                'rows' => array_map(fn (array $row) => [
+                    (string) $row['name'], (string) $row['currency'], (float) $row['cost'],
+                    (int) $row['bookings'], (int) $row['items'], (int) $row['pax'],
+                ], $summaries['by_hotel']),
+                'chart' => [
+                    'title' => 'Cost pe hotel / serviciu'.$money,
+                    'kind' => 'bar', 'categories' => 0, 'values' => 2, 'limit' => 20,
+                    'anchor' => ['col' => 7, 'row' => 1, 'cols' => 10, 'rows' => 26],
+                ],
+            ],
+            [
+                'name' => 'Pe zi de check-in',
+                'headers' => ['Check-in', 'Monedă', 'Cost', 'Dosare', 'Servicii', 'Pax'],
+                'widths' => [14, 9, 14, 9, 9, 8],
+                'rows' => array_map(fn (array $row) => [
+                    (string) $row['date'], (string) $row['currency'], (float) $row['cost'],
+                    (int) $row['bookings'], (int) $row['items'], (int) $row['pax'],
+                ], $summaries['by_day']),
+                'chart' => [
+                    'title' => 'Cost pe zi de check-in'.$money,
+                    'kind' => 'col', 'categories' => 0, 'values' => 2, 'limit' => 62,
+                    'anchor' => ['col' => 7, 'row' => 1, 'cols' => 12, 'rows' => 24],
+                ],
+            ],
+            [
+                'name' => 'Pe tip de produs',
+                'headers' => ['Tip de produs', 'Cod', 'Monedă', 'Cost', 'Dosare', 'Servicii', 'Pax'],
+                'widths' => [36, 8, 9, 14, 9, 9, 8],
+                'rows' => array_map(fn (array $row) => [
+                    (string) $row['label'], (int) $row['product_type'], (string) $row['currency'], (float) $row['cost'],
+                    (int) $row['bookings'], (int) $row['items'], (int) $row['pax'],
+                ], $summaries['by_product']),
+                'chart' => [
+                    'title' => 'Cost pe tip de produs'.$money,
+                    'kind' => 'bar', 'categories' => 0, 'values' => 3, 'limit' => 20,
+                    'anchor' => ['col' => 8, 'row' => 1, 'cols' => 10, 'rows' => 22],
+                ],
+            ],
+            [
+                'name' => 'Check-in',
+                'headers' => ['Dosar', 'Poziție', 'Titular', 'Tip serviciu', 'Categorie', 'Check-in', 'Nopți', 'Hotel', 'Cameră', 'Masă', 'Transfer', 'Serviciu', 'Pax', 'Monedă', 'Cost'],
+                'widths' => [10, 9, 26, 18, 11, 12, 7, 30, 16, 12, 18, 34, 7, 9, 14],
+                'rows' => $detail(),
+            ],
+        ];
+
+        return XlsxWorkbook::streamDownload(
             sprintf('check-in-%s-%s-%s.xlsx', Str::slug($supplier->name), $from->format('Ymd'), $to->format('Ymd')),
-            ['Dosar', 'Poziție', 'Titular', 'Tip serviciu', 'Categorie', 'Check-in', 'Nopți', 'Hotel', 'Cameră', 'Masă', 'Transfer', 'Serviciu', 'Pax', 'Monedă', 'Cost'],
-            $rows(),
-            'Check-in',
+            $sheets,
         );
     }
 

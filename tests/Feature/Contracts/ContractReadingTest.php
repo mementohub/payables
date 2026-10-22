@@ -375,3 +375,26 @@ test('the number and the date of an addendum are read from it, not typed', funct
         ->and($contract->events()->where('type', 'ocr_done')->first()->body)
         ->toContain('termen nou: 31.12.2028');
 });
+
+test('the morning mail goes only to the departments that own the contracts', function () {
+    Mail::fake();
+
+    $departments = Department::query()->whereNotNull('code')->take(2)->pluck('id')->all();
+    [$his, $hers] = $departments;
+
+    $keeper = User::factory()->withRoles('contract_management')->create();
+    $keeper->departments()->sync([$his]);
+
+    $stranger = User::factory()->withRoles('contract_management')->create();
+    $stranger->departments()->sync([$hers]);
+
+    Contract::query()->create([
+        'number' => 'CTR-D', 'title' => 'Chirie', 'partner_name' => 'Total PR', 'department_id' => $his,
+        'status' => Contract::STATUS_ACTIVE, 'expires_at' => now()->addDays(30)->toDateString(),
+    ]);
+
+    $this->artisan('contracts:alerts')->assertSuccessful();
+
+    Mail::assertSent(ContractAlertsMail::class, fn (ContractAlertsMail $mail) => $mail->hasTo($keeper->email));
+    Mail::assertNotSent(ContractAlertsMail::class, fn (ContractAlertsMail $mail) => $mail->hasTo($stranger->email));
+});

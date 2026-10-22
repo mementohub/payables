@@ -84,12 +84,28 @@ class CheckinCostCheckService
             'totals' => $totals->values()->all(),
             'items' => $lines->count(),
             'bookings' => $lines->pluck('booking')->unique()->count(),
-            'by_hotel' => $this->breakdown($lines, fn (array $line) => ['name' => $line['service']]),
-            'by_day' => $this->breakdown($lines, fn (array $line) => ['date' => $line['start_date']], sortByKey: 'date'),
-            'by_product' => $this->breakdown($lines, fn (array $line) => ['product_type' => $line['product_type'], 'label' => $line['product_label']]),
+            ...$this->summaries($lines),
             'lines' => $lines->take(self::MAX_LINES)->all(),
             'lines_total' => $lines->count(),
             'requested' => $requested === null ? null : $this->verdict($connection, $totals, $requested, $currency),
+        ];
+    }
+
+    /**
+     * Cele trei sinteze de pe ecran — pe hotel / serviciu, pe zi de check-in
+     * și pe tip de produs. Stau într-un loc fiindcă le citesc și verificarea,
+     * și exportul, iar dacă ar fi socotite altfel foaia n-ar mai da aceleași
+     * cifre ca ecranul.
+     *
+     * @param  Collection<int, array<string, mixed>>  $lines
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public function summaries(Collection $lines): array
+    {
+        return [
+            'by_hotel' => $this->breakdown($lines, fn (array $line) => ['name' => $line['service']]),
+            'by_day' => $this->breakdown($lines, fn (array $line) => ['date' => $line['start_date']], sortByKey: 'date'),
+            'by_product' => $this->breakdown($lines, fn (array $line) => ['product_type' => $line['product_type'], 'label' => $line['product_label']]),
         ];
     }
 
@@ -174,6 +190,8 @@ class CheckinCostCheckService
                 'currency' => $group->first()['currency'],
                 'cost' => round((float) $group->sum('cost'), 2),
                 'bookings' => $group->pluck('booking')->unique()->count(),
+                'items' => $group->count(),
+                'pax' => (int) $group->sum('pax'),
             ])
             ->values();
 

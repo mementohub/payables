@@ -58,7 +58,124 @@ class MailContractAlerts extends Command
             return self::SUCCESS;
         }
 
-        $rows = $due->map(fn (Contract $contract) => [
+        $heading = $digest ? 'Contractele săptămânii' : 'Contracte care vin la rând';
+        $intro = $digest
+            ? 'Tot ce expiră în următoarele '.$horizon.' de zile.'
+            : 'Scadențele de azi și preavizele care trebuie date.';
+
+        $sent = [];
+
+        foreach ($this->mailboxes($due) as $email => $theirs) {
+            try {
+                Mail::to($email)->send(new ContractAlertsMail($this->rows($theirs, $today), $heading, $intro));
+            } catch (Throwable $e) {
+                $this->error('Mailul către '.$email.' nu a plecat: '.$e->getMessage());
+
+                return self::FAILURE;
+            }
+
+            $sent[] = sprintf('%s (%d)', $email, $theirs->count());
+        }
+
+        if ($sent === []) {
+            $this->error('Nu e nimeni cu rolul Contract Management și nicio adresă dată.');
+
+            return self::FAILURE;
+        }
+
+        $this->info(sprintf('%d contracte anunțate: %s.', $due->count(), implode(', ', $sent)));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Cine ce primește.
+     *
+     * Fiecare om vede în mail exact ce vede în repertoriu — ale lui și ale
+     * departamentelor lui. Altfel cel care ține circuitele primea dimineața
+     * contractele administrativului, pe care nu le poate nici deschide.
+     *
+     * @param  Collection<int, Contract>  $due
+     * @return array<string, Collection<int, Contract>>
+     */
+    private function mailboxes(Collection $due): array
+    {
+        if ($this->option('to')) {
+            $boxes = [];
+
+            foreach ($this->addresses((array) $this->option('to')) as $email) {
+                $boxes[$email] = $due;
+            }
+
+            return $boxes;
+        }
+
+        $boxes = [];
+
+        $people = User::query()
+            ->whereJsonContains('roles', User::ROLE_CONTRACTS)
+            ->orWhereJsonContains('roles', User::ROLE_ADMIN)
+            ->with('departments:id')
+            ->get()
+            ->merge($due->map(fn (Contract $contract) => $contract->owner)->filter())
+            ->unique('id');
+
+        foreach ($people as $person) {
+            if (! filter_var((string) $person->email, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            $theirs = $due->filter(fn (Contract $contract) => $this->his($person, $contract))->values();
+
+            if ($theirs->isNotEmpty()) {
+                $boxes[$person->email] = $theirs;
+            }
+        }
+
+        return $boxes;
+    }
+
+    /**
+     * Are omul treabă cu contractul? Aceeași regulă ca în repertoriu: al lui,
+     * dat în grija lui, sau al unui departament de-al lui. Cine nu e pus pe
+     * niciun departament nu e îngrădit, iar contractul fără departament
+     * ajunge la toți cei care țin contracte — altfel n-ar afla nimeni de el.
+     */
+    private function his(User $user, Contract $contract): bool
+    {
+        if ($user->seesAllContracts() || $contract->created_by_id === $user->id || $contract->owner_id === $user->id) {
+            return true;
+        }
+
+        $departments = $user->departments->pluck('id')->all();
+
+        if ($departments === [] || $contract->department_id === null) {
+            return true;
+        }
+
+        return in_array($contract->department_id, $departments, true);
+    }
+
+    /**
+     * @param  array<int, string>  $values
+     * @return list<string>
+     */
+    private function addresses(array $values): array
+    {
+        return collect($values)
+            ->flatMap(fn (string $value) => explode(',', $value))
+            ->map(fn (string $value) => trim($value))
+            ->filter(fn (string $value) => filter_var($value, FILTER_VALIDATE_EMAIL) !== false)
+            ->unique()->values()->all();
+    }
+
+    /**
+     * @param  Collection<int, Contract>  $contracts
+     * @return list<array<string, mixed>>
+     */
+    private function rows(Collection $contracts, Carbon $today): array
+    {
+        return $contracts->map(fn (Contract $contract) => [
             'number' => $contract->number,
             'title' => $contract->title,
             'partner' => $contract->partner_name,
@@ -70,58 +187,5 @@ class MailContractAlerts extends Command
             'days_left' => $contract->daysLeft($today),
             'notice' => $contract->noticeOn()?->format('d.m.Y'),
         ])->values()->all();
-
-        $recipients = $this->recipients($due);
-
-        if ($recipients === []) {
-            $this->error('Nu e nimeni cu rolul Contract Management și nicio adresă dată.');
-
-            return self::FAILURE;
-        }
-
-        try {
-            Mail::to($recipients)->send(new ContractAlertsMail(
-                $rows,
-                $digest ? 'Contractele săptămânii' : 'Contracte care vin la rând',
-                $digest
-                    ? 'Tot ce expiră în următoarele '.$horizon.' de zile.'
-                    : 'Scadențele de azi și preavizele care trebuie date.',
-            ));
-        } catch (Throwable $e) {
-            $this->error('Mailul nu a plecat: '.$e->getMessage());
-
-            return self::FAILURE;
-        }
-
-        $this->info(sprintf('%d contracte anunțate către %s.', count($rows), implode(', ', $recipients)));
-
-        return self::SUCCESS;
-    }
-
-    /**
-     * Cui se trimite: rolul Contract Management, plus responsabilii
-     * contractelor din listă — ei sunt cei care au ceva de făcut.
-     *
-     * @param  Collection<int, Contract>  $contracts
-     * @return list<string>
-     */
-    private function recipients(Collection $contracts): array
-    {
-        if ($this->option('to')) {
-            return collect($this->option('to'))
-                ->flatMap(fn (string $value) => explode(',', $value))
-                ->map(fn (string $value) => trim($value))
-                ->filter(fn (string $value) => filter_var($value, FILTER_VALIDATE_EMAIL) !== false)
-                ->unique()->values()->all();
-        }
-
-        return User::query()
-            ->whereJsonContains('roles', User::ROLE_CONTRACTS)
-            ->pluck('email')
-            ->merge($contracts->map(fn (Contract $contract) => $contract->owner?->email))
-            ->filter(fn (?string $email) => $email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) !== false)
-            ->unique()
-            ->values()
-            ->all();
     }
 }

@@ -71,10 +71,10 @@ test('accommodation totals are grouped by currency, hotel, day and product type'
     expect($result['totals'])->toBe([['currency' => 'EUR', 'cost' => 3000.0, 'items' => 2, 'bookings' => 2]])
         ->and($result['items'])->toBe(2)
         ->and($result['bookings'])->toBe(2)
-        ->and($result['by_hotel'])->toBe([['name' => 'Rida International', 'currency' => 'EUR', 'cost' => 3000.0, 'bookings' => 2]])
+        ->and($result['by_hotel'])->toBe([['name' => 'Rida International', 'currency' => 'EUR', 'cost' => 3000.0, 'bookings' => 2, 'items' => 2, 'pax' => 4]])
         ->and($result['by_day'])->toBe([
-            ['date' => '2026-09-16', 'currency' => 'EUR', 'cost' => 1000.0, 'bookings' => 1],
-            ['date' => '2026-09-17', 'currency' => 'EUR', 'cost' => 2000.0, 'bookings' => 1],
+            ['date' => '2026-09-16', 'currency' => 'EUR', 'cost' => 1000.0, 'bookings' => 1, 'items' => 1, 'pax' => 2],
+            ['date' => '2026-09-17', 'currency' => 'EUR', 'cost' => 2000.0, 'bookings' => 1, 'items' => 1, 'pax' => 2],
         ])
         ->and($result['by_product'][0])->toMatchArray(['product_type' => 7, 'label' => 'Hotel allotment', 'cost' => 3000.0])
         ->and($result['lines'][0])->toMatchArray(['booking' => 1, 'lead' => 'Popescu Ion', 'nights' => 7, 'room' => 'Doubla', 'meal' => 'BB', 'service' => 'Rida International', 'category' => 'hotel'])
@@ -152,7 +152,7 @@ test('the whole check can be taken as a spreadsheet, not just what the screen ho
 
     $file = tempnam(sys_get_temp_dir(), 'ck').'.xlsx';
     file_put_contents($file, $response->streamedContent());
-    $rows = XlsxReader::rows($file);
+    $rows = XlsxReader::rows($file, 'Check-in');
 
     // Antetul, plus fiecare serviciu — inclusiv transferul și zborul, pe care
     // filtrul pe „hotel” le-ar fi lăsat afară.
@@ -174,9 +174,47 @@ test('a check for one category carries only that category into the sheet', funct
         $file = tempnam(sys_get_temp_dir(), 'ck').'.xlsx';
         file_put_contents($file, $response->streamedContent());
 
-        return XlsxReader::rows($file);
+        return XlsxReader::rows($file, 'Check-in');
     })();
 
     expect($rows)->toHaveCount(3)
         ->and(collect($rows)->flatten()->all())->not->toContain('Transfer Agadir');
+});
+
+test('the sheet carries the three breakdowns of the screen, each with its chart', function () {
+    $admin = User::factory()->withRoles('admin')->create();
+
+    $response = $this->actingAs($admin)->get('/payment-checks/export?'.http_build_query([
+        'connection' => 'etrip_chr', 'supplier' => '10',
+        'from' => '2026-09-16', 'to' => '2026-09-17', 'category' => 'all',
+    ]));
+
+    $file = tempnam(sys_get_temp_dir(), 'ck').'.xlsx';
+    file_put_contents($file, $response->streamedContent());
+
+    expect(XlsxReader::sheets($file))->toBe(['Sinteză', 'Pe hotel', 'Pe zi de check-in', 'Pe tip de produs', 'Check-in']);
+
+    // Cifrele foii sunt cele de pe ecran, socotite o singură dată.
+    expect(XlsxReader::rows($file, 'Pe zi de check-in')[1])->toBe(['2026-09-16', 'EUR', 1040, 1, 2, 4])
+        ->and(XlsxReader::rows($file, 'Pe tip de produs')[1][0])->toBe('Hotel allotment')
+        ->and(collect(XlsxReader::rows($file, 'Sinteză'))->flatten()->all())->toContain('Furnizor', 'Toate serviciile');
+
+    $zip = new ZipArchive;
+    $zip->open($file);
+    $charts = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        if (str_starts_with($name, 'xl/charts/')) {
+            $charts[$name] = $zip->getFromIndex($i);
+        }
+    }
+    $zip->close();
+
+    // Câte un grafic pe fiecare sinteză — foile de detaliu rămân fără.
+    expect($charts)->toHaveCount(3)
+        ->and(implode('', $charts))->toContain('Cost pe zi de check-in')
+        ->toContain('Cost pe hotel / serviciu')
+        ->toContain('Cost pe tip de produs');
+
+    @unlink($file);
 });

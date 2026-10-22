@@ -6,7 +6,7 @@
     $wash = '#eef1f7';
     $red = '#c62828';
     $sans = "'Nunito Sans','Segoe UI',Helvetica,Arial,sans-serif";
-    $heading = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
+    $titleFont = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
 
     $logoPath = public_path('img/logo.png');
     $logo = isset($message)
@@ -42,7 +42,7 @@
                                     <img src="{{ $logo }}" width="40" height="41" alt="Christian Tour" style="display:block;width:40px;height:41px;border:0;">
                                 </td>
                                 <td style="padding-left:12px;vertical-align:middle;">
-                                    <div style="font-family:{{ $heading }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
+                                    <div style="font-family:{{ $titleFont }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
                                     <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">Trezorerie · facturi de plată</div>
                                 </td>
                             </tr>
@@ -52,7 +52,7 @@
 
                 <tr>
                     <td style="padding:26px 28px 0;">
-                        <h1 style="margin:0 0 6px;font-family:{{ $heading }};font-size:19px;font-weight:800;color:{{ $ink }};">
+                        <h1 style="margin:0 0 6px;font-family:{{ $titleFont }};font-size:19px;font-weight:800;color:{{ $ink }};">
                             @if ($rows->isEmpty())
                                 Nicio factură de plătit
                             @elseif ($firstRun)
@@ -83,7 +83,7 @@
                                             @foreach ($totals as $total)
                                                 <tr>
                                                     <td style="padding:4px 0;color:{{ $muted }};">De plătit, {{ $total['moneda'] }}</td>
-                                                    <td align="right" style="padding:4px 0;font-family:{{ $heading }};font-size:17px;font-weight:800;">
+                                                    <td align="right" style="padding:4px 0;font-family:{{ $titleFont }};font-size:17px;font-weight:800;">
                                                         {{ $bani($total['rest']) }} {{ $total['moneda'] }}
                                                     </td>
                                                     <td align="right" style="padding:4px 0 4px 12px;color:{{ $muted }};white-space:nowrap;">
@@ -146,7 +146,7 @@
 
                     <tr>
                         <td align="center" style="padding:22px 28px 6px;">
-                            <a href="{{ url('/invoices/received?approval=approved&payment=unpaid') }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $heading }};font-size:14px;font-weight:700;">Deschide lista în aplicație</a>
+                            <a href="{{ url('/invoices/received?approval=approved&payment=unpaid') }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $titleFont }};font-size:14px;font-weight:700;">Deschide lista în aplicație</a>
                         </td>
                     </tr>
                 @endif

@@ -1316,7 +1316,9 @@ export default function PaymentChecksIndex({
                                     {/*
                                      * Ecranul duce primele șase sute de
                                      * rânduri; foaia le ia pe toate, cu
-                                     * dosarul, titularul și camera fiecăruia.
+                                     * dosarul, titularul și camera fiecăruia,
+                                     * iar înaintea lor cele trei sinteze de
+                                     * aici, fiecare cu graficul ei.
                                      */}
                                     <Button
                                         variant="outline"
@@ -1343,7 +1345,7 @@ export default function PaymentChecksIndex({
                                                     },
                                                 ).url
                                             }
-                                            title={`Descarcă toate cele ${check.lines_total} servicii`}
+                                            title={`Descarcă toate cele ${check.lines_total} servicii, plus sintezele pe hotel, pe zi de check-in și pe tip de produs, cu grafice`}
                                         >
                                             <Download className="size-4" />
                                             Export XLSX

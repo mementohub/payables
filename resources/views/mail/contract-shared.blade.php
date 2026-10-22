@@ -5,7 +5,7 @@
     $line = '#d7dde9';
     $wash = '#eef1f7';
     $sans = "'Nunito Sans','Segoe UI',Helvetica,Arial,sans-serif";
-    $heading = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
+    $titleFont = "'Nunito','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
 
     $logoPath = public_path('img/logo.png');
     $logo = isset($message)
@@ -37,7 +37,7 @@
                                     <img src="{{ $logo }}" width="40" height="41" alt="Christian Tour" style="display:block;width:40px;height:41px;border:0;">
                                 </td>
                                 <td style="padding-left:12px;vertical-align:middle;">
-                                    <div style="font-family:{{ $heading }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
+                                    <div style="font-family:{{ $titleFont }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
                                     <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">Contract Management</div>
                                 </td>
                             </tr>
@@ -47,7 +47,7 @@
 
                 <tr>
                     <td style="padding:26px 28px 0;">
-                        <h1 style="margin:0 0 6px;font-family:{{ $heading }};font-size:19px;font-weight:800;color:{{ $ink }};">
+                        <h1 style="margin:0 0 6px;font-family:{{ $titleFont }};font-size:19px;font-weight:800;color:{{ $ink }};">
                             {{ $sender?->name ?? 'Cineva' }} ți-a trimis un contract
                         </h1>
                         <p style="margin:0;font-size:13px;color:{{ $muted }};">{{ ucfirst($rights) }}.</p>
@@ -62,7 +62,7 @@
                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid {{ $line }};border-radius:12px;">
                             <tr>
                                 <td style="padding:14px 16px;">
-                                    <div style="font-family:{{ $heading }};font-size:15px;font-weight:700;">{{ $contract->title }}</div>
+                                    <div style="font-family:{{ $titleFont }};font-size:15px;font-weight:700;">{{ $contract->title }}</div>
                                     <div style="font-size:12px;color:{{ $muted }};margin-top:2px;">{{ $contract->number }} · {{ $contract->partner_name }}</div>
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;font-size:13px;">
                                         <tr>
@@ -93,7 +93,7 @@
 
                 <tr>
                     <td align="center" style="padding:22px 28px 6px;">
-                        <a href="{{ $url }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $heading }};font-size:14px;font-weight:700;">Deschide contractul</a>
+                        <a href="{{ $url }}" style="display:inline-block;padding:12px 26px;background:{{ $orange }};color:#ffffff;border-radius:9px;text-decoration:none;font-family:{{ $titleFont }};font-size:14px;font-weight:700;">Deschide contractul</a>
                     </td>
                 </tr>
 
