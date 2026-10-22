@@ -44,7 +44,7 @@ class PaymentExportController extends Controller
         $query
             ->where('approval_status', InvoiceWorkflow::APPROVED)
             ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
-            ->with(['partner.bankAccounts', 'company:id,name,cui'])
+            ->with(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'company:id,name,cui'])
             ->orderBy('invoices.data_doc');
 
         if (! $selectAll) {

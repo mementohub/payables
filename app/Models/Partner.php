@@ -46,6 +46,15 @@ class Partner extends Model
         return $this->hasMany(PartnerBankAccount::class);
     }
 
+    /**
+     * Conturile scrise de furnizor chiar în e-Facturile lui: propuneri
+     * pentru cei pe care OMC nu-i are cu niciun IBAN.
+     */
+    public function eInvoiceAccounts(): HasMany
+    {
+        return $this->hasMany(PartnerEInvoiceAccount::class);
+    }
+
     public function scopeFurnizori(Builder $query): Builder
     {
         return $query->where('is_furnizor', true);

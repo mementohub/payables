@@ -27,6 +27,17 @@ Schedule::command('etrip:sync-suppliers')
  * M&L. Noaptea, după ce s-a adus ce e nou din ERP: interogările bat în bazele
  * celorlalte case, iar acolo ziua se lucrează.
  */
+/*
+ * Conturile furnizorilor pe care OMC nu-i are cu niciun IBAN: furnizorul și-l
+ * scrie singur în e-Factură, deci se caută acolo. Noaptea, fiindcă fiecare
+ * căutare citește un XML din baza celorlalți.
+ */
+Schedule::command('suppliers:scan-ibans')
+    ->dailyAt('03:10')
+    ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping(120)
+    ->runInBackground();
+
 Schedule::command('invoices:trace-suppliers', ['--months' => 3])
     ->dailyAt('04:15')
     ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))

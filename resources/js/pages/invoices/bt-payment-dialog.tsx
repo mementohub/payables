@@ -24,11 +24,14 @@ import {
 
 type SupplierAccount = {
     iban: string;
-    currency: string;
+    currency: string | null;
     bank: string | null;
     bic: string | null;
     swift: string | null;
     is_default: boolean;
+    /** De unde îl știm: din ERP sau citit din e-Factura furnizorului. */
+    source: 'omc' | 'efactura';
+    note: string | null;
 };
 
 export type BtRow = {
@@ -543,6 +546,10 @@ export function BtPaymentDialog({
                                                                                 {a.is_default
                                                                                     ? ' · implicit'
                                                                                     : ''}
+                                                                                {a.source ===
+                                                                                'efactura'
+                                                                                    ? ' · e-Factură'
+                                                                                    : ''}
                                                                             </SelectItem>
                                                                         ),
                                                                     )}
@@ -575,6 +582,29 @@ export function BtPaymentDialog({
                                                                         : ''
                                                                 }
                                                             />
+                                                        )}
+                                                        {/*
+                                                         * Contul împrumutat din
+                                                         * e-Factură se spune pe
+                                                         * față: cine plătește
+                                                         * trebuie să știe că nu
+                                                         * vine din evidență.
+                                                         */}
+                                                        {ibanOptions.some(
+                                                            (a) =>
+                                                                a.source ===
+                                                                    'efactura' &&
+                                                                a.iban ===
+                                                                    row.target_account_number,
+                                                        ) && (
+                                                            <span className="mt-0.5 block text-[11px] text-amber-600">
+                                                                {ibanOptions.find(
+                                                                    (a) =>
+                                                                        a.iban ===
+                                                                        row.target_account_number,
+                                                                )?.note ??
+                                                                    'din e-Factură'}
+                                                            </span>
                                                         )}
                                                     </td>
                                                     <td className="px-2 py-1.5">

@@ -88,6 +88,77 @@ class EInvoiceXmlParser
     }
 
     /**
+     * Conturile de plată scrise de furnizor în XML.
+     *
+     * Unii pun acolo numele băncii („BRD Hateg”) sau o literă rătăcită, deci
+     * trece doar ce e IBAN adevărat: formă și cifră de control. Mai bine
+     * niciun cont decât unul greșit, la care banii chiar pleacă.
+     *
+     * @return list<array{iban: string, bic: ?string, bank: ?string}>
+     */
+    public function extractPaymentAccounts(?string $xml): array
+    {
+        if ($xml === null || trim($xml) === '') {
+            return [];
+        }
+
+        try {
+            $payment = (new UblReader)->import($xml)->getPayment();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $accounts = [];
+
+        foreach ($payment?->getTransfers() ?? [] as $transfer) {
+            $iban = strtoupper(preg_replace('/\s+/', '', (string) $transfer->getAccountId()) ?? '');
+
+            if (! self::isIban($iban) || isset($accounts[$iban])) {
+                continue;
+            }
+
+            $provider = $transfer->getProvider() !== null ? trim((string) $transfer->getProvider()) : '';
+            $name = $transfer->getAccountName() !== null ? trim((string) $transfer->getAccountName()) : '';
+
+            $accounts[$iban] = [
+                'iban' => $iban,
+                // Furnizorii pun în „provider” fie BIC-ul, fie numele băncii.
+                'bic' => preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $provider) === 1 ? $provider : null,
+                'bank' => $provider !== '' && preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $provider) !== 1
+                    ? $provider
+                    : ($name !== '' ? $name : null),
+            ];
+        }
+
+        return array_values($accounts);
+    }
+
+    /**
+     * IBAN după formă și după cifra de control (mod 97).
+     */
+    public static function isIban(string $value): bool
+    {
+        if (preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/', $value) !== 1 || strlen($value) < 15 || strlen($value) > 34) {
+            return false;
+        }
+
+        $moved = substr($value, 4).substr($value, 0, 4);
+        $digits = '';
+
+        foreach (str_split($moved) as $char) {
+            $digits .= ctype_digit($char) ? $char : (string) (ord($char) - 55);
+        }
+
+        $remainder = 0;
+
+        foreach (str_split($digits, 7) as $chunk) {
+            $remainder = (int) (($remainder.$chunk) % 97);
+        }
+
+        return $remainder === 1;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function transformInvoice(EInvoicingInvoice $invoice): array
