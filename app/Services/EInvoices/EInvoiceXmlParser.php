@@ -134,6 +134,34 @@ class EInvoiceXmlParser
     }
 
     /**
+     * IBAN-urile scrise oriunde în text, pentru furnizorii care nu
+     * completează câmpul de plată: mulți și-l pun la forma juridică —
+     * „Cont IBAN RO77… Capital social…”.
+     *
+     * Nu se ghicește care e cel bun: se întorc toate, iar alegerea rămâne
+     * a omului care plătește.
+     *
+     * @return list<string>
+     */
+    public function extractTextAccounts(?string $xml): array
+    {
+        if ($xml === null || trim($xml) === '') {
+            return [];
+        }
+
+        $text = (string) preg_replace('/\s+/', ' ', strip_tags($xml));
+
+        if (preg_match_all('/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/', strtoupper($text), $matches) !== 1 && $matches[0] === []) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            $matches[0],
+            fn (string $candidate) => self::isIban($candidate),
+        )));
+    }
+
+    /**
      * IBAN după formă și după cifra de control (mod 97).
      */
     public static function isIban(string $value): bool

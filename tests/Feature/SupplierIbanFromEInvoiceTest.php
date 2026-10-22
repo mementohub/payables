@@ -124,3 +124,37 @@ test('two accounts read from invoices are offered, not chosen', function () {
         ->and($row['warnings'][0])->toContain('mai multe conturi')
         ->and($row['supplier_accounts'])->toHaveCount(2);
 });
+
+test('an IBAN written in the body of the invoice is read too, but never picked on its own', function () {
+    $parser = app(EInvoiceXmlParser::class);
+
+    // Așa își scriu mulți contul: la forma juridică, lângă capitalul social.
+    $xml = str_replace(
+        '<cbc:RegistrationName>Furnizor SRL</cbc:RegistrationName>',
+        '<cbc:RegistrationName>Furnizor SRL</cbc:RegistrationName>'
+            .'<cbc:CompanyLegalForm>J40/1/2010 Banca X RON Cont IBAN RO16BRDE450SV01028914500 '
+            .'EUR Cont IBAN RO71BTRLRONCRT0522375001 Capital social 200 RON</cbc:CompanyLegalForm>',
+        ublWithAccount('RO16BRDE450SV01028914500'),
+    );
+
+    expect($parser->extractTextAccounts($xml))
+        ->toBe(['RO16BRDE450SV01028914500', 'RO71BTRLRONCRT0522375001']);
+
+    $company = Company::factory()->create();
+    $partner = Partner::query()->create(['company_id' => $company->id, 'name' => 'Furnizor SRL', 'cui' => 'RO123456', 'is_furnizor' => true]);
+
+    PartnerEInvoiceAccount::query()->create([
+        'partner_id' => $partner->id, 'iban' => 'RO16BRDE450SV01028914500', 'currency' => 'RON',
+        'from_text' => true, 'nr_doc' => 'FACT-1', 'seen_at' => now(),
+    ]);
+
+    $invoice = Invoice::factory()->for($company)->create(['partner_id' => $partner->id, 'moneda' => 'Lei', 'val_mon' => 100]);
+    $invoice->load(['partner.bankAccounts', 'partner.eInvoiceAccounts']);
+
+    $row = BtPaymentRow::build($invoice, 1);
+
+    // Unul singur, dar cules din text: se oferă, nu se pune în rând.
+    expect($row['target_account_number'])->toBeNull()
+        ->and($row['supplier_accounts'][0]['note'])->toBe('din textul e-Facturii FACT-1')
+        ->and($row['warnings'][0])->toContain('din textul e-Facturii');
+});

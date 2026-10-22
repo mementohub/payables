@@ -2,6 +2,7 @@
 
 namespace App\Services\EInvoices;
 
+use App\Models\CompanyBankAccount;
 use App\Models\EInvoice;
 use App\Models\Invoice;
 use App\Models\Partner;
@@ -67,13 +68,28 @@ class SupplierIbanHarvester
             }
 
             $accounts = $this->parser->extractPaymentAccounts($xml);
+            $fromText = false;
+
+            // Câmpul de plată lipsește la mulți; atunci se caută în text, dar
+            // ce iese de acolo rămâne însemnat, fiindcă e o citire, nu o
+            // declarație: conturile noastre, dacă apar în XML, se scot.
+            if ($accounts === []) {
+                $fromText = true;
+                $accounts = array_map(
+                    fn (string $iban) => ['iban' => $iban, 'bic' => null, 'bank' => null],
+                    array_values(array_filter(
+                        $this->parser->extractTextAccounts($xml),
+                        fn (string $iban) => ! in_array($iban, $this->ours(), true),
+                    )),
+                );
+            }
 
             if ($accounts === []) {
                 continue;
             }
 
-            foreach ($accounts as $account) {
-                $written += $this->remember($partner, $account, $eInvoice);
+            foreach (array_slice($accounts, 0, 4) as $account) {
+                $written += $this->remember($partner, $account, $eInvoice, $fromText);
             }
 
             // Prima e-Factură cu cont bun e de ajuns: următoarele ar aduce
@@ -103,9 +119,25 @@ class SupplierIbanHarvester
     }
 
     /**
+     * IBAN-urile caselor noastre: dacă apar în XML, nu sunt ale furnizorului.
+     *
+     * @return list<string>
+     */
+    private function ours(): array
+    {
+        return $this->ours ??= CompanyBankAccount::query()
+            ->pluck('iban')
+            ->map(fn (string $iban) => strtoupper(preg_replace('/\s+/', '', $iban) ?? ''))
+            ->all();
+    }
+
+    /** @var list<string>|null */
+    private ?array $ours = null;
+
+    /**
      * @param  array{iban: string, bic: ?string, bank: ?string}  $account
      */
-    private function remember(Partner $partner, array $account, EInvoice $eInvoice): int
+    private function remember(Partner $partner, array $account, EInvoice $eInvoice, bool $fromText = false): int
     {
         $existing = PartnerEInvoiceAccount::query()
             ->where('partner_id', $partner->id)
@@ -116,6 +148,7 @@ class SupplierIbanHarvester
             'currency' => $eInvoice->currency !== null ? strtoupper(trim((string) $eInvoice->currency)) : null,
             'bank' => $account['bank'],
             'bic' => $account['bic'],
+            'from_text' => $fromText,
             'e_invoice_id' => $eInvoice->id,
             'nr_doc' => $eInvoice->nr_doc_xml,
             'seen_at' => $eInvoice->msg_data_creare_d ?? Carbon::now(),

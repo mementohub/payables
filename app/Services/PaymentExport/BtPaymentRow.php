@@ -42,8 +42,14 @@ class BtPaymentRow
         $fromEInvoice = self::eInvoiceAccounts($partner?->eInvoiceAccounts->all() ?? [], $accounts, $invoice->moneda);
         $borrowed = null;
 
-        if ($picked === null && count($fromEInvoice) === 1) {
-            $borrowed = $fromEInvoice[0];
+        // Se ia singur doar contul scris de furnizor în câmpul de plată al
+        // facturii, și doar dacă e unul singur. Cel cules din textul facturii
+        // se arată, nu se alege: acolo stau și contul în lei, și cel în euro,
+        // și capitalul social, toate în aceeași frază.
+        $declared = array_values(array_filter($fromEInvoice, fn (PartnerEInvoiceAccount $account) => ! $account->from_text));
+
+        if ($picked === null && count($declared) === 1) {
+            $borrowed = $declared[0];
         }
 
         $rest = $invoice->outstandingAmount();
@@ -54,9 +60,12 @@ class BtPaymentRow
                 .($borrowed->nr_doc ? ' (factura '.$borrowed->nr_doc.')' : '')
                 .' — OMC nu are niciunul. Verifică-l înainte de plată.';
         } elseif ($picked === null) {
-            $warnings[] = $fromEInvoice === []
-                ? 'Furnizorul nu are IBAN configurat pentru moneda facturii.'
-                : 'Furnizorul are mai multe conturi în e-Facturi: alege unul.';
+            $warnings[] = match (true) {
+                $fromEInvoice === [] => 'Furnizorul nu are IBAN configurat pentru moneda facturii.',
+                $declared === [] => 'OMC n-are IBAN; din textul e-Facturii am cules '
+                    .count($fromEInvoice).' '.(count($fromEInvoice) === 1 ? 'cont' : 'conturi').' — alege unul.',
+                default => 'Furnizorul are mai multe conturi în e-Facturi: alege unul.',
+            };
         }
         if ($rest <= 0) {
             $warnings[] = 'Factura nu are sold de plată.';
@@ -100,9 +109,8 @@ class BtPaymentRow
                         'swift' => null,
                         'is_default' => false,
                         'source' => 'efactura',
-                        'note' => $account->nr_doc !== null
-                            ? 'din e-Factura '.$account->nr_doc
-                            : 'din e-Factură',
+                        'note' => ($account->from_text ? 'din textul e-Facturii' : 'din e-Factura')
+                            .($account->nr_doc !== null ? ' '.$account->nr_doc : ''),
                     ],
                     $fromEInvoice
                 ),
