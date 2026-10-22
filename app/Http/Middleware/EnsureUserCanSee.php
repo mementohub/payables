@@ -22,6 +22,7 @@ class EnsureUserCanSee
         'dashboard' => 'canSeeDashboard',
         'approvals' => 'canSeeApprovals',
         'invoices' => 'canSeeInvoices',
+        'payable-list' => 'canSeePayableList',
         'payments' => 'canSeePayments',
         'reports' => 'canSeeReports',
         'routing' => 'canSeeRouting',

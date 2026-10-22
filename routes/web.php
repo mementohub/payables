@@ -63,11 +63,10 @@ Route::middleware('auth')->group(function () {
 
     // Only the supplier side of OMC is mirrored: the old addresses land on it.
     // Facturile primite și fișa unei facturi: evidența Financiarului.
-    Route::middleware('area:invoices')->group(function () {
+    Route::middleware('area:payable-list')->group(function () {
         Route::redirect('invoices/issued', 'invoices/received');
         Route::get('invoices/received', [InvoiceController::class, 'primite'])->name('invoices.primite');
         Route::post('invoices/received/export', [InvoiceController::class, 'exportPrimite'])->name('invoices.primite.export');
-
     });
 
     // Fișierul de bancă.

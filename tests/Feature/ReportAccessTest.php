@@ -54,14 +54,16 @@ test('the treasury chart on the dashboard follows the same rule', function () {
  *   Administrator   tot;
  *   Top Management  tot; el aprobă final;
  *   Financiar       tot în afară de Rapoarte; contestă și mută, nu aprobă;
- *   Trezorerie      rulaje, e-Facturi, verificări, extrase;
+ *   Trezorerie      rulaje, e-Facturi, verificări, extrase și lista de plătit;
  *   Operațional     doar Aprobări, pentru departamentul lui.
  */
 dataset('harta', [
     'administrator' => [User::ROLE_ADMIN, ['dashboard', 'approvals', 'payment-runs', 'invoices', 'routing', 'reports']],
     'top management' => [User::ROLE_TOP_MANAGEMENT, ['dashboard', 'approvals', 'payment-runs', 'invoices', 'routing', 'reports']],
     'financiar' => [User::ROLE_FINANCE, ['dashboard', 'approvals', 'payment-runs', 'invoices', 'routing']],
-    'trezorerie' => [User::ROLE_TREASURY, ['payment-runs']],
+    // Trezoreria are și lista de plătit („Facturi primite”), dar numai felia
+    // aprobată și neplătită: filtrul i-l pune serverul.
+    'trezorerie' => [User::ROLE_TREASURY, ['payment-runs', 'invoices']],
     'operational' => [User::ROLE_OPERATIONAL, ['approvals']],
 ]);
 
@@ -89,13 +91,33 @@ test('each role reaches its own part of the application', function (string $role
 test('treasury keeps what it needs to pay, and nothing more', function () {
     $treasury = User::factory()->create(['roles' => [User::ROLE_TREASURY]]);
 
-    foreach (['/payment-runs', '/e-invoices', '/payment-checks', '/bank-statements'] as $ruta) {
+    // „De plătit” e în meniul ei și în vestea de joi, deci ruta o lasă
+    // înăuntru; restul evidenței rămâne a Financiarului.
+    foreach (['/payment-runs', '/e-invoices', '/payment-checks', '/bank-statements', '/invoices/received'] as $ruta) {
         $this->actingAs($treasury)->get($ruta)->assertSuccessful();
     }
 
-    foreach (['/approvals', '/invoices/received', '/suppliers', '/routing'] as $ruta) {
+    foreach (['/approvals', '/suppliers', '/routing'] as $ruta) {
         $this->actingAs($treasury)->get($ruta)->assertForbidden();
     }
+});
+
+test('the payable list opens for treasury on its own slice, whatever the address says', function () {
+    $treasury = User::factory()->create(['roles' => [User::ROLE_TREASURY]]);
+
+    // Chiar dacă șterge filtrul din adresă, serverul îl pune la loc: ea vede
+    // ce a aprobat Top Management-ul și n-a fost plătit, nu toată evidența.
+    $this->actingAs($treasury)->get('/invoices/received?approval=all&payment=all')
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.approval', 'approved')
+            ->where('filters.payment', 'unpaid'));
+
+    // Financiarul rămâne cu evidența întreagă.
+    $this->actingAs(User::factory()->create(['roles' => [User::ROLE_FINANCE]]))
+        ->get('/invoices/received')
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page->where('filters.approval', null));
 });
 
 test('an operational user brings a colleague onto their own department', function () {

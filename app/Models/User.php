@@ -163,6 +163,23 @@ class User extends Authenticatable
     }
 
     /**
+     * Lista facturilor primite: evidența Financiarului și, pe felia ei,
+     * trezoreria — ce a aprobat Top Management-ul și n-a fost plătit. Ea are
+     * pagina asta în meniu și în vestea de joi, așa că ruta trebuie s-o lase
+     * înăuntru; filtrul pe care îl vede e pus de server, nu de ea.
+     */
+    public function canSeePayableList(): bool
+    {
+        return $this->canSeeInvoices() || $this->isTreasury();
+    }
+
+    /** Vede numai felia de plătit, nu toată evidența. */
+    public function seesOnlyPayables(): bool
+    {
+        return ! $this->canSeeInvoices() && $this->isTreasury();
+    }
+
+    /**
      * Fișa unei facturi: o deschide oricine are treabă cu ea — omul care o
      * aprobă, Financiarul care o ține, Trezoreria care o plătește. Ce vede
      * fiecare rămâne limitat la departamentele lui.

@@ -34,12 +34,30 @@ class InvoiceController extends Controller
 
     public function primite(Request $request): Response
     {
+        $this->payablesOnly($request);
+
         return $this->list($request, 'primite');
     }
 
     public function exportPrimite(Request $request): StreamedResponse
     {
+        $this->payablesOnly($request);
+
         return $this->export($request, 'primite');
+    }
+
+    /**
+     * Trezoreria intră pe pagină, dar numai pe felia ei.
+     *
+     * Vestea de joi și meniul o aduc aici cu filtrul „aprobat · neplătit”
+     * pus; dacă l-ar șterge din adresă, ar vedea toată evidența, care nu e a
+     * ei. Așa că filtrul se pune din nou pe server, orice ar cere adresa.
+     */
+    private function payablesOnly(Request $request): void
+    {
+        if ($request->user()?->seesOnlyPayables()) {
+            $request->merge(['approval' => 'approved', 'payment' => 'unpaid']);
+        }
     }
 
     private function list(Request $request, string $scope): Response
