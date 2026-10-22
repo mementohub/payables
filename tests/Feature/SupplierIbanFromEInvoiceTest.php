@@ -1,10 +1,14 @@
 <?php
 
+use App\Models\BankStatement;
+use App\Models\BankStatementLine;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Partner;
+use App\Models\PartnerAccountChoice;
 use App\Models\PartnerBankAccount;
 use App\Models\PartnerEInvoiceAccount;
+use App\Models\User;
 use App\Services\Approvals\InvoiceWorkflow;
 use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\PaymentExport\BtPaymentRow;
@@ -157,4 +161,127 @@ test('an IBAN written in the body of the invoice is read too, but never picked o
     expect($row['target_account_number'])->toBeNull()
         ->and($row['supplier_accounts'][0]['note'])->toBe('din textul e-Facturii FACT-1')
         ->and($row['warnings'][0])->toContain('din textul e-Facturii');
+});
+
+test('the account used last time comes back as the proposal, when the ERP cannot choose', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::query()->create(['company_id' => $company->id, 'name' => 'Furnizor SRL', 'cui' => 'RO123456', 'is_furnizor' => true]);
+
+    // Patru conturi în lei, niciunul implicit: aplicația n-are cum să aleagă.
+    foreach (['RO71BTRLRONCRT0522375001', 'RO16BRDE450SV01028914500'] as $iban) {
+        PartnerBankAccount::query()->create(['partner_id' => $partner->id, 'iban' => $iban, 'currency' => 'Lei', 'is_default' => false]);
+    }
+
+    $invoice = Invoice::factory()->for($company)->create(['partner_id' => $partner->id, 'moneda' => 'Lei', 'val_mon' => 100]);
+    $invoice->load(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'partner.accountChoices']);
+
+    expect(BtPaymentRow::build($invoice, 1)['target_account_number'])->toBeNull();
+
+    // Omul a ales o dată; data viitoare i se propune aceeași alegere.
+    PartnerAccountChoice::query()->create([
+        'partner_id' => $partner->id, 'currency' => 'RON', 'iban' => 'RO16BRDE450SV01028914500',
+        'last_used_at' => now()->subMonth(),
+    ]);
+
+    $invoice->load('partner.accountChoices');
+    $row = BtPaymentRow::build($invoice, 1);
+
+    expect($row['target_account_number'])->toBe('RO16BRDE450SV01028914500')
+        ->and($row['warnings'][0])->toContain('folosit ultima dată');
+});
+
+test('an account the supplier no longer has is not proposed again', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::query()->create(['company_id' => $company->id, 'name' => 'Furnizor SRL', 'cui' => 'RO123456', 'is_furnizor' => true]);
+
+    foreach (['RO71BTRLRONCRT0522375001', 'RO16BRDE450SV01028914500'] as $iban) {
+        PartnerBankAccount::query()->create(['partner_id' => $partner->id, 'iban' => $iban, 'currency' => 'Lei', 'is_default' => false]);
+    }
+
+    // Contul de anul trecut, scos între timp din ERP: nu se mai propune.
+    PartnerAccountChoice::query()->create([
+        'partner_id' => $partner->id, 'currency' => 'RON', 'iban' => 'RO62BFER248000025828RO01', 'last_used_at' => now()->subYear(),
+    ]);
+
+    $invoice = Invoice::factory()->for($company)->create(['partner_id' => $partner->id, 'moneda' => 'Lei', 'val_mon' => 100]);
+    $invoice->load(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'partner.accountChoices']);
+
+    expect(BtPaymentRow::build($invoice, 1)['target_account_number'])->toBeNull();
+});
+
+test('downloading the bank file remembers which account was paid', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::query()->create(['company_id' => $company->id, 'name' => 'Furnizor SRL', 'cui' => 'RO123456', 'is_furnizor' => true]);
+    $invoice = Invoice::factory()->for($company)->create(['partner_id' => $partner->id, 'moneda' => 'Lei', 'val_mon' => 100]);
+
+    $user = User::factory()->withRoles('treasury')->create();
+
+    $post = fn (string $iban) => $this->actingAs($user)->post('/payments/bt/download', [
+        'source_account' => 'RO86BTRL04101202I04993XX',
+        'rows' => [[
+            'invoice_id' => $invoice->id,
+            'beneficiary_name' => 'Furnizor SRL',
+            'target_account_number' => $iban,
+            'beneficiary_bank_bic' => 'BRDEROBUXXX',
+            'amount' => 100,
+            'payment_ref_1' => 'F1',
+            'payment_ref_2' => '',
+            'value_date' => now()->toDateString(),
+            'urgent' => 'F',
+        ]],
+    ]);
+
+    $post('RO16BRDE450SV01028914500')->assertOk();
+
+    $choice = PartnerAccountChoice::query()->where('partner_id', $partner->id)->sole();
+    expect($choice->iban)->toBe('RO16BRDE450SV01028914500')
+        ->and($choice->currency)->toBe('RON')
+        ->and($choice->times_used)->toBe(1)
+        ->and($choice->last_used_by_id)->toBe($user->id);
+
+    // Aceeași alegere a doua oară: se numără, nu se dublează.
+    $post('RO16BRDE450SV01028914500')->assertOk();
+    expect($choice->fresh()->times_used)->toBe(2);
+
+    // Alt cont: ăsta devine cel ținut minte, iar numărătoarea o ia de la capăt.
+    $post('RO71BTRLRONCRT0522375001')->assertOk();
+    $choice = $choice->fresh();
+    expect($choice->iban)->toBe('RO71BTRLRONCRT0522375001')->and($choice->times_used)->toBe(1);
+});
+
+test('the memory starts from the payments that actually went out', function () {
+    $company = Company::factory()->create();
+    $partner = Partner::query()->create(['company_id' => $company->id, 'name' => 'Furnizor SRL', 'cui' => 'RO123456', 'is_furnizor' => true]);
+
+    $statement = BankStatement::query()->create([
+        'company_id' => $company->id, 'data_extras' => now()->subMonth()->toDateString(),
+        'banca' => 'BT', 'iban' => 'RO86BTRL04101202I04993XX', 'moneda' => 'Lei',
+    ]);
+
+    $line = fn (string $text, string $when) => BankStatementLine::query()->create([
+        'bank_statement_id' => $statement->id, 'partner_id' => $partner->id, 'direction' => 'outgoing',
+        'data_doc' => $when, 'tip_doc' => 'OP', 'nr_doc' => '1', 'moneda' => 'Lei', 'val_mon' => 100, 'obs_txt' => $text,
+    ]);
+
+    $line('Furnizor SRL, CONT RO71BTRLRONCRT0522375001, OP: 1', now()->subMonths(3)->toDateString());
+    $line('Furnizor SRL, CONT RO16BRDE450SV01028914500, OP: 2', now()->subMonth()->toDateString());
+    // Un rând fără cont scris nu strică nimic.
+    $line('Furnizor SRL, plata OP', now()->subDays(3)->toDateString());
+
+    $this->artisan('suppliers:seed-account-choices')->assertSuccessful();
+
+    $choice = PartnerAccountChoice::query()->where('partner_id', $partner->id)->sole();
+
+    // Ultima plată câștigă, iar sursa se vede.
+    expect($choice->iban)->toBe('RO16BRDE450SV01028914500')
+        ->and($choice->source)->toBe('bank')
+        ->and($choice->currency)->toBe('RON');
+
+    $invoice = Invoice::factory()->for($company)->create(['partner_id' => $partner->id, 'moneda' => 'Lei', 'val_mon' => 100]);
+    $invoice->load(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'partner.accountChoices']);
+
+    $row = BtPaymentRow::build($invoice, 1);
+
+    expect($row['target_account_number'])->toBe('RO16BRDE450SV01028914500')
+        ->and($row['warnings'][0])->toContain('din extrasul bancar');
 });

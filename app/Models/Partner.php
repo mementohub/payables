@@ -55,6 +55,14 @@ class Partner extends Model
         return $this->hasMany(PartnerEInvoiceAccount::class);
     }
 
+    /**
+     * Pe ce cont i-am plătit ultima dată, pe fiecare monedă.
+     */
+    public function accountChoices(): HasMany
+    {
+        return $this->hasMany(PartnerAccountChoice::class);
+    }
+
     public function scopeFurnizori(Builder $query): Builder
     {
         return $query->where('is_furnizor', true);

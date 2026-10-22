@@ -3,6 +3,7 @@
 namespace App\Services\PaymentExport;
 
 use App\Models\Invoice;
+use App\Models\PartnerAccountChoice;
 use App\Models\PartnerBankAccount;
 use App\Models\PartnerEInvoiceAccount;
 
@@ -42,6 +43,12 @@ class BtPaymentRow
         $fromEInvoice = self::eInvoiceAccounts($partner?->eInvoiceAccounts->all() ?? [], $accounts, $invoice->moneda);
         $borrowed = null;
 
+        // Ce a ales omul data trecută pentru furnizorul ăsta, pe moneda asta.
+        // Când ERP-ul are patru conturi și niciunul implicit, aplicația tot
+        // nu poate alege de una singură — dar alegerea s-a făcut deja o dată
+        // și e cea mai bună propunere pe care o avem.
+        $remembered = self::remembered($partner?->accountChoices->all() ?? [], $invoice->moneda);
+
         // Se ia singur doar contul scris de furnizor în câmpul de plată al
         // facturii, și doar dacă e unul singur. Cel cules din textul facturii
         // se arată, nu se alege: acolo stau și contul în lei, și cel în euro,
@@ -52,10 +59,33 @@ class BtPaymentRow
             $borrowed = $declared[0];
         }
 
+        $byHabit = null;
+
+        if ($picked === null && $remembered !== null) {
+            // Contul ținut minte se ia doar dacă mai e printre cele ale
+            // furnizorului — sau dacă el n-are niciunul, caz în care tot de
+            // acolo s-a plătit și ultima dată.
+            $known = [
+                ...array_map(fn (PartnerBankAccount $one) => strtoupper($one->iban), $accounts),
+                ...array_map(fn (PartnerEInvoiceAccount $one) => strtoupper($one->iban), $fromEInvoice),
+            ];
+
+            if ($known === [] || in_array(strtoupper($remembered->iban), $known, true)) {
+                $byHabit = $remembered;
+                $borrowed = null;
+            }
+        }
+
         $rest = $invoice->outstandingAmount();
 
         $warnings = [];
-        if ($picked === null && $borrowed !== null) {
+        if ($picked === null && $byHabit !== null) {
+            $warnings[] = ($byHabit->source === 'bank'
+                ? 'Contul pe care i s-a plătit ultima dată, din extrasul bancar'
+                : 'IBAN-ul folosit ultima dată pentru acest furnizor')
+                .($byHabit->last_used_at !== null ? ' ('.$byHabit->last_used_at->format('d.m.Y').')' : '')
+                .'. Schimbă-l dacă nu mai e bun.';
+        } elseif ($picked === null && $borrowed !== null) {
             $warnings[] = 'IBAN luat din e-Factura furnizorului'
                 .($borrowed->nr_doc ? ' (factura '.$borrowed->nr_doc.')' : '')
                 .' — OMC nu are niciunul. Verifică-l înainte de plată.';
@@ -87,10 +117,12 @@ class BtPaymentRow
             'order_number' => $orderNumber,
             'beneficiary_name' => $partner?->name ?? '',
             'beneficiary_fiscal_code' => self::normalizeCui($partner?->cui ?? ''),
-            'target_account_number' => $picked?->iban ?? $borrowed?->iban,
-            'beneficiary_bank_bic' => $picked !== null
-                ? self::formatBic($picked->swift, $picked->bic)
-                : self::formatBic(null, $borrowed?->bic),
+            'target_account_number' => $picked?->iban ?? $byHabit?->iban ?? $borrowed?->iban,
+            'beneficiary_bank_bic' => match (true) {
+                $picked !== null => self::formatBic($picked->swift, $picked->bic),
+                $byHabit !== null => self::formatBic(null, $byHabit->bic ?? self::bicOf($byHabit->iban, $accounts, $fromEInvoice)),
+                default => self::formatBic(null, $borrowed?->bic),
+            },
             'amount' => $rest,
             'currency' => $invoice->moneda,
             'payment_ref_1' => (string) ($invoice->nr_doc ?? ''),
@@ -111,6 +143,25 @@ class BtPaymentRow
                     ],
                     $accounts
                 ),
+                ...($byHabit !== null && ! in_array(
+                    strtoupper($byHabit->iban),
+                    [
+                        ...array_map(fn (PartnerBankAccount $one) => strtoupper($one->iban), $accounts),
+                        ...array_map(fn (PartnerEInvoiceAccount $one) => strtoupper($one->iban), $fromEInvoice),
+                    ],
+                    true,
+                ) ? [[
+                    'iban' => $byHabit->iban,
+                    'currency' => $byHabit->currency,
+                    'bank' => null,
+                    'bic' => $byHabit->bic,
+                    'swift' => null,
+                    'is_default' => false,
+                    'source' => 'folosit',
+                    'note' => ($byHabit->source === 'bank' ? 'plătit pe el ultima dată' : 'folosit ultima dată')
+                        .($byHabit->last_used_at !== null ? ' la '.$byHabit->last_used_at->format('d.m.Y') : '')
+                        .($byHabit->source === 'bank' ? ', din extras' : ''),
+                ]] : []),
                 ...array_map(
                     fn (PartnerEInvoiceAccount $account) => [
                         'iban' => $account->iban,
@@ -128,6 +179,47 @@ class BtPaymentRow
             ],
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * Contul ținut minte pentru furnizorul ăsta, pe moneda facturii.
+     *
+     * @param  list<PartnerAccountChoice>  $choices
+     */
+    private static function remembered(array $choices, ?string $currency): ?PartnerAccountChoice
+    {
+        $wanted = PartnerAccountChoice::currencyKey($currency);
+
+        foreach ($choices as $choice) {
+            if (PartnerAccountChoice::currencyKey($choice->currency) === $wanted) {
+                return $choice;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * BIC-ul contului ținut minte, dacă îl știm de altundeva.
+     *
+     * @param  list<PartnerBankAccount>  $accounts
+     * @param  list<PartnerEInvoiceAccount>  $fromEInvoice
+     */
+    private static function bicOf(string $iban, array $accounts, array $fromEInvoice): ?string
+    {
+        foreach ($accounts as $account) {
+            if (strtoupper($account->iban) === strtoupper($iban)) {
+                return $account->swift ?? $account->bic;
+            }
+        }
+
+        foreach ($fromEInvoice as $account) {
+            if (strtoupper($account->iban) === strtoupper($iban)) {
+                return $account->bic;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -28,6 +28,18 @@ Schedule::command('etrip:sync-suppliers')
  * celorlalte case, iar acolo ziua se lucrează.
  */
 /*
+ * Pe ce cont i s-a plătit fiecărui furnizor ultima dată: se citește din
+ * extrasele bancare, adică din plățile care chiar s-au dus. Așa, șablonul de
+ * bancă vine completat chiar și pentru furnizorii cu patru conturi în ERP și
+ * niciunul implicit.
+ */
+Schedule::command('suppliers:seed-account-choices', ['--months' => 6])
+    ->dailyAt('03:40')
+    ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
+/*
  * Conturile furnizorilor pe care OMC nu-i are cu niciun IBAN: furnizorul și-l
  * scrie singur în e-Factură, deci se caută acolo. Noaptea, fiindcă fiecare
  * căutare citește un XML din baza celorlalți.

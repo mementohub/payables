@@ -29,8 +29,8 @@ type SupplierAccount = {
     bic: string | null;
     swift: string | null;
     is_default: boolean;
-    /** De unde îl știm: din ERP sau citit din e-Factura furnizorului. */
-    source: 'omc' | 'efactura';
+    /** De unde îl știm: din ERP, din e-Factura furnizorului sau din plata trecută. */
+    source: 'omc' | 'efactura' | 'folosit';
     note: string | null;
 };
 
@@ -279,6 +279,9 @@ export function BtPaymentDialog({
 
         includedRows.forEach((row, idx) => {
             const prefix = `rows[${idx}]`;
+            // Factura merge cu rândul ca serverul să țină minte pe ce cont
+            // i-am plătit furnizorului ăstuia.
+            appendInput(form, `${prefix}[invoice_id]`, String(row.invoice_id));
             appendInput(
                 form,
                 `${prefix}[beneficiary_name]`,
@@ -569,6 +572,10 @@ export function BtPaymentDialog({
                                                                                 'efactura'
                                                                                     ? ' · e-Factură'
                                                                                     : ''}
+                                                                                {a.source ===
+                                                                                'folosit'
+                                                                                    ? ' · folosit ultima dată'
+                                                                                    : ''}
                                                                             </SelectItem>
                                                                         ),
                                                                     )}
@@ -611,8 +618,8 @@ export function BtPaymentDialog({
                                                          */}
                                                         {ibanOptions.some(
                                                             (a) =>
-                                                                a.source ===
-                                                                    'efactura' &&
+                                                                a.source !==
+                                                                    'omc' &&
                                                                 a.iban ===
                                                                     row.target_account_number,
                                                         ) && (

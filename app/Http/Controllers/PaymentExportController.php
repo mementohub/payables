@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\CompanyBankAccount;
 use App\Models\Invoice;
+use App\Models\PartnerAccountChoice;
 use App\Services\Approvals\InvoiceWorkflow;
+use App\Services\EInvoices\EInvoiceXmlParser;
 use App\Services\Invoices\InvoiceListQuery;
 use App\Services\PaymentExport\BtPaymentRow;
 use App\Services\Xlsx\XlsxWriter;
@@ -44,7 +46,7 @@ class PaymentExportController extends Controller
         $query
             ->where('approval_status', InvoiceWorkflow::APPROVED)
             ->whereRaw('val_mon - val_mon_paid - val_mon_storno > 0.01')
-            ->with(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'company:id,name,cui'])
+            ->with(['partner.bankAccounts', 'partner.eInvoiceAccounts', 'partner.accountChoices', 'company:id,name,cui'])
             ->orderBy('invoices.data_doc');
 
         if (! $selectAll) {
@@ -113,6 +115,10 @@ class PaymentExportController extends Controller
         $validated = $request->validate([
             'source_account' => ['required', 'string', 'max:40'],
             'rows' => ['required', 'array', 'min:1'],
+            // Factura vine cu rândul ca să știm pe seama cui ținem minte
+            // contul; fără ea fișierul se face la fel, doar că nu învățăm
+            // nimic din el.
+            'rows.*.invoice_id' => ['nullable', 'integer', 'min:1'],
             'rows.*.beneficiary_name' => ['required', 'string', 'max:255'],
             'rows.*.target_account_number' => ['required', 'string', 'max:40'],
             'rows.*.beneficiary_bank_bic' => ['nullable', 'string', 'max:20'],
@@ -151,8 +157,57 @@ class PaymentExportController extends Controller
             }
         };
 
+        $this->remember($rowsData, $request->user()?->id);
+
         $filename = 'plata-bt-'.now()->format('Ymd-His').'.xlsx';
 
         return XlsxWriter::streamDownload($filename, $headers, $rows(), 'BT Payments');
+    }
+
+    /**
+     * Ține minte pe ce cont i-am plătit furnizorului.
+     *
+     * Când are mai multe conturi și niciunul implicit, aplicația nu poate
+     * alege — dar omul a ales deja o dată, iar data viitoare îi propunem
+     * aceeași alegere. Se ține pe furnizor și pe monedă, fiindcă unul are
+     * un cont pentru lei și altul pentru euro.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function remember(array $rows, ?int $userId): void
+    {
+        $ids = array_values(array_filter(array_map(
+            fn (array $row) => isset($row['invoice_id']) ? (int) $row['invoice_id'] : null,
+            $rows,
+        )));
+
+        if ($ids === []) {
+            return;
+        }
+
+        $invoices = Invoice::query()->whereIn('id', $ids)->get(['id', 'partner_id', 'moneda'])->keyBy('id');
+
+        foreach ($rows as $row) {
+            $invoice = $invoices->get((int) ($row['invoice_id'] ?? 0));
+            $iban = strtoupper(preg_replace('/\s+/', '', (string) $row['target_account_number']) ?? '');
+
+            if ($invoice?->partner_id === null || ! EInvoiceXmlParser::isIban($iban)) {
+                continue;
+            }
+
+            $currency = PartnerAccountChoice::currencyKey($invoice->moneda);
+            $choice = PartnerAccountChoice::query()->firstOrNew([
+                'partner_id' => $invoice->partner_id,
+                'currency' => $currency,
+            ]);
+
+            $choice->fill([
+                'iban' => $iban,
+                'bic' => $row['beneficiary_bank_bic'] ?? null,
+                'times_used' => $choice->exists && $choice->iban === $iban ? $choice->times_used + 1 : 1,
+                'last_used_at' => now(),
+                'last_used_by_id' => $userId,
+            ])->save();
+        }
     }
 }
