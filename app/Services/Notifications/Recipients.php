@@ -77,6 +77,26 @@ class Recipients
     }
 
     /**
+     * Oamenii repartizați pe departament — toți, nu doar șeful.
+     *
+     * La o veste despre o factură a lor, treaba e a celui care o duce mai
+     * departe, nu neapărat a șefului; repartizarea pe departament e tocmai
+     * lista aia. Șeful intră și el, chiar dacă nu e trecut ca membru.
+     *
+     * @return Collection<int, User>
+     */
+    public function departmentPeople(Department $department, ?User $except = null): Collection
+    {
+        $people = $department->members()->get();
+
+        if ($department->head_user_id !== null && ! $people->contains('id', $department->head_user_id)) {
+            $people = $people->concat(User::query()->whereKey($department->head_user_id)->get());
+        }
+
+        return $this->without($people, $except);
+    }
+
+    /**
      * @return Collection<int, User>
      */
     private function withRole(string $role): Collection

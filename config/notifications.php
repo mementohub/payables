@@ -63,6 +63,15 @@ return [
     ],
 
     /*
+     * Ce se scrie pe o factură la aprobare — de departament sau la decizia
+     * finală — pleacă la oamenii repartizați pe departamentul ei. Fără
+     * comentariu nu pleacă nimic.
+     */
+    'commented' => [
+        'enabled' => (bool) env('NOTIFICATIONS_COMMENTED_ENABLED', true),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | Vestea de joi către trezorerie
     |--------------------------------------------------------------------------

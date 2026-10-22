@@ -4,6 +4,7 @@ use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\InvoiceDetail;
 use App\Models\User;
+use App\Notifications\InvoiceCommented;
 use App\Notifications\InvoiceDisputed;
 use App\Notifications\InvoicesRouted;
 use App\Services\Approvals\InvoiceWorkflow;
@@ -157,4 +158,88 @@ test('the config switch stops the mails without touching the flow', function () 
 
     expect($invoice->fresh()->approval_status)->toBe('disputed');
     Notification::assertNothingSent();
+});
+
+test('what the first approver writes reaches the people of its department', function () {
+    $invoice = routedInvoice();
+
+    app(InvoiceWorkflow::class)->decide($invoice, $this->charters, $this->head, 'approved', 'Am verificat cu operațiunile, e în regulă.');
+
+    Notification::assertSentTo($this->member, InvoiceCommented::class, function (InvoiceCommented $notification) use ($invoice) {
+        $mail = $notification->toMail($this->member);
+
+        return $notification->invoice->is($invoice)
+            && $notification->stage === InvoiceCommented::STAGE_DEPARTMENT
+            && $notification->decision === 'approved'
+            && str_contains($mail->subject, $invoice->nr_doc)
+            && collect($mail->introLines)->contains(fn (string $line) => str_contains($line, 'Am verificat cu operațiunile'));
+    });
+
+    // Cel care a scris nu-și primește propria vorbă, iar restul companiei n-are treabă.
+    Notification::assertNotSentTo($this->head, InvoiceCommented::class);
+    Notification::assertNotSentTo($this->finance, InvoiceCommented::class);
+});
+
+test('an approval without a word said sends nothing', function () {
+    $invoice = routedInvoice();
+
+    app(InvoiceWorkflow::class)->decide($invoice, $this->charters, $this->head, 'approved');
+
+    Notification::assertNothingSentTo($this->member);
+});
+
+test('a contested invoice tells the department too, not only Top Management', function () {
+    $invoice = routedInvoice();
+
+    app(InvoiceWorkflow::class)->decide($invoice, $this->charters, $this->head, 'disputed', 'Prețul nu e cel din contract.');
+
+    Notification::assertSentTo($this->boss, InvoiceDisputed::class);
+    Notification::assertSentTo($this->member, InvoiceCommented::class, fn (InvoiceCommented $notification) => $notification->decision === 'disputed');
+});
+
+test('the word written at the final decision reaches every department of the invoice', function () {
+    $invoice = routedInvoice();
+
+    app(InvoiceWorkflow::class)->decide($invoice, $this->charters, $this->head, 'approved');
+    app(InvoiceWorkflow::class)->decideFinal($invoice->fresh(), $this->boss, 'approved', 'Plătim din rulajul de miercuri.');
+
+    foreach ([$this->head, $this->member] as $person) {
+        Notification::assertSentTo($person, InvoiceCommented::class, function (InvoiceCommented $notification) use ($person) {
+            $mail = $notification->toMail($person);
+
+            return $notification->stage === InvoiceCommented::STAGE_FINAL
+                && collect($mail->introLines)->contains(fn (string $line) => str_contains($line, 'rulajul de miercuri'));
+        });
+    }
+});
+
+test('a comment written on the invoice page also reaches the department', function () {
+    $invoice = routedInvoice();
+
+    $this->actingAs($this->boss)->post("/invoices/{$invoice->id}/comments", ['body' => 'Furnizorul a trimis storno.'])->assertRedirect();
+
+    Notification::assertSentTo($this->member, InvoiceCommented::class, fn (InvoiceCommented $notification) => $notification->stage === InvoiceCommented::STAGE_NOTE
+        && $notification->comment === 'Furnizorul a trimis storno.');
+});
+
+test('a person on two departments of the same invoice gets one mail, not two', function () {
+    $invoice = Invoice::factory()->create(['val_mon' => 1000]);
+    InvoiceDetail::factory()->create(['invoice_id' => $invoice->id, 'scv' => 1, 'pret' => 600, 'com_int' => '1111111']);
+    InvoiceDetail::factory()->create(['invoice_id' => $invoice->id, 'scv' => 2, 'pret' => 400, 'com_int' => '2222222']);
+
+    $this->mock(BookingResolver::class, function (MockInterface $mock) {
+        $mock->shouldReceive('resolve')->andReturnUsing(fn (array $ids) => collect($ids)->mapWithKeys(fn (int $id) => [$id => [
+            'department' => $id === 1111111 ? 'charters' : 'ticketing', 'channel' => null, 'detail' => '',
+        ]])->all());
+    });
+
+    app(DepartmentAssigner::class)->assign(collect([$invoice]));
+    $invoice = $invoice->fresh();
+
+    $both = User::factory()->create(['name' => 'Om pe două departamente']);
+    $both->departments()->attach([$this->charters->id, $this->departments['ticketing']->id]);
+
+    app(InvoiceWorkflow::class)->decideFinal($invoice, $this->boss, 'disputed', 'Lămuriți cu furnizorul.');
+
+    Notification::assertSentToTimes($both, InvoiceCommented::class, 1);
 });

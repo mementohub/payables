@@ -5,6 +5,7 @@ namespace App\Services\Notifications;
 use App\Models\Department;
 use App\Models\Invoice;
 use App\Models\User;
+use App\Notifications\InvoiceCommented;
 use App\Notifications\InvoiceDisputed;
 use App\Notifications\InvoicesRouted;
 use Illuminate\Support\Collection;
@@ -56,6 +57,70 @@ class WorkflowNotifier
             fn () => InvoicesRouted::for($department, $invoices, $actor, $from, $reason),
             $invoices->count().' facturi rutate la '.$department->name,
         );
+    }
+
+    /**
+     * Ce s-a spus pe o factură — departamentul ei află.
+     *
+     * Comentariul de la aprobarea de departament pleacă la oamenii
+     * departamentului ăluia; cel de la decizia finală, la oamenii tuturor
+     * departamentelor facturii, fiindcă pe toți îi privește. Fără comentariu
+     * nu pleacă nimic: o aprobare tăcută e tocmai ce nu trebuie anunțat.
+     *
+     * @param  Collection<int, Department>|null  $departments
+     */
+    public function commented(
+        Invoice $invoice,
+        User $actor,
+        ?string $comment,
+        ?Department $department = null,
+        string $stage = InvoiceCommented::STAGE_NOTE,
+        ?string $decision = null,
+    ): void {
+        $comment = trim((string) $comment);
+
+        if ($comment === '' || ! $this->on('commented')) {
+            return;
+        }
+
+        $departments = $department !== null
+            ? collect([$department])
+            : $this->departmentsOf($invoice);
+
+        if ($departments->isEmpty()) {
+            Log::info('Factura '.$invoice->nr_doc.' n-are departament: comentariul n-are cui pleca.');
+
+            return;
+        }
+
+        // Un om pus pe două departamente ale aceleiași facturi primește un
+        // singur mail, nu două.
+        $people = $departments
+            ->flatMap(fn (Department $one) => $this->recipients->departmentPeople($one, $actor))
+            ->unique('id')
+            ->values();
+
+        $this->send(
+            $people,
+            fn () => new InvoiceCommented($invoice, $actor, $comment, $department, $stage, $decision),
+            'comentariu pe factura '.$invoice->nr_doc,
+        );
+    }
+
+    /**
+     * Departamentele pe care stă factura.
+     *
+     * @return Collection<int, Department>
+     */
+    private function departmentsOf(Invoice $invoice): Collection
+    {
+        return $invoice->departmentApprovals()
+            ->with('department')
+            ->get()
+            ->pluck('department')
+            ->filter()
+            ->unique('id')
+            ->values();
     }
 
     private function on(string $feature): bool

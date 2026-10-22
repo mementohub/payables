@@ -8,6 +8,7 @@ use App\Models\InvoiceDepartmentApproval;
 use App\Models\InvoiceEvent;
 use App\Models\InvoiceLineDepartment;
 use App\Models\User;
+use App\Notifications\InvoiceCommented;
 use App\Services\Notifications\WorkflowNotifier;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -131,6 +132,17 @@ class InvoiceWorkflow
         if ($decision === InvoiceDepartmentApproval::DISPUTED) {
             $this->notifier->disputed($invoice, $user, $department, $comment);
         }
+
+        // Ce a scris primul aprobator ajunge la oamenii departamentului lui,
+        // fie că a contestat, fie că a aprobat și a lăsat o vorbă.
+        $this->notifier->commented(
+            $invoice,
+            $user,
+            $comment,
+            $department,
+            InvoiceCommented::STAGE_DEPARTMENT,
+            $decision,
+        );
     }
 
     /**
@@ -176,6 +188,10 @@ class InvoiceWorkflow
         if ($decision === self::DISPUTED) {
             $this->notifier->disputed($invoice, $user, null, $comment);
         }
+
+        // Decizia finală privește toate departamentele facturii, deci
+        // comentariul ei pleacă la oamenii tuturor.
+        $this->notifier->commented($invoice, $user, $comment, null, InvoiceCommented::STAGE_FINAL, $decision);
     }
 
     /**
@@ -222,6 +238,10 @@ class InvoiceWorkflow
             $this->event($invoice, $user, 'reopened', $comment);
             $this->recompute($invoice->fresh());
         });
+
+        // Redeschiderea vine tot de sus, iar departamentul are din nou de
+        // decis: dacă s-a spus de ce, oamenii lui trebuie să afle.
+        $this->notifier->commented($invoice, $user, $comment, null, InvoiceCommented::STAGE_FINAL, 'reopened');
     }
 
     /**
