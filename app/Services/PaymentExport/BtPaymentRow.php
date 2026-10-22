@@ -60,8 +60,19 @@ class BtPaymentRow
                 .($borrowed->nr_doc ? ' (factura '.$borrowed->nr_doc.')' : '')
                 .' — OMC nu are niciunul. Verifică-l înainte de plată.';
         } elseif ($picked === null) {
+            // Spus pe față de ce n-a ales aplicația: „nu are IBAN” și „are
+            // patru și niciunul implicit” cer lucruri cu totul diferite de la
+            // omul care plătește.
+            $sameCurrency = array_values(array_filter(
+                $accounts,
+                fn (PartnerBankAccount $account) => self::sameCurrency($account->currency, $invoice->moneda),
+            ));
+
             $warnings[] = match (true) {
-                $fromEInvoice === [] => 'Furnizorul nu are IBAN configurat pentru moneda facturii.',
+                count($sameCurrency) > 1 => 'Furnizorul are '.count($sameCurrency).' conturi în OMC pe moneda facturii și niciunul implicit — alege unul.',
+                $accounts !== [] && $fromEInvoice === [] => 'Furnizorul are conturi în OMC, dar niciunul în '
+                    .($invoice->moneda ?? 'moneda facturii').' — alege unul sau scrie IBAN-ul.',
+                $fromEInvoice === [] => 'Furnizorul nu are niciun IBAN, nici în OMC, nici în e-Facturi.',
                 $declared === [] => 'OMC n-are IBAN; din textul e-Facturii am cules '
                     .count($fromEInvoice).' '.(count($fromEInvoice) === 1 ? 'cont' : 'conturi').' — alege unul.',
                 default => 'Furnizorul are mai multe conturi în e-Facturi: alege unul.',

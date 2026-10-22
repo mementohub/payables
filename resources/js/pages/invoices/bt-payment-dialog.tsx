@@ -212,6 +212,25 @@ export function BtPaymentDialog({
                 r.invoice_id === invoiceId ? { ...r, ...patch } : r,
             ),
         );
+
+        // Rândul fără IBAN intră nebifat, fiindcă n-ar avea ce duce la bancă.
+        // Dar dacă omul tocmai i-a ales contul, l-a vrut în fișier: altfel
+        // completa IBAN-ul și plata tot nu pleca, fără să-i spună nimeni.
+        if (
+            typeof patch.target_account_number === 'string' &&
+            patch.target_account_number.trim() !== ''
+        ) {
+            setIncludedIds((prev) => {
+                if (prev.has(invoiceId)) {
+                    return prev;
+                }
+
+                const next = new Set(prev);
+                next.add(invoiceId);
+
+                return next;
+            });
+        }
     };
 
     const toggleRow = (invoiceId: number) => {
