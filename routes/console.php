@@ -17,7 +17,10 @@ Schedule::command('erp:sync', ['--days' => (int) config('sync.window_days', 400)
     ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
     ->withoutOverlapping(180)
     ->runInBackground();
-Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping();
+Schedule::command('etrip:sync-suppliers')
+    ->dailyAt('03:30')
+    ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping();
 
 /*
  * Cine stă în spatele facturilor refacturate de Memento Air, International și
@@ -26,6 +29,7 @@ Schedule::command('etrip:sync-suppliers')->dailyAt('03:30')->withoutOverlapping(
  */
 Schedule::command('invoices:trace-suppliers', ['--months' => 3])
     ->dailyAt('04:15')
+    ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
     ->withoutOverlapping(120)
     ->runInBackground();
 
@@ -44,11 +48,15 @@ Schedule::command('invoices:trace-suppliers', ['--months' => 3])
  */
 Schedule::command('invoices:mail-payable')
     ->weeklyOn(4, '09:00')
+    // Ora e cea de la noi din birou, nu a ceasului serverului: fără fusul
+    // ăsta, „joi la 9” însemna 9 UTC, adică 12 la București.
+    ->timezone((string) config('notifications.cash_flow.timezone', 'Europe/Bucharest'))
     ->withoutOverlapping()
     ->runInBackground();
 
 Schedule::command('invoices:trace-suppliers', ['--months' => 14])
     ->weeklyOn(0, '02:00')
+    ->timezone((string) config('sync.timezone', 'Europe/Bucharest'))
     ->withoutOverlapping(600)
     ->runInBackground();
 // Raportul de trezorerie pleacă pe mail dimineața, după construirea de noapte.
