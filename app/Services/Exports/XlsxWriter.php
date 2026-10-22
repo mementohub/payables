@@ -43,6 +43,11 @@ class XlsxWriter
 
     private const STYLE_NOTE = 12;
 
+    /** Procentul pe un rând de grupă și pe unul de secțiune: tot procent. */
+    private const STYLE_PERCENT_STRONG = 13;
+
+    private const STYLE_SECTION_PERCENT = 14;
+
     /** Rândul de la care încep datele: logo, titlu, subtitlu, un rând liber. */
     private const FIRST_ROW = 5;
 
@@ -169,7 +174,7 @@ class XlsxWriter
             .'</borders>';
 
         // Ordinea de aici trebuie să fie exact cea a constantelor STYLE_*.
-        $xfs = '<cellXfs count="13">'
+        $xfs = '<cellXfs count="15">'
             .'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
             .'<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
             .'<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
@@ -183,6 +188,8 @@ class XlsxWriter
             .'<xf numFmtId="0" fontId="4" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1"/>'
             .'<xf numFmtId="164" fontId="4" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>'
             .'<xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+            .'<xf numFmtId="165" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>'
+            .'<xf numFmtId="165" fontId="4" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>'
             .'</cellXfs>';
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -279,11 +286,19 @@ class XlsxWriter
     {
         $numeric = $type !== 'text';
 
+        // Procentul își păstrează formatul și pe rândurile groase: altfel un
+        // 10,6% scris cu „#,##0” se citește „0”.
         return match (true) {
-            $rowStyle === ReportDocument::STYLE_SECTION || $rowStyle === ReportDocument::STYLE_TOTAL => $numeric
-                ? self::STYLE_SECTION_NUMBER
-                : self::STYLE_SECTION,
-            $rowStyle === ReportDocument::STYLE_GROUP => $numeric ? self::STYLE_NUMBER_STRONG : self::STYLE_LABEL_STRONG,
+            $rowStyle === ReportDocument::STYLE_SECTION || $rowStyle === ReportDocument::STYLE_TOTAL => match (true) {
+                $type === 'percent' => self::STYLE_SECTION_PERCENT,
+                $numeric => self::STYLE_SECTION_NUMBER,
+                default => self::STYLE_SECTION,
+            },
+            $rowStyle === ReportDocument::STYLE_GROUP => match (true) {
+                $type === 'percent' => self::STYLE_PERCENT_STRONG,
+                $numeric => self::STYLE_NUMBER_STRONG,
+                default => self::STYLE_LABEL_STRONG,
+            },
             $type === 'percent' => self::STYLE_PERCENT,
             $numeric => self::STYLE_NUMBER,
             $first => self::STYLE_LABEL,

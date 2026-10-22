@@ -172,3 +172,102 @@ test('the workbook carries the logo and keeps the header on screen', function ()
         ->and($sheet)->toContain('state="frozen"')
         ->and($sheet)->toContain('Cont de profit și pierdere');
 });
+
+/**
+ * @return array<string, mixed>
+ */
+function pnlEvolutionFixture(float $factor = 1.0): array
+{
+    $cells = fn (float $value) => [
+        'm1' => ['total' => round($value, 2), 'by_channel' => [], 'by_product' => []],
+        'q1' => ['total' => round($value, 2), 'by_channel' => [], 'by_product' => []],
+        'year' => ['total' => round($value, 2), 'by_channel' => [], 'by_product' => []],
+    ];
+
+    return [
+        'year' => 2026,
+        'basis' => PnlReportService::BASIS_RAS,
+        'mode' => PnlReportService::MODE_OPERATIONAL,
+        'channels' => ['b2b', 'retail'],
+        'products' => ['Charter'],
+        'periods' => [
+            ['code' => 'm1', 'label' => 'ian.', 'kind' => 'month'],
+            ['code' => 'q1', 'label' => 'T1', 'kind' => 'quarter'],
+            ['code' => 'year', 'label' => '2026', 'kind' => 'year'],
+        ],
+        'rows' => [
+            ['key' => 'revenue', 'label' => 'Venituri nete', 'kind' => 'strong', 'cells' => $cells(1000 * $factor)],
+            ['key' => 'margin', 'label' => 'Marjă brută', 'kind' => 'strong', 'of' => 'revenue', 'cells' => $cells(100 * $factor)],
+            ['key' => 'group:Salarii', 'label' => 'Salarii', 'kind' => 'cost', 'lines' => 1, 'cells' => $cells(40 * $factor)],
+            ['key' => 'line:20200', 'label' => 'Cheltuieli salarii angajați', 'kind' => 'line', 'group' => 'Salarii', 'saf' => '20200', 'cells' => $cells(40 * $factor)],
+            ['key' => 'net', 'label' => 'Profit net', 'kind' => 'result', 'cells' => $cells(50 * $factor)],
+        ],
+        'meta' => ['generated_at' => '2026-09-22T08:00:00+03:00', 'direct_lei' => 0.0, 'allocated_lei' => 50.0, 'excluded_accounts' => ['628'], 'reconciles' => true],
+    ];
+}
+
+test('the evolution tab downloads the evolution, not the report of one period', function () {
+    $this->mock(PnlReportService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('cached')->andReturn(['year' => 2026]);
+        $mock->shouldReceive('evolution')->andReturn(pnlEvolutionFixture());
+        // Vederea unei singure perioade nu se mai cere deloc de pe fila asta.
+        $mock->shouldReceive('view')->never();
+    });
+
+    $response = $this->actingAs($this->user)
+        ->get("/reports/pnl/{$this->company->id}/export?format=xlsx&year=2026&view=channel&period=ytd8&layout=evolution");
+
+    $response->assertOk();
+    expect($response->headers->get('content-disposition'))->toContain('pnl-2026-evolutie-channel.xlsx');
+
+    $path = tempnam(sys_get_temp_dir(), 'test');
+    file_put_contents($path, $response->streamedContent() !== '' ? $response->streamedContent() : $response->getFile()->getContent());
+
+    $zip = new ZipArchive;
+    expect($zip->open($path))->toBeTrue();
+    $sheet = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    unlink($path);
+
+    // Fiecare perioadă cu coloana ei și cu procentul din venitul ei: marja de
+    // 100 din 1000 se scrie 0,1, iar foaia o arată ca 10,0%.
+    expect($sheet)->toContain('ian.')->toContain('T1')->toContain('% venit')
+        ->toContain('Venituri nete')->toContain('Profit net')
+        ->toContain('<v>1000</v>')->toContain('<v>0.1</v>')
+        ->and($sheet)->not->toContain('vs 2025');
+});
+
+test('with the comparison on, the evolution sheet also carries last year', function () {
+    $this->mock(PnlReportService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('cached')->andReturn(['year' => 2026]);
+        $mock->shouldReceive('evolution')->once()->andReturn(pnlEvolutionFixture());
+        $mock->shouldReceive('evolution')->once()->andReturn(pnlEvolutionFixture(0.5));
+    });
+
+    $response = $this->actingAs($this->user)
+        ->get("/reports/pnl/{$this->company->id}/export?format=xlsx&year=2026&view=channel&layout=evolution&compare=1");
+
+    $path = tempnam(sys_get_temp_dir(), 'test');
+    file_put_contents($path, $response->streamedContent() !== '' ? $response->streamedContent() : $response->getFile()->getContent());
+
+    $zip = new ZipArchive;
+    $zip->open($path);
+    $sheet = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    unlink($path);
+
+    // Dublu față de anul trecut înseamnă +100%.
+    expect($sheet)->toContain('vs 2025')->toContain('<v>1</v>');
+});
+
+test('the evolution also comes down as a PDF', function () {
+    $this->mock(PnlReportService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('cached')->andReturn(['year' => 2026]);
+        $mock->shouldReceive('evolution')->andReturn(pnlEvolutionFixture());
+    });
+
+    $this->actingAs($this->user)
+        ->get("/reports/pnl/{$this->company->id}/export?format=pdf&year=2026&view=channel&layout=evolution")
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});

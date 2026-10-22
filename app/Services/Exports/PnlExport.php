@@ -140,6 +140,126 @@ class PnlExport
     }
 
     /**
+     * Evoluția anului, așa cum se vede pe fila ei: fiecare lună, trimestrul
+     * ei și totalul, pe coloane, cu rândurile P&L de la venituri la profitul
+     * net — grupele de cheltuieli desfăcute pe linii, fiindcă într-o foaie nu
+     * se mai dă clic ca să le deschizi.
+     *
+     * Pe lângă lei, fiecare perioadă duce și cât face cifra din veniturile ei
+     * nete, iar când s-a cerut comparația, și cât s-a schimbat față de anul
+     * trecut.
+     *
+     * @param  array<string, mixed>  $evolution
+     * @param  array<string, mixed>|null  $previous  Aceeași evoluție, anul trecut.
+     */
+    public function evolutionDocument(Company $company, array $evolution, ?array $previous, string $axis): ReportDocument
+    {
+        $periods = (array) ($evolution['periods'] ?? []);
+        $rows = (array) ($evolution['rows'] ?? []);
+
+        $columns = [['label' => 'Linie', 'width' => 46]];
+
+        foreach ($periods as $period) {
+            $columns[] = ['label' => (string) $period['label'], 'width' => 15, 'align' => 'right'];
+            $columns[] = ['label' => '% venit', 'width' => 9, 'align' => 'right'];
+
+            if ($previous !== null) {
+                $columns[] = ['label' => 'vs '.((int) ($evolution['year'] ?? 0) - 1), 'width' => 10, 'align' => 'right'];
+            }
+        }
+
+        $valueOf = fn (?array $row, string $code) => $row === null
+            ? 0.0
+            : (float) ($row['cells'][$code]['total'] ?? 0);
+
+        $find = function (array $where, string $key): ?array {
+            foreach ($where as $row) {
+                if (($row['key'] ?? null) === $key) {
+                    return $row;
+                }
+            }
+
+            return null;
+        };
+
+        $lines = [];
+
+        foreach ($rows as $row) {
+            $cells = [ReportDocument::text($this->evolutionLabel($row))];
+
+            foreach ($periods as $period) {
+                $code = (string) $period['code'];
+                $value = $valueOf($row, $code);
+                $cells[] = ReportDocument::number(round($value, 2));
+
+                // Procentul se judecă din baza rândului — venitul, dacă nu
+                // spune altceva: o cheltuială de trei milioane nu înseamnă
+                // nimic până nu știi din cât.
+                $base = ($row['key'] ?? null) === 'revenue'
+                    ? null
+                    : $find($rows, (string) ($row['of'] ?? 'revenue'));
+                $of = $base === null ? 0.0 : $valueOf($base, $code);
+                // Procentul se scrie ca fracție: formatul „0.0%” din foaie și
+                // tiparul din PDF îl înmulțesc ei cu o sută.
+                $cells[] = ReportDocument::number($of == 0.0 ? null : round($value / $of, 4), 'percent');
+
+                if ($previous === null) {
+                    continue;
+                }
+
+                $before = $find((array) ($previous['rows'] ?? []), (string) $row['key']);
+                $was = $valueOf($before, $code);
+                $cells[] = ReportDocument::number(
+                    abs($was) < 0.0005 ? null : round(($value - $was) / abs($was), 4),
+                    'percent',
+                );
+            }
+
+            $lines[] = ['cells' => $cells, 'style' => $this->evolutionStyle($row)];
+        }
+
+        return new ReportDocument(
+            title: 'Cont de profit și pierdere · evoluție',
+            subtitle: $this->subtitle($company, $evolution, $axis),
+            columns: $columns,
+            rows: $lines,
+            notes: [
+                ...$this->notes($evolution),
+                'Coloanele duc totalul fiecărei perioade; împărțirea pe '.($axis === 'product' ? 'categorii de produs' : 'canale de vânzare').' se ia din exportul unei singure perioade.',
+            ],
+            sheet: 'Evoluție '.($evolution['year'] ?? ''),
+            filename: sprintf('pnl-%s-evolutie-%s', $evolution['year'] ?? 'an', $axis),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function evolutionLabel(array $row): string
+    {
+        $label = (string) ($row['label'] ?? '');
+
+        return match ($row['kind'] ?? '') {
+            'line' => '    '.(isset($row['saf']) ? $row['saf'].' ' : '').$label,
+            default => $label,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function evolutionStyle(array $row): string
+    {
+        return match ($row['kind'] ?? '') {
+            'strong', 'result' => ReportDocument::STYLE_SECTION,
+            'cost' => str_starts_with((string) ($row['key'] ?? ''), 'group:')
+                ? ReportDocument::STYLE_GROUP
+                : ReportDocument::STYLE_NORMAL,
+            default => ReportDocument::STYLE_NORMAL,
+        };
+    }
+
+    /**
      * Grupele de cheltuieli, în ordinea de pe ecran: cea mai scumpă prima.
      *
      * @param  array<string, mixed>  $view

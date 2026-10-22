@@ -584,6 +584,13 @@ export default function Pnl({
                                             mode: filters.mode,
                                             expand: filters.expand ?? undefined,
                                             key: filters.key,
+                                            // Foaia trebuie să fie cea de pe
+                                            // ecran: evoluția anului, nu
+                                            // raportul unei singure perioade.
+                                            layout: filters.layout,
+                                            compare: filters.compare
+                                                ? 1
+                                                : undefined,
                                         },
                                     },
                                 )

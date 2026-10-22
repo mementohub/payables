@@ -110,6 +110,8 @@ class PnlController extends Controller
             'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
             'expand' => ['nullable', 'string', 'max:40'],
             'key' => ['nullable', Rule::in(PnlReportService::KEYS)],
+            'layout' => ['nullable', Rule::in(['table', 'evolution'])],
+            'compare' => ['nullable', 'boolean'],
         ]);
 
         $built = $this->service->cached($company, (int) $validated['year']);
@@ -122,19 +124,33 @@ class PnlController extends Controller
             return back(303);
         }
 
-        $view = $this->service->view(
-            $built,
-            $this->period($validated['period'] ?? ''),
-            $validated['basis'] ?? PnlReportService::BASIS_RAS,
-            $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL,
-            $validated['expand'] ?? null,
-            $validated['key'] ?? PnlReportService::KEY_REVENUE,
-        );
+        $basis = $validated['basis'] ?? PnlReportService::BASIS_RAS;
+        $mode = $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL;
+        $expand = $validated['expand'] ?? null;
+        $key = $validated['key'] ?? PnlReportService::KEY_REVENUE;
+        $axis = $validated['view'] ?? 'channel';
 
-        return $exporter->download(
-            $export->document($company, $view, $validated['view'] ?? 'channel'),
-            $validated['format'],
-        );
+        // Fila „Evoluție” are alt tabel decât cea cu o singură perioadă, deci
+        // și altă foaie: altfel omul descărca de pe ea raportul unei luni.
+        if (($validated['layout'] ?? 'table') === 'evolution') {
+            $previousBuilt = ($validated['compare'] ?? false)
+                ? $this->service->cached($company, (int) $validated['year'] - 1)
+                : null;
+
+            return $exporter->download(
+                $export->evolutionDocument(
+                    $company,
+                    $this->service->evolution($built, $basis, $mode, $expand, $key),
+                    $previousBuilt ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key) : null,
+                    $axis,
+                ),
+                $validated['format'],
+            );
+        }
+
+        $view = $this->service->view($built, $this->period($validated['period'] ?? ''), $basis, $mode, $expand, $key);
+
+        return $exporter->download($export->document($company, $view, $axis), $validated['format']);
     }
 
     /**
