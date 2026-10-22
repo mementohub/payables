@@ -152,6 +152,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Cine deschide un rulaj de plată: trezoreria, care face plățile, și
+     * Financiarul, care îl pregătește. Ceilalți îl văd, nu-l pornesc.
+     */
+    public function canStartPaymentRun(): bool
+    {
+        return $this->hasRole(self::ROLE_FINANCE) || $this->hasRole(self::ROLE_TREASURY);
+    }
+
+    /**
      * Trezoreria: cine pune la plată ce s-a aprobat.
      *
      * Lista ei are meniul ei — altfel se ajungea la ea numai dintr-o legătură

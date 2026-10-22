@@ -51,7 +51,11 @@ class PaymentRunController extends Controller
                     'exported_at' => $run->exported_at?->toIso8601String(),
                 ]),
             'defaults' => ['pay_date' => $payDate->toDateString(), 'due_until' => $payDate->copy()->addDays(6)->toDateString()],
-            'can' => ['create' => $user->hasRole(User::ROLE_FINANCE), 'delete' => $user->isAdmin()],
+            // Rulajul îl deschide cine plătește: trezoreria, și Financiarul
+            // care-l pregătește. Până acum butonul era doar al Financiarului,
+            // iar trezoreria se uita la o pagină pe care n-avea cum s-o
+            // pornească, deși ruta o lăsa.
+            'can' => ['create' => $user->canStartPaymentRun(), 'delete' => $user->isAdmin()],
         ]);
     }
 

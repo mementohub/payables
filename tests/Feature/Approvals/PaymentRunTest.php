@@ -155,3 +155,22 @@ test('the list offers the delete only to an administrator', function () {
     $this->actingAs($this->finance)->get('/payment-runs')
         ->assertInertia(fn ($page) => $page->where('can.delete', false));
 });
+
+test('treasury can start a payment run, since it is the one that pays', function () {
+    // Butonul „Rulaj nou” era doar al Financiarului, deși trezoreria e cea
+    // care pune plățile la bancă: pagina o lăsa înăuntru, dar fără buton.
+    $this->actingAs($this->treasury)->get('/payment-runs')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('can.create', true));
+
+    $this->actingAs($this->finance)->get('/payment-runs')
+        ->assertInertia(fn ($page) => $page->where('can.create', true));
+
+    $this->actingAs($this->head)->get('/payment-runs')->assertForbidden();
+
+    $this->actingAs($this->treasury)->withSession(['active_company_id' => $this->company->id])
+        ->post('/payment-runs', ['pay_date' => '2026-09-23', 'due_until' => '2026-09-25'])
+        ->assertRedirect();
+
+    expect(PaymentRun::query()->latest('id')->first()->createdBy->id)->toBe($this->treasury->id);
+});

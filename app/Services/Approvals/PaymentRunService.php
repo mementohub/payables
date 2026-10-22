@@ -35,7 +35,10 @@ class PaymentRunService
 
     public function create(Company $company, Carbon $payDate, Carbon $dueUntil, User $user, ?string $note = null): PaymentRun
     {
-        $this->authorize($user, User::ROLE_FINANCE, 'Rulajele de plată le pregătește Financiar.');
+        // Rulajul îl deschide cine plătește — trezoreria — și Financiarul,
+        // care îl pregătește. Până acum era numai al Financiarului, iar
+        // trezoreria se lovea de un refuz chiar la pasul ei.
+        $this->authorize($user, User::ROLE_FINANCE, 'Rulajele de plată le deschide Trezoreria sau Financiar.', User::ROLE_TREASURY);
 
         return DB::transaction(function () use ($company, $payDate, $dueUntil, $user, $note) {
             $run = PaymentRun::query()->create([
