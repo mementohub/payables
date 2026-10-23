@@ -41,7 +41,9 @@ test('the period follows the accounting note, not the invoice date', function ()
         $reader->revenueAndCogs($company, 2026);
     });
 
-    expect($queries)->toHaveCount(4);
+    // Patru citiri de bază, plus cele trei ale adaosului de curs: încasările
+    // în lei și cele două drumuri pe care financiarul îl poate muta singur.
+    expect($queries)->toHaveCount(7);
 
     foreach ($queries as $sql) {
         expect($sql)->toContain('j.data_reg_jurnal >= ?::date')

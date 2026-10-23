@@ -398,3 +398,57 @@ test('the rows under EBITDA open on the entries behind them, like any other cost
         ->assertJsonPath('saf', 'below:impozit')
         ->assertJsonPath('total', 1000);
 });
+
+test('the exchange surcharge moves from the financial result into revenue, without touching the bottom line', function () {
+    fakeEvolutionSources(
+        evolutionRevenue(),
+        [],
+        [
+            // Adaosul de curs: iese din rezultatul financiar (+) și intră în
+            // găleata lui ca venit (−), fiindcă sub EBITDA totul se scade.
+            ['bucket' => 'comision_curs', 'account' => '7651', 'month' => 1, 'lei' => -200.0],
+            ['bucket' => 'financiar', 'account' => '7651', 'month' => 1, 'lei' => 200.0],
+            ['bucket' => 'financiar', 'account' => '7651', 'month' => 1, 'lei' => -500.0],
+        ],
+    );
+
+    $service = app(PnlReportService::class);
+    $report = $service->report(test()->company, 2026, forceRefresh: true);
+    $slice = $service->slice($report, [1], 'mtd1');
+
+    $net = $slice['revenue']['total']['margin']
+        - $slice['totals']['total']
+        - $slice['below']['amortizare']['total']
+        - $slice['below']['financiar']['total']
+        - $slice['below']['impozit']['total'];
+
+    expect($slice['revenue']['fx_commission']['total'])->toEqual(200.0)
+        // Rezultatul financiar rămâne cu restul: −500 + 200 = −300 (câștig 300).
+        ->and($slice['below']['financiar']['total'])->toEqual(-300.0)
+        // Marja crește cu comisionul, iar profitul net e același ca fără mutare.
+        ->and($slice['revenue']['total']['margin'])->toEqual(500.0)
+        ->and($net)->toEqual(800.0);
+});
+
+test('a month that loses its entries is spotted, and the report that had them is kept', function () {
+    $service = app(PnlReportService::class);
+
+    $before = [
+        'revenue' => ['months' => [1 => ['total' => ['net' => 1_500_000.0]], 2 => ['total' => ['net' => 900_000.0]]]],
+        'financial' => [1 => ['revenue' => 1_400_000.0, 'cogs' => 1_000_000.0]],
+        'below' => ['impozit' => ['months' => [1 => ['total' => 10_000.0]]]],
+    ];
+
+    // Contabilitatea reface postarea lunii: registrul rămâne o clipă fără ea.
+    $after = [
+        'revenue' => ['months' => [2 => ['total' => ['net' => 900_000.0]]]],
+        'financial' => [],
+        'below' => [],
+    ];
+
+    expect($service->monthsLost($before, $after))->toBe([1])
+        // O lună care doar a scăzut nu e o lună pierdută.
+        ->and($service->monthsLost($before, [...$after, 'revenue' => ['months' => [1 => ['total' => ['net' => 5.0]], 2 => ['total' => ['net' => 900_000.0]]]]]))->toBe([])
+        // Nici un raport cu eroare nu trage după el raportul bun.
+        ->and($service->monthsLost($before, ['error' => 'nimic construit']))->toBe([]);
+});

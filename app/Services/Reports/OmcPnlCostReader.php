@@ -586,10 +586,16 @@ class OmcPnlCostReader
      */
     public function belowEbitda(Company $company, int $year): array
     {
-        $documents = array_values(array_filter(array_map(
+        // Pe metoda financiarului, diferențele de curs rămân toate în
+        // rezultatul financiar, iar adaosul se scoate pe urmă, socotit din
+        // încasări. Pe metoda veche, le desparte chiar interogarea, după
+        // documentul pe care s-au născut.
+        $byDocument = self::commissionMethod() === 'documents';
+
+        $documents = $byDocument ? array_values(array_filter(array_map(
             fn ($value) => trim((string) $value),
             (array) config('pnl.fx_commission.documents', []),
-        ), fn (string $value) => $value !== ''));
+        ), fn (string $value) => $value !== '')) : [];
 
         $inDocuments = $documents === []
             ? 'false'
@@ -635,12 +641,171 @@ class OmcPnlCostReader
             ],
         );
 
-        return array_map(fn ($row) => [
+        $below = array_map(fn ($row) => [
             'bucket' => (string) $row->bucket,
             'account' => (string) $row->account,
             'month' => (int) $row->month,
             'lei' => round((float) $row->lei, 2),
         ], $rows);
+
+        return $byDocument ? $below : [...$below, ...$this->commissionFromReceipts($company, $year)];
+    }
+
+    /** Cum se măsoară adaosul de curs: `receipts`, `documents` sau `none`. */
+    private static function commissionMethod(): string
+    {
+        $method = (string) config('pnl.fx_commission.method', 'receipts');
+
+        return in_array($method, ['receipts', 'documents', 'none'], true) ? $method : 'receipts';
+    }
+
+    /**
+     * Adaosul de curs, socotit ca financiarul: din ce s-a încasat în lei.
+     *
+     * Prețul e în euro, clientul plătește în lei la cursul BNR plus două
+     * procente, deci din suma încasată adaosul e 2/102. Mutarea se scrie în
+     * două rânduri — venitul iese din rezultatul financiar și intră în
+     * găleata lui — ca linia de jos să rămână neatinsă: e o reașezare, nu un
+     * câștig nou.
+     *
+     * Dacă financiarul a mutat el partea asta în cifra de afaceri, ea nu se
+     * mai socotește a doua oară.
+     *
+     * @return list<array{bucket: string, account: string, month: int, lei: float}>
+     */
+    private function commissionFromReceipts(Company $company, int $year): array
+    {
+        if (self::commissionMethod() !== 'receipts') {
+            return [];
+        }
+
+        $rate = (float) config('pnl.fx_commission.rate', 0.02);
+
+        if ($rate <= 0) {
+            return [];
+        }
+
+        $receipts = $this->leiReceipts($company, $year);
+        $already = $this->commissionAlreadyInTurnover($company, $year);
+        $rows = [];
+
+        // Lunile în care financiarul a mutat el adaosul se iau și ele, chiar
+        // dacă ies negative: nota lui din noiembrie acoperă tot anul, iar
+        // fără rândul negativ al lunii ăleia, anul ar număra adaosul de două
+        // ori. Pe un cumul care se oprește înaintea notei, nu se scade nimic
+        // — pe atunci nici nu era mutat.
+        foreach (array_unique([...array_keys($receipts), ...array_keys($already)]) as $month) {
+            $commission = round(($receipts[$month] ?? 0.0) * $rate / (1 + $rate), 2) - ($already[$month] ?? 0.0);
+
+            if (abs($commission) < 0.005) {
+                continue;
+            }
+
+            // Sub EBITDA totul se scade, deci un venit se scrie cu minus.
+            $rows[] = ['bucket' => 'comision_curs', 'account' => '7651', 'month' => $month, 'lei' => -$commission];
+            $rows[] = ['bucket' => 'financiar', 'account' => '7651', 'month' => $month, 'lei' => $commission];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Ce s-a încasat în lei de la clienți, pe luni: baza adaosului.
+     *
+     * @return array<int, float>
+     */
+    public function leiReceipts(Company $company, int $year): array
+    {
+        $documents = array_values(array_filter(array_map(
+            fn ($value) => trim((string) $value),
+            (array) config('pnl.fx_commission.receipt_documents', []),
+        ), fn (string $value) => $value !== ''));
+
+        if ($documents === []) {
+            return [];
+        }
+
+        $clients = $this->likeAny('BTRIM(j.conts_cr)', (array) config('pnl.fx_commission.client_accounts', ['4111']));
+        $lei = $this->likeAny('BTRIM(j.conts_db)', (array) config('pnl.fx_commission.lei_accounts', ['5121', '5311']));
+        $inDocuments = implode(',', array_fill(0, count($documents), '?'));
+
+        $rows = $this->connection->connection($company)->select(<<<SQL
+            SELECT EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month, SUM(j.valoare_lei)::numeric(20,2) AS lei
+            FROM reg_jurnal j
+            WHERE ({$clients}) AND ({$lei}) AND BTRIM(j.tip_doc) IN ({$inDocuments})
+              AND j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+            GROUP BY 1
+            SQL,
+            [...$documents, sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)],
+        );
+
+        $byMonth = [];
+
+        foreach ($rows as $row) {
+            $byMonth[(int) $row->month] = round((float) $row->lei, 2);
+        }
+
+        return $byMonth;
+    }
+
+    /**
+     * Cât din adaos a mutat deja financiarul în cifra de afaceri: fie direct
+     * (765 → 704), fie prin contul de viramente, cu explicația cunoscută.
+     *
+     * @return array<int, float>
+     */
+    public function commissionAlreadyInTurnover(Company $company, int $year): array
+    {
+        $note = trim((string) config('pnl.fx_commission.reclass_note', ''));
+        $window = [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)];
+
+        $rows = $this->connection->connection($company)->select(<<<'SQL'
+            SELECT EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month, SUM(j.valoare_lei)::numeric(20,2) AS lei
+            FROM reg_jurnal j
+            WHERE BTRIM(j.conts_db) LIKE '765%' AND BTRIM(j.conts_cr) LIKE '704%'
+              AND j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+            GROUP BY 1
+            SQL, $window);
+
+        $byMonth = [];
+
+        foreach ($rows as $row) {
+            $byMonth[(int) $row->month] = round((float) $row->lei, 2);
+        }
+
+        if ($note === '') {
+            return $byMonth;
+        }
+
+        // Și drumul ocolit, prin 581: nota poartă explicația dată de om.
+        $rows = $this->connection->connection($company)->select(<<<'SQL'
+            SELECT EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month, SUM(j.valoare_lei)::numeric(20,2) AS lei
+            FROM reg_jurnal j
+            WHERE BTRIM(j.conts_db) LIKE '581%' AND BTRIM(j.conts_cr) LIKE '704%'
+              AND LOWER(BTRIM(j.explicatie)) LIKE ?
+              AND j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+            GROUP BY 1
+            SQL, ['%'.mb_strtolower($note).'%', ...$window]);
+
+        foreach ($rows as $row) {
+            $byMonth[(int) $row->month] = ($byMonth[(int) $row->month] ?? 0.0) + round((float) $row->lei, 2);
+        }
+
+        return $byMonth;
+    }
+
+    /**
+     * @param  array<int, string>  $prefixes
+     */
+    private function likeAny(string $column, array $prefixes): string
+    {
+        $prefixes = array_values(array_filter(array_map(fn ($value) => preg_replace('/[^0-9]/', '', (string) $value), $prefixes)));
+
+        if ($prefixes === []) {
+            return 'false';
+        }
+
+        return implode(' OR ', array_map(fn (string $prefix) => sprintf("%s LIKE '%s%%'", $column, $prefix), $prefixes));
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\PnlCostOverride;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -99,6 +100,7 @@ class PnlReportService
     public function report(Company $company, int $year, bool $forceRefresh = false): array
     {
         $key = $this->cacheKey($company, $year);
+        $previous = $forceRefresh ? Cache::get($key) : null;
 
         if ($forceRefresh) {
             Cache::forget($key);
@@ -123,9 +125,78 @@ class PnlReportService
             ];
         }
 
+        // O lună care avea mișcare și acum n-are nu e o lună slabă, e o lună
+        // care lipsește: contabilitatea reface postarea și, câteva minute,
+        // registrul n-o mai conține. Raportul vechi rămâne pe loc, ca ecranul
+        // să nu arate un septembrie gol.
+        $missing = $previous !== null ? $this->monthsLost($previous, $report) : [];
+
+        if ($missing !== []) {
+            Log::warning(sprintf(
+                'P&L %d %s: lunile %s au rămas fără mișcare în registru; păstrez raportul dinainte.',
+                $year,
+                $company->name,
+                implode(', ', $missing),
+            ));
+
+            Cache::put($key, $previous, self::CACHE_TTL_SECONDS);
+
+            return [...$previous, 'meta' => [...($previous['meta'] ?? []), 'kept_because_missing' => $missing]];
+        }
+
         Cache::put($key, $report, self::CACHE_TTL_SECONDS);
 
         return $report;
+    }
+
+    /**
+     * Lunile care aveau mișcare în raportul dinainte și n-o mai au.
+     *
+     * @param  array<string, mixed>  $previous
+     * @param  array<string, mixed>  $fresh
+     * @return list<int>
+     */
+    public function monthsLost(array $previous, array $fresh): array
+    {
+        if (isset($previous['error']) || isset($fresh['error'])) {
+            return [];
+        }
+
+        $lost = [];
+
+        foreach (range(1, 12) as $month) {
+            $before = $this->monthWeight($previous, $month);
+
+            if ($before > 1000.0 && $this->monthWeight($fresh, $month) < 1.0) {
+                $lost[] = $month;
+            }
+        }
+
+        return $lost;
+    }
+
+    /**
+     * Cât de multă mișcare are o lună, ca să se vadă dacă a rămas goală.
+     *
+     * @param  array<string, mixed>  $report
+     */
+    private function monthWeight(array $report, int $month): float
+    {
+        $weight = 0.0;
+
+        // Vânzarea (eTrip), registrul (contabilitate) și cifrele de sub
+        // EBITDA: o lună adevărată are măcar una dintre ele.
+        foreach ((array) ($report['financial'][$month] ?? []) as $value) {
+            $weight += is_numeric($value) ? abs((float) $value) : 0.0;
+        }
+
+        $weight += abs((float) ($report['revenue']['months'][$month]['total']['net'] ?? 0.0));
+
+        foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
+            $weight += abs((float) ($report['below'][$bucket]['months'][$month]['total'] ?? 0.0));
+        }
+
+        return $weight;
     }
 
     /**

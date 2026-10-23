@@ -257,8 +257,36 @@ return [
     */
 
     'fx_commission' => [
+        /*
+         * Cum se măsoară adaosul.
+         *
+         * `receipts` e metoda financiarului, cea scrisă și în analiza
+         * balanței: din ce s-a încasat în lei se scoate adaosul, adică
+         * 2/102 din sumă. `documents` e metoda veche — diferențele de curs
+         * de pe documentele de încasare; ea citește ce s-a înregistrat, dar
+         * amestecă adaosul cu mișcarea cursului dintre factură și plată.
+         * `none` lasă totul în rezultatul financiar, ca în balanță.
+         */
+        'method' => env('PNL_FX_COMMISSION_METHOD', 'receipts'),
+        'rate' => (float) env('PNL_FX_COMMISSION_RATE', 0.02),
+
+        // Documentele cu care se încasează de la client și conturile de lei
+        // în care intră banii: baza pe care se aplică 2/102.
+        'receipt_documents' => ['OP_INC', 'Ch_INC', 'VOU_INC', 'Reg_INC'],
+        'client_accounts' => ['4111'],
+        'lei_accounts' => ['5121', '5311'],
+
+        /*
+         * Dacă financiarul mută el adaosul în cifra de afaceri (765 → 704,
+         * direct sau prin 581 cu explicația de mai jos), partea mutată se
+         * scade din ce socotim noi: altfel aceeași sumă ar fi numărată de
+         * două ori.
+         */
+        'reclass_note' => 'dif curs',
+
+        // Metoda veche, păstrată ca să se poată compara.
         'documents' => ['OP_INC', 'Ch_INC', 'VOU_INC', 'Reg_INC', 'FactCI'],
-        'label' => 'Alte venituri — comision de curs (BNR + adaos)',
+        'label' => 'Alte venituri — comision de curs (2% din încasările în lei)',
     ],
 
     /*
