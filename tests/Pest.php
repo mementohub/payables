@@ -1,6 +1,11 @@
 <?php
 
+use App\Services\Reports\EtripPnlReader;
+use App\Services\Reports\OmcPnlCostReader;
+use App\Services\Reports\PnlBranchMap;
+use App\Services\Reports\TinaPnlReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 /*
@@ -44,7 +49,57 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Cele trei surse ale P&L-ului, înlocuite cu ce-i dăm noi: vânzarea din
+ * eTrip, cheltuielile din OMC și, la cerere, documentele din spatele lor.
+ *
+ * Stă aici, nu într-un fișier de teste, fiindcă o folosesc și testele
+ * evoluției, și cele ale contractelor de închiriere.
+ */
+function fakeEvolutionSources(array $revenue, array $costs = [], array $below = [], bool $withDetails = false, array $belowDocuments = []): void
 {
-    // ..
+    test()->mock(EtripPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn($revenue));
+    test()->mock(TinaPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn([]));
+    test()->mock(PnlBranchMap::class, function (MockInterface $mock) {
+        $mock->shouldReceive('channel')->andReturn(null);
+        $mock->shouldReceive('branchFor')->andReturn(null);
+        $mock->shouldReceive('branchForAnalytic')->andReturn(null);
+    });
+    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($costs, $below, $withDetails, $belowDocuments) {
+        $mock->shouldReceive('costs')->andReturn($costs);
+        $mock->shouldReceive('belowEbitda')->andReturn($below);
+        $mock->shouldReceive('documentsByKey')->andReturn([]);
+        // Detaliul citește aceleași cheltuieli, dar numai pe lunile cerute —
+        // exact ca cititorul adevărat.
+        $mock->shouldReceive('details')->andReturnUsing(
+            fn ($company, $year, array $months) => $withDetails
+                ? array_values(array_filter($costs, fn (array $row) => in_array($row['month'], $months, true)))
+                : [],
+        );
+        $mock->shouldReceive('revenueAndCogs')->andReturn([]);
+        $mock->shouldReceive('payrollByPlace')->andReturn([]);
+        // Cursurile lunare: contractele de închiriere în lei nu au nevoie de
+        // ele, dar graficul le cere oricum.
+        $mock->shouldReceive('monthlyRates')->andReturn([]);
+        // Documentele din spatele rândurilor de sub EBITDA, pe lunile cerute.
+        $mock->shouldReceive('belowDetails')->andReturnUsing(
+            fn ($company, $year, array $months, string $bucket) => array_values(array_filter(
+                $belowDocuments,
+                fn (array $row) => $row['bucket'] === $bucket && in_array($row['month'], $months, true),
+            )),
+        );
+    });
+}
+
+/**
+ * Vânzări în ianuarie, februarie și aprilie, pe două canale; martie e goală.
+ */
+function evolutionRevenue(): array
+{
+    return [
+        ['channel' => 'retail', 'branch' => 'Sun Plaza', 'product' => 'Charter', 'month' => 1, 'bookings' => 30, 'net' => 1000.0, 'margin' => 200.0],
+        ['channel' => 'site', 'branch' => '', 'product' => 'Cazare', 'month' => 1, 'bookings' => 5, 'net' => 500.0, 'margin' => 100.0],
+        ['channel' => 'retail', 'branch' => 'Sun Plaza', 'product' => 'Charter', 'month' => 2, 'bookings' => 20, 'net' => 600.0, 'margin' => 150.0],
+        ['channel' => 'retail', 'branch' => 'Sun Plaza', 'product' => 'Charter', 'month' => 4, 'bookings' => 10, 'net' => 400.0, 'margin' => 80.0],
+    ];
 }

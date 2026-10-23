@@ -453,6 +453,86 @@ class OmcPnlCostReader
     }
 
     /**
+     * Cursul BNR al fiecărei monede, pe ultima zi a fiecărei luni din an.
+     *
+     * @return array<string, array<string, float>> moneda → „2026-09” → curs
+     */
+    public function monthlyRates(Company $company, int $year): array
+    {
+        $rows = $this->connection->connection($company)->select(<<<'SQL'
+            SELECT DISTINCT ON (BTRIM(c.moneda), date_trunc('month', c.data_curs))
+                   BTRIM(c.moneda) AS currency,
+                   to_char(date_trunc('month', c.data_curs), 'YYYY-MM') AS month,
+                   c.curs_bnr AS rate
+            FROM curs c
+            WHERE c.data_curs >= ?::date AND c.data_curs < ?::date AND c.curs_bnr > 0
+            ORDER BY BTRIM(c.moneda), date_trunc('month', c.data_curs), c.data_curs DESC
+            SQL,
+            [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)],
+        );
+
+        $rates = [];
+
+        foreach ($rows as $row) {
+            $rates[strtoupper((string) $row->currency)][(string) $row->month] = (float) $row->rate;
+        }
+
+        return $rates;
+    }
+
+    /**
+     * Chiria plătită, pe proprietar și pe spațiu, lună de lună.
+     *
+     * De aici pornește registrul de contracte: OMC știe cui plătim, pentru
+     * ce punct de lucru și cât, dar nu și până când ține contractul. Restul
+     * se completează o dată, de mână.
+     *
+     * @param  list<string>  $accounts  prefixele conturilor de chirie
+     * @return list<array{lessor: string, location: string, currency: string, months: array<int, float>, total: float}>
+     */
+    public function rentsByPlace(Company $company, int $year, array $accounts = ['612']): array
+    {
+        $where = $this->likeAny('BTRIM(j.conts_db)', $accounts);
+
+        $rows = $this->connection->connection($company)->select(<<<SQL
+            SELECT COALESCE(BTRIM(d.partener), '') AS lessor,
+                   COALESCE(BTRIM(j.eu_punct_lucru), '') AS location,
+                   COALESCE(BTRIM(d.moneda), 'Lei') AS currency,
+                   EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month,
+                   SUM(j.valoare_lei)::numeric(20,2) AS lei
+            FROM reg_jurnal j
+            LEFT JOIN doc d ON (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+            WHERE ({$where}) AND BTRIM(j.conts_cr) NOT LIKE '121%'
+              AND j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+            GROUP BY 1, 2, 3, 4
+            SQL,
+            [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)],
+        );
+
+        $places = [];
+
+        foreach ($rows as $row) {
+            $key = $row->lessor.'|'.$row->location;
+            $place = $places[$key] ?? [
+                'lessor' => (string) $row->lessor,
+                'location' => (string) $row->location,
+                'currency' => (string) $row->currency,
+                'months' => [],
+                'total' => 0.0,
+            ];
+
+            $month = (int) $row->month;
+            $place['months'][$month] = round(($place['months'][$month] ?? 0.0) + (float) $row->lei, 2);
+            $place['total'] = round($place['total'] + (float) $row->lei, 2);
+            $places[$key] = $place;
+        }
+
+        usort($places, fn (array $a, array $b) => abs($b['total']) <=> abs($a['total']));
+
+        return array_values($places);
+    }
+
+    /**
      * Anumite documente, după semnătura lor (data|tip|număr). Se folosesc la
      * corecturile pe document: raportul adună pe grupe, așa că factura mutată
      * de mână se scade din linia ei firească și se adună pe cea aleasă.

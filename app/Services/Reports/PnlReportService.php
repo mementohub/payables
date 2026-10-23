@@ -4,6 +4,7 @@ namespace App\Services\Reports;
 
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Models\Lease;
 use App\Models\PnlCostOverride;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -1358,6 +1359,132 @@ class PnlReportService
      * @param  list<string>  $products
      * @return array<string, mixed>|null
      */
+    /**
+     * Retratarea după contractele scrise, nu după o presupunere.
+     *
+     * Din exploatare iese numai chiria acoperită de contractele din registru
+     * — atât cât spun ele că plătim în lunile alese — iar în loc intră
+     * amortizarea dreptului de utilizare și dobânda datoriei, calculate din
+     * standard. Chiria rămasă pe dinafară se vede în rezumat: fără ea, omul
+     * ar crede că toate contractele sunt scrise.
+     *
+     * @param  array<string, mixed>  $report
+     * @param  list<int>  $months
+     * @param  array<string, mixed>  $expense
+     * @param  list<string>  $channels
+     * @param  list<string>  $products
+     * @return array<string, mixed>|null
+     */
+    private function leasesFor(array $report, array $months, array $expense, array $channels, array $products): ?array
+    {
+        $schedule = $report['leases'] ?? null;
+
+        if ($schedule === null || ($schedule['leases'] ?? 0) === 0) {
+            return null;
+        }
+
+        $payment = 0.0;
+        $depreciation = 0.0;
+        $interest = 0.0;
+
+        foreach ($months as $month) {
+            $cell = $schedule['months'][$month] ?? null;
+
+            if ($cell === null) {
+                continue;
+            }
+
+            $payment += (float) $cell['payment'];
+            $depreciation += (float) $cell['depreciation'];
+            $interest += (float) $cell['interest'];
+        }
+
+        if (abs($payment) < 0.005) {
+            return null;
+        }
+
+        // Nu scoatem din exploatare mai mult decât s-a cheltuit acolo: dacă
+        // registrul spune mai mult decât registrul contabil, se oprește la
+        // ce e în contabilitate.
+        $covered = min($payment, abs($expense['total']));
+        $share = abs($expense['total']) > 0.005 ? $covered / abs($expense['total']) : 0.0;
+
+        $part = fn (string $axis) => array_map(fn (float $value) => $value * $share, $expense[$axis]);
+
+        $removed = [
+            'total' => $expense['total'] * $share,
+            'direct' => $expense['direct'] * $share,
+            'by_channel' => $part('by_channel'),
+            'by_product' => $part('by_product'),
+            'by_month' => array_map(fn (float $value) => $value * $share, $expense['by_month']),
+        ];
+
+        $spread = fn (float $amount, string $axis) => array_map(
+            fn (float $value) => abs($expense['total']) > 0.005 ? $amount * $value / $expense['total'] : 0.0,
+            $expense[$axis],
+        );
+
+        return [
+            'expense' => $removed,
+            'amortizare' => [
+                'total' => $depreciation,
+                'by_channel' => $spread($depreciation, 'by_channel'),
+                'by_product' => $spread($depreciation, 'by_product'),
+            ],
+            'financiar' => [
+                'total' => $interest,
+                'by_channel' => $spread($interest, 'by_channel'),
+                'by_product' => $spread($interest, 'by_product'),
+            ],
+            'summary' => [
+                'basis' => 'contracte',
+                'leases' => (int) $schedule['leases'],
+                'lease_expense' => round($expense['total'], 2),
+                'covered' => round($covered, 2),
+                'coverage' => abs($expense['total']) > 0.005 ? round($share, 4) : 0.0,
+                'uncovered' => round($expense['total'] - $covered, 2),
+                'liability' => round((float) ($schedule['totals']['liability'] ?? 0.0), 2),
+                'depreciation' => round($depreciation, 2),
+                'interest' => round($interest, 2),
+                'effect_on_ebitda' => round($covered, 2),
+                'effect_on_net' => round($covered - $depreciation - $interest, 2),
+            ],
+        ];
+    }
+
+    /**
+     * Graficul contractelor de închiriere confirmate, pentru anul cerut.
+     *
+     * @return array<string, mixed>
+     */
+    private function leaseSchedule(Company $company, int $year): array
+    {
+        $leases = Lease::query()
+            ->where('company_id', $company->getKey())
+            ->counted()
+            ->get();
+
+        if ($leases->isEmpty()) {
+            return ['months' => [], 'totals' => ['payment' => 0.0, 'interest' => 0.0, 'depreciation' => 0.0, 'liability' => 0.0], 'leases' => 0];
+        }
+
+        $rates = $this->costs->monthlyRates($company, $year);
+
+        return app(Ifrs16Schedule::class)->forYear(
+            $leases,
+            $year,
+            fn (string $currency, string $month) => $rates[self::currencyKey($currency)][$month] ?? 1.0,
+        );
+    }
+
+    /** „Lei” și „RON” sunt aceeași monedă și în cursuri. */
+    private static function currencyKey(string $currency): string
+    {
+        $upper = strtoupper(trim($currency));
+
+        return in_array($upper, ['LEI', 'RON', ''], true) ? 'RON' : $upper;
+    }
+
     private function reclassifyLeases(array $report, array $lines, array $months, array $channels, array $products): ?array
     {
         $wanted = array_map('strval', (array) config('pnl.ifrs16.lines', []));
@@ -1397,6 +1524,16 @@ class PnlReportService
 
         if ($found === [] || abs($expense['total']) < 0.005) {
             return null;
+        }
+
+        // Dacă avem contractele scrise în registru, nu mai estimăm nimic:
+        // amortizarea și dobânda vin din graficul lor, iar din exploatare
+        // iese exact chiria pe care o acoperă ele. Restul chiriei, cea fără
+        // contract scris, rămâne cheltuială — și se vede cât e.
+        $booked = $this->leasesFor($report, $months, $expense, $channels, $products);
+
+        if ($booked !== null) {
+            return [...$booked, 'lines' => $found];
         }
 
         // Chiria întregului an dă datoria; perioada cerută ia partea ei din
@@ -1628,6 +1765,11 @@ class PnlReportService
             'lines_apart' => $apart,
             'trip' => $trip,
             'below' => $below,
+            // Contractele de închiriere confirmate, cu graficul lor din
+            // standard. Se face la construcție, nu la fiecare deschidere de
+            // pagină: e aritmetică pe câteva zeci de contracte, dar citită
+            // dintr-o bază de date.
+            'leases' => $this->leaseSchedule($company, $year),
             'groups' => $this->map->groups(),
             'meta' => [
                 'generated_at' => now()->toIso8601String(),

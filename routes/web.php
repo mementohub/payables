@@ -20,6 +20,7 @@ use App\Http\Controllers\EtripSupplierController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceCheckController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\LeaseController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\OpExController;
 use App\Http\Controllers\PartnerController;
@@ -196,6 +197,11 @@ Route::middleware('auth')->group(function () {
         // Scadențarul: ce e de plătit de azi înainte, factură cu factură.
         Route::get('reports/due', [DueInvoicesController::class, 'index'])->name('reports.due.index');
         Route::get('reports/due/export', [DueInvoicesController::class, 'export'])->name('reports.due.export');
+        // Registrul contractelor de închiriere: din el iese retratarea IFRS 16.
+        Route::get('reports/leases', [LeaseController::class, 'index'])->name('reports.leases.index');
+        Route::put('reports/leases/{lease}', [LeaseController::class, 'update'])->name('reports.leases.update');
+        Route::delete('reports/leases/{lease}', [LeaseController::class, 'destroy'])->name('reports.leases.destroy');
+        Route::post('reports/leases/propose', [LeaseController::class, 'propose'])->name('reports.leases.propose');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
         Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');

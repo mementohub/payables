@@ -54,6 +54,7 @@ import { index as paymentRunsIndex } from '@/routes/payment-runs';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as dueIndex } from '@/routes/reports/due';
 import { index as opexIndex } from '@/routes/reports/opex';
+import { index as leasesIndex } from '@/routes/reports/leases';
 import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as contractsIndex } from '@/routes/contracts';
 import { index as routingIndex } from '@/routes/routing';
@@ -207,6 +208,12 @@ const mainNavItems = (
                           title: 'Scadențar',
                           href: dueIndex(),
                           icon: CalendarCheck,
+                      },
+                      {
+                          // De aici iese retratarea chiriilor pe IFRS 16.
+                          title: 'Contracte de închiriere',
+                          href: leasesIndex(),
+                          icon: Building2,
                       },
                   ],
               },
