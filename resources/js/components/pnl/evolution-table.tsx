@@ -38,12 +38,16 @@ export type UnpostedMonth = { month: number; label: string; reasons: string[] };
 
 export type PnlEvolution = {
     year: number;
+    /** Până în a câta lună merge tabelul; 12 înseamnă anul întreg. */
+    through?: number;
     channels: string[];
     products: string[];
     periods: {
         code: string;
         label: string;
         kind: 'month' | 'quarter' | 'year';
+        /** Trimestrul tăiat de luna aleasă, sau anul oprit înainte de decembrie. */
+        partial?: boolean;
         /** Lunile din perioadă pe care contabilitatea nu le-a închis încă. */
         unposted?: UnpostedMonth[];
     }[];
@@ -330,6 +334,8 @@ export function PnlEvolutionTable({
                         ●
                     </span>{' '}
                     arată o lună pe care contabilitatea n-a închis-o încă.
+                    {(evolution.through ?? 12) < 12 &&
+                        ' Tabelul se oprește la luna aleasă: trimestrul tăiat la jumătate poartă o stea, iar ultima coloană e cumulul până acolo.'}
                 </p>
             </div>
 

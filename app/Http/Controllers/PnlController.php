@@ -81,12 +81,12 @@ class PnlController extends Controller
             'report' => $built ? $this->service->view($built, $period, $basis, $mode, $expand, $key) : null,
             'previous' => $previousBuilt ? $this->service->view($previousBuilt, $period, $basis, $mode, $expand, $key) : null,
             'evolution' => $built && $layout === 'evolution'
-                ? $this->service->evolution($built, $basis, $mode, $expand, $key)
+                ? $this->service->evolution($built, $basis, $mode, $expand, $key, $this->through($period))
                 : null,
             // Anul trecut, pe aceleași perioade: altfel „evoluție” înseamnă
             // doar cum a mers anul ăsta cu el însuși.
             'previousEvolution' => $previousBuilt && $layout === 'evolution'
-                ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key)
+                ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key, $this->through($period))
                 : null,
             'lines' => $this->map->lines(),
             'overrides' => $company ? $this->overrides($company) : [],
@@ -137,11 +137,13 @@ class PnlController extends Controller
                 ? $this->service->cached($company, (int) $validated['year'] - 1)
                 : null;
 
+            $through = $this->through($this->period($validated['period'] ?? ''));
+
             return $exporter->download(
                 $export->evolutionDocument(
                     $company,
-                    $this->service->evolution($built, $basis, $mode, $expand, $key),
-                    $previousBuilt ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key) : null,
+                    $this->service->evolution($built, $basis, $mode, $expand, $key, $through),
+                    $previousBuilt ? $this->service->evolution($previousBuilt, $basis, $mode, $expand, $key, $through) : null,
                     $axis,
                 ),
                 $validated['format'],
@@ -335,6 +337,19 @@ class PnlController extends Controller
     private function period(string $period): string
     {
         return preg_match('/^(year|q[1-4]|(ytd|mtd|m)([1-9]|1[0-2]))$/', $period) === 1 ? $period : 'year';
+    }
+
+    /**
+     * A câta lună e aleasă, dacă e vreuna: evoluția se oprește acolo.
+     *
+     * „Anul întreg” și trimestrele rămân cum sunt — un trimestru ales nu
+     * taie evoluția, fiindcă el e deja o bucată, nu un capăt de drum.
+     */
+    private function through(string $period): ?int
+    {
+        return preg_match('/^(ytd|mtd|m)([1-9]|1[0-2])$/', $period, $matches) === 1
+            ? (int) $matches[2]
+            : null;
     }
 
     private function rebuild(Company $company, int $year): void

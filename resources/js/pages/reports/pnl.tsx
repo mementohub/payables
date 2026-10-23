@@ -468,7 +468,11 @@ export default function Pnl({
                     </div>
 
                     <div className="grid gap-1.5">
-                        <Label htmlFor="period">Luna</Label>
+                        <Label htmlFor="period">
+                            {filters.layout === 'evolution'
+                                ? 'Până în luna'
+                                : 'Luna'}
+                        </Label>
                         <Select
                             value={String(periodMonth)}
                             onValueChange={(value) =>
@@ -546,12 +550,12 @@ export default function Pnl({
                         </div>
                     )}
 
-                    <div
-                        className={cn(
-                            'grid gap-1.5',
-                            filters.layout === 'evolution' && 'hidden',
-                        )}
-                    >
+                    {/*
+                     * Comparația cu anul trecut e bună și pe evoluție: acolo
+                     * fiecare lună își capătă procentul ei față de aceeași
+                     * lună de anul trecut, nu doar totalul.
+                     */}
+                    <div className="grid gap-1.5">
                         <Label>Comparație</Label>
                         <ToggleGroup
                             type="single"

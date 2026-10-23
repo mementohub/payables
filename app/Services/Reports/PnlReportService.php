@@ -205,17 +205,30 @@ class PnlReportService
      * @param  array<string, mixed>  $report
      * @return array<string, mixed>
      */
-    public function evolution(array $report, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE): array
+    public function evolution(array $report, string $basis = self::BASIS_RAS, string $mode = self::MODE_OPERATIONAL, ?string $expand = null, string $key = self::KEY_REVENUE, ?int $through = null): array
     {
         if (isset($report['error'])) {
             return $report;
         }
 
+        // Până în luna aleasă, nu mai departe: cine se uită în septembrie la
+        // cum a mers anul nu vrea lângă el o coloană de octombrie abia
+        // începută și un total care o cuprinde. Trimestrul tăiat la jumătate
+        // se spune pe față, iar ultima coloană devine cumulul de până acolo.
+        $through = $through !== null ? max(1, min(12, $through)) : 12;
+
         $periods = [];
         $slices = [];
 
         foreach ([1, 2, 3, 4] as $quarter) {
-            $months = range($quarter * 3 - 2, $quarter * 3);
+            $months = array_values(array_filter(
+                range($quarter * 3 - 2, $quarter * 3),
+                fn (int $month) => $month <= $through,
+            ));
+
+            if ($months === []) {
+                continue;
+            }
 
             foreach ($months as $month) {
                 $slices['m'.$month] = $this->slice($report, [$month], 'mtd'.$month, $basis, $mode, $expand, $key);
@@ -227,20 +240,25 @@ class PnlReportService
                 ];
             }
 
+            $partial = count($months) < 3;
             $slices['q'.$quarter] = $this->slice($report, $months, 'q'.$quarter, $basis, $mode, $expand, $key);
             $periods[] = [
                 'code' => 'q'.$quarter,
-                'label' => 'T'.$quarter,
+                'label' => 'T'.$quarter.($partial ? '*' : ''),
                 'kind' => 'quarter',
+                'partial' => $partial,
                 'unposted' => $slices['q'.$quarter]['meta']['unposted'] ?? [],
             ];
         }
 
-        $slices['year'] = $this->slice($report, range(1, 12), 'year', $basis, $mode, $expand, $key);
+        $slices['year'] = $this->slice($report, range(1, $through), 'year', $basis, $mode, $expand, $key);
         $periods[] = [
             'code' => 'year',
-            'label' => (string) $report['year'],
+            'label' => $through === 12
+                ? (string) $report['year']
+                : self::MONTHS[0].'–'.self::MONTHS[$through - 1],
             'kind' => 'year',
+            'partial' => $through < 12,
             'unposted' => $slices['year']['meta']['unposted'] ?? [],
         ];
 
@@ -258,6 +276,7 @@ class PnlReportService
 
         return [
             'year' => $report['year'],
+            'through' => $through,
             'basis' => $basis,
             'mode' => $mode,
             'expand' => $first['expand'],

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Company;
+use App\Models\User;
 use App\Services\Reports\EtripPnlReader;
 use App\Services\Reports\OmcPnlCostReader;
 use App\Services\Reports\PnlBranchMap;
@@ -221,4 +222,65 @@ test('a month the accountants have not closed is marked, with the reason', funct
         ->and($february['unposted'])->toBe([])
         // Trimestrul care o cuprinde spune și el ce lună îi lipsește.
         ->and(collect($evolution['periods'])->firstWhere('code', 'q1')['unposted'])->toHaveCount(1);
+});
+
+test('choosing a month stops the evolution there, and the last column is the cumulative to it', function () {
+    fakeEvolutionSources([
+        ...evolutionRevenue(),
+        // Mai și iulie există, dar nu trebuie să se vadă la februarie.
+        ['channel' => 'retail', 'branch' => 'Sun Plaza', 'product' => 'Charter', 'month' => 5, 'bookings' => 7, 'net' => 300.0, 'margin' => 60.0],
+        ['channel' => 'retail', 'branch' => 'Sun Plaza', 'product' => 'Charter', 'month' => 7, 'bookings' => 9, 'net' => 900.0, 'margin' => 90.0],
+    ]);
+
+    $service = app(PnlReportService::class);
+    $report = $service->report(test()->company, 2026, forceRefresh: true);
+
+    $evolution = $service->evolution($report, through: 2);
+
+    expect(array_column($evolution['periods'], 'code'))->toBe(['m1', 'm2', 'q1', 'year'])
+        // Trimestrul tăiat de luna aleasă o spune, ca să nu pară întreg.
+        ->and(collect($evolution['periods'])->firstWhere('code', 'q1'))
+        ->toMatchArray(['label' => 'T1*', 'partial' => true])
+        ->and(collect($evolution['periods'])->firstWhere('code', 'year'))
+        ->toMatchArray(['label' => 'ian.–feb.', 'partial' => true])
+        ->and($evolution['through'])->toBe(2);
+
+    $revenue = collect($evolution['rows'])->firstWhere('key', 'revenue');
+
+    // Cumulul e până în februarie, nu anul întreg.
+    expect($revenue['cells']['year']['total'])->toEqual(2100.0)
+        ->and($revenue['cells'])->not->toHaveKey('m4');
+
+    // Anul întreg rămâne întreg când nu se alege nicio lună.
+    $whole = $service->evolution($report);
+
+    expect(collect($whole['periods'])->firstWhere('code', 'year'))
+        ->toMatchArray(['label' => '2026', 'partial' => false])
+        ->and(collect($whole['rows'])->firstWhere('key', 'revenue')['cells']['year']['total'])->toEqual(3700.0);
+});
+
+test('the page cuts both years at the same month, so the comparison is like for like', function () {
+    fakeEvolutionSources(evolutionRevenue());
+
+    $boss = User::factory()->withRoles('top_management')->create();
+
+    $this->mock(PnlReportService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('cached')->andReturn(['year' => 2026]);
+        $mock->shouldReceive('view')->andReturn([
+            'year' => 2026, 'period' => 'ytd9', 'channels' => [], 'products' => [],
+            'revenue' => ['total' => ['net' => 0.0, 'margin' => 0.0], 'by_channel' => [], 'by_product' => []],
+            'lines' => [], 'totals' => ['total' => 0.0], 'below' => [], 'meta' => [],
+        ]);
+        $mock->shouldReceive('evolution')
+            ->twice()
+            ->withArgs(fn (...$args) => ($args[5] ?? null) === 9)
+            ->andReturn(['year' => 2026, 'through' => 9, 'periods' => [], 'rows' => [], 'channels' => [], 'products' => []]);
+    });
+
+    $this->actingAs($boss)
+        ->get('/reports/pnl?company_id='.test()->company->id.'&year=2026&layout=evolution&period=ytd9&compare=1')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('evolution.through', 9)
+            ->where('previousEvolution.through', 9));
 });
