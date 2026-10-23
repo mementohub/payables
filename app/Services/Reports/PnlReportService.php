@@ -1021,6 +1021,112 @@ class PnlReportService
         ];
     }
 
+    /** Numele rândurilor de sub EBITDA, așa cum scriu în raport. */
+    public const BELOW_LABELS = [
+        'amortizare' => 'Amortizare (net de reluări)',
+        'financiar' => 'Rezultat financiar (net)',
+        'impozit' => 'Impozit pe profit',
+    ];
+
+    /**
+     * Din ce e făcut un rând de sub EBITDA: documentele din registru.
+     *
+     * Amortizarea, rezultatul financiar și impozitul nu trec prin liniile de
+     * cheltuială — se adună direct pe conturile lor — așa că detaliul lor nu
+     * putea fi cerut ca la restul. Vine în aceeași formă, ca panoul să le
+     * arate la fel.
+     *
+     * Pe baza IFRS 16, amortizarea și dobânda din chirii sunt o estimare a
+     * noastră, nu înregistrări: diferența față de rândul din raport se spune
+     * pe față, ca o poziție aparte, altfel panoul ar aduna mai puțin decât
+     * celula din care s-a deschis.
+     *
+     * @return array<string, mixed>
+     */
+    public function belowDetails(
+        Company $company,
+        int $year,
+        string $bucket,
+        string $period,
+        string $basis = self::BASIS_RAS,
+        string $mode = self::MODE_OPERATIONAL,
+        ?string $group = null,
+        int $limit = 400,
+    ): array {
+        $months = self::months($period);
+        $rows = $this->costs->belowDetails($company, $year, $months, $bucket);
+
+        $documents = [];
+        $items = [];
+        $byMonth = [];
+        $total = 0.0;
+
+        foreach ($rows as $row) {
+            $total += $row['lei'];
+            $byMonth[$row['month']] = ($byMonth[$row['month']] ?? 0.0) + $row['lei'];
+            $key = PnlCostOverride::itemKey($row['account'], $row['sediu'], $row['partner']);
+
+            if ($group === null || $group === $key) {
+                $documents[] = $row;
+            }
+
+            $item = $items[$key] ?? [
+                'key' => $key,
+                'account' => $row['account'],
+                'sediu' => $row['sediu'],
+                'partner' => $row['partner'],
+                'documents' => 0,
+                'lei' => 0.0,
+            ];
+            $item['documents']++;
+            $item['lei'] += $row['lei'];
+            $items[$key] = $item;
+        }
+
+        // Cât scrie în raport pe rândul ăsta, pentru aceleași luni: dacă
+        // diferă de registru, diferența e estimarea IFRS 16.
+        $report = $this->cached($company, $year);
+
+        if ($report !== null && ! isset($report['error'])) {
+            $slice = $this->slice($report, $months, $period, $basis, $mode);
+            $gap = round((float) ($slice['below'][$bucket]['total'] ?? 0.0) - $total, 2);
+
+            if (abs($gap) >= 0.5) {
+                $items['ifrs16'] = [
+                    'key' => 'ifrs16',
+                    'account' => '—',
+                    'sediu' => '',
+                    'partner' => $basis === self::BASIS_IFRS16
+                        ? 'Estimare IFRS 16 (chirii), fără înregistrare în registru'
+                        : 'Diferență față de raport',
+                    'documents' => 0,
+                    'lei' => $gap,
+                ];
+                $total += $gap;
+            }
+        }
+
+        usort($documents, fn (array $a, array $b) => abs($b['lei']) <=> abs($a['lei']));
+        uasort($items, fn (array $a, array $b) => abs($b['lei']) <=> abs($a['lei']));
+        ksort($byMonth);
+
+        $documentCount = count($documents);
+
+        return [
+            'saf' => 'below:'.$bucket,
+            'label' => self::BELOW_LABELS[$bucket] ?? $bucket,
+            'group' => 'Sub EBITDA',
+            'period' => $period,
+            'column' => null,
+            'item' => $group,
+            'total' => round($total, 2),
+            'by_month' => array_map(fn (float $value) => round($value, 2), $byMonth),
+            'items' => array_map(fn (array $item) => [...$item, 'lei' => round($item['lei'], 2)], array_values($items)),
+            'documents' => $this->withInvoices($company, array_slice($documents, 0, $limit)),
+            'documents_total' => $documentCount,
+        ];
+    }
+
     /**
      * Numele contului din planul de conturi, pentru cifrele de sub EBITDA.
      * Fără el, defalcarea ar fi o listă de coduri.

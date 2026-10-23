@@ -317,6 +317,142 @@ class OmcPnlCostReader
     }
 
     /**
+     * Documentele din spatele cifrelor de sub EBITDA.
+     *
+     * Amortizarea, rezultatul financiar și impozitul nu trec prin liniile de
+     * cheltuială — se adună direct din registru, pe conturile lor — așa că
+     * nici detaliul lor nu putea fi cerut ca la celelalte linii. Aici sunt:
+     * aceleași coloane ca la o cheltuială obișnuită, ca panoul să le arate la
+     * fel, cu reluările scăzute (creditul vine cu minus), fiindcă rândul din
+     * raport e net.
+     *
+     * @param  list<int>  $months
+     * @param  'amortizare'|'financiar'|'impozit'  $bucket
+     * @return list<array<string, mixed>>
+     */
+    public function belowDetails(Company $company, int $year, array $months, string $bucket): array
+    {
+        $months = array_values(array_filter(array_map('intval', $months), fn (int $m) => $m >= 1 && $m <= 12));
+
+        if ($months === [] || ! in_array($bucket, ['amortizare', 'financiar', 'impozit'], true)) {
+            return [];
+        }
+
+        $documents = array_values(array_filter(array_map(
+            fn ($value) => trim((string) $value),
+            (array) config('pnl.fx_commission.documents', []),
+        ), fn (string $value) => $value !== ''));
+
+        $inDocuments = $documents === []
+            ? 'false'
+            : sprintf('BTRIM(j.tip_doc) IN (%s)', implode(',', array_fill(0, count($documents), '?')));
+
+        $monthList = implode(',', array_fill(0, count($months), '?'));
+        $window = [sprintf('%04d-01-01', $year), sprintf('%04d-01-01', $year + 1)];
+
+        // Coloanele documentului, aceleași în amândouă jumătățile unirii.
+        $columns = <<<'SQL'
+            j.data_doc::date AS data_doc,
+            COALESCE(BTRIM(j.tip_doc), '') AS tip_doc,
+            COALESCE(BTRIM(j.nr_doc), '') AS nr_doc,
+            COALESCE(BTRIM(j.eu_punct_lucru), '') AS sediu,
+            COALESCE(BTRIM(d.partener), '') AS partner,
+            COALESCE(BTRIM(j.explicatie), '') AS note,
+            EXTRACT(MONTH FROM j.data_reg_jurnal)::int AS month,
+            j.data_reg_jurnal::date AS booked,
+            COALESCE(BTRIM(d.moneda), '') AS currency,
+            COALESCE(d.curs, 1) AS rate,
+            COALESCE(d.val_mon, 0) AS doc_total,
+            COALESCE(d.val_mon_tva, 0) AS doc_vat,
+            d.data_scadenta::date AS due,
+            d.data_emitere::date AS issued,
+            COALESCE(BTRIM(d.emitent), '') AS issuer,
+            COALESCE(BTRIM(d.obs_txt), '') AS observation,
+            COALESCE(BTRIM(d.partener_punct_lucru), '') AS partner_office,
+            COALESCE(BTRIM(d.conts_doc), '') AS partner_account,
+            COALESCE(BTRIM(d.jurnal), '') AS journal
+            SQL;
+
+        $rows = $this->connection->connection($company)->select(<<<SQL
+            SELECT bucket, data_doc, tip_doc, nr_doc, account, sediu, partner, note, month, booked,
+                   counterpart, currency, rate, doc_total, doc_vat, due, issued, issuer,
+                   observation, partner_office, partner_account, journal,
+                   SUM(lei)::numeric(20,2) AS lei
+            FROM (
+                SELECT CASE
+                         WHEN j.conts_db LIKE '681%' THEN 'amortizare'
+                         WHEN j.conts_db LIKE '691%' OR j.conts_db LIKE '698%' THEN 'impozit'
+                         WHEN j.conts_db LIKE '665%' AND {$inDocuments} THEN 'comision_curs'
+                         ELSE 'financiar'
+                       END AS bucket,
+                       substring(BTRIM(j.conts_db) from 1 for 4) AS account,
+                       COALESCE(BTRIM(j.conts_cr), '') AS counterpart,
+                       {$columns},
+                       j.valoare_lei AS lei
+                FROM reg_jurnal j
+                LEFT JOIN doc d ON (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+                WHERE j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+                  AND EXTRACT(MONTH FROM j.data_reg_jurnal)::int IN ({$monthList})
+                  AND (j.conts_db LIKE '665%' OR j.conts_db LIKE '666%' OR j.conts_db LIKE '667%'
+                       OR j.conts_db LIKE '668%' OR j.conts_db LIKE '681%'
+                       OR j.conts_db LIKE '691%' OR j.conts_db LIKE '698%')
+                UNION ALL
+                SELECT CASE
+                         WHEN j.conts_cr LIKE '781%' OR j.conts_cr LIKE '786%' THEN 'amortizare'
+                         WHEN j.conts_cr LIKE '765%' AND {$inDocuments} THEN 'comision_curs'
+                         ELSE 'financiar'
+                       END,
+                       substring(BTRIM(j.conts_cr) from 1 for 4),
+                       COALESCE(BTRIM(j.conts_db), ''),
+                       {$columns},
+                       -j.valoare_lei
+                FROM reg_jurnal j
+                LEFT JOIN doc d ON (d.data_doc, d.tip_doc, d.nr_doc) = (j.data_doc, j.tip_doc, j.nr_doc)
+                WHERE j.data_reg_jurnal >= ?::date AND j.data_reg_jurnal < ?::date
+                  AND EXTRACT(MONTH FROM j.data_reg_jurnal)::int IN ({$monthList})
+                  AND (j.conts_cr LIKE '765%' OR j.conts_cr LIKE '766%' OR j.conts_cr LIKE '767%'
+                       OR j.conts_cr LIKE '768%' OR j.conts_cr LIKE '781%' OR j.conts_cr LIKE '786%')
+            ) x
+            WHERE bucket = ?
+            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
+            SQL,
+            [
+                ...$documents, ...$window, ...$months,
+                ...$documents, ...$window, ...$months,
+                $bucket,
+            ],
+        );
+
+        return array_map(fn ($row) => [
+            'data_doc' => (string) $row->data_doc,
+            'tip_doc' => (string) $row->tip_doc,
+            'nr_doc' => (string) $row->nr_doc,
+            'account' => (string) $row->account,
+            'sediu' => (string) $row->sediu,
+            'partner' => (string) $row->partner,
+            'note' => (string) $row->note,
+            'month' => (int) $row->month,
+            'booked' => (string) $row->booked,
+            'counterpart' => (string) $row->counterpart,
+            'deferred' => 0.0,
+            'kind' => 'consum',
+            'trip_share' => 0.0,
+            'currency' => (string) $row->currency,
+            'rate' => round((float) $row->rate, 4),
+            'doc_total' => round((float) $row->doc_total, 2),
+            'doc_vat' => round((float) $row->doc_vat, 2),
+            'due' => $row->due !== null ? (string) $row->due : null,
+            'issued' => $row->issued !== null ? (string) $row->issued : null,
+            'issuer' => (string) $row->issuer,
+            'observation' => (string) $row->observation,
+            'partner_office' => (string) $row->partner_office,
+            'partner_account' => (string) $row->partner_account,
+            'journal' => (string) $row->journal,
+            'lei' => round((float) $row->lei, 2),
+        ], $rows);
+    }
+
+    /**
      * Anumite documente, după semnătura lor (data|tip|număr). Se folosesc la
      * corecturile pe document: raportul adună pe grupe, așa că factura mutată
      * de mână se scade din linia ei firească și se adună pe cea aleasă.

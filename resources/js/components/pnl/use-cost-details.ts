@@ -92,6 +92,8 @@ export function useCostDetails(
     item: string | null = null,
     /** Vederea din care s-a apăsat: pe operațional, mutările stau deoparte. */
     mode: string = 'operational',
+    /** Baza chiriilor: pe IFRS 16, amortizarea are și partea estimată. */
+    basis: string = 'ras',
 ) {
     const [loaded, setLoaded] = useState<{
         saf: string;
@@ -114,6 +116,7 @@ export function useCostDetails(
                 saf,
                 period,
                 mode,
+                basis,
                 ...(column ? { column, axis } : {}),
                 ...(item ? { item } : {}),
             })}`,
@@ -129,7 +132,7 @@ export function useCostDetails(
             .catch(() => undefined);
 
         return () => controller.abort();
-    }, [companyId, year, period, saf, column, axis, item]);
+    }, [companyId, year, period, saf, column, axis, item, mode, basis]);
 
     // Rezultatul se ține împreună cu ce s-a cerut: altfel, apăsând altă
     // coloană, s-ar vedea o clipă detaliul celei dinainte, cu alte cifre.

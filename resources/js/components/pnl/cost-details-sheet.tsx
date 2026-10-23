@@ -71,6 +71,7 @@ export function CostDetailsSheet({
     axis,
     products,
     mode,
+    basis = 'ras',
     onClose,
 }: {
     companyId: number;
@@ -84,6 +85,8 @@ export function CostDetailsSheet({
     detailsAxis: 'channel' | 'product' | 'branch';
     /** Vederea deschisă: documentele trebuie să adune cât scrie în linie. */
     mode: string;
+    /** Baza chiriilor, pentru rândurile de sub EBITDA. */
+    basis?: string;
     catalogue: Record<string, { group: string; label: string }>;
     axis: 'channel' | 'product';
     products: string[];
@@ -101,7 +104,12 @@ export function CostDetailsSheet({
         detailsAxis,
         item?.key ?? null,
         mode,
+        basis,
     );
+
+    // Rândurile de sub EBITDA (amortizare, financiar, impozit) se citesc din
+    // conturile lor, nu dintr-o linie de cheltuială.
+    const below = (saf ?? '').startsWith('below:');
 
     return (
         <Sheet open={saf !== null} onOpenChange={(open) => !open && onClose()}>
@@ -330,7 +338,13 @@ export function CostDetailsSheet({
                                                     </Link>
                                                 </Button>
                                             )}
-                                            {axis === 'channel' ? (
+                                            {/*
+                                                Amortizarea, rezultatul
+                                                financiar și impozitul nu stau
+                                                pe o linie de cheltuială, deci
+                                                n-au unde fi mutate.
+                                            */}
+                                            {!below && axis === 'channel' ? (
                                                 <MoveChannelButton
                                                     payload={documentPayload(
                                                         doc,
@@ -347,7 +361,7 @@ export function CostDetailsSheet({
                                                         )
                                                     }
                                                 />
-                                            ) : (
+                                            ) : below ? null : (
                                                 <MoveProductButton
                                                     products={products}
                                                     payload={documentPayload(
@@ -366,6 +380,7 @@ export function CostDetailsSheet({
                                                     }
                                                 />
                                             )}
+                                            {below ? null : (
                                             <MoveCostButton
                                                 lines={catalogue}
                                                 currentSaf={details.saf}
@@ -379,6 +394,7 @@ export function CostDetailsSheet({
                                                     )
                                                 }
                                             />
+                                            )}
                                         </footer>
                                     </article>
                                 ))}

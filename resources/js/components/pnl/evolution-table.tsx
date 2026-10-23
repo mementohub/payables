@@ -306,8 +306,10 @@ export function PnlEvolutionTable({
         period: PnlEvolution['periods'][number],
     ) =>
         onCost !== undefined &&
-        row.kind === 'line' &&
-        row.saf !== undefined &&
+        // Liniile de cheltuială, plus amortizarea, rezultatul financiar și
+        // impozitul: ele nu stau pe o linie, dar se citesc din conturile lor.
+        ((row.kind === 'line' && row.saf !== undefined) ||
+            row.key.startsWith('below:')) &&
         periodKey(period) !== null;
 
     const openCost = (
@@ -322,7 +324,7 @@ export function PnlEvolutionTable({
         }
 
         onCost?.({
-            saf: row.saf as string,
+            saf: row.saf ?? row.key,
             label: row.label,
             period: key,
             column: member,

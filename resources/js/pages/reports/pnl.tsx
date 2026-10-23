@@ -784,6 +784,7 @@ export default function Pnl({
                         axis={view}
                         products={report?.products ?? []}
                         mode={filters.mode}
+                        basis={filters.basis}
                         onClose={() => {
                             setDocumentsSaf(null);
                             setDocumentsItem(null);
@@ -1216,6 +1217,7 @@ function BelowRow({
     open,
     onToggle,
     span,
+    onDocuments,
 }: {
     bucket: string;
     label: string;
@@ -1228,6 +1230,8 @@ function BelowRow({
     open: boolean;
     onToggle: () => void;
     span: number;
+    /** Deschide documentele din registru pentru rândul ăsta. */
+    onDocuments?: () => void;
 }) {
     const total = belowOf(bucket);
     const accounts = report.below?.[bucket]?.accounts ?? [];
@@ -1287,11 +1291,22 @@ function BelowRow({
                                     <span className="w-40 shrink-0" />
                                 </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Cifrele sunt ale companiei întregi; pe coloane
-                                se împart pe cheia de venit, ca toate
-                                cheltuielile generale.
-                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                    Cifrele sunt ale companiei întregi; pe
+                                    coloane se împart pe cheia de venit, ca
+                                    toate cheltuielile generale.
+                                </p>
+                                {onDocuments && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={onDocuments}
+                                    >
+                                        Vezi documentele
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </TableCell>
                 </TableRow>
@@ -2072,6 +2087,9 @@ function PnlTable({
                                         )
                                     }
                                     span={columns.length * 2 + 3}
+                                    onDocuments={() =>
+                                        onDocuments('below:amortizare')
+                                    }
                                 />
                                 <Row
                                     label="EBIT"
@@ -2118,6 +2136,9 @@ function PnlTable({
                                         )
                                     }
                                     span={columns.length * 2 + 3}
+                                    onDocuments={() =>
+                                        onDocuments('below:financiar')
+                                    }
                                 />
                                 <Row
                                     label="Profit înainte de impozitare"
@@ -2168,6 +2189,9 @@ function PnlTable({
                                         )
                                     }
                                     span={columns.length * 2 + 3}
+                                    onDocuments={() =>
+                                        onDocuments('below:impozit')
+                                    }
                                 />
                                 <Row
                                     label="Profit net"

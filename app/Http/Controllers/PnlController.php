@@ -175,7 +175,24 @@ class PnlController extends Controller
             // Vederea din care s-a apăsat: pe operațional, mutările în avans
             // stau pe rândurile lor, deci nu au ce căuta în linia cheltuielii.
             'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
+            // Rândurile de sub EBITDA se citesc altfel pe IFRS 16: acolo o
+            // parte din amortizare și din dobândă e estimarea noastră.
+            'basis' => ['nullable', Rule::in(PnlReportService::BASES)],
         ]);
+
+        // Amortizarea, rezultatul financiar și impozitul nu stau pe o linie de
+        // cheltuială, ci pe conturile lor: detaliul lor se citește de acolo.
+        if (preg_match('/^below:(amortizare|financiar|impozit)$/', $validated['saf'], $bucket) === 1) {
+            return $this->service->belowDetails(
+                $company,
+                (int) $validated['year'],
+                $bucket[1],
+                $this->period($validated['period'] ?? ''),
+                $validated['basis'] ?? PnlReportService::BASIS_RAS,
+                $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL,
+                $validated['item'] ?? null,
+            );
+        }
 
         return $this->service->costDetails(
             $company,

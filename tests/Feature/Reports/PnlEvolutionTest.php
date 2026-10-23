@@ -18,7 +18,7 @@ use Mockery\MockInterface;
  * @param  list<array<string, mixed>>  $costs
  * @param  list<array<string, mixed>>  $below
  */
-function fakeEvolutionSources(array $revenue, array $costs = [], array $below = [], bool $withDetails = false): void
+function fakeEvolutionSources(array $revenue, array $costs = [], array $below = [], bool $withDetails = false, array $belowDocuments = []): void
 {
     test()->mock(EtripPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn($revenue));
     test()->mock(TinaPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn([]));
@@ -27,7 +27,7 @@ function fakeEvolutionSources(array $revenue, array $costs = [], array $below = 
         $mock->shouldReceive('branchFor')->andReturn(null);
         $mock->shouldReceive('branchForAnalytic')->andReturn(null);
     });
-    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($costs, $below, $withDetails) {
+    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($costs, $below, $withDetails, $belowDocuments) {
         $mock->shouldReceive('costs')->andReturn($costs);
         $mock->shouldReceive('belowEbitda')->andReturn($below);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
@@ -40,6 +40,13 @@ function fakeEvolutionSources(array $revenue, array $costs = [], array $below = 
         );
         $mock->shouldReceive('revenueAndCogs')->andReturn([]);
         $mock->shouldReceive('payrollByPlace')->andReturn([]);
+        // Documentele din spatele rândurilor de sub EBITDA, pe lunile cerute.
+        $mock->shouldReceive('belowDetails')->andReturnUsing(
+            fn ($company, $year, array $months, string $bucket) => array_values(array_filter(
+                $belowDocuments,
+                fn (array $row) => $row['bucket'] === $bucket && in_array($row['month'], $months, true),
+            )),
+        );
     });
 }
 
@@ -347,4 +354,47 @@ test('the cost detail of a quarter column adds up to what the column shows', fun
     $details = $service->costDetails(test()->company, 2026, $line['saf'], 'r7-9');
 
     expect($cell)->toEqual(1000.0)->and($details['total'])->toEqual($cell);
+});
+
+test('the rows under EBITDA open on the entries behind them, like any other cost', function () {
+    fakeEvolutionSources(
+        evolutionRevenue(),
+        [],
+        [
+            ['bucket' => 'impozit', 'account' => '6911', 'month' => 3, 'lei' => 400.0],
+            ['bucket' => 'impozit', 'account' => '6911', 'month' => 7, 'lei' => 600.0],
+        ],
+        belowDocuments: [
+            ['bucket' => 'impozit', 'account' => '6911', 'sediu' => '', 'partner' => 'ANAF', 'note' => 'Impozit T1', 'month' => 3, 'lei' => 400.0, 'data_doc' => '2026-03-31', 'tip_doc' => 'NC', 'nr_doc' => 'I1'],
+            ['bucket' => 'impozit', 'account' => '6911', 'sediu' => '', 'partner' => 'ANAF', 'note' => 'Impozit T2', 'month' => 7, 'lei' => 600.0, 'data_doc' => '2026-07-31', 'tip_doc' => 'NC', 'nr_doc' => 'I2'],
+        ],
+    );
+
+    $service = app(PnlReportService::class);
+    $service->report(test()->company, 2026, forceRefresh: true);
+
+    // Luna lui: numai nota ei.
+    $march = $service->belowDetails(test()->company, 2026, 'impozit', 'mtd3');
+
+    expect($march['total'])->toEqual(400.0)
+        ->and($march['label'])->toBe('Impozit pe profit')
+        ->and($march['documents'])->toHaveCount(1)
+        ->and($march['documents'][0]['nr_doc'])->toBe('I1');
+
+    // Cumulul le ia pe amândouă, iar poziția adună pe cont și partener.
+    $year = $service->belowDetails(test()->company, 2026, 'impozit', 'year');
+
+    expect($year['total'])->toEqual(1000.0)
+        ->and($year['items'])->toHaveCount(1)
+        ->and($year['items'][0]['partner'])->toBe('ANAF')
+        ->and($year['items'][0]['documents'])->toBe(2);
+
+    // Și prin rută, ca din ecran.
+    $boss = User::factory()->withRoles('top_management')->create();
+
+    $this->actingAs($boss)
+        ->getJson('/reports/pnl/'.test()->company->id.'/details?year=2026&saf=below:impozit&period=year')
+        ->assertOk()
+        ->assertJsonPath('saf', 'below:impozit')
+        ->assertJsonPath('total', 1000);
 });
