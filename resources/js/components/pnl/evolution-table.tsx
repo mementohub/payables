@@ -27,6 +27,8 @@ export type EvolutionRow = {
     group?: string;
     /** Câte linii stau sub grupă. */
     lines?: number;
+    /** Contul P&L al liniei de cheltuială; după el se cere detaliul. */
+    saf?: string;
     /** Rândul se citește și ca procent din altul (marja din venit). */
     of?: string;
     /** Rând de cheltuială: creșterea e veste proastă, nu bună. */
@@ -48,6 +50,8 @@ export type PnlEvolution = {
         kind: 'month' | 'quarter' | 'year';
         /** Trimestrul tăiat de luna aleasă, sau anul oprit înainte de decembrie. */
         partial?: boolean;
+        /** Din ce luni e făcută coloana: [prima, ultima]. */
+        months?: [number, number];
         /** Lunile din perioadă pe care contabilitatea nu le-a închis încă. */
         unposted?: UnpostedMonth[];
     }[];
@@ -64,25 +68,38 @@ export type PnlEvolution = {
 function Against({
     change,
     unit,
+    year,
 }: {
     change: { text: string; good: boolean; was: number } | null;
     unit: 'lei' | 'mii';
+    /** Anul cu care se compară, pentru ce scrie la vârful cursorului. */
+    year: number;
 }) {
     if (change === null) {
         return null;
     }
 
+    const scale = unit === 'mii' ? 1000 : 1;
+    const was =
+        Math.abs(change.was) < scale / 2
+            ? '–'
+            : number(change.was / scale);
+
     return (
         <span
-            className={cn(
-                'block text-[10px] leading-tight',
-                change.good
-                    ? 'text-emerald-600 dark:text-emerald-500'
-                    : 'text-red-600 dark:text-red-400',
-            )}
-            title={`Anul trecut: ${number(unit === 'mii' ? change.was / 1000 : change.was)}${unit === 'mii' ? ' mii' : ''} lei`}
+            className="block text-[10px] leading-tight"
+            title={`${year}, aceeași perioadă: ${number(change.was)} lei`}
         >
-            {change.text}
+            <span className="text-muted-foreground">{was}</span>{' '}
+            <span
+                className={cn(
+                    change.good
+                        ? 'text-emerald-600 dark:text-emerald-500'
+                        : 'text-red-600 dark:text-red-400',
+                )}
+            >
+                {change.text}
+            </span>
         </span>
     );
 }
@@ -106,12 +123,23 @@ export function PnlEvolutionTable({
     previous,
     view,
     labelOf,
+    onCost,
 }: {
     evolution: PnlEvolution;
     /** Același tabel, anul trecut; lipsește dacă nu s-a cerut comparația. */
     previous?: PnlEvolution | null;
     view: 'channel' | 'product';
     labelOf: (key: string) => string;
+    /**
+     * Ce se întâmplă la un clic pe o cheltuială: se deschide din ce e făcută,
+     * pentru perioada coloanei apăsate — ca în vederea unei singure perioade.
+     */
+    onCost?: (cost: {
+        saf: string;
+        label: string;
+        period: string;
+        column: string | null;
+    }) => void;
 }) {
     // Strâns, fiecare perioadă e o singură coloană: luna, trimestrul, anul.
     // Desfăcut, sub ea stau coloanele vederii. Se poate și una câte una, cu un
@@ -247,6 +275,60 @@ export function PnlEvolutionTable({
         };
     };
 
+    /**
+     * Cum se cheamă perioada coloanei în restul aplicației, ca detaliul să
+     * poată fi cerut pentru ea.
+     *
+     * Trimestrul tăiat de luna aleasă n-are nume — nu e nici trimestrul
+     * întreg, nici cumulul — deci pe el nu se poate apăsa.
+     */
+    const periodKey = (period: PnlEvolution['periods'][number]) => {
+        const months = period.months;
+
+        if (period.kind === 'month') {
+            return months ? 'mtd' + months[0] : null;
+        }
+
+        // Trimestrul e luat singur, nu cumulat: „q3” ar fi însemnat
+        // trimestrele I–III la un loc, iar coloana arată doar iulie–septembrie.
+        if (period.kind === 'quarter') {
+            return months ? 'r' + months[0] + '-' + months[1] : null;
+        }
+
+        return (evolution.through ?? 12) < 12
+            ? 'ytd' + (evolution.through ?? 12)
+            : 'year';
+    };
+
+    /** Se poate apăsa? Doar liniile de cheltuială, pe o coloană cu luni. */
+    const clickable = (
+        row: EvolutionRow,
+        period: PnlEvolution['periods'][number],
+    ) =>
+        onCost !== undefined &&
+        row.kind === 'line' &&
+        row.saf !== undefined &&
+        periodKey(period) !== null;
+
+    const openCost = (
+        row: EvolutionRow,
+        period: PnlEvolution['periods'][number],
+        member: string | null,
+    ) => {
+        const key = periodKey(period);
+
+        if (!clickable(row, period) || key === null) {
+            return;
+        }
+
+        onCost?.({
+            saf: row.saf as string,
+            label: row.label,
+            period: key,
+            column: member,
+        });
+    };
+
     // Trimestrul și anul se văd de departe: ele sunt reperele cu care se
     // compară lunile dintre ele.
     const tone = (kind: string) =>
@@ -336,6 +418,8 @@ export function PnlEvolutionTable({
                     arată o lună pe care contabilitatea n-a închis-o încă.
                     {(evolution.through ?? 12) < 12 &&
                         ' Tabelul se oprește la luna aleasă: trimestrul tăiat la jumătate poartă o stea, iar ultima coloană e cumulul până acolo.'}
+                    {onCost !== undefined &&
+                        ' Un clic pe cifra unei cheltuieli arată din ce e făcută în perioada aia.'}
                 </p>
             </div>
 
@@ -481,7 +565,18 @@ export function PnlEvolutionTable({
                                                 className={cn(
                                                     'border-l text-right whitespace-nowrap tabular-nums',
                                                     tone(period.kind),
+                                                    clickable(row, period) &&
+                                                        'cursor-pointer hover:bg-accent/60',
                                                 )}
+                                                title={
+                                                    clickable(row, period)
+                                                        ? 'Vezi din ce e făcută cheltuiala în ' +
+                                                          period.label
+                                                        : undefined
+                                                }
+                                                onClick={() =>
+                                                    openCost(row, period, null)
+                                                }
                                             >
                                                 {money(
                                                     valueOf(
@@ -509,6 +604,7 @@ export function PnlEvolutionTable({
                                                         null,
                                                     )}
                                                     unit={unit}
+                                                    year={evolution.year - 1}
                                                 />
                                             </TableCell>
                                             {split(period.code) &&
@@ -518,7 +614,32 @@ export function PnlEvolutionTable({
                                                         className={cn(
                                                             'text-right whitespace-nowrap tabular-nums',
                                                             tone(period.kind),
+                                                            clickable(
+                                                                row,
+                                                                period,
+                                                            ) &&
+                                                                'cursor-pointer hover:bg-accent/60',
                                                         )}
+                                                        title={
+                                                            clickable(
+                                                                row,
+                                                                period,
+                                                            )
+                                                                ? 'Vezi din ce e făcută cheltuiala în ' +
+                                                                  period.label +
+                                                                  ' · ' +
+                                                                  labelOf(
+                                                                      member,
+                                                                  )
+                                                                : undefined
+                                                        }
+                                                        onClick={() =>
+                                                            openCost(
+                                                                row,
+                                                                period,
+                                                                member,
+                                                            )
+                                                        }
                                                     >
                                                         {money(
                                                             valueOf(
@@ -548,6 +669,10 @@ export function PnlEvolutionTable({
                                                                 member,
                                                             )}
                                                             unit={unit}
+                                                            year={
+                                                                evolution.year -
+                                                                1
+                                                            }
                                                         />
                                                     </TableCell>
                                                 ))}

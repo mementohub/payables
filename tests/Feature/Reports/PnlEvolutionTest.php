@@ -18,7 +18,7 @@ use Mockery\MockInterface;
  * @param  list<array<string, mixed>>  $costs
  * @param  list<array<string, mixed>>  $below
  */
-function fakeEvolutionSources(array $revenue, array $costs = [], array $below = []): void
+function fakeEvolutionSources(array $revenue, array $costs = [], array $below = [], bool $withDetails = false): void
 {
     test()->mock(EtripPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn($revenue));
     test()->mock(TinaPnlReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byChannelAndProduct')->andReturn([]));
@@ -27,11 +27,17 @@ function fakeEvolutionSources(array $revenue, array $costs = [], array $below = 
         $mock->shouldReceive('branchFor')->andReturn(null);
         $mock->shouldReceive('branchForAnalytic')->andReturn(null);
     });
-    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($costs, $below) {
+    test()->mock(OmcPnlCostReader::class, function (MockInterface $mock) use ($costs, $below, $withDetails) {
         $mock->shouldReceive('costs')->andReturn($costs);
         $mock->shouldReceive('belowEbitda')->andReturn($below);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
-        $mock->shouldReceive('details')->andReturn([]);
+        // Detaliul citește aceleași cheltuieli, dar numai pe lunile cerute —
+        // exact ca cititorul adevărat.
+        $mock->shouldReceive('details')->andReturnUsing(
+            fn ($company, $year, array $months) => $withDetails
+                ? array_values(array_filter($costs, fn (array $row) => in_array($row['month'], $months, true)))
+                : [],
+        );
         $mock->shouldReceive('revenueAndCogs')->andReturn([]);
         $mock->shouldReceive('payrollByPlace')->andReturn([]);
     });
@@ -190,7 +196,13 @@ function unpostedSources(): void
         ]);
         $mock->shouldReceive('belowEbitda')->andReturn([]);
         $mock->shouldReceive('documentsByKey')->andReturn([]);
-        $mock->shouldReceive('details')->andReturn([]);
+        // Detaliul citește aceleași cheltuieli, dar numai pe lunile cerute —
+        // exact ca cititorul adevărat.
+        $mock->shouldReceive('details')->andReturnUsing(
+            fn ($company, $year, array $months) => $withDetails
+                ? array_values(array_filter($costs, fn (array $row) => in_array($row['month'], $months, true)))
+                : [],
+        );
         $mock->shouldReceive('payrollByPlace')->andReturn([]);
         // Registrul: ianuarie și februarie facturate, martie nu.
         $mock->shouldReceive('revenueAndCogs')->andReturn([
@@ -283,4 +295,56 @@ test('the page cuts both years at the same month, so the comparison is like for 
         ->assertInertia(fn ($page) => $page
             ->where('evolution.through', 9)
             ->where('previousEvolution.through', 9));
+});
+
+test('a quarter column asks for its own three months, not the year up to it', function () {
+    // „q3” înseamnă în restul aplicației trimestrele I–III cumulate, iar
+    // coloana T3 din evoluție e doar iulie–septembrie: de aceea detaliul se
+    // cere pe lunile ei.
+    expect(PnlReportService::months('r7-9'))->toBe([7, 8, 9])
+        ->and(PnlReportService::months('q3'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        ->and(PnlReportService::months('r4-5'))->toBe([4, 5])
+        ->and(PnlReportService::months('mtd9'))->toBe([9])
+        ->and(PnlReportService::months('ytd9'))->toBe([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        // O formă strâmbă nu taie nimic: rămâne anul întreg.
+        ->and(PnlReportService::months('r9-4'))->toBe(range(1, 12))
+        ->and(PnlReportService::months('r0-13'))->toBe(range(1, 12));
+});
+
+test('every column says which months it is made of, so a click can ask for them', function () {
+    fakeEvolutionSources(evolutionRevenue());
+
+    $service = app(PnlReportService::class);
+    $evolution = $service->evolution($service->report(test()->company, 2026, forceRefresh: true), through: 5);
+
+    $months = collect($evolution['periods'])->pluck('months', 'code');
+
+    expect($months['m1'])->toBe([1, 1])
+        ->and($months['q1'])->toBe([1, 3])
+        // T2 tăiat la mai: aprilie–mai, nu aprilie–iunie.
+        ->and($months['q2'])->toBe([4, 5])
+        ->and($months['year'])->toBe([1, 5]);
+});
+
+test('the cost detail of a quarter column adds up to what the column shows', function () {
+    fakeEvolutionSources(
+        evolutionRevenue(),
+        [
+            ['account' => '6021', 'note' => 'Combustibil', 'sediu' => '', 'partner' => 'OMV', 'month' => 7, 'lei' => 700.0, 'data_doc' => '2026-07-10', 'tip_doc' => 'FactFI', 'nr_doc' => 'A1'],
+            ['account' => '6021', 'note' => 'Combustibil', 'sediu' => '', 'partner' => 'OMV', 'month' => 9, 'lei' => 300.0, 'data_doc' => '2026-09-10', 'tip_doc' => 'FactFI', 'nr_doc' => 'A2'],
+            ['account' => '6021', 'note' => 'Combustibil', 'sediu' => '', 'partner' => 'OMV', 'month' => 2, 'lei' => 500.0, 'data_doc' => '2026-02-10', 'tip_doc' => 'FactFI', 'nr_doc' => 'A3'],
+        ],
+        withDetails: true,
+    );
+
+    $service = app(PnlReportService::class);
+    $report = $service->report(test()->company, 2026, forceRefresh: true);
+    $evolution = $service->evolution($report);
+
+    $line = collect($evolution['rows'])->first(fn (array $row) => ($row['kind'] ?? '') === 'line');
+    $cell = $line['cells']['q3']['total'];
+
+    $details = $service->costDetails(test()->company, 2026, $line['saf'], 'r7-9');
+
+    expect($cell)->toEqual(1000.0)->and($details['total'])->toEqual($cell);
 });

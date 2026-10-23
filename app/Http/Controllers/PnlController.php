@@ -336,7 +336,7 @@ class PnlController extends Controller
      */
     private function period(string $period): string
     {
-        return preg_match('/^(year|q[1-4]|(ytd|mtd|m)([1-9]|1[0-2]))$/', $period) === 1 ? $period : 'year';
+        return preg_match('/^(year|q[1-4]|r([1-9]|1[0-2])-([1-9]|1[0-2])|(ytd|mtd|m)([1-9]|1[0-2]))$/', $period) === 1 ? $period : 'year';
     }
 
     /**

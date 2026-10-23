@@ -174,6 +174,17 @@ class PnlReportService
             return range(1, (int) $matches[1] * 3);
         }
 
+        // Un capăt de drum care nu e nici lună, nici cumul: lunile unui
+        // trimestru luate singure, așa cum le arată fila „Evoluție”. Fără
+        // forma asta, un clic pe T3 ar fi deschis trimestrele I–III la un
+        // loc, fiindcă „q3” înseamnă cumulat în restul aplicației.
+        if (preg_match('/^r(\d{1,2})-(\d{1,2})$/', $period, $matches)
+            && self::inYear((int) $matches[1])
+            && self::inYear((int) $matches[2])
+            && (int) $matches[1] <= (int) $matches[2]) {
+            return range((int) $matches[1], (int) $matches[2]);
+        }
+
         return range(1, 12);
     }
 
@@ -236,6 +247,7 @@ class PnlReportService
                     'code' => 'm'.$month,
                     'label' => self::MONTHS[$month - 1],
                     'kind' => 'month',
+                    'months' => [$month, $month],
                     'unposted' => $slices['m'.$month]['meta']['unposted'] ?? [],
                 ];
             }
@@ -247,6 +259,7 @@ class PnlReportService
                 'label' => 'T'.$quarter.($partial ? '*' : ''),
                 'kind' => 'quarter',
                 'partial' => $partial,
+                'months' => [$months[0], $months[count($months) - 1]],
                 'unposted' => $slices['q'.$quarter]['meta']['unposted'] ?? [],
             ];
         }
@@ -259,6 +272,7 @@ class PnlReportService
                 : self::MONTHS[0].'–'.self::MONTHS[$through - 1],
             'kind' => 'year',
             'partial' => $through < 12,
+            'months' => [1, $through],
             'unposted' => $slices['year']['meta']['unposted'] ?? [],
         ];
 

@@ -255,6 +255,12 @@ export default function Pnl({
         column: string | null;
     } | null>(null);
     const [documentsSaf, setDocumentsSaf] = useState<string | null>(null);
+    // Pe evoluție, detaliul e al coloanei apăsate — o lună, un trimestru sau
+    // cumulul — nu al perioadei din filtre.
+    const [evolutionCost, setEvolutionCost] = useState<{
+        period: string;
+        column: string | null;
+    } | null>(null);
     // Grupa apăsată din defalcare („cont · sediu · partener”): panoul arată
     // atunci doar documentele ei, nu toate cele ale liniei.
     const [documentsItem, setDocumentsItem] = useState<{
@@ -678,6 +684,14 @@ export default function Pnl({
                                         ? (CHANNEL_LABELS[key] ?? key)
                                         : key
                                 }
+                                onCost={(cost) => {
+                                    setEvolutionCost({
+                                        period: cost.period,
+                                        column: cost.column,
+                                    });
+                                    setDocumentsItem(null);
+                                    setDocumentsSaf(cost.saf);
+                                }}
                             />
                         ) : (
                             <PnlTable
@@ -757,9 +771,13 @@ export default function Pnl({
                     <CostDetailsSheet
                         companyId={filters.company_id}
                         year={filters.year}
-                        period={filters.period}
+                        period={evolutionCost?.period ?? filters.period}
                         saf={documentsSaf}
-                        column={open?.column ?? null}
+                        column={
+                            evolutionCost
+                                ? evolutionCost.column
+                                : (open?.column ?? null)
+                        }
                         item={documentsItem}
                         detailsAxis={detailsAxis}
                         catalogue={lines}
@@ -769,6 +787,7 @@ export default function Pnl({
                         onClose={() => {
                             setDocumentsSaf(null);
                             setDocumentsItem(null);
+                            setEvolutionCost(null);
                         }}
                     />
                 )}
