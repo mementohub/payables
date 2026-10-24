@@ -118,7 +118,7 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
     return (
         <AppLayout
             breadcrumbs={[
-                { title: 'Contracte', href: contractsIndex().url },
+                { title: 'Contracte operaționale', href: contractsIndex().url },
                 { title: 'Închirieri (IFRS 16)', href: leasesIndex().url },
             ]}
         >

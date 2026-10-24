@@ -225,7 +225,7 @@ const mainNavItems = (
                       ...(can.contracts
                           ? [
                                 {
-                                    title: 'Repertoriu',
+                                    title: 'Contracte operaționale',
                                     href: contractsIndex(),
                                     icon: FileSignature,
                                 },
