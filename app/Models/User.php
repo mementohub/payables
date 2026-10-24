@@ -84,6 +84,17 @@ class User extends Authenticatable
         return $this->isAdmin() || in_array(self::ROLE_TOP_MANAGEMENT, (array) ($this->roles ?? []), true);
     }
 
+    /**
+     * Registrul contractelor de închiriere: din el iese retratarea IFRS 16.
+     *
+     * Îl ține Financiarul, care scrie durata și rata din contract, și îl
+     * citește Top Management-ul, fiindcă retratarea îi schimbă rezultatul.
+     */
+    public function canSeeLeases(): bool
+    {
+        return $this->canSeeReports() || $this->hasRole(self::ROLE_FINANCE);
+    }
+
     public function canSeeReports(): bool
     {
         return $this->hasRole(self::ROLE_TOP_MANAGEMENT);

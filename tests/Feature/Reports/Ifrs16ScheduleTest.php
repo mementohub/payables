@@ -136,7 +136,7 @@ test('with contracts written down, the P&L uses them instead of the estimate', f
         ->and(round($booked['totals']['total'], 2))->toEqual(0.0);
 });
 
-test('the register page shows what the contracts cover, and only top management reaches it', function () {
+test('the register page shows what the contracts cover, and only finance and top management reach it', function () {
     $company = Company::factory()->create();
     $boss = User::factory()->withRoles('top_management')->create();
 
@@ -154,9 +154,17 @@ test('the register page shows what the contracts cover, and only top management 
             ->where('summary.drafts', 1)
             ->where('summary.covered', 120_000));
 
+    // Financiarul ține registrul: el scrie durata și rata din contract.
     $this->actingAs(User::factory()->withRoles('finance')->create())
-        ->get('/reports/leases')
-        ->assertForbidden();
+        ->get('/reports/leases?company_id='.$company->id)
+        ->assertOk();
+
+    // Restul companiei n-are ce căuta în el, nici măcar cine ține contractele.
+    foreach (['operational', 'treasury', 'contract_management'] as $role) {
+        $this->actingAs(User::factory()->withRoles($role)->create())
+            ->get('/reports/leases')
+            ->assertForbidden();
+    }
 });
 
 test('a lease is written down from the page, and the draft becomes a counted contract', function () {

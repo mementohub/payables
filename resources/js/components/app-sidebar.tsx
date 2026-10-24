@@ -216,7 +216,7 @@ const mainNavItems = (
     // Contractele stau la rolul lor: cine nu-l are nici nu vede tabul.
     // Închirierile sunt tot contracte, deci stau aici, nu la Rapoarte — chiar
     // dacă din ele iese retratarea IFRS 16, care rămâne a Top Management-ului.
-    ...(can.contracts || can.reports
+    ...(can.contracts || can.leases
         ? [
               {
                   title: 'Contracte',
@@ -231,7 +231,7 @@ const mainNavItems = (
                                 },
                             ]
                           : []),
-                      ...(can.reports
+                      ...(can.leases
                           ? [
                                 {
                                     title: 'Închirieri (IFRS 16)',

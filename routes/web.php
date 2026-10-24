@@ -184,6 +184,19 @@ Route::middleware('auth')->group(function () {
     });
     Route::redirect('clients', 'suppliers');
 
+    /*
+     * Registrul contractelor de închiriere stă lângă Rapoarte, dar nu sub
+     * aceeași cheie: durata și rata se iau din contract, iar cine le scrie e
+     * Financiarul. Top Management-ul le citește, fiindcă retratarea IFRS 16
+     * îi schimbă rezultatul.
+     */
+    Route::middleware('role:'.User::ROLE_TOP_MANAGEMENT.','.User::ROLE_FINANCE)->group(function () {
+        Route::get('reports/leases', [LeaseController::class, 'index'])->name('reports.leases.index');
+        Route::put('reports/leases/{lease}', [LeaseController::class, 'update'])->name('reports.leases.update');
+        Route::delete('reports/leases/{lease}', [LeaseController::class, 'destroy'])->name('reports.leases.destroy');
+        Route::post('reports/leases/propose', [LeaseController::class, 'propose'])->name('reports.leases.propose');
+    });
+
     // Rapoartele arată cifrele companiei întregi — venit, marjă, costuri,
     // profit — deci sunt ale Top Management-ului (și ale administratorilor,
     // fiindcă „admin” cuprinde toate rolurile).
@@ -197,11 +210,6 @@ Route::middleware('auth')->group(function () {
         // Scadențarul: ce e de plătit de azi înainte, factură cu factură.
         Route::get('reports/due', [DueInvoicesController::class, 'index'])->name('reports.due.index');
         Route::get('reports/due/export', [DueInvoicesController::class, 'export'])->name('reports.due.export');
-        // Registrul contractelor de închiriere: din el iese retratarea IFRS 16.
-        Route::get('reports/leases', [LeaseController::class, 'index'])->name('reports.leases.index');
-        Route::put('reports/leases/{lease}', [LeaseController::class, 'update'])->name('reports.leases.update');
-        Route::delete('reports/leases/{lease}', [LeaseController::class, 'destroy'])->name('reports.leases.destroy');
-        Route::post('reports/leases/propose', [LeaseController::class, 'propose'])->name('reports.leases.propose');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
         Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');

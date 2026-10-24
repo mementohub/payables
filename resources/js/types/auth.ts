@@ -24,6 +24,8 @@ export type Capabilities = {
     reports: boolean;
     /** Repertoriul de contracte, la rolul lui. */
     contracts: boolean;
+    /** Registrul de închirieri: Financiarul îl ține, Top Management îl citește. */
+    leases: boolean;
     team: boolean;
     admin: boolean;
 };
