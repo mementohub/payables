@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/table';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import AppLayout from '@/layouts/app-layout';
+import { index as contractsIndex } from '@/routes/contracts';
 import { index as leasesIndex } from '@/routes/reports/leases';
 
 type Lease = {
@@ -117,11 +118,11 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
     return (
         <AppLayout
             breadcrumbs={[
-                { title: 'Rapoarte', href: leasesIndex().url },
-                { title: 'Contracte de închiriere', href: leasesIndex().url },
+                { title: 'Contracte', href: contractsIndex().url },
+                { title: 'Închirieri (IFRS 16)', href: leasesIndex().url },
             ]}
         >
-            <Head title="Contracte de închiriere" />
+            <Head title="Închirieri (IFRS 16)" />
 
             <div className="space-y-4 p-4">
                 <div className="flex flex-wrap items-end gap-3">

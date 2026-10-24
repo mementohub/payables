@@ -209,23 +209,38 @@ const mainNavItems = (
                           href: dueIndex(),
                           icon: CalendarCheck,
                       },
-                      {
-                          // De aici iese retratarea chiriilor pe IFRS 16.
-                          title: 'Contracte de închiriere',
-                          href: leasesIndex(),
-                          icon: Building2,
-                      },
                   ],
               },
           ]
         : []),
     // Contractele stau la rolul lor: cine nu-l are nici nu vede tabul.
-    ...(can.contracts
+    // Închirierile sunt tot contracte, deci stau aici, nu la Rapoarte — chiar
+    // dacă din ele iese retratarea IFRS 16, care rămâne a Top Management-ului.
+    ...(can.contracts || can.reports
         ? [
               {
                   title: 'Contracte',
-                  href: contractsIndex(),
                   icon: FileSignature,
+                  children: [
+                      ...(can.contracts
+                          ? [
+                                {
+                                    title: 'Repertoriu',
+                                    href: contractsIndex(),
+                                    icon: FileSignature,
+                                },
+                            ]
+                          : []),
+                      ...(can.reports
+                          ? [
+                                {
+                                    title: 'Închirieri (IFRS 16)',
+                                    href: leasesIndex(),
+                                    icon: Building2,
+                                },
+                            ]
+                          : []),
+                  ],
               },
           ]
         : []),
