@@ -950,6 +950,10 @@ class PlanBuilder
 
         if ($source !== 'hand' && $step['years'] > 1 && abs($step['ratio'] - 1) > 0.001) {
             $pieces[] = sprintf('Dusă mai departe cu trendul ultimilor %d ani: %s.', $step['years'], $this->percent($step['ratio']));
+
+            if ($step['ratio'] >= 1.199 || $step['ratio'] <= 0.801) {
+                $pieces[] = 'Trendul adevărat era mai mare; o cheltuială nu se duce mai departe cu mai mult de un sfert, așa că s-a oprit aici. Scrie cifra cu mâna dacă știi altceva.';
+            }
         }
 
         return implode(' ', $pieces);
@@ -994,8 +998,12 @@ class PlanBuilder
         $out = [];
 
         foreach ($totals as $saf => $byYear) {
+            // O cheltuială nu se dublează fiindcă s-a dublat anul trecut:
+            // salariile urmează inflația și oamenii, iar bugetul de
+            // marketing e o hotărâre, nu un trend. Creșterea se ține între
+            // −20% și +20%, iar cine știe altceva scrie cu mâna.
             $out[$saf] = [
-                'ratio' => $this->pace($byYear, $years, fn (array $cell) => $cell['volume']),
+                'ratio' => max(0.8, min(1.2, $this->pace($byYear, $years, fn (array $cell) => $cell['volume']))),
                 'years' => count(array_filter($byYear, fn (array $cell) => abs($cell['volume']) > 0.005)),
             ];
         }

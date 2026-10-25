@@ -173,6 +173,29 @@ class ForecastController extends Controller
             }
         }
 
+        // Anul de bază se arată întregit, ca anii dinainte: altfel coloana
+        // lui ar avea nouă luni lângă douăsprezece ale celorlalți, iar orice
+        // creștere ar părea mai mare decât e.
+        $overlay = $this->builder->openOverlay($plan);
+
+        foreach ([PlanLine::OPEX => $overlay['lines'], PlanLine::BELOW => $overlay['below']] as $kind => $lines) {
+            foreach ($lines as $saf => $months) {
+                $cell = $out[$kind.'|'.$saf][$plan->base_year] ?? null;
+
+                if ($cell === null) {
+                    continue;
+                }
+
+                foreach ($months as $month => $amount) {
+                    $cell['months'][(int) $month] = ['volume' => 0.0, 'capacity' => 0.0, 'net' => round((float) $amount, 2), 'margin' => 0.0];
+                    $cell['net'] = round($cell['net'] + (float) $amount, 2);
+                }
+
+                $cell['estimated'] = count($months);
+                $out[$kind.'|'.$saf][$plan->base_year] = $cell;
+            }
+        }
+
         return $out;
     }
 

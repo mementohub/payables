@@ -222,6 +222,7 @@ type History = Record<
             sold: number;
             net: number;
             margin: number;
+            estimated?: number;
             months: Record<
                 number,
                 {
@@ -2082,10 +2083,23 @@ function DriverTable({
                                             <TableCell
                                                 key={year}
                                                 className="border-l text-right text-[11px] text-muted-foreground tabular-nums"
-                                                title={`${year}: ${lei(past.net)} lei venit, ${lei(past.margin)} marjă`}
+                                                title={
+                                                    past.estimated
+                                                        ? `${year}: ${lei(past.net)} lei, din care ${past.estimated} luni estimate — anul n-a venit încă până la capăt.`
+                                                        : `${year}: ${lei(past.net)} lei venit, ${lei(past.margin)} marjă`
+                                                }
                                             >
                                                 {isOpex ? (
-                                                    lei(past.net)
+                                                    <>
+                                                        {lei(past.net)}
+                                                        {past.estimated ? (
+                                                            <span className="ml-1 text-[10px] opacity-70">
+                                                                (
+                                                                {past.estimated}{' '}
+                                                                est.)
+                                                            </span>
+                                                        ) : null}
+                                                    </>
                                                 ) : (
                                                     <>
                                                         <div>
