@@ -335,7 +335,8 @@ test('the months the base year has not lived yet are estimated, not left empty',
     expect($lines)->toHaveCount(2)
         ->and($lines[12]->volume)->toEqual(60.5)
         ->and($lines[1]->volume)->toEqual(121.0)
-        ->and($lines[12]->note)->toContain('estimată din 2025')
+        ->and($lines[12]->note)->toContain('volumul e cel din 2025')
+        ->and($lines[12]->note)->toContain('banii pe unitate sunt media lunilor trăite din 2026')
         ->and($lines[12]->note)->toContain('trendul ultimilor 2 ani')
         ->and($lines[1]->note)->toContain('Pornit din 2026');
 });
@@ -650,4 +651,109 @@ test('the base year column counts the months that have not come yet, so the two 
     expect($overlay['months'])->toContain(12)
         ->and($overlay['revenue'][12])->toEqual(1_000_000.0)
         ->and($overlay['products']['Cazare'][12]['net'])->toEqual(1_000_000.0);
+});
+
+test('the profit tax is worked out from the plan, quarterly, and never below the tax on turnover', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 1_000, 'net' => 10_000_000, 'margin' => 2_000_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $engine = app(PlanEngine::class);
+    $rows = collect($engine->compute($plan)['statement'])->keyBy('key');
+
+    // Profit impozabil 2.000.000 → 16% = 320.000; cifra de afaceri
+    // 10.000.000 → 0,5% = 50.000. Se plătește impozitul pe profit.
+    expect($rows['below:impozit']['total'])->toEqual(320_000.0)
+        // Vărsat în luna de capăt de trimestru, nu împrăștiat pe tot anul.
+        ->and($rows['below:impozit']['months'][3])->toEqual(320_000.0)
+        ->and($rows['below:impozit']['months'][2])->toEqual(0.0);
+
+    // Pe pierdere, se plătește impozitul minim pe cifra de afaceri.
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '6210', 'label' => 'Salarii · Salarii',
+        'month' => 3, 'amount' => 3_000_000, 'manual' => true,
+    ]);
+
+    $rows = collect($engine->compute($plan->fresh())['statement'])->keyBy('key');
+
+    expect($rows['ebitda']['total'])->toEqual(-1_000_000.0)
+        ->and($rows['below:impozit']['total'])->toEqual(50_000.0);
+});
+
+test('a profit tax written by hand is left alone', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 1_000, 'net' => 10_000_000, 'margin' => 2_000_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => 'below', 'key' => 'impozit', 'label' => 'Impozit pe profit',
+        'month' => 6, 'amount' => 123_456, 'manual' => true,
+    ]);
+
+    $rows = collect(app(PlanEngine::class)->compute($plan->fresh())['statement'])->keyBy('key');
+
+    expect($rows['below:impozit']['total'])->toEqual(123_456.0);
+});
+
+test('a line that moves only now and then keeps its shape; one that runs every month keeps its pace', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $builder = app(PlanBuilder::class);
+    $fill = new ReflectionMethod($builder, 'fillYear');
+    $open = PlanBuilder::openMonths(2026);
+    $lived = array_values(array_diff(range(1, 12), $open));
+
+    // Salarii: mișcare în fiecare lună trăită → ritmul lunii.
+    $salaries = array_fill_keys($lived, 100_000.0);
+    $filled = $fill->invoke($builder, $salaries, [], $open, [12 => 900_000.0]);
+
+    expect($filled[$open[0]]['amount'])->toEqual(100_000.0)
+        ->and($filled[$open[0]]['source'])->toBe('average');
+
+    // Impozit: trei vărsăminte pe an → luna aceeași din anul dinainte.
+    $tax = [3 => 300_000.0, 6 => 800_000.0, 9 => 2_600_000.0];
+    $filled = $fill->invoke($builder, $tax, [], $open, [12 => 1_300_000.0]);
+
+    expect($filled[12]['source'])->toBe('before')
+        // Lunile goale rămân goale, nu iau media celor cu mișcare.
+        ->and($filled[2]['amount'])->toEqual(0.0)
+        ->and($filled[11]['amount'])->toEqual(0.0);
+});
+
+test('a plan can be asked to start from the base year as it is, with no growth on top', function () {
+    fakeForecastHistory([
+        ['year' => 2024, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 100, 'net' => 100_000, 'margin' => 10_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 110, 'net' => 115_500, 'margin' => 11_550],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 121, 'net' => 133_402, 'margin' => 13_340],
+    ]);
+
+    $plan = planFor($this->company);
+
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/start', ['start' => 'base'])
+        ->assertRedirect();
+
+    $line = PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CATEGORY)->sole();
+
+    // Exact 2026, fără trend: 121 de pasageri la 1.102,5 lei.
+    expect($line->volume)->toEqual(121.0)
+        ->and($line->unit_net)->toEqual(1_102.5)
+        ->and($line->note)->toContain('anul de bază ca atare');
+
+    // Și înapoi la trend: 121 × 1,1.
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/start', ['start' => 'trend'])
+        ->assertRedirect();
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CATEGORY)->sole()->volume)
+        ->toEqual(133.1);
 });

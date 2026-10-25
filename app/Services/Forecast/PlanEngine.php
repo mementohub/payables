@@ -22,6 +22,9 @@ use Illuminate\Support\Collection;
  */
 class PlanEngine
 {
+    /** Linia de sub EBITDA care nu se poartă din istoric, ci se socotește. */
+    public const TAX = 'impozit';
+
     public function __construct(private PnlReportService $pnl, private PlanBuilder $builder) {}
 
     /**
@@ -52,9 +55,11 @@ class PlanEngine
         $leases = $basis === PnlReportService::BASIS_IFRS16 ? $this->leases($plan) : null;
 
         $months = [];
+        $buckets = [];
 
         foreach (range(1, 12) as $month) {
             $months[$month] = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'below' => 0.0, 'pax' => 0.0, 'services' => 0.0, 'seats' => 0.0, 'empty_seats' => 0.0, 'empty_cost' => 0.0];
+            $buckets[$month] = [];
         }
 
         // Operațional înseamnă la data rezervării, financiar la data plecării.
@@ -124,9 +129,17 @@ class PlanEngine
 
             match ($line->kind) {
                 PlanLine::OPEX => $months[$month]['opex'] += (float) $line->amount,
-                PlanLine::BELOW => $months[$month]['below'] += (float) $line->amount,
+                PlanLine::BELOW => $buckets[$month][$line->key] = ($buckets[$month][$line->key] ?? 0) + (float) $line->amount,
                 default => null,
             };
+        }
+
+        // Impozitul pe profit nu se poartă din anul trecut: se socotește din
+        // cifrele planului, după regula fiscală.
+        $buckets = $this->tax($plan, $lines, $months, $buckets, $leases);
+
+        foreach ($buckets as $month => $cells) {
+            $months[$month]['below'] = round(array_sum($cells), 2);
         }
 
         // Chiria iese din cheltuieli, amortizarea și dobânda intră sub EBITDA.
@@ -155,7 +168,7 @@ class PlanEngine
             // Planul în forma raportului: aceleași rânduri, în aceeași
             // ordine, ca să se poată citi unul lângă altul cu P&L-ul
             // adevărat, nu ca două tabele care seamănă.
-            'statement' => $this->statement($plan, $lines->whereIn('month', $wanted), $months, $leases, $actual, $axes),
+            'statement' => $this->statement($plan, $lines->whereIn('month', $wanted), $months, $leases, $actual, $axes, $this->keep($buckets, $wanted)),
             // Coloanele raportului: aceleași rânduri, citite pe categorie de
             // produs și pe canal de vânzare.
             'columns' => [
@@ -176,7 +189,7 @@ class PlanEngine
             'categories' => $this->byKey($lines->whereIn('kind', [PlanLine::CATEGORY, PlanLine::CHARTER])),
             'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER)),
             'opex' => $this->byKey($lines->where('kind', PlanLine::OPEX)),
-            'below' => $this->byKey($lines->where('kind', PlanLine::BELOW)),
+            'below' => $this->belowRows($lines->where('kind', PlanLine::BELOW), $buckets, $wanted),
             'base' => [
                 'year' => $plan->base_year,
                 'built' => $actual !== null,
@@ -281,7 +294,7 @@ class PlanEngine
      * @param  array<int, array<string, float>>  $months
      * @return list<array<string, mixed>>
      */
-    private function statement(Plan $plan, Collection $lines, array $months, ?array $leases = null, ?array $actual = null, array $axes = ['product' => [], 'channel' => []]): array
+    private function statement(Plan $plan, Collection $lines, array $months, ?array $leases = null, ?array $actual = null, array $axes = ['product' => [], 'channel' => []], array $buckets = []): array
     {
         $rows = [];
         $pick = fn (string $key) => array_map(fn (array $cell) => (float) ($cell[$key] ?? 0), $months);
@@ -360,12 +373,7 @@ class PlanEngine
 
         $under = ['product' => [], 'channel' => []];
 
-        foreach ($lines->where('kind', PlanLine::BELOW)->groupBy('key') as $bucket => $group) {
-            $cells = [];
-
-            foreach ($group as $line) {
-                $cells[(int) $line->month] = ($cells[(int) $line->month] ?? 0) + (float) $line->amount;
-            }
+        foreach ($this->byBucket($buckets) as $bucket => $cells) {
 
             $cut = [];
 
@@ -415,6 +423,154 @@ class PlanEngine
             'base_product' => $actual['columns']['product'][$row['key']] ?? [],
             'base_channel' => $actual['columns']['channel'][$row['key']] ?? [],
         ], $rows);
+    }
+
+    /**
+     * Impozitul pe profit al planului, socotit ca la carte.
+     *
+     * Un impozit purtat din anul de bază nu spune nimic despre anul plănuit:
+     * se plătește pe profitul care iese din plan, nu pe cel de anul trecut.
+     * Regula e cea din lege — cel mai mare dintre impozitul pe profit și
+     * impozitul minim pe cifra de afaceri — iar vărsămintele sunt
+     * trimestriale, ca în registru.
+     *
+     * Ce scrie omul cu mâna pe linia de impozit rămâne scris: atunci
+     * socoteala nu se mai face.
+     *
+     * @param  Collection<int, PlanLine>  $lines
+     * @param  array<int, array<string, float>>  $months
+     * @param  array<int, array<string, float>>  $buckets
+     * @return array<int, array<string, float>>
+     */
+    private function tax(Plan $plan, Collection $lines, array $months, array $buckets, ?array $leases): array
+    {
+        $written = $lines->where('kind', PlanLine::BELOW)->where('key', self::TAX)->contains('manual', true);
+
+        if ($written) {
+            return $buckets;
+        }
+
+        $rate = (float) config('pnl.profit_tax.rate', 0.16);
+        $minimum = (float) config('pnl.profit_tax.turnover_rate', 0.005);
+        $quarters = (array) config('pnl.profit_tax.quarters', [3, 6, 9, 12]);
+
+        $turnover = 0.0;
+        $pretax = 0.0;
+
+        foreach ($months as $month => $cell) {
+            $turnover += (float) $cell['net'];
+
+            // Profitul dinainte de impozit: marja, minus cheltuielile de
+            // exploatare, minus amortizarea și rezultatul financiar —
+            // impozitul însuși n-are ce căuta în baza lui.
+            $under = 0.0;
+
+            foreach ($buckets[$month] ?? [] as $bucket => $amount) {
+                if ($bucket !== self::TAX) {
+                    $under += (float) $amount;
+                }
+            }
+
+            if ($leases !== null) {
+                $under += (float) ($leases['below'][$month] ?? 0);
+                $pretax += (float) ($leases['rent'][$month] ?? 0);
+            }
+
+            $pretax += (float) $cell['margin'] - (float) $cell['opex'] - $under;
+        }
+
+        $due = max($rate * max($pretax, 0.0), $minimum * max($turnover, 0.0));
+
+        // Vărsat trimestrial, pe cât s-a câștigat în trimestrul ăla.
+        $shares = [];
+
+        foreach ($quarters as $quarter) {
+            $from = $quarter - 2;
+            $sum = 0.0;
+
+            foreach (range(max(1, $from), $quarter) as $month) {
+                $sum += max(0.0, (float) ($months[$month]['net'] ?? 0));
+            }
+
+            $shares[$quarter] = $sum;
+        }
+
+        $total = array_sum($shares);
+
+        foreach ($buckets as $month => $cells) {
+            unset($buckets[$month][self::TAX]);
+        }
+
+        foreach ($shares as $quarter => $share) {
+            if (! isset($buckets[$quarter])) {
+                continue;
+            }
+
+            $buckets[$quarter][self::TAX] = round($total > 0 ? $due * $share / $total : $due / count($shares), 2);
+        }
+
+        return $buckets;
+    }
+
+    /**
+     * Cifrele de sub EBITDA, pe feluri, în ordinea raportului.
+     *
+     * @param  array<int, array<string, float>>  $buckets
+     * @return array<string, array<int, float>>
+     */
+    private function byBucket(array $buckets): array
+    {
+        $out = [];
+
+        foreach ($buckets as $month => $cells) {
+            foreach ($cells as $bucket => $amount) {
+                $out[$bucket][$month] = round((float) $amount, 2);
+            }
+        }
+
+        uasort($out, fn (array $a, array $b) => abs(array_sum($b)) <=> abs(array_sum($a)));
+
+        return $out;
+    }
+
+    /**
+     * Numai lunile cerute.
+     *
+     * @param  array<int, array<string, float>>  $buckets
+     * @param  list<int>  $wanted
+     * @return array<int, array<string, float>>
+     */
+    private function keep(array $buckets, array $wanted): array
+    {
+        return array_intersect_key($buckets, array_flip($wanted));
+    }
+
+    /**
+     * Rândurile de sub EBITDA pentru fila de configurare: sumele socotite,
+     * nu cele scrise în plan, ca omul să vadă ce intră în profit.
+     *
+     * @param  Collection<int, PlanLine>  $lines
+     * @param  array<int, array<string, float>>  $buckets
+     * @param  list<int>  $wanted
+     * @return list<array<string, mixed>>
+     */
+    private function belowRows(Collection $lines, array $buckets, array $wanted): array
+    {
+        $rows = $this->byKey($lines->whereIn('month', $wanted));
+        $byBucket = $this->byBucket($this->keep($buckets, $wanted));
+
+        foreach ($rows as $index => $row) {
+            $cells = $byBucket[$row['key']] ?? [];
+
+            foreach ($row['months'] as $month => $cell) {
+                $rows[$index]['months'][$month]['amount'] = (float) ($cells[$month] ?? 0);
+            }
+
+            $rows[$index]['amount'] = round(array_sum($cells), 2);
+            $rows[$index]['computed'] = $row['key'] === self::TAX && ! $row['manual'];
+        }
+
+        return $rows;
     }
 
     /**

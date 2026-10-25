@@ -91,6 +91,7 @@ class ForecastController extends Controller
                 'year' => $plan->year,
                 'name' => $plan->name,
                 'base_year' => $plan->base_year,
+                'start' => $plan->start,
                 'status' => $plan->status,
                 'note' => $plan->note,
             ] : null,
@@ -256,6 +257,30 @@ class ForecastController extends Controller
         )]);
 
         return redirect()->route('reports.forecast.index', ['company_id' => $plan->company_id, 'plan' => $plan->id]);
+    }
+
+    /**
+     * De unde pornește planul: din trendul ultimilor ani sau din anul de
+     * bază ca atare.
+     *
+     * Întrebarea „dacă nu schimb nimic, bugetul e anul ăsta încă o dată?”
+     * are acum un răspuns pe care îl alege omul, nu unul pe care îl
+     * presupunem noi.
+     */
+    public function updateStart(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'start' => ['required', Rule::in([PlanBuilder::START_TREND, PlanBuilder::START_BASE])],
+        ]);
+
+        $plan->update($validated);
+        $written = $this->builder->seed($plan);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => $validated['start'] === PlanBuilder::START_BASE
+            ? sprintf('Planul pornește acum din %d ca atare, fără creștere: %d pârghii rescrise.', $plan->base_year, $written)
+            : sprintf('Planul pornește acum din %d, dus mai departe cu trendul ultimilor ani: %d pârghii rescrise.', $plan->base_year, $written)]);
+
+        return back();
     }
 
     /** Pornește din nou din istoric, fără să calce peste ce s-a scris de mână. */

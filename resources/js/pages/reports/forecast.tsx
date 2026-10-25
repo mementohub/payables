@@ -261,6 +261,7 @@ type Props = {
         year: number;
         name: string;
         base_year: number;
+        start: 'trend' | 'base';
         status: string;
         note: string | null;
     } | null;
@@ -723,6 +724,36 @@ export default function Forecast({
 
                     {plan && (
                         <>
+                            <div className="grid gap-1.5">
+                                <Label>Pornirea planului</Label>
+                                <ToggleGroup
+                                    type="single"
+                                    value={plan.start}
+                                    onValueChange={(v) =>
+                                        v &&
+                                        router.put(
+                                            `/reports/forecast/${plan.id}/start`,
+                                            { start: v },
+                                            { preserveScroll: true },
+                                        )
+                                    }
+                                    variant="outline"
+                                >
+                                    <ToggleGroupItem
+                                        value="trend"
+                                        title={`Pârghiile pornesc din ${plan.base_year} și se duc mai departe cu creșterea medie a ultimilor trei ani.`}
+                                    >
+                                        Trend 3 ani
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem
+                                        value="base"
+                                        title={`Pârghiile sunt cele din ${plan.base_year}, fără nicio creștere peste ele.`}
+                                    >
+                                        {plan.base_year} ca atare
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+
                             <Button
                                 variant="outline"
                                 onClick={() =>
@@ -947,7 +978,9 @@ export default function Forecast({
                                 numelui arată aceleași mărimi în ultimii trei
                                 ani: din ele iese pornirea implicită a planului
                                 — cifra anului de bază, dusă mai departe cu
-                                creșterea medie a celor trei ani.
+                                creșterea medie a celor trei ani. Cu butonul
+                                „Pornirea planului” se poate cere, în schimb,
+                                anul de bază ca atare, fără nicio creștere.
                             </div>
                         )}
 

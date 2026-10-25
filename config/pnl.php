@@ -319,4 +319,24 @@ return [
 
     /** Canalele B2C, în ordinea de afișare. */
     'b2c_channels' => ['retail', 'site', 'cc', 'franciza'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Impozitul pe profit al planului
+    |--------------------------------------------------------------------------
+    |
+    | Într-un plan, impozitul nu se poartă din anul trecut: se socotește din
+    | cifrele planului, după regula fiscală. Se plătește cel mai mare dintre
+    | 16% pe profitul impozabil și impozitul minim pe cifra de afaceri
+    | (IMCA), iar vărsămintele sunt trimestriale.
+    |
+    | Ratele stau aici fiindcă legea le schimbă mai des decât ne-am dori.
+    |
+    */
+
+    'profit_tax' => [
+        'rate' => env('PNL_PROFIT_TAX_RATE', 0.16),
+        'turnover_rate' => env('PNL_TURNOVER_TAX_RATE', 0.005),
+        'quarters' => [3, 6, 9, 12],
+    ],
 ];
