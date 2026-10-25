@@ -177,6 +177,7 @@ type Output = {
     base: {
         year: number;
         built: boolean;
+        estimated?: number[];
         net?: number;
         margin?: number;
         opex?: number;
@@ -266,6 +267,21 @@ type Props = {
     output: Output | null;
     versions: Version[];
     history: History;
+    // Lunile pe care anul de bază nu le-a trăit încă și cifrele cu care
+    // pornește planul pentru ele.
+    openMonths: number[];
+    baseMonths: Record<
+        string,
+        {
+            volume: number | null;
+            capacity: number | null;
+            load: number | null;
+            unit_net: number | null;
+            unit_margin: number | null;
+            amount: number | null;
+            source: 'hand' | 'auto';
+        }
+    >;
     historyYears: number[];
     years: number[];
 };
@@ -313,6 +329,8 @@ export default function Forecast({
     history,
     historyYears,
     years,
+    openMonths,
+    baseMonths,
 }: Props) {
     // Întâi planul, în forma raportului; pârghiile din care iese stau
     // deoparte, sub „Configurare” — altfel tabelul de decizie e îngropat
@@ -918,9 +936,18 @@ export default function Forecast({
                                 la data plecării, fiindcă așa se cumpără
                                 avionul. Tina se numără pe{' '}
                                 <em>servicii facturate</em>, la data facturii.
-                                Istoricul din dreapta fiecărui rând arată
-                                aceleași mărimi în anii dinainte: volum, iar sub
-                                el venitul și marja pe unitate.
+                                Toate sumele sunt în <strong>lei</strong> — ce
+                                s-a vândut în altă monedă e adus la lei cu
+                                cursul zilei — volumele sunt{' '}
+                                <strong>
+                                    număr de pasageri, servicii sau locuri
+                                </strong>
+                                , iar ocuparea și pragul sunt{' '}
+                                <strong>procente</strong>. Coloanele din dreapta
+                                numelui arată aceleași mărimi în ultimii trei
+                                ani: din ele iese pornirea implicită a planului
+                                — cifra anului de bază, dusă mai departe cu
+                                creșterea medie a celor trei ani.
                             </div>
                         )}
 
@@ -1150,7 +1177,10 @@ export default function Forecast({
                                         )
                                     </TabsTrigger>
                                     <TabsTrigger value="opex">
-                                        Cheltuieli ({output.opex.length})
+                                        Cheltuieli și sub EBITDA (
+                                        {output.opex.length +
+                                            output.below.length}
+                                        )
                                     </TabsTrigger>
                                 </TabsList>
                             </Tabs>
@@ -1165,10 +1195,13 @@ export default function Forecast({
                                           )
                                         : sheet === 'charter'
                                           ? output.charter
-                                          : output.opex
+                                          : [...output.opex, ...output.below]
                                 }
                                 kind={sheet}
                                 history={history}
+                                openMonths={openMonths}
+                                baseMonths={baseMonths}
+                                planId={plan.id}
                                 historyYears={historyYears}
                                 planYear={plan.year}
                                 baseYear={plan.base_year}
@@ -1196,6 +1229,9 @@ function DriverTable({
     rows,
     kind,
     history,
+    openMonths,
+    baseMonths,
+    planId,
     historyYears,
     planYear,
     baseYear,
@@ -1210,6 +1246,9 @@ function DriverTable({
     rows: Row[];
     kind: 'categorii' | 'charter' | 'opex';
     history: History;
+    openMonths: number[];
+    baseMonths: Props['baseMonths'];
+    planId: number;
     historyYears: number[];
     planYear: number;
     baseYear: number;
@@ -1249,53 +1288,76 @@ function DriverTable({
                                 <TableHead
                                     key={year}
                                     className="border-l text-right text-muted-foreground"
+                                    title={
+                                        isOpex
+                                            ? `Cât s-a cheltuit pe linia asta în ${year}, în lei.`
+                                            : `${year}: volumul (pax sau servicii) și, sub el, venitul și marja pe unitate, în lei.`
+                                    }
                                 >
                                     {year}
+                                    <span className="block text-[10px] font-normal opacity-70">
+                                        {isOpex
+                                            ? 'lei'
+                                            : isCharter
+                                              ? 'pax / ocupare · lei/pax'
+                                              : 'volum · lei/unit.'}
+                                    </span>
                                 </TableHead>
                             ))}
                             {isCharter && (
                                 <>
                                     <TableHead className="text-right">
-                                        Locuri
+                                        Locuri (nr.)
                                     </TableHead>
-                                    <TableHead className="text-right">
-                                        G.D.O.
+                                    <TableHead
+                                        className="text-right"
+                                        title="Gradul de ocupare: câte locuri din avion se vând."
+                                    >
+                                        G.D.O. (%)
                                     </TableHead>
                                 </>
                             )}
                             {isCharter && (
                                 <>
-                                    <TableHead className="text-right">
-                                        Prag
+                                    <TableHead
+                                        className="text-right"
+                                        title="Gradul de ocupare de la care cursa își acoperă avionul."
+                                    >
+                                        Prag (%)
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Loc. goale
+                                        Loc. goale (nr.)
                                     </TableHead>
                                 </>
                             )}
                             {!isOpex && (
                                 <>
                                     <TableHead className="text-right">
-                                        Pax / servicii
+                                        Pax / servicii (nr.)
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Venit / unitate
+                                        Venit / unitate (lei)
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Marjă / unitate
+                                        Marjă / unitate (lei)
                                     </TableHead>
                                 </>
                             )}
                             <TableHead className="text-right">
-                                {isOpex ? 'Cheltuială an' : 'Venit an'}
+                                {isOpex
+                                    ? 'Cheltuială an (lei)'
+                                    : 'Venit an (lei)'}
                             </TableHead>
                             {!isOpex && (
                                 <TableHead className="text-right">
-                                    Marjă an
+                                    Marjă an (lei)
                                 </TableHead>
                             )}
-                            <TableHead className="w-32 text-right">
-                                Creștere %
+                            <TableHead
+                                className="w-32 text-right"
+                                title="Crește tot rândul, pe toate lunile, cu procentul scris."
+                            >
+                                Creștere (%)
                             </TableHead>
                             <TableHead className="w-10" />
                         </TableRow>
@@ -1327,6 +1389,11 @@ function DriverTable({
                                                 <ChevronRight className="size-3 opacity-50" />
                                             )}
                                             {row.label}
+                                            <span className="text-[10px] font-normal opacity-60">
+                                                {open.has(row.key)
+                                                    ? 'strânge lunile'
+                                                    : 'vezi lunile'}
+                                            </span>
                                         </button>
                                         {row.manual && (
                                             <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-500">
@@ -1640,13 +1707,13 @@ function DriverTable({
                                                             <div className="mt-1 grid grid-cols-3 gap-1">
                                                                 <label className="text-[10px] text-muted-foreground">
                                                                     {isOpex
-                                                                        ? 'cheltuială'
+                                                                        ? 'cheltuială (lei)'
                                                                         : isCharter
-                                                                          ? 'locuri'
+                                                                          ? 'locuri (nr.)'
                                                                           : row.unit ===
                                                                               'serviciu'
-                                                                            ? 'servicii'
-                                                                            : 'pasageri'}
+                                                                            ? 'servicii (nr.)'
+                                                                            : 'pasageri (nr.)'}
                                                                     <RowInput
                                                                         value={
                                                                             isOpex
@@ -1675,8 +1742,8 @@ function DriverTable({
                                                                     <>
                                                                         <label className="text-[10px] text-muted-foreground">
                                                                             {isCharter
-                                                                                ? 'ocupare %'
-                                                                                : 'venit/unit.'}
+                                                                                ? 'ocupare (%)'
+                                                                                : 'venit/unit. (lei)'}
                                                                             <RowInput
                                                                                 value={
                                                                                     isCharter
@@ -1702,8 +1769,8 @@ function DriverTable({
                                                                         </label>
                                                                         <label className="text-[10px] text-muted-foreground">
                                                                             {isCharter
-                                                                                ? 'venit/pax'
-                                                                                : 'marjă/unit.'}
+                                                                                ? 'venit/pax (lei)'
+                                                                                : 'marjă/unit. (lei)'}
                                                                             <RowInput
                                                                                 value={
                                                                                     isCharter
@@ -1760,6 +1827,249 @@ function DriverTable({
                                                     );
                                                 })}
                                             </div>
+
+                                            {openMonths.length > 0 && (
+                                                <div className="mt-4 border-t pt-3">
+                                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                                        <div className="text-[11px] text-muted-foreground">
+                                                            Ultimele luni din{' '}
+                                                            <strong className="text-foreground">
+                                                                {baseYear}
+                                                            </strong>{' '}
+                                                            n-au venit încă:
+                                                            planul lui{' '}
+                                                            {planYear} pornește
+                                                            din ele, așa că se
+                                                            pot scrie aici.
+                                                            Nescrise, se
+                                                            socotesc singure din{' '}
+                                                            {baseYear - 1},
+                                                            crescut cu cât a
+                                                            crescut anul.
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="shrink-0 text-[11px]"
+                                                            onClick={() =>
+                                                                router.put(
+                                                                    `/reports/forecast/${planId}/base/reset`,
+                                                                    {
+                                                                        kind: row.kind,
+                                                                        key: row.key,
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                )
+                                                            }
+                                                        >
+                                                            <RotateCcw className="size-3" />
+                                                            Înapoi la socoteala
+                                                            aplicației
+                                                        </Button>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                                        {openMonths.map(
+                                                            (month) => {
+                                                                const base =
+                                                                    baseMonths[
+                                                                        `${row.kind}|${row.key}|${month}`
+                                                                    ];
+                                                                const write = (
+                                                                    field: string,
+                                                                    value: number,
+                                                                ) =>
+                                                                    router.put(
+                                                                        `/reports/forecast/${planId}/base`,
+                                                                        {
+                                                                            kind: row.kind,
+                                                                            key: row.key,
+                                                                            label: row.label,
+                                                                            unit: row.unit,
+                                                                            month,
+                                                                            volume:
+                                                                                base?.volume ??
+                                                                                null,
+                                                                            capacity:
+                                                                                base?.capacity ??
+                                                                                null,
+                                                                            load:
+                                                                                base?.load ??
+                                                                                null,
+                                                                            unit_net:
+                                                                                base?.unit_net ??
+                                                                                null,
+                                                                            unit_margin:
+                                                                                base?.unit_margin ??
+                                                                                null,
+                                                                            amount:
+                                                                                base?.amount ??
+                                                                                null,
+                                                                            [field]:
+                                                                                value,
+                                                                        },
+                                                                        {
+                                                                            preserveScroll: true,
+                                                                        },
+                                                                    );
+
+                                                                return (
+                                                                    <div
+                                                                        key={
+                                                                            month
+                                                                        }
+                                                                        className={cn(
+                                                                            'rounded-md border border-dashed p-2',
+                                                                            base?.source ===
+                                                                                'hand' &&
+                                                                                'border-solid border-sky-400 bg-sky-50/60 dark:bg-sky-950/20',
+                                                                        )}
+                                                                    >
+                                                                        <div className="flex items-center justify-between">
+                                                                            <span className="text-xs font-medium">
+                                                                                {
+                                                                                    MONTHS[
+                                                                                        month -
+                                                                                            1
+                                                                                    ]
+                                                                                }{' '}
+                                                                                {
+                                                                                    baseYear
+                                                                                }
+                                                                            </span>
+                                                                            <span className="text-[10px] text-muted-foreground">
+                                                                                {base?.source ===
+                                                                                'hand'
+                                                                                    ? 'scris de mână'
+                                                                                    : 'socotit'}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="mt-1 grid grid-cols-3 gap-1">
+                                                                            <label className="text-[10px] text-muted-foreground">
+                                                                                {isOpex
+                                                                                    ? 'cheltuială (lei)'
+                                                                                    : isCharter
+                                                                                      ? 'locuri (nr.)'
+                                                                                      : row.unit ===
+                                                                                          'serviciu'
+                                                                                        ? 'servicii (nr.)'
+                                                                                        : 'pasageri (nr.)'}
+                                                                                <RowInput
+                                                                                    value={
+                                                                                        (isOpex
+                                                                                            ? base?.amount
+                                                                                            : isCharter
+                                                                                              ? base?.capacity
+                                                                                              : base?.volume) ??
+                                                                                        0
+                                                                                    }
+                                                                                    onCommit={(
+                                                                                        v,
+                                                                                    ) =>
+                                                                                        write(
+                                                                                            isOpex
+                                                                                                ? 'amount'
+                                                                                                : isCharter
+                                                                                                  ? 'capacity'
+                                                                                                  : 'volume',
+                                                                                            v,
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </label>
+                                                                            {!isOpex && (
+                                                                                <>
+                                                                                    <label className="text-[10px] text-muted-foreground">
+                                                                                        {isCharter
+                                                                                            ? 'ocupare (%)'
+                                                                                            : 'venit/unit. (lei)'}
+                                                                                        <RowInput
+                                                                                            value={
+                                                                                                isCharter
+                                                                                                    ? (base?.load ??
+                                                                                                          0) *
+                                                                                                      100
+                                                                                                    : (base?.unit_net ??
+                                                                                                      0)
+                                                                                            }
+                                                                                            onCommit={(
+                                                                                                v,
+                                                                                            ) =>
+                                                                                                write(
+                                                                                                    isCharter
+                                                                                                        ? 'load'
+                                                                                                        : 'unit_net',
+                                                                                                    isCharter
+                                                                                                        ? v /
+                                                                                                              100
+                                                                                                        : v,
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                    </label>
+                                                                                    <label className="text-[10px] text-muted-foreground">
+                                                                                        {isCharter
+                                                                                            ? 'venit/pax (lei)'
+                                                                                            : 'marjă/unit. (lei)'}
+                                                                                        <RowInput
+                                                                                            value={
+                                                                                                (isCharter
+                                                                                                    ? base?.unit_net
+                                                                                                    : base?.unit_margin) ??
+                                                                                                0
+                                                                                            }
+                                                                                            onCommit={(
+                                                                                                v,
+                                                                                            ) =>
+                                                                                                write(
+                                                                                                    isCharter
+                                                                                                        ? 'unit_net'
+                                                                                                        : 'unit_margin',
+                                                                                                    v,
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                    </label>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+
+                                                                        <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
+                                                                            {baseYear -
+                                                                                1}
+                                                                            :{' '}
+                                                                            {(() => {
+                                                                                const was =
+                                                                                    history[
+                                                                                        `${row.kind}|${row.key}`
+                                                                                    ]?.[
+                                                                                        baseYear -
+                                                                                            1
+                                                                                    ]
+                                                                                        ?.months?.[
+                                                                                        month
+                                                                                    ];
+
+                                                                                if (
+                                                                                    !was
+                                                                                ) {
+                                                                                    return '–';
+                                                                                }
+
+                                                                                return isOpex
+                                                                                    ? `${lei(was.net)} lei`
+                                                                                    : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'} · ${lei(was.net)} lei`;
+                                                                            })()}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            },
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 )}
@@ -1978,9 +2288,15 @@ function PlanStatement({
                                 </TableHead>
                                 <TableHead className="border-l text-right text-muted-foreground">
                                     {baseYear}
+                                    <span className="block text-[10px] font-normal opacity-70">
+                                        mii lei
+                                    </span>
                                 </TableHead>
                                 <TableHead className="text-right font-semibold">
                                     Plan {year}
+                                    <span className="block text-[10px] font-normal opacity-70">
+                                        mii lei
+                                    </span>
                                 </TableHead>
                                 <TableHead className="text-right text-muted-foreground">
                                     vs
@@ -2016,7 +2332,7 @@ function PlanStatement({
                         <TableBody>
                             <TableRow className="text-muted-foreground">
                                 <TableCell className="sticky left-0 z-10 bg-card">
-                                    Pasageri · servicii · locuri
+                                    Pasageri · servicii · locuri (nr.)
                                 </TableCell>
                                 <TableCell className="border-l" />
                                 <TableCell className="text-right tabular-nums">

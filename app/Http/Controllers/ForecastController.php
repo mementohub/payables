@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BaseEstimate;
 use App\Models\Company;
 use App\Models\ForecastHistory;
 use App\Models\Plan;
@@ -33,7 +34,11 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
  */
 class ForecastController extends Controller
 {
-    public function __construct(private PlanBuilder $builder, private PlanEngine $engine) {}
+    public function __construct(
+        private PlanBuilder $builder,
+        private PlanEngine $engine,
+        private PnlReportService $pnl,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -110,7 +115,60 @@ class ForecastController extends Controller
             'history' => $plan ? $this->history($plan) : [],
             'historyYears' => $plan ? $this->historyYears($plan) : [],
             'years' => range((int) now()->year + 1, (int) now()->year - 2),
+            // Lunile pe care anul de bază nu le-a trăit încă și cifrele pe
+            // care le-a scris omul pentru ele: din astea pornește planul.
+            'openMonths' => $plan ? PlanBuilder::openMonths($plan->base_year) : [],
+            'baseMonths' => $plan ? $this->builder->openCells($plan) : [],
         ]);
+    }
+
+    /**
+     * Cheltuielile anilor dinainte, linie cu linie, din rapoartele lor.
+     *
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function costHistory(Plan $plan): array
+    {
+        $out = [];
+
+        foreach ($this->historyYears($plan) as $year) {
+            $report = $this->pnl->cached($plan->company, $year);
+
+            if ($report === null || isset($report['error'])) {
+                continue;
+            }
+
+            $buckets = [];
+
+            foreach (($report['lines'] ?? []) as $line) {
+                $buckets[PlanLine::OPEX.'|'.$line['saf']] = $line['months'] ?? [];
+            }
+
+            foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
+                $buckets[PlanLine::BELOW.'|'.$bucket] = $report['below'][$bucket]['months'] ?? [];
+            }
+
+            foreach ($buckets as $key => $months) {
+                $cell = ['volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0, 'months' => []];
+
+                foreach ($months as $month => $amount) {
+                    $value = round((float) ($amount['total'] ?? 0), 2);
+
+                    if (abs($value) < 0.005) {
+                        continue;
+                    }
+
+                    $cell['months'][(int) $month] = ['volume' => 0.0, 'capacity' => 0.0, 'net' => $value, 'margin' => 0.0];
+                    $cell['net'] = round($cell['net'] + $value, 2);
+                }
+
+                if ($cell['months'] !== []) {
+                    $out[$key][$year] = $cell;
+                }
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -125,7 +183,11 @@ class ForecastController extends Controller
             ->whereIn('year', $this->historyYears($plan))
             ->get();
 
-        $out = [];
+        // Cheltuielile n-au istoric strâns în `forecast_history`: ele stau în
+        // rapoartele construite ale anilor dinainte, linie cu linie. Fără
+        // ele, coloanele 2024–2026 de pe fila „Cheltuieli” ar fi goale, iar
+        // omul n-ar avea pe ce judeca o creștere.
+        $out = $this->costHistory($plan);
 
         foreach ($rows as $row) {
             $key = $row->kind.'|'.$row->key;
@@ -455,6 +517,79 @@ class ForecastController extends Controller
                 'note' => $line->note,
             ])
             ->all();
+    }
+
+    /**
+     * O lună din anul de bază pe care n-am trăit-o încă, scrisă de mână.
+     *
+     * Planul lui 2027 pornește din 2026, dar 2026 are, în octombrie, nouă
+     * luni adevărate și trei care vin. Până acum ultimele trei se ghiceau
+     * singure; acum și le scrie omul, iar planul se reașază sub ele.
+     */
+    public function updateBase(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'key' => ['required', 'string', 'max:255'],
+            'label' => ['nullable', 'string', 'max:255'],
+            'unit' => ['nullable', Rule::in([PlanLine::PAX, PlanLine::SERVICE])],
+            'month' => ['required', 'integer', Rule::in(PlanBuilder::openMonths($plan->base_year))],
+            'volume' => ['nullable', 'numeric', 'min:0'],
+            'capacity' => ['nullable', 'numeric', 'min:0'],
+            'load' => ['nullable', 'numeric', 'between:0,1.5'],
+            'unit_net' => ['nullable', 'numeric'],
+            'unit_margin' => ['nullable', 'numeric'],
+            'unit_cost' => ['nullable', 'numeric'],
+            'amount' => ['nullable', 'numeric'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        BaseEstimate::query()->updateOrCreate(
+            [
+                'company_id' => $plan->company_id,
+                'year' => $plan->base_year,
+                'kind' => $validated['kind'],
+                'key' => $validated['key'],
+                'month' => $validated['month'],
+            ],
+            [
+                ...array_filter($validated, fn ($value) => $value !== null),
+                'unit' => $validated['unit'] ?? PlanLine::PAX,
+                'created_by_id' => $request->user()?->id,
+            ],
+        );
+
+        // Planul pornește din anul de bază, deci se reașază pe loc — fără să
+        // calce peste ce s-a scris de mână pe pârghiile lui.
+        $this->builder->seed($plan);
+
+        return back();
+    }
+
+    /** Înapoi la estimarea automată pentru luna aia. */
+    public function resetBase(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'key' => ['required', 'string', 'max:255'],
+            'month' => ['nullable', 'integer', 'between:1,12'],
+        ]);
+
+        BaseEstimate::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $plan->base_year)
+            ->where('kind', $validated['kind'])
+            ->where('key', $validated['key'])
+            ->when(isset($validated['month']), fn ($query) => $query->where('month', $validated['month']))
+            ->delete();
+
+        $this->builder->seed($plan);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'Estimarea pentru %d s-a întors la cifrele socotite singure.', $plan->base_year,
+        )]);
+
+        return back();
     }
 
     /**

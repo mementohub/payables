@@ -22,7 +22,7 @@ use Illuminate\Support\Collection;
  */
 class PlanEngine
 {
-    public function __construct(private PnlReportService $pnl) {}
+    public function __construct(private PnlReportService $pnl, private PlanBuilder $builder) {}
 
     /**
      * @return array<string, mixed>
@@ -180,6 +180,9 @@ class PlanEngine
             'base' => [
                 'year' => $plan->base_year,
                 'built' => $actual !== null,
+                // Lunile din anul de bază care n-au venit încă și intră în
+                // coloană ca estimare, nu ca realizat.
+                'estimated' => $actual['estimated'] ?? [],
                 ...($actual['totals'] ?? []),
             ],
         ];
@@ -627,7 +630,7 @@ class PlanEngine
      * @param  array<string, mixed>  $slice
      * @return array<string, array<string, array<string, float>>>
      */
-    private function baseColumns(array $slice): array
+    private function baseColumns(array $slice, array $overlay = ['products' => []], array $open = []): array
     {
         $out = [];
 
@@ -637,6 +640,22 @@ class PlanEngine
             foreach (($slice['revenue'][$field] ?? []) as $key => $money) {
                 $rows['revenue'][(string) $key] = (float) $money['net'];
                 $rows['margin'][(string) $key] = (float) $money['margin'];
+            }
+
+            // Lunile estimate ale anului de bază intră și ele pe coloane: pe
+            // categorie se știe din ce categorie vin, pe canal se împart cum
+            // s-a vândut categoria aia.
+            if ($axis === 'product') {
+                foreach ($overlay['products'] ?? [] as $key => $months) {
+                    foreach ($months as $month => $cell) {
+                        if (! in_array((int) $month, $open, true)) {
+                            continue;
+                        }
+
+                        $rows['revenue'][(string) $key] = ($rows['revenue'][(string) $key] ?? 0) + $cell['net'];
+                        $rows['margin'][(string) $key] = ($rows['margin'][(string) $key] ?? 0) + $cell['margin'];
+                    }
+                }
             }
 
             foreach (($slice['lines'] ?? []) as $line) {
@@ -666,6 +685,42 @@ class PlanEngine
                 fn (array $cells) => array_map(fn (float $value) => round($value, 2), $cells),
                 $rows,
             );
+        }
+
+        return $out;
+    }
+
+    /**
+     * Cât adună lunile estimate ale anului de bază.
+     *
+     * @param  array<string, mixed>  $overlay
+     * @param  list<int>  $open
+     * @return array{net: float, margin: float, opex: float, lines: array<string, float>, below: array<string, float>}
+     */
+    private function overlay(array $overlay, array $open): array
+    {
+        $out = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'lines' => [], 'below' => []];
+
+        foreach ($open as $month) {
+            $out['net'] += (float) ($overlay['revenue'][$month] ?? 0);
+            $out['margin'] += (float) ($overlay['margin'][$month] ?? 0);
+        }
+
+        foreach ($overlay['lines'] ?? [] as $saf => $months) {
+            foreach ($months as $month => $amount) {
+                if (in_array((int) $month, $open, true)) {
+                    $out['lines'][$saf] = ($out['lines'][$saf] ?? 0) + (float) $amount;
+                    $out['opex'] += (float) $amount;
+                }
+            }
+        }
+
+        foreach ($overlay['below'] ?? [] as $bucket => $months) {
+            foreach ($months as $month => $amount) {
+                if (in_array((int) $month, $open, true)) {
+                    $out['below'][$bucket] = ($out['below'][$bucket] ?? 0) + (float) $amount;
+                }
+            }
         }
 
         return $out;
@@ -709,16 +764,25 @@ class PlanEngine
             return null;
         }
 
-        $slice = $this->pnl->slice($report, $wanted, $period, $basis, $mode);
-        $margin = (float) $slice['revenue']['total']['margin'];
-        $opex = (float) $slice['totals']['total'];
+        // Anul de bază se citește pe lunile pe care le-a trăit; cele care
+        // n-au venit încă vin din estimare, ca să nu se pună nouă luni
+        // lângă douăsprezece și să iasă o creștere închipuită.
+        $overlay = $this->builder->openOverlay($plan);
+        $lived = array_values(array_diff($wanted, $overlay['months']));
+        $open = array_values(array_intersect($wanted, $overlay['months']));
+
+        $slice = $this->pnl->slice($report, $lived, $period, $basis, $mode);
+        $extra = $this->overlay($overlay, $open);
+
+        $margin = (float) $slice['revenue']['total']['margin'] + $extra['margin'];
+        $opex = (float) $slice['totals']['total'] + $extra['opex'];
         $below = array_map(
-            fn (string $bucket) => (float) ($slice['below'][$bucket]['total'] ?? 0),
+            fn (string $bucket) => (float) ($slice['below'][$bucket]['total'] ?? 0) + (float) ($extra['below'][$bucket] ?? 0),
             array_combine(['amortizare', 'financiar', 'impozit'], ['amortizare', 'financiar', 'impozit']),
         );
 
         $rows = [
-            'revenue' => (float) $slice['revenue']['total']['net'],
+            'revenue' => (float) $slice['revenue']['total']['net'] + $extra['net'],
             'margin' => $margin,
             'costs' => $opex,
             'ebitda' => $margin - $opex,
@@ -732,6 +796,12 @@ class PlanEngine
         foreach (($slice['lines'] ?? []) as $line) {
             $rows['line:'.$line['saf']] = (float) $line['total'];
             $rows['group:'.$line['group']] = ($rows['group:'.$line['group']] ?? 0) + (float) $line['total'];
+        }
+
+        foreach ($extra['lines'] as $saf => $amount) {
+            $group = $overlay['groups'][$saf] ?? 'Alte cheltuieli';
+            $rows['line:'.$saf] = ($rows['line:'.$saf] ?? 0) + $amount;
+            $rows['group:'.$group] = ($rows['group:'.$group] ?? 0) + $amount;
         }
 
         // Și cheia după care raportul a împărțit anul de bază pe coloane: o
@@ -753,7 +823,8 @@ class PlanEngine
 
         return [
             'shares' => $shares,
-            'columns' => $this->baseColumns($slice),
+            'columns' => $this->baseColumns($slice, $overlay, $open),
+            'estimated' => $open,
             'totals' => [
                 'net' => round($rows['revenue'], 2),
                 'margin' => round($margin, 2),

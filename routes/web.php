@@ -220,6 +220,9 @@ Route::middleware('auth')->group(function () {
         Route::put('reports/forecast/{plan}/bulk', [ForecastController::class, 'bulk'])->name('reports.forecast.bulk');
         Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
         Route::get('reports/forecast/{plan}/export', [ForecastController::class, 'export'])->name('reports.forecast.export');
+        // Lunile pe care anul de bază nu le-a trăit încă, scrise de mână.
+        Route::put('reports/forecast/{plan}/base', [ForecastController::class, 'updateBase'])->name('reports.forecast.base.update');
+        Route::put('reports/forecast/{plan}/base/reset', [ForecastController::class, 'resetBase'])->name('reports.forecast.base.reset');
         // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.
         Route::post('reports/forecast/{plan}/versions', [ForecastController::class, 'storeVersion'])->name('reports.forecast.versions.store');
         Route::post('reports/forecast/{plan}/versions/{version}/restore', [ForecastController::class, 'restoreVersion'])->name('reports.forecast.versions.restore');

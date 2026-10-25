@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\BaseEstimate;
 use App\Models\Company;
 use App\Models\ForecastHistory;
 use App\Models\Lease;
@@ -327,11 +328,16 @@ test('the months the base year has not lived yet are estimated, not left empty',
 
     $lines = PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'category')->get()->keyBy('month');
 
-    // Decembrie n-a existat în 2026: se ia din 2025, crescut cu cât a crescut
-    // anul (220.000 / 200.000 = 1,1).
+    // Două drumuri, nu unul: întâi decembrie 2026, care n-a existat, se ia
+    // din 2025 crescut cu cât a crescut anul (220.000 / 200.000 = 1,1) —
+    // adică 50 × 1,1 = 55. Apoi planul lui 2027 pleacă din 2026 cu trendul
+    // ultimilor ani, tot 1,1: 55 × 1,1 = 60,5.
     expect($lines)->toHaveCount(2)
-        ->and($lines[12]->volume)->toEqual(55.0)
-        ->and($lines[12]->note)->toContain('estimat din 2025');
+        ->and($lines[12]->volume)->toEqual(60.5)
+        ->and($lines[1]->volume)->toEqual(121.0)
+        ->and($lines[12]->note)->toContain('estimată din 2025')
+        ->and($lines[12]->note)->toContain('trendul ultimilor 2 ani')
+        ->and($lines[1]->note)->toContain('Pornit din 2026');
 });
 
 test('operational keeps the booking month, financial moves the money to the month of departure', function () {
@@ -534,4 +540,114 @@ test('the period is chosen like on the P&L: one month and the way it is read', f
     // Trimestrele, care nu mai au de unde fi alese, nu mai sunt primite.
     $this->actingAs($this->boss)->get('/reports/forecast?period=q1')
         ->assertInertia(fn (Inertia $page) => $page->where('filters.period', 'ytd12'));
+});
+
+test('the default start is the base year carried forward by the trend of three years', function () {
+    fakeForecastHistory([
+        // Volumul crește cu 10% pe an, banii pe pasager cu 5%.
+        ['year' => 2024, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 100, 'net' => 100_000, 'margin' => 10_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 110, 'net' => 115_500, 'margin' => 11_550],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 121, 'net' => 133_402, 'margin' => 13_340],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $line = PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CATEGORY)->sole();
+
+    // Volumul: 121 × 1,1 = 133,1. Venitul pe pasager: 1.102,5 × 1,05 = 1.157,6.
+    expect($line->volume)->toEqual(133.1)
+        ->and(round((float) $line->unit_net))->toEqual(1158.0)
+        ->and($line->note)->toContain('trendul ultimilor 3 ani')
+        ->and($line->note)->toContain('+10,0%');
+});
+
+test('the trend compares only the months the base year has lived', function () {
+    fakeForecastHistory([
+        // 2025 are tot anul, 2026 doar lunile trăite. Fără tăiere, anul de
+        // bază ar părea pe jumătate și trendul ar ieși în scădere.
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 100_000, 'margin' => 10_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 11, 'volume' => 900, 'net' => 900_000, 'margin' => 90_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 100_000, 'margin' => 10_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // Ianuarie: la fel ca în 2026, fiindcă ianuarie e la fel ca în 2025.
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('month', 1)->sole()->volume)->toEqual(100.0);
+});
+
+test('the months the base year has not lived can be written by hand, and the plan moves under them', function () {
+    fakeForecastHistory([
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 11, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // Noiembrie pornește din 2025, socotit de aplicație.
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('month', 11)->sole()->volume)->toEqual(100.0);
+
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/base', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Cazare', 'month' => 11,
+        'volume' => 250, 'unit_net' => 4_000, 'unit_margin' => 400,
+    ])->assertRedirect();
+
+    expect(BaseEstimate::query()->sole())
+        ->volume->toEqual(250.0)
+        ->year->toEqual(2026);
+
+    // Planul s-a reașezat singur: noiembrie 2027 pleacă din noiembrie 2026.
+    $november = PlanLine::query()->where('plan_id', $plan->id)->where('month', 11)->sole();
+
+    expect($november->volume)->toEqual(250.0)
+        ->and($november->unit_net)->toEqual(4_000.0)
+        ->and($november->note)->toContain('scrisă de mână');
+
+    // Și se poate da înapoi la socoteala aplicației.
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/base/reset', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Cazare',
+    ])->assertRedirect();
+
+    expect(BaseEstimate::query()->count())->toBe(0)
+        ->and(PlanLine::query()->where('plan_id', $plan->id)->where('month', 11)->sole()->volume)->toEqual(100.0);
+});
+
+test('a month the base year has already lived cannot be written by hand', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // Ianuarie e trecut: cifra lui e din ERP, nu se scrie peste ea.
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/base', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Cazare', 'month' => 1, 'volume' => 999,
+    ])->assertSessionHasErrors('month');
+});
+
+test('the base year column counts the months that have not come yet, so the two years are the same length', function () {
+    fakeForecastHistory([
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 12, 'volume' => 100, 'net' => 500_000, 'margin' => 50_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 500_000, 'margin' => 50_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/base', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Cazare', 'month' => 12,
+        'volume' => 200, 'unit_net' => 5_000, 'unit_margin' => 500,
+    ])->assertRedirect();
+
+    $overlay = app(PlanBuilder::class)->openOverlay($plan->fresh());
+
+    // Decembrie 2026, scris de mână: 200 × 5.000 = 1.000.000.
+    expect($overlay['months'])->toContain(12)
+        ->and($overlay['revenue'][12])->toEqual(1_000_000.0)
+        ->and($overlay['products']['Cazare'][12]['net'])->toEqual(1_000_000.0);
 });

@@ -5,6 +5,7 @@ namespace App\Services\Exports;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Models\PlanVersion;
+use App\Services\Forecast\PlanBuilder;
 use App\Services\Reports\PnlReportService;
 use Illuminate\Support\Str;
 
@@ -147,9 +148,9 @@ class PlanExport
             'title' => 'Contul de profit și pierdere planificat',
             'columns' => [
                 ['label' => 'Linie', 'width' => 54],
-                ['label' => (string) $plan->base_year, 'width' => 16, 'align' => 'right'],
-                ['label' => 'Plan '.$plan->year, 'width' => 16, 'align' => 'right'],
-                ['label' => 'Δ', 'width' => 10, 'align' => 'right'],
+                ['label' => $plan->base_year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Plan '.$plan->year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Δ (%)', 'width' => 10, 'align' => 'right'],
             ],
             'rows' => $rows,
             'note' => sprintf(
@@ -222,13 +223,13 @@ class PlanExport
             'title' => $title,
             'columns' => [
                 ['label' => $axis === 'product' ? 'Categorie de produs' : 'Canal de vânzare', 'width' => 34],
-                ['label' => 'Pax / servicii', 'width' => 14, 'align' => 'right'],
-                ['label' => 'Venit '.$plan->base_year, 'width' => 16, 'align' => 'right'],
-                ['label' => 'Venit '.$plan->year, 'width' => 16, 'align' => 'right'],
-                ['label' => 'Δ', 'width' => 10, 'align' => 'right'],
-                ['label' => 'Marjă '.$plan->year, 'width' => 16, 'align' => 'right'],
-                ['label' => '% marjă', 'width' => 10, 'align' => 'right'],
-                ['label' => 'Profit net', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Pax / servicii (nr.)', 'width' => 14, 'align' => 'right'],
+                ['label' => 'Venit '.$plan->base_year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Venit '.$plan->year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Δ (%)', 'width' => 10, 'align' => 'right'],
+                ['label' => 'Marjă '.$plan->year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Marjă (% din venit)', 'width' => 10, 'align' => 'right'],
+                ['label' => 'Profit net (lei)', 'width' => 16, 'align' => 'right'],
             ],
             'rows' => $rows,
             'note' => $axis === 'product'
@@ -267,16 +268,16 @@ class PlanExport
             'title' => 'Charter · cursele contractate',
             'columns' => [
                 ['label' => 'Cursă', 'width' => 22],
-                ['label' => 'Locuri', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Ocupare', 'width' => 10, 'align' => 'right'],
-                ['label' => 'Pasageri', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Venit/pax', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Cost/loc', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Prag', 'width' => 10, 'align' => 'right'],
-                ['label' => 'Venit', 'width' => 16, 'align' => 'right'],
-                ['label' => 'Marjă', 'width' => 14, 'align' => 'right'],
-                ['label' => 'Locuri goale', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Cost locuri goale', 'width' => 14, 'align' => 'right'],
+                ['label' => 'Locuri (nr.)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Ocupare (%)', 'width' => 10, 'align' => 'right'],
+                ['label' => 'Pasageri (nr.)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Venit/pax (lei)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Cost/loc (lei)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Prag (%)', 'width' => 10, 'align' => 'right'],
+                ['label' => 'Venit (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Marjă (lei)', 'width' => 14, 'align' => 'right'],
+                ['label' => 'Locuri goale (nr.)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Cost locuri goale (lei)', 'width' => 14, 'align' => 'right'],
             ],
             'rows' => $rows,
             'note' => 'Locurile sunt cele contractate în eTrip pentru anul plănuit; costul de loc e cel al cursei, din eTrip. Pragul e gradul de ocupare de la care cursa își acoperă zborul: cost pe loc împărțit la venitul pe pasager.',
@@ -315,11 +316,11 @@ class PlanExport
             'columns' => [
                 ['label' => 'Categorie', 'width' => 30],
                 ['label' => 'Se numără în', 'width' => 14],
-                ['label' => 'Volum', 'width' => 12, 'align' => 'right'],
-                ['label' => 'Venit/unitate', 'width' => 14, 'align' => 'right'],
-                ['label' => 'Marjă/unitate', 'width' => 14, 'align' => 'right'],
-                ['label' => 'Venit', 'width' => 16, 'align' => 'right'],
-                ['label' => 'Marjă', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Volum (nr.)', 'width' => 12, 'align' => 'right'],
+                ['label' => 'Venit/unitate (lei)', 'width' => 14, 'align' => 'right'],
+                ['label' => 'Marjă/unitate (lei)', 'width' => 14, 'align' => 'right'],
+                ['label' => 'Venit (lei)', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Marjă (lei)', 'width' => 16, 'align' => 'right'],
                 ['label' => 'Scris de mână', 'width' => 12],
             ],
             'rows' => $rows,
@@ -362,7 +363,7 @@ class PlanExport
             'title' => 'Cheltuieli planificate',
             'columns' => [
                 ['label' => 'Linie', 'width' => 44],
-                ['label' => 'Sumă', 'width' => 16, 'align' => 'right'],
+                ['label' => 'Sumă (lei)', 'width' => 16, 'align' => 'right'],
                 ['label' => '% din venit', 'width' => 12, 'align' => 'right'],
                 ['label' => 'Scris de mână', 'width' => 12],
             ],
@@ -389,9 +390,18 @@ class PlanExport
             $out[] = $plan->note;
         }
 
+        $out[] = 'Toate sumele sunt în lei. Ce s-a vândut în altă monedă e adus la lei cu cursul zilei rezervării. Volumele sunt număr de pasageri, de servicii facturate sau de locuri de avion, iar gradul de ocupare și pragul sunt procente.';
+
         $out[] = sprintf(
             'Planul pornește din %d, din P&L-ul construit al aplicației — aceleași cifre ca raportul, nu altele asemănătoare.',
             $plan->base_year,
+        );
+
+        $out[] = sprintf(
+            'Pornirea implicită nu e „cât a fost anul trecut”: fiecare pârghie pleacă din %d și se duce mai departe cu creșterea medie a ultimilor %d ani, cântărită spre anii de curând (%s). Gradul de ocupare al curselor e media cântărită a acelorași ani, fiindcă un procent nu se duce mai departe cu un trend. Nota fiecărei luni spune de unde vine cifra ei.',
+            $plan->base_year,
+            PlanBuilder::YEARS,
+            implode(', ', array_map(fn (float $weight) => rtrim(rtrim(number_format($weight, 0), '0'), '.'), PlanBuilder::WEIGHTS)),
         );
 
         $out[] = $output['mode'] === PnlReportService::MODE_FINANCIAL
@@ -430,6 +440,17 @@ class PlanExport
                     $manual++;
                 }
             }
+        }
+
+        $open = PlanBuilder::openMonths($plan->base_year);
+
+        if ($open !== []) {
+            $out[] = sprintf(
+                'Anul de bază %d n-a trăit încă lunile %s: și în coloana lui, și în pornirea planului, ele sunt estimate — scrise de mână pe fila „Configurare”, dacă s-au scris, altfel socotite din %d crescut cu cât a crescut anul. Fără ele s-ar pune nouă luni lângă douăsprezece și orice creștere ar părea mai mare decât e.',
+                $plan->base_year,
+                implode(', ', array_map(fn (int $month) => self::MONTHS[$month] ?? $month, $open)),
+                $plan->base_year - 1,
+            );
         }
 
         if ($estimated > 0) {
@@ -535,13 +556,13 @@ class PlanExport
         return [
             [
                 'name' => 'P&L plan',
-                'headers' => ['Linie', (string) $plan->base_year, 'Plan '.$plan->year, 'Δ', ...array_values(self::MONTHS)],
+                'headers' => ['Linie', $plan->base_year.' (lei)', 'Plan '.$plan->year.' (lei)', 'Δ (%)', ...array_map(fn (string $month) => $month.' (lei)', array_values(self::MONTHS))],
                 'widths' => [46, 15, 15, 9, ...array_fill(0, 12, 13)],
                 'rows' => $statement,
             ],
             [
                 'name' => 'Pe luni',
-                'headers' => ['Luna', 'Venit net', 'Marjă brută', 'Cheltuieli', 'EBITDA', 'Profit net', 'Pasageri', 'Servicii', 'Locuri'],
+                'headers' => ['Luna', 'Venit net (lei)', 'Marjă brută (lei)', 'Cheltuieli (lei)', 'EBITDA (lei)', 'Profit net (lei)', 'Pasageri (nr.)', 'Servicii (nr.)', 'Locuri (nr.)'],
                 'widths' => [10, 16, 16, 16, 16, 16, 12, 12, 12],
                 'rows' => array_map(fn (int $month) => [
                     self::MONTHS[$month],
@@ -562,7 +583,7 @@ class PlanExport
             ],
             [
                 'name' => 'Pe categorii',
-                'headers' => ['Categorie de produs', 'Pax / servicii', 'Venit '.$plan->base_year, 'Venit '.$plan->year, 'Δ', 'Marjă', '% marjă', 'Profit net'],
+                'headers' => ['Categorie de produs', 'Pax / servicii (nr.)', 'Venit '.$plan->base_year.' (lei)', 'Venit '.$plan->year.' (lei)', 'Δ (%)', 'Marjă (lei)', 'Marjă (% din venit)', 'Profit net (lei)'],
                 'widths' => [32, 14, 16, 16, 10, 16, 10, 16],
                 'rows' => array_map(fn (array $row) => $row['cells'], $deck['sections'][1]['rows']),
                 'chart' => [
@@ -573,7 +594,7 @@ class PlanExport
             ],
             [
                 'name' => 'Pe canale',
-                'headers' => ['Canal de vânzare', 'Pax / servicii', 'Venit '.$plan->base_year, 'Venit '.$plan->year, 'Δ', 'Marjă', '% marjă', 'Profit net'],
+                'headers' => ['Canal de vânzare', 'Pax / servicii (nr.)', 'Venit '.$plan->base_year.' (lei)', 'Venit '.$plan->year.' (lei)', 'Δ (%)', 'Marjă (lei)', 'Marjă (% din venit)', 'Profit net (lei)'],
                 'widths' => [32, 14, 16, 16, 10, 16, 10, 16],
                 'rows' => array_map(fn (array $row) => $row['cells'], $deck['sections'][2]['rows']),
                 'chart' => [
@@ -584,7 +605,7 @@ class PlanExport
             ],
             [
                 'name' => 'Charter pe an',
-                'headers' => ['Cursă', 'Locuri', 'Ocupare', 'Pasageri', 'Venit/pax', 'Cost/loc', 'Prag', 'Venit', 'Marjă', 'Locuri goale', 'Cost locuri goale'],
+                'headers' => ['Cursă', 'Locuri (nr.)', 'Ocupare (%)', 'Pasageri (nr.)', 'Venit/pax (lei)', 'Cost/loc (lei)', 'Prag (%)', 'Venit (lei)', 'Marjă (lei)', 'Locuri goale (nr.)', 'Cost locuri goale (lei)'],
                 'widths' => [20, 12, 10, 12, 12, 12, 10, 16, 14, 12, 15],
                 'rows' => array_map(fn (array $row) => $row['cells'], $deck['sections'][3]['rows']),
                 'chart' => [
@@ -595,19 +616,19 @@ class PlanExport
             ],
             [
                 'name' => 'Charter pe luni',
-                'headers' => ['Cursă', 'Luna', 'Locuri', 'Grad de ocupare', 'Pasageri', 'Venit/pax', 'Cost/loc', 'Prag', 'Venit', 'Marjă', 'Locuri goale', 'Cost locuri goale', 'Scris de mână'],
+                'headers' => ['Cursă', 'Luna', 'Locuri (nr.)', 'Grad de ocupare (0–1)', 'Pasageri (nr.)', 'Venit/pax (lei)', 'Cost/loc (lei)', 'Prag (0–1)', 'Venit (lei)', 'Marjă (lei)', 'Locuri goale (nr.)', 'Cost locuri goale (lei)', 'Scris de mână'],
                 'widths' => [20, 8, 10, 14, 11, 11, 11, 9, 15, 14, 12, 15, 12],
                 'rows' => $charterMonths,
             ],
             [
                 'name' => 'Categorii pe luni',
-                'headers' => ['Categorie', 'Luna', 'Se numără în', 'Volum', 'Venit/unitate', 'Marjă/unitate', 'Venit', 'Marjă', 'Scris de mână', 'Notă'],
+                'headers' => ['Categorie', 'Luna', 'Se numără în', 'Volum (nr.)', 'Venit/unitate (lei)', 'Marjă/unitate (lei)', 'Venit (lei)', 'Marjă (lei)', 'Scris de mână', 'De unde vine cifra'],
                 'widths' => [30, 8, 13, 12, 13, 13, 15, 15, 12, 40],
                 'rows' => $categories,
             ],
             [
                 'name' => 'Cheltuieli pe luni',
-                'headers' => ['Linie', ...array_values(self::MONTHS), 'Total', 'Scris de mână'],
+                'headers' => ['Linie', ...array_map(fn (string $month) => $month.' (lei)', array_values(self::MONTHS)), 'Total (lei)', 'Scris de mână'],
                 'widths' => [44, ...array_fill(0, 12, 12), 15, 12],
                 'rows' => $opexMonths,
             ],
