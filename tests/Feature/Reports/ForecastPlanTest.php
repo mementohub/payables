@@ -862,3 +862,39 @@ test('a route that has never flown can be written into the plan by hand', functi
         'kind' => PlanLine::CHARTER, 'key' => 'OTP→RAK', 'months' => [6],
     ])->assertStatus(422);
 });
+
+test('a charter seat carries passengers of several categories, and the plan counts each of them once', function () {
+    fakeForecastHistory([
+        // Pe cursă zboară 160 de oameni cu 700.000 de lei: 560.000 sunt ai
+        // categoriei Charter, 140.000 ai unui Senior Voyage care pleacă pe
+        // aceleași locuri.
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7,
+            'capacity' => 200, 'sold' => 160, 'volume' => 160, 'net' => 700_000, 'margin' => 70_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Charter', 'month' => 7,
+            'volume' => 130, 'net' => 560_000, 'margin' => 56_000,
+            'charter_volume' => 130, 'charter_net' => 560_000, 'charter_margin' => 56_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Senior Voyage', 'month' => 7,
+            'volume' => 30, 'net' => 140_000, 'margin' => 14_000,
+            'charter_volume' => 30, 'charter_net' => 140_000, 'charter_margin' => 14_000],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 200, 'sold' => 0, 'volume' => 0],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $route = PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CHARTER)->sole();
+    $senior = PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CATEGORY)->sole();
+
+    // Cursa duce toți cei 160 de pasageri, dar poartă în plan numai banii
+    // citiți pe categoria Charter: 560.000 din 700.000, adică 80%.
+    expect($route->pax())->toEqual(160.0)
+        ->and($route->unit_net)->toEqual(round(700_000 / 160 * 0.8, 2))
+        ->and($route->net())->toEqual(560_000.0)
+        // Costul rămâne al locului întreg: avionul se plătește cu tot cu ei.
+        ->and($route->note)->toContain('numai 80,0% din banii locului')
+        // Senior Voyage rămâne întreg la categoria lui.
+        ->and($senior->key)->toBe('Senior Voyage')
+        ->and(round($senior->net()))->toEqual(140_000.0)
+        // Împreună: exact cât a fost, nu de două ori.
+        ->and(round($route->net() + $senior->net()))->toEqual(700_000.0);
+});

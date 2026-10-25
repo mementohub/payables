@@ -17,6 +17,9 @@ class ForecastHistory extends Model
     {
         return [
             'volume' => 'float',
+            'charter_volume' => 'float',
+            'charter_net' => 'float',
+            'charter_margin' => 'float',
             'capacity' => 'float',
             'sold' => 'float',
             'cost' => 'float',

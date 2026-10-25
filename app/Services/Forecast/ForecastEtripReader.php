@@ -99,7 +99,7 @@ class ForecastEtripReader
     /**
      * Pe categorie și lună: rezervări, pax, venit net și marjă.
      *
-     * @return list<array{product: string, month: int, bookings: int, pax: int, net: float, margin: float}>
+     * @return list<array{product: string, month: int, bookings: int, pax: int, net: float, margin: float, charter_pax: int, charter_net: float, charter_margin: float}>
      */
     public function byProduct(int $year, ?string $connection = null): array
     {
@@ -140,17 +140,30 @@ class ForecastEtripReader
                 JOIN sel s ON s.id = bi.booking
                 WHERE bi.client_status = 'confirmed'
                 GROUP BY bi.booking
+            ),
+            -- Dosarele care stau pe un loc de charter. Ele se plănuiesc pe
+            -- cursă, nu pe categorie: dacă s-ar număra în amândouă, venitul
+            -- lor ar intra de două ori în plan.
+            alloc AS (
+                SELECT DISTINCT bi.booking
+                FROM bookings.items bi
+                JOIN sel s ON s.id = bi.booking
+                WHERE bi.uses_allocation AND bi.supplier_status = 'confirmed'
             )
             SELECT COALESCE(t.product, '- -') AS product,
                    s.month,
                    count(*) AS bookings,
                    COALESCE(sum(px.pax), 0)::int AS pax,
                    COALESCE(sum(v.net), 0)::numeric(20,2) AS net,
-                   COALESCE(sum(v.margin), 0)::numeric(20,2) AS margin
+                   COALESCE(sum(v.margin), 0)::numeric(20,2) AS margin,
+                   COALESCE(sum(px.pax) FILTER (WHERE a.booking IS NOT NULL), 0)::int AS charter_pax,
+                   COALESCE(sum(v.net) FILTER (WHERE a.booking IS NOT NULL), 0)::numeric(20,2) AS charter_net,
+                   COALESCE(sum(v.margin) FILTER (WHERE a.booking IS NOT NULL), 0)::numeric(20,2) AS charter_margin
             FROM sel s
             LEFT JOIN typed t ON t.booking = s.id
             LEFT JOIN val v ON v.booking = s.id
             LEFT JOIN px ON px.booking = s.id
+            LEFT JOIN alloc a ON a.booking = s.id
             GROUP BY 1, 2
             SQL;
 
@@ -171,6 +184,11 @@ class ForecastEtripReader
             'pax' => (int) $row->pax,
             'net' => round((float) $row->net, 2),
             'margin' => round((float) $row->margin, 2),
+            // Cât din ele stă pe locuri de charter, deci se plănuiește pe
+            // cursă, nu pe categorie.
+            'charter_pax' => (int) $row->charter_pax,
+            'charter_net' => round((float) $row->charter_net, 2),
+            'charter_margin' => round((float) $row->charter_margin, 2),
         ], $rows);
     }
 }

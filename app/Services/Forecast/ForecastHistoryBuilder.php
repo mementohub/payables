@@ -145,6 +145,11 @@ class ForecastHistoryBuilder
                 'net' => $row['net'],
                 'margin' => $row['margin'],
                 'cost' => 0.0,
+                // Partea care zboară pe locuri de charter: planul o scade
+                // din categorie, fiindcă o duce cursa.
+                'charter_volume' => $row['charter_pax'],
+                'charter_net' => $row['charter_net'],
+                'charter_margin' => $row['charter_margin'],
             ];
         }
 
@@ -241,6 +246,9 @@ class ForecastHistoryBuilder
                     'capacity' => null,
                     'sold' => null,
                     'cost' => 0,
+                    'charter_volume' => 0,
+                    'charter_net' => 0,
+                    'charter_margin' => 0,
                     'channel' => null,
                     'created_at' => now(),
                     'updated_at' => now(),

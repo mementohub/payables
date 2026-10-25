@@ -83,7 +83,15 @@ class PlanBuilder
         $pace = $this->trend($plan, PlanLine::CATEGORY);
 
         foreach ($base as $row) {
-            if ($row->key === self::CHARTER_CATEGORY || $row->volume <= 0) {
+            if ($row->key === self::CHARTER_CATEGORY) {
+                continue;
+            }
+
+            $volume = (float) $row->volume;
+            $net = (float) $row->net;
+            $margin = (float) $row->margin;
+
+            if ($volume <= 0) {
                 continue;
             }
 
@@ -98,9 +106,9 @@ class PlanBuilder
                 'month' => $row->month,
                 // Scris de mână pe anul de bază înseamnă scris: nu se mai
                 // umflă cu niciun trend.
-                'volume' => round($row->volume * ($byHand ? 1 : $step['volume']), 2),
-                'unit_net' => round($row->net / $row->volume * ($byHand ? 1 : $step['net']), 2),
-                'unit_margin' => round($row->margin / $row->volume * ($byHand ? 1 : $step['margin']), 2),
+                'volume' => round($volume * ($byHand ? 1 : $step['volume']), 2),
+                'unit_net' => round($net / $volume * ($byHand ? 1 : $step['net']), 2),
+                'unit_margin' => round($margin / $volume * ($byHand ? 1 : $step['margin']), 2),
                 'note' => $this->origin($plan, $row, $step),
             ];
         }
@@ -187,6 +195,7 @@ class PlanBuilder
             ->whereIn('month', $lived)
             ->get() as $row) {
             $cell = $totals[$row->key][$row->year] ?? ['volume' => 0.0, 'net' => 0.0, 'margin' => 0.0];
+
             $cell['volume'] += (float) $row->volume;
             $cell['net'] += (float) $row->net;
             $cell['margin'] += (float) $row->margin;
@@ -298,6 +307,14 @@ class PlanBuilder
         $loads = $this->loads($plan);
         $pace = $this->trend($plan, PlanLine::CATEGORY)[self::CHARTER_CATEGORY] ?? self::FLAT;
 
+        // Pe un loc de charter nu zboară numai pasageri de „Charter”: pleacă
+        // și Senior Voyage, și Circuite Culturale, și Exotice — fiecare
+        // citit pe categoria lui în P&L. Cursa duce oamenii toți, dar în
+        // plan poartă numai banii care se citesc pe categoria Charter;
+        // restul stau la categoriile lor, plănuite separat. Altfel venitul
+        // aceluiași dosar ar intra de două ori.
+        $cut = $this->charterShare($plan, $base);
+
         $rows = [];
 
         foreach (($contracted ? $planned : $base) as $row) {
@@ -313,7 +330,8 @@ class PlanBuilder
                 : ($loads[$row->key] ?? $average);
 
             $pax = (float) $theirs->sum('volume');
-            $step = $hand ? 1.0 : $pace['net'];
+            $step = ($hand ? 1.0 : $pace['net']) * $cut['net'];
+            $marginStep = ($hand ? 1.0 : $pace['net']) * $cut['margin'];
 
             $rows[] = [
                 'kind' => PlanLine::CHARTER,
@@ -324,11 +342,13 @@ class PlanBuilder
                 'capacity' => $row->capacity,
                 'load' => round(min(1.0, $load), 4),
                 'unit_net' => $pax > 0 ? round((float) $theirs->sum('net') / $pax * $step, 2) : round($money['net'] * $step, 2),
-                'unit_margin' => $pax > 0 ? round((float) $theirs->sum('margin') / $pax * $step, 2) : round($money['margin'] * $step, 2),
+                'unit_margin' => $pax > 0 ? round((float) $theirs->sum('margin') / $pax * $marginStep, 2) : round($money['margin'] * $marginStep, 2),
                 // Cât plătim avionului pentru un loc: din el ies pragul și
                 // costul locurilor goale.
-                'unit_cost' => $pax > 0 ? round((float) $theirs->sum('cost') / $pax * $step, 2) : round($money['cost'] * $step, 2),
-                'note' => $this->charterNote($plan, $contracted, $hand, $loads[$row->key] ?? null, $pace),
+                // Costul rămâne al locului întreg: avionul se plătește cu
+                // tot cu pasagerii care se citesc la alte categorii.
+                'unit_cost' => $pax > 0 ? round((float) $theirs->sum('cost') / $pax, 2) : $money['cost'],
+                'note' => $this->charterNote($plan, $contracted, $hand, $loads[$row->key] ?? null, $pace, $cut['net']),
             ];
         }
 
@@ -338,7 +358,7 @@ class PlanBuilder
     /**
      * @param  array{volume: float, net: float, margin: float, years: int}  $pace
      */
-    private function charterNote(Plan $plan, bool $contracted, bool $hand, ?float $load, array $pace): string
+    private function charterNote(Plan $plan, bool $contracted, bool $hand, ?float $load, array $pace, float $cut): string
     {
         $pieces = [$contracted
             ? sprintf('Locuri contractate în eTrip pentru %d (nu o presupunere).', $plan->year)
@@ -356,7 +376,49 @@ class PlanBuilder
             $pieces[] = sprintf('Banii pe pasager duși mai departe cu trendul categoriei Charter: %s.', $this->percent($pace['net']));
         }
 
+        if ($cut < 0.999) {
+            $pieces[] = sprintf(
+                'Pe locurile cursei zboară și pasageri de Senior Voyage, Circuite și alte categorii: cursa poartă în plan numai %s din banii locului — partea citită pe categoria Charter — restul stă la categoriile lor.',
+                number_format($cut * 100, 1, ',', '.').'%',
+            );
+        }
+
         return implode(' ', $pieces);
+    }
+
+    /**
+     * Cât din banii unui loc de charter se citesc pe categoria „Charter”.
+     *
+     * Restul sunt ai categoriilor care zboară pe aceleași locuri — Senior
+     * Voyage, Circuite Culturale, Circuite Exotice — și care se plănuiesc pe
+     * rândurile lor. Proporția se ia din anul de bază și ține totalul
+     * planului egal cu suma categoriilor, ca în P&L.
+     *
+     * @param  Collection<int, object>  $base  cursele anului de bază
+     * @return array{net: float, margin: float}
+     */
+    private function charterShare(Plan $plan, Collection $base): array
+    {
+        $routes = (float) $base->sum('net');
+        $routeMargin = (float) $base->sum('margin');
+
+        $charter = ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $plan->base_year)
+            ->where('kind', PlanLine::CATEGORY)
+            ->where('key', self::CHARTER_CATEGORY)
+            ->get();
+
+        if ($routes <= 0 || $charter->isEmpty()) {
+            return ['net' => 1.0, 'margin' => 1.0];
+        }
+
+        return [
+            'net' => max(0.1, min(1.0, (float) $charter->sum('net') / $routes)),
+            'margin' => $routeMargin != 0.0
+                ? max(-2.0, min(2.0, (float) $charter->sum('margin') / $routeMargin))
+                : 1.0,
+        ];
     }
 
     /**
@@ -510,11 +572,19 @@ class PlanBuilder
         // coloana anului de bază.
         $unit = $base->groupBy('key')->map(function (Collection $group) {
             $volume = (float) $group->sum('volume');
+            $net = (float) $group->sum('net');
 
             return $volume > 0 ? [
-                'net' => (float) $group->sum('net') / $volume,
+                'net' => $net / $volume,
                 'margin' => (float) $group->sum('margin') / $volume,
                 'cost' => (float) $group->sum('cost') / $volume,
+                // Cât din rândul ăsta zboară pe locuri de charter: lunile
+                // estimate păstrează aceeași proporție.
+                'on_charter' => $volume > 0 ? (float) $group->sum('charter_volume') / $volume : 0.0,
+                'charter_net' => $net != 0.0 ? (float) $group->sum('charter_net') / $net : 0.0,
+                'charter_margin' => (float) $group->sum('margin') != 0.0
+                    ? (float) $group->sum('charter_margin') / (float) $group->sum('margin')
+                    : 0.0,
             ] : null;
         });
 
@@ -546,6 +616,9 @@ class PlanBuilder
                     $copy->net = round($copy->volume * $theirs['net'], 2);
                     $copy->margin = round($copy->volume * $theirs['margin'], 2);
                     $copy->cost = round($copy->volume * $theirs['cost'], 2);
+                    $copy->charter_volume = round($copy->volume * $theirs['on_charter'], 2);
+                    $copy->charter_net = round($copy->net * $theirs['charter_net'], 2);
+                    $copy->charter_margin = round($copy->margin * $theirs['charter_margin'], 2);
                 }
 
                 $copy->estimated = true;
@@ -560,6 +633,11 @@ class PlanBuilder
             $written->volume = $row->pax();
             $written->net = $row->net();
             $written->margin = $row->margin();
+            // Ce scrie omul pentru o categorie e al categoriei: cursele și
+            // le scrie separat, pe rândurile lor.
+            $written->charter_volume = 0;
+            $written->charter_net = 0;
+            $written->charter_margin = 0;
             $written->capacity = $row->capacity ?? $written->capacity;
             $written->sold = $row->pax();
             $written->cost = round($row->pax() * (float) $row->unit_cost, 2);
