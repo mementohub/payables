@@ -219,6 +219,11 @@ Route::middleware('auth')->group(function () {
         Route::put('reports/forecast/{plan}/row', [ForecastController::class, 'updateRow'])->name('reports.forecast.row.update');
         Route::put('reports/forecast/{plan}/bulk', [ForecastController::class, 'bulk'])->name('reports.forecast.bulk');
         Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
+        Route::get('reports/forecast/{plan}/export', [ForecastController::class, 'export'])->name('reports.forecast.export');
+        // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.
+        Route::post('reports/forecast/{plan}/versions', [ForecastController::class, 'storeVersion'])->name('reports.forecast.versions.store');
+        Route::post('reports/forecast/{plan}/versions/{version}/restore', [ForecastController::class, 'restoreVersion'])->name('reports.forecast.versions.restore');
+        Route::delete('reports/forecast/{plan}/versions/{version}', [ForecastController::class, 'destroyVersion'])->name('reports.forecast.versions.destroy');
         Route::delete('reports/forecast/{plan}', [ForecastController::class, 'destroy'])->name('reports.forecast.destroy');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');

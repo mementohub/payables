@@ -71,3 +71,26 @@ test('the chart points at the cells of its own sheet', function () {
 
     @unlink($path);
 });
+
+test('a sheet whose name carries an ampersand still writes a readable file', function () {
+    $path = tempnam(sys_get_temp_dir(), 'xlsx');
+
+    XlsxWorkbook::write($path, [[
+        'name' => 'P&L plan',
+        'headers' => ['Linie', 'Sumă'],
+        'rows' => [['Venit net', 1000.0], ['Marjă brută', 100.0]],
+        'chart' => ['title' => 'Venit & marjă', 'kind' => 'bar', 'categories' => 0, 'values' => 1],
+    ]]);
+
+    $zip = new ZipArchive;
+    $zip->open($path);
+
+    $chart = (string) $zip->getFromName('xl/charts/chart1.xml');
+    $zip->close();
+    @unlink($path);
+
+    // Numele foii intră în formula graficului, iar formula în XML: fără
+    // escape, un singur „&” strica tot fișierul.
+    expect($chart)->toContain('\'P&amp;L plan\'!$B$2')
+        ->and(simplexml_load_string($chart))->not->toBeFalse();
+});

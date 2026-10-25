@@ -215,7 +215,14 @@ class XlsxWorkbook
         $limit = (int) ($chart['limit'] ?? 20);
         $count = min(count($rows), max(1, $limit));
 
-        $sheet = "'".str_replace("'", "''", $sheetName)."'";
+        // Numele foii intră într-o formulă, iar formula intră în XML: apostroful
+        // se dublează pentru Excel, iar ce iese se trece prin escape pentru
+        // XML. O foaie numită „P&L plan” strica altfel tot fișierul.
+        $sheet = str_replace(
+            ['&', '<', '>'],
+            ['&amp;', '&lt;', '&gt;'],
+            "'".str_replace("'", "''", $sheetName)."'",
+        );
         $catRef = $sheet.'!$'.self::columnLetter($catCol).'$2:$'.self::columnLetter($catCol).'$'.($count + 1);
         $valRef = $sheet.'!$'.self::columnLetter($valCol).'$2:$'.self::columnLetter($valCol).'$'.($count + 1);
         $titleRef = $sheet.'!$'.self::columnLetter($valCol).'$1';

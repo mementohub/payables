@@ -31,4 +31,9 @@ class Plan extends Model
     {
         return $this->hasMany(PlanLine::class);
     }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(PlanVersion::class)->latest();
+    }
 }

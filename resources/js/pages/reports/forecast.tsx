@@ -2,9 +2,13 @@ import { Head, router } from '@inertiajs/react';
 import {
     ChevronDown,
     ChevronRight,
+    FileSpreadsheet,
+    FileText,
     Plus,
+    Presentation,
     RefreshCw,
     RotateCcw,
+    Save,
     Trash2,
 } from 'lucide-react';
 import { Fragment, useState } from 'react';
@@ -37,6 +41,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
@@ -204,6 +209,34 @@ type History = Record<
     >
 >;
 
+type Version = {
+    id: number;
+    label: string;
+    note: string | null;
+    created_by: string | null;
+    created_at: string | null;
+    period: string;
+    basis: string;
+    mode: string;
+    lines: number;
+    summary: {
+        net: number;
+        margin: number;
+        opex: number;
+        ebitda: number;
+        net_profit: number;
+        pax: number;
+        services: number;
+        seats: number;
+        base: {
+            year: number;
+            built: boolean;
+            net?: number;
+            net_profit?: number;
+        };
+    };
+};
+
 type Props = {
     companies: { id: number; name: string }[];
     filters: {
@@ -231,6 +264,7 @@ type Props = {
         note: string | null;
     } | null;
     output: Output | null;
+    versions: Version[];
     history: History;
     historyYears: number[];
     years: number[];
@@ -275,6 +309,7 @@ export default function Forecast({
     plans,
     plan,
     output,
+    versions,
     history,
     historyYears,
     years,
@@ -282,7 +317,10 @@ export default function Forecast({
     // Întâi planul, în forma raportului; pârghiile din care iese stau
     // deoparte, sub „Configurare” — altfel tabelul de decizie e îngropat
     // sub o sută de rânduri de reglaje.
-    const [tab, setTab] = useState<'plan' | 'configurare'>('plan');
+    const [tab, setTab] = useState<'plan' | 'configurare' | 'variante'>('plan');
+    // Varianta care se scrie acum: numele ei și de ce s-a salvat.
+    const [version, setVersion] = useState({ label: '', note: '' });
+    const [saving, setSaving] = useState(false);
     const [view, setView] = useState<'produs' | 'canal' | 'luna'>('produs');
 
     // Perioada se ține într-un singur câmp („ytd7”), dar se alege din două
@@ -680,6 +718,97 @@ export default function Forecast({
                                 <RefreshCw className="size-4" />
                                 Împrospătează din {plan.base_year}
                             </Button>
+                            <Dialog open={saving} onOpenChange={setSaving}>
+                                <DialogTrigger asChild>
+                                    <Button variant="outline">
+                                        <Save className="size-4" />
+                                        Salvează varianta
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Salvează varianta planului
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            Se păstrează pârghiile întregi —
+                                            pasageri, locuri, grad de ocupare,
+                                            bani pe pasager, cheltuieli — așa
+                                            cum sunt acum. Varianta se poate
+                                            încărca înapoi oricând sau scoate în
+                                            Excel, pe hârtie și în prezentare.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="grid gap-3">
+                                        <div className="grid gap-1.5">
+                                            <Label>Numele variantei</Label>
+                                            <Input
+                                                placeholder="Buget inițial, Varianta prudentă, După ședința din 3 noiembrie…"
+                                                value={version.label}
+                                                onChange={(e) =>
+                                                    setVersion({
+                                                        ...version,
+                                                        label: e.target.value,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label>
+                                                Ce s-a schimbat și de ce
+                                            </Label>
+                                            <Textarea
+                                                rows={4}
+                                                placeholder="Ipotezele variantei: ce s-a presupus, pe ce s-a sprijinit. Textul ajunge în exporturi, lângă cifre."
+                                                value={version.note}
+                                                onChange={(e) =>
+                                                    setVersion({
+                                                        ...version,
+                                                        note: e.target.value,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button
+                                            disabled={
+                                                version.label.trim() === ''
+                                            }
+                                            onClick={() =>
+                                                router.post(
+                                                    `/reports/forecast/${plan.id}/versions`,
+                                                    {
+                                                        ...version,
+                                                        period: filters.period,
+                                                        basis: filters.basis,
+                                                        mode: filters.mode,
+                                                    },
+                                                    {
+                                                        preserveScroll: true,
+                                                        onSuccess: () => {
+                                                            setSaving(false);
+                                                            setVersion({
+                                                                label: '',
+                                                                note: '',
+                                                            });
+                                                        },
+                                                    },
+                                                )
+                                            }
+                                        >
+                                            Salvează varianta
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+
+                            <ExportButtons
+                                href={(format) =>
+                                    `/reports/forecast/${plan.id}/export?format=${format}&period=${filters.period}&basis=${filters.basis}&mode=${filters.mode}`
+                                }
+                            />
+
                             <Button
                                 variant="ghost"
                                 onClick={() =>
@@ -806,6 +935,9 @@ export default function Forecast({
                                 <TabsTrigger value="configurare">
                                     Configurare
                                 </TabsTrigger>
+                                <TabsTrigger value="variante">
+                                    Variante ({versions.length})
+                                </TabsTrigger>
                             </TabsList>
                         </Tabs>
 
@@ -827,6 +959,173 @@ export default function Forecast({
                                 year={plan.year}
                                 axis={view}
                             />
+                        )}
+
+                        {tab === 'variante' && (
+                            <Card>
+                                <CardContent className="overflow-x-auto p-0">
+                                    {versions.length === 0 ? (
+                                        <p className="p-10 text-center text-sm text-muted-foreground">
+                                            Nicio variantă salvată. Apasă
+                                            „Salvează varianta” ca să îngheți
+                                            planul de acum — pârghii cu tot —
+                                            înainte să încerci altceva.
+                                        </p>
+                                    ) : (
+                                        <Table className="text-xs">
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-72">
+                                                        Varianta
+                                                    </TableHead>
+                                                    <TableHead>
+                                                        Citită pe
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Venit
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Marjă
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        EBITDA
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Profit net
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Pârghii
+                                                    </TableHead>
+                                                    <TableHead className="text-right">
+                                                        Scoate
+                                                    </TableHead>
+                                                    <TableHead />
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {versions.map((one) => (
+                                                    <TableRow key={one.id}>
+                                                        <TableCell>
+                                                            <span className="font-medium">
+                                                                {one.label}
+                                                            </span>
+                                                            <span className="block text-muted-foreground">
+                                                                {one.created_by ??
+                                                                    'cineva'}{' '}
+                                                                ·{' '}
+                                                                {one.created_at}
+                                                            </span>
+                                                            {one.note && (
+                                                                <span className="mt-1 block max-w-md whitespace-pre-line text-muted-foreground">
+                                                                    {one.note}
+                                                                </span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-muted-foreground">
+                                                            {one.mode ===
+                                                            'financial'
+                                                                ? 'la plecare'
+                                                                : 'la rezervare'}
+                                                            {' · '}
+                                                            {one.basis ===
+                                                            'ifrs16'
+                                                                ? 'IFRS 16'
+                                                                : 'statutar'}
+                                                            {' · '}
+                                                            {one.period}
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {mii(
+                                                                one.summary.net,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {mii(
+                                                                one.summary
+                                                                    .margin,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            {mii(
+                                                                one.summary
+                                                                    .ebitda,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-semibold tabular-nums">
+                                                            {mii(
+                                                                one.summary
+                                                                    .net_profit,
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-muted-foreground tabular-nums">
+                                                            {one.lines}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <ExportButtons
+                                                                compact
+                                                                href={(
+                                                                    format,
+                                                                ) =>
+                                                                    `/reports/forecast/${plan.id}/export?format=${format}&version=${one.id}`
+                                                                }
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="text-right whitespace-nowrap">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                title="Încarcă varianta în plan; ce e acum se pierde dacă nu e salvat."
+                                                                onClick={() =>
+                                                                    confirm(
+                                                                        `Încarci „${one.label}” peste planul de acum? Ce nu e salvat se pierde.`,
+                                                                    ) &&
+                                                                    router.post(
+                                                                        `/reports/forecast/${plan.id}/versions/${one.id}/restore`,
+                                                                        {},
+                                                                        {
+                                                                            preserveScroll: true,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            >
+                                                                <RotateCcw className="size-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    confirm(
+                                                                        `Ștergi varianta „${one.label}”?`,
+                                                                    ) &&
+                                                                    router.delete(
+                                                                        `/reports/forecast/${plan.id}/versions/${one.id}`,
+                                                                        {
+                                                                            preserveScroll: true,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 className="size-4" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {tab === 'variante' && (
+                            <p className="text-xs text-muted-foreground">
+                                Cifrele variantei sunt cele de la salvare, în
+                                mii de lei, citite pe perioada și pe baza de
+                                atunci. Exportul unei variante pleacă din
+                                pârghiile ei, nu din planul de acum: Excel cu
+                                toate lunile, PDF cu ipotezele scrise și
+                                PowerPoint de dus în ședință.
+                            </p>
                         )}
 
                         {tab === 'configurare' && (
@@ -1523,6 +1822,68 @@ function RowInput({
  * bază alături — ca să se citească unul lângă altul, nu ca două tabele care
  * seamănă.
  */
+/**
+ * Cele trei formate în care pleacă planul din aplicație.
+ *
+ * Descărcările sunt legături adevărate, nu cereri Inertia: altfel browserul
+ * n-ar ști ce să facă cu fișierul care vine înapoi.
+ */
+function ExportButtons({
+    href,
+    compact = false,
+}: {
+    href: (format: 'xlsx' | 'pdf' | 'pptx') => string;
+    compact?: boolean;
+}) {
+    const formats = [
+        {
+            format: 'xlsx' as const,
+            label: 'Excel',
+            icon: FileSpreadsheet,
+            title: 'Toate lunile, pârghie cu pârghie, cu grafice pe foile de sinteză.',
+        },
+        {
+            format: 'pdf' as const,
+            label: 'PDF',
+            icon: FileText,
+            title: 'Planul pe hârtie, cu ipotezele scrise în cuvinte.',
+        },
+        {
+            format: 'pptx' as const,
+            label: 'PowerPoint',
+            icon: Presentation,
+            title: 'Prezentarea de dus în ședință: cifrele mari, tabelele și ipotezele.',
+        },
+    ];
+
+    if (compact) {
+        return (
+            <span className="inline-flex">
+                {formats.map(({ format, icon: Icon, title }) => (
+                    <Button key={format} variant="ghost" size="sm" asChild>
+                        <a href={href(format)} title={title}>
+                            <Icon className="size-4" />
+                        </a>
+                    </Button>
+                ))}
+            </span>
+        );
+    }
+
+    return (
+        <span className="inline-flex gap-1">
+            {formats.map(({ format, label, icon: Icon, title }) => (
+                <Button key={format} variant="outline" asChild>
+                    <a href={href(format)} title={title}>
+                        <Icon className="size-4" />
+                        {label}
+                    </a>
+                </Button>
+            ))}
+        </span>
+    );
+}
+
 function PlanStatement({
     output,
     baseYear,

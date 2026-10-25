@@ -6,15 +6,21 @@ use App\Models\Company;
 use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
+use App\Models\PlanVersion;
+use App\Services\Exports\PlanExport;
+use App\Services\Exports\PlanPdfWriter;
+use App\Services\Exports\PptxWriter;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
 use App\Services\Reports\PnlReportService;
+use App\Services\Xlsx\XlsxWorkbook;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 /**
  * Planul anului, făcut din pârghii, nu dintr-un procent.
@@ -84,6 +90,20 @@ class ForecastController extends Controller
                 'note' => $plan->note,
             ] : null,
             'output' => $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null,
+            // Variantele salvate ale planului: la ele se întoarce omul când
+            // vrea să vadă ce propunea acum două săptămâni.
+            'versions' => $plan ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
+                'id' => $version->id,
+                'label' => $version->label,
+                'note' => $version->note,
+                'created_by' => $version->createdBy?->name,
+                'created_at' => $version->created_at?->format('d.m.Y H:i'),
+                'period' => $version->period,
+                'basis' => $version->basis,
+                'mode' => $version->mode,
+                'lines' => count($version->lines),
+                'summary' => $version->summary,
+            ])->values() : [],
             // Trei ani în urmă, pe fiecare rând: altfel gradul de ocupare și
             // banii pe pasager s-ar hotărî dintr-un singur an, care poate să
             // fi fost bun sau prost din întâmplare.
@@ -313,6 +333,204 @@ class ForecastController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Rândul s-a întors la cifrele din istoric.']);
 
         return back();
+    }
+
+    /**
+     * Îngheață planul de acum într-o variantă.
+     *
+     * Se păstrează pârghiile întregi, nu doar totalurile: altfel varianta ar
+     * fi o poză de care nu te poți folosi. Cu ele se poate reîncărca planul
+     * oricând, sau se poate scoate pe hârtie cu tot cu ipoteze.
+     */
+    public function storeVersion(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'label' => ['required', 'string', 'max:120'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'period' => ['nullable', 'string', 'max:8'],
+            'basis' => ['nullable', Rule::in(PnlReportService::BASES)],
+            'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
+        ]);
+
+        $period = preg_match('/^(ytd|mtd)([1-9]|1[0-2])$/', (string) ($validated['period'] ?? '')) === 1
+            ? (string) $validated['period']
+            : 'ytd12';
+        $basis = $validated['basis'] ?? PnlReportService::BASIS_RAS;
+        $mode = $validated['mode'] ?? PnlReportService::MODE_OPERATIONAL;
+
+        $output = $this->engine->compute($plan, $period, $basis, $mode);
+
+        $version = PlanVersion::query()->create([
+            'plan_id' => $plan->id,
+            'label' => $validated['label'],
+            'note' => $validated['note'] ?? null,
+            'created_by_id' => $request->user()?->id,
+            'period' => $period,
+            'basis' => $basis,
+            'mode' => $mode,
+            'lines' => $this->snapshot($plan),
+            'summary' => [
+                'net' => $output['totals']['net'],
+                'margin' => $output['totals']['margin'],
+                'opex' => $output['totals']['opex'],
+                'ebitda' => $output['totals']['ebitda'],
+                'net_profit' => $output['totals']['net_profit'],
+                'pax' => $output['totals']['pax'],
+                'services' => $output['totals']['services'],
+                'seats' => $output['totals']['seats'],
+                'base' => $output['base'],
+            ],
+        ]);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'Varianta „%s” a fost salvată: %d pârghii, venit %s lei.',
+            $version->label, count($version->lines), number_format((float) $output['totals']['net'], 0, ',', '.'),
+        )]);
+
+        return back();
+    }
+
+    /**
+     * Pune planul înapoi pe cifrele unei variante.
+     *
+     * Ce e acum se pierde dacă nu e salvat la rândul lui, așa că pagina
+     * întreabă înainte. Rândurile se scriu toate deodată: un plan pe jumătate
+     * încărcat ar fi mai rău decât niciunul.
+     */
+    public function restoreVersion(Plan $plan, PlanVersion $version): RedirectResponse
+    {
+        abort_unless($version->plan_id === $plan->id, 404);
+
+        DB::transaction(function () use ($plan, $version) {
+            $plan->lines()->delete();
+
+            foreach (array_chunk($version->lines, 500) as $chunk) {
+                $plan->lines()->createMany($chunk);
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'Planul a fost încărcat din varianta „%s” (%s).',
+            $version->label, $version->created_at?->format('d.m.Y H:i') ?? '',
+        )]);
+
+        return back();
+    }
+
+    public function destroyVersion(Plan $plan, PlanVersion $version): RedirectResponse
+    {
+        abort_unless($version->plan_id === $plan->id, 404);
+
+        $version->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Varianta a fost ștearsă.']);
+
+        return back();
+    }
+
+    /**
+     * Pârghiile planului, în forma în care se pot scrie înapoi.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function snapshot(Plan $plan): array
+    {
+        return $plan->lines()
+            ->orderBy('kind')->orderBy('key')->orderBy('month')
+            ->get()
+            ->map(fn (PlanLine $line) => [
+                'kind' => $line->kind,
+                'unit' => $line->unit,
+                'key' => $line->key,
+                'label' => $line->label,
+                'month' => (int) $line->month,
+                'volume' => $line->volume,
+                'capacity' => $line->capacity,
+                'load' => $line->load,
+                'unit_net' => $line->unit_net,
+                'unit_margin' => $line->unit_margin,
+                'unit_cost' => $line->unit_cost,
+                'amount' => $line->amount,
+                'manual' => (bool) $line->manual,
+                'note' => $line->note,
+            ])
+            ->all();
+    }
+
+    /**
+     * Planul scos din aplicație: Excel, hârtie sau prezentare.
+     *
+     * Toate trei pleacă din aceeași strângere de date, ca să nu se contrazică
+     * între ele, și toate trei duc cu ele ipotezele — un buget fără ipoteze
+     * nu poate fi apărat de nimeni în ședință.
+     */
+    public function export(
+        Request $request,
+        Plan $plan,
+        PlanExport $export,
+        PlanPdfWriter $pdf,
+        PptxWriter $pptx,
+    ): HttpResponse {
+        $format = in_array($request->string('format')->toString(), PlanExport::FORMATS, true)
+            ? $request->string('format')->toString()
+            : 'xlsx';
+
+        $version = $request->integer('version')
+            ? $plan->versions()->whereKey($request->integer('version'))->with('createdBy:id,name')->first()
+            : null;
+
+        [$plan, $period, $basis, $mode] = $this->reading($request, $plan, $version);
+
+        $output = $this->engine->compute($plan, $period, $basis, $mode);
+        $name = $export->filename($plan, $version);
+
+        if ($format === 'xlsx') {
+            return XlsxWorkbook::streamDownload($name.'.xlsx', $export->sheets($plan, $output, $version));
+        }
+
+        if ($format === 'pdf') {
+            return new HttpResponse($pdf->render($export->deck($plan, $output, $version), $export->summary($plan, $output)), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="'.$name.'.pdf"',
+            ]);
+        }
+
+        return new HttpResponse($pptx->render($export->slides($plan, $output, $version), sprintf('Plan %d', $plan->year)), 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'Content-Disposition' => 'attachment; filename="'.$name.'.pptx"',
+        ]);
+    }
+
+    /**
+     * Cum se citește planul la export: de pe pagină, sau din varianta cerută.
+     *
+     * Varianta nu se încarcă în plan ca s-o putem scoate pe hârtie — ar
+     * însemna să calce peste ce lucrează omul acum. Pârghiile ei se pun pe un
+     * plan ținut în memorie, iar baza de date rămâne cum era.
+     *
+     * @return array{0: Plan, 1: string, 2: string, 3: string}
+     */
+    private function reading(Request $request, Plan $plan, ?PlanVersion $version): array
+    {
+        if ($version !== null) {
+            $plan = $plan->replicate(['id']);
+            $plan->id = $version->plan_id;
+            $plan->setRelation('lines', collect($version->lines)->map(fn (array $row) => new PlanLine($row)));
+
+            return [$plan, $version->period, $version->basis, $version->mode];
+        }
+
+        $period = preg_match('/^(ytd|mtd)([1-9]|1[0-2])$/', (string) $request->string('period')) === 1
+            ? (string) $request->string('period')
+            : 'ytd12';
+        $basis = in_array($request->string('basis')->toString(), PnlReportService::BASES, true)
+            ? $request->string('basis')->toString()
+            : PnlReportService::BASIS_RAS;
+        $mode = in_array($request->string('mode')->toString(), PnlReportService::MODES, true)
+            ? $request->string('mode')->toString()
+            : PnlReportService::MODE_OPERATIONAL;
+
+        return [$plan, $period, $basis, $mode];
     }
 
     public function destroy(Plan $plan): RedirectResponse

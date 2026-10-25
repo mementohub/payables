@@ -37,7 +37,9 @@ class PlanEngine
         string $basis = PnlReportService::BASIS_RAS,
         string $mode = PnlReportService::MODE_OPERATIONAL,
     ): array {
-        $lines = $plan->lines()->get();
+        // Pârghiile puse deja pe plan — cum se întâmplă când se citește o
+        // variantă salvată — se iau de acolo; altfel, din baza de date.
+        $lines = $plan->relationLoaded('lines') ? $plan->lines : $plan->lines()->get();
         $wanted = PnlReportService::months($period);
 
         // Anul de bază, citit cu aceeași măsură: aceeași perioadă, aceeași
@@ -553,6 +555,9 @@ class PlanEngine
             'lines' => $lines,
             'months' => array_map(fn (float $value) => round($value, 2), $months),
             'total' => round(array_sum($months), 2),
+            // Anul de bază se pune peste la urmă, dacă raportul lui e
+            // construit; forma rândului rămâne aceeași oricum.
+            'base' => null,
             // Aceeași cifră, citită pe coloane: pe categorie de produs și pe
             // canal de vânzare.
             'product' => array_map(fn (float $value) => round($value, 2), $cut['product'] ?? []),
