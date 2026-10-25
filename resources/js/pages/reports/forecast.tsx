@@ -1735,19 +1735,17 @@ function DriverTable({
                                                 </strong>
                                                 : scrie în căsuțe ce vrei să se
                                                 întâmple. Sub fiecare lună stă
-                                                ce a fost în {baseYear}, ca
-                                                reper.
+                                                ce a fost în aceeași lună din{' '}
+                                                {historyYears
+                                                    .slice()
+                                                    .reverse()
+                                                    .join(', ')}
+                                                , ca reper.
                                             </div>
                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                                 {MONTHS.map((name, i) => {
                                                     const cell =
                                                         row.months[i + 1];
-                                                    const past =
-                                                        history[
-                                                            `${row.kind}|${row.key}`
-                                                        ]?.[baseYear]?.months?.[
-                                                            i + 1
-                                                        ];
 
                                                     if (!cell) {
                                                         return (
@@ -1905,12 +1903,39 @@ function DriverTable({
                                                             )}
 
                                                             <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
-                                                                {baseYear}:{' '}
-                                                                {past
-                                                                    ? isOpex
-                                                                        ? `${lei(past.net)} lei`
-                                                                        : `${lei(past.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'}${isCharter && past.capacity > 0 ? ` din ${lei(past.capacity)} locuri` : ''} · ${lei(past.net)} lei`
-                                                                    : '–'}
+                                                                {historyYears.map(
+                                                                    (year) => {
+                                                                        const was =
+                                                                            history[
+                                                                                `${row.kind}|${row.key}`
+                                                                            ]?.[
+                                                                                year
+                                                                            ]
+                                                                                ?.months?.[
+                                                                                i +
+                                                                                    1
+                                                                            ];
+
+                                                                        return (
+                                                                            <div
+                                                                                key={
+                                                                                    year
+                                                                                }
+                                                                            >
+                                                                                {
+                                                                                    year
+                                                                                }
+
+                                                                                :{' '}
+                                                                                {was
+                                                                                    ? isOpex
+                                                                                        ? `${lei(was.net)} lei`
+                                                                                        : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'}${isCharter && was.capacity > 0 ? ` din ${lei(was.capacity)} locuri` : ''} · ${lei(was.net)} lei`
+                                                                                    : '–'}
+                                                                            </div>
+                                                                        );
+                                                                    },
+                                                                )}
                                                             </div>
                                                         </div>
                                                     );
@@ -2126,31 +2151,48 @@ function DriverTable({
                                                                         </div>
 
                                                                         <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
-                                                                            {baseYear -
-                                                                                1}
-                                                                            :{' '}
-                                                                            {(() => {
-                                                                                const was =
-                                                                                    history[
-                                                                                        `${row.kind}|${row.key}`
-                                                                                    ]?.[
-                                                                                        baseYear -
-                                                                                            1
-                                                                                    ]
-                                                                                        ?.months?.[
-                                                                                        month
-                                                                                    ];
+                                                                            {historyYears
+                                                                                .filter(
+                                                                                    (
+                                                                                        year,
+                                                                                    ) =>
+                                                                                        year <
+                                                                                        baseYear,
+                                                                                )
+                                                                                .map(
+                                                                                    (
+                                                                                        year,
+                                                                                    ) => {
+                                                                                        const was =
+                                                                                            history[
+                                                                                                `${row.kind}|${row.key}`
+                                                                                            ]?.[
+                                                                                                year
+                                                                                            ]
+                                                                                                ?.months?.[
+                                                                                                month
+                                                                                            ];
 
-                                                                                if (
-                                                                                    !was
-                                                                                ) {
-                                                                                    return '–';
-                                                                                }
+                                                                                        return (
+                                                                                            <div
+                                                                                                key={
+                                                                                                    year
+                                                                                                }
+                                                                                            >
+                                                                                                {
+                                                                                                    year
+                                                                                                }
 
-                                                                                return isOpex
-                                                                                    ? `${lei(was.net)} lei`
-                                                                                    : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'} · ${lei(was.net)} lei`;
-                                                                            })()}
+                                                                                                :{' '}
+                                                                                                {was
+                                                                                                    ? isOpex
+                                                                                                        ? `${lei(was.net)} lei`
+                                                                                                        : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'} · ${lei(was.net)} lei`
+                                                                                                    : '–'}
+                                                                                            </div>
+                                                                                        );
+                                                                                    },
+                                                                                )}
                                                                         </div>
                                                                     </div>
                                                                 );
