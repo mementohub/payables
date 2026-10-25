@@ -341,6 +341,17 @@ type Props = {
     years: number[];
 };
 
+/** Numele pârghiilor, pentru lista schimbărilor nesalvate. */
+const FIELDS: Record<string, string> = {
+    volume: 'pasageri',
+    capacity: 'locuri',
+    load: 'ocupare',
+    unit_net: 'venit / unitate',
+    unit_margin: 'marjă / unitate',
+    unit_cost: 'cost / loc',
+    amount: 'sumă',
+};
+
 const CHANNELS: Record<string, string> = {
     retail: 'Agenții proprii',
     b2b: 'B2B · agenții partenere',
@@ -453,7 +464,17 @@ export default function Forecast({
     // Ce s-a scris și încă nu s-a salvat: celule (o lună) și rânduri (tot
     // anul). Se trimit o dată, la „Salvează”.
     const [cells, setCells] = useState<
-        Record<string, { id: number; field: string; value: number }>
+        Record<
+            string,
+            {
+                id: number;
+                field: string;
+                value: number;
+                label: string;
+                month: string;
+                before: number;
+            }
+        >
     >({});
     const [rowEdits, setRowEdits] = useState<
         Record<
@@ -464,6 +485,7 @@ export default function Forecast({
                 field: string;
                 value: number | null;
                 growth: number | null;
+                label?: string;
             }
         >
     >({});
@@ -506,6 +528,7 @@ export default function Forecast({
                 field,
                 value,
                 growth,
+                label: row.label,
             },
         }));
 
@@ -529,10 +552,28 @@ export default function Forecast({
             preserveScroll: true,
         });
 
-    const editCell = (cell: Cell, field: string, value: number) =>
+    const editCell = (
+        cell: Cell,
+        field: string,
+        value: number,
+        row?: Row,
+        month?: string,
+    ) =>
         setCells((prev) => ({
             ...prev,
-            [`${cell.id}|${field}`]: { id: cell.id, field, value },
+            [`${cell.id}|${field}`]: {
+                id: cell.id,
+                field,
+                value,
+                label: row?.label ?? '',
+                month: month ?? '',
+                // De la ce s-a pornit: fără asta, lista schimbărilor ar
+                // spune doar unde s-a scris, nu și ce s-a schimbat.
+                before:
+                    prev[`${cell.id}|${field}`]?.before ??
+                    (cell[field as keyof Cell] as number) ??
+                    0,
+            },
         }));
 
     const pending = Object.keys(cells).length + Object.keys(rowEdits).length;
@@ -982,29 +1023,122 @@ export default function Forecast({
                 </div>
 
                 {plan && pending > 0 && (
-                    <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/40">
-                        <span>
-                            <strong>{pending}</strong>{' '}
-                            {pending === 1
-                                ? 'schimbare nesalvată'
-                                : 'schimbări nesalvate'}
-                            . Scrie liniștit mai departe; se trimit toate odată.
-                        </span>
-                        <span className="flex gap-2">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                    setCells({});
-                                    setRowEdits({});
-                                }}
-                            >
-                                Renunță
-                            </Button>
-                            <Button size="sm" onClick={save}>
-                                Salvează
-                            </Button>
-                        </span>
+                    <div className="sticky top-0 z-30 space-y-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <span>
+                                <strong>{pending}</strong>{' '}
+                                {pending === 1
+                                    ? 'schimbare nesalvată'
+                                    : 'schimbări nesalvate'}
+                                . Scrie liniștit mai departe; se trimit toate
+                                odată.
+                            </span>
+                            <span className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setCells({});
+                                        setRowEdits({});
+                                    }}
+                                >
+                                    Renunță
+                                </Button>
+                                <Button size="sm" onClick={save}>
+                                    Salvează
+                                </Button>
+                            </span>
+                        </div>
+
+                        {/* Ce anume s-a schimbat: fără lista asta, omul vede
+                            doar că are „3 schimbări”, nu și care sunt. */}
+                        <ul className="divide-y divide-amber-200 text-xs dark:divide-amber-900">
+                            {Object.entries(rowEdits).map(([key, edit]) => (
+                                <li
+                                    key={key}
+                                    className="flex flex-wrap items-baseline gap-x-2 py-1"
+                                >
+                                    <span className="font-medium">
+                                        {edit.label ?? edit.key}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        · tot anul ·
+                                    </span>
+                                    <span>
+                                        {FIELDS[edit.field] ?? edit.field}
+                                    </span>
+                                    <span className="font-medium tabular-nums">
+                                        {edit.growth !== null &&
+                                        edit.growth !== undefined
+                                            ? `${edit.growth > 0 ? '+' : ''}${lei(edit.growth, 1)}%`
+                                            : lei(edit.value ?? 0)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="text-muted-foreground underline hover:text-foreground"
+                                        onClick={() =>
+                                            setRowEdits((prev) => {
+                                                const next = { ...prev };
+                                                delete next[key];
+
+                                                return next;
+                                            })
+                                        }
+                                    >
+                                        scoate
+                                    </button>
+                                </li>
+                            ))}
+                            {Object.entries(cells).map(([key, cell]) => (
+                                <li
+                                    key={key}
+                                    className="flex flex-wrap items-baseline gap-x-2 py-1"
+                                >
+                                    <span className="font-medium">
+                                        {cell.label}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        · {cell.month} ·
+                                    </span>
+                                    <span>
+                                        {FIELDS[cell.field] ?? cell.field}
+                                    </span>
+                                    <span className="text-muted-foreground tabular-nums">
+                                        {lei(
+                                            cell.field === 'load'
+                                                ? cell.before * 100
+                                                : cell.before,
+                                            1,
+                                        )}
+                                        {cell.field === 'load' ? '%' : ''}
+                                    </span>
+                                    <span aria-hidden="true">→</span>
+                                    <span className="font-medium tabular-nums">
+                                        {lei(
+                                            cell.field === 'load'
+                                                ? cell.value * 100
+                                                : cell.value,
+                                            1,
+                                        )}
+                                        {cell.field === 'load' ? '%' : ''}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="text-muted-foreground underline hover:text-foreground"
+                                        onClick={() =>
+                                            setCells((prev) => {
+                                                const next = { ...prev };
+                                                delete next[key];
+
+                                                return next;
+                                            })
+                                        }
+                                    >
+                                        scoate
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
 
@@ -1725,10 +1859,27 @@ function DriverTable({
     historyYears: number[];
     planYear: number;
     baseYear: number;
-    cells: Record<string, { id: number; field: string; value: number }>;
+    cells: Record<
+        string,
+        {
+            id: number;
+            field: string;
+            value: number;
+            label: string;
+            month: string;
+            before: number;
+        }
+    >;
     rowEdits: Record<
         string,
-        { kind: string; key: string; field: string; value: number | null }
+        {
+            kind: string;
+            key: string;
+            field: string;
+            value: number | null;
+            growth: number | null;
+            label?: string;
+        }
     >;
     open: Set<string>;
     onToggle: (key: string) => void;
@@ -1740,10 +1891,31 @@ function DriverTable({
     ) => void;
     onReset: (row: Row) => void;
     onRemove: (row: Row) => void;
-    onEditCell: (cell: Cell, field: string, value: number) => void;
+    onEditCell: (
+        cell: Cell,
+        field: string,
+        value: number,
+        row?: Row,
+        month?: string,
+    ) => void;
 }) {
     const isCharter = kind === 'charter';
     const isOpex = kind === 'opex';
+
+    // Ce arată o căsuță: cifra scrisă acum, dacă s-a scris ceva și nu s-a
+    // salvat încă, altfel cea din plan. Altfel omul tastează, cifra sare
+    // înapoi la ce era și nu mai știe ce a schimbat.
+    const cellValue = (cell: Cell, field: string, saved: number) =>
+        cells[`${cell.id}|${field}`]?.value ?? saved;
+
+    const cellChanged = (cell: Cell, field: string) =>
+        cells[`${cell.id}|${field}`] !== undefined;
+
+    const rowValue = (row: Row, field: string, saved: number) =>
+        rowEdits[`${row.kind}|${row.key}|${field}`]?.value ?? saved;
+
+    const rowChanged = (row: Row, field: string) =>
+        rowEdits[`${row.kind}|${row.key}|${field}`] !== undefined;
 
     return (
         <Card>
@@ -1950,12 +2122,19 @@ function DriverTable({
                                             <TableCell className="text-right">
                                                 <RowInput
                                                     value={
-                                                        row.seats > 0
-                                                            ? (row.pax /
-                                                                  row.seats) *
-                                                              100
-                                                            : 0
+                                                        rowValue(
+                                                            row,
+                                                            'load',
+                                                            row.seats > 0
+                                                                ? row.pax /
+                                                                      row.seats
+                                                                : 0,
+                                                        ) * 100
                                                     }
+                                                    pending={rowChanged(
+                                                        row,
+                                                        'load',
+                                                    )}
                                                     suffix="%"
                                                     onCommit={(v) =>
                                                         onApply(
@@ -2022,11 +2201,17 @@ function DriverTable({
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <RowInput
-                                                    value={
+                                                    value={rowValue(
+                                                        row,
+                                                        'unit_net',
                                                         row.pax > 0
                                                             ? row.net / row.pax
-                                                            : 0
-                                                    }
+                                                            : 0,
+                                                    )}
+                                                    pending={rowChanged(
+                                                        row,
+                                                        'unit_net',
+                                                    )}
                                                     onCommit={(v) =>
                                                         onApply(
                                                             row,
@@ -2039,12 +2224,18 @@ function DriverTable({
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <RowInput
-                                                    value={
+                                                    value={rowValue(
+                                                        row,
+                                                        'unit_margin',
                                                         row.pax > 0
                                                             ? row.margin /
-                                                              row.pax
-                                                            : 0
-                                                    }
+                                                                  row.pax
+                                                            : 0,
+                                                    )}
+                                                    pending={rowChanged(
+                                                        row,
+                                                        'unit_margin',
+                                                    )}
                                                     onCommit={(v) =>
                                                         onApply(
                                                             row,
@@ -2069,7 +2260,19 @@ function DriverTable({
 
                                     <TableCell className="text-right">
                                         <RowInput
-                                            value={0}
+                                            value={
+                                                rowEdits[
+                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                ]?.growth ?? 0
+                                            }
+                                            pending={
+                                                rowEdits[
+                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                ]?.growth !== undefined &&
+                                                rowEdits[
+                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                ]?.growth !== null
+                                            }
                                             suffix="%"
                                             placeholder="+/–"
                                             onCommit={(v) =>
@@ -2261,13 +2464,27 @@ function DriverTable({
                                                                             ? 'servicii (nr.)'
                                                                             : 'pasageri (nr.)'}
                                                                     <RowInput
-                                                                        value={
+                                                                        value={cellValue(
+                                                                            cell,
+                                                                            isOpex
+                                                                                ? 'amount'
+                                                                                : isCharter
+                                                                                  ? 'capacity'
+                                                                                  : 'volume',
                                                                             isOpex
                                                                                 ? cell.amount
                                                                                 : isCharter
                                                                                   ? cell.capacity
-                                                                                  : cell.volume
-                                                                        }
+                                                                                  : cell.volume,
+                                                                        )}
+                                                                        pending={cellChanged(
+                                                                            cell,
+                                                                            isOpex
+                                                                                ? 'amount'
+                                                                                : isCharter
+                                                                                  ? 'capacity'
+                                                                                  : 'volume',
+                                                                        )}
                                                                         onCommit={(
                                                                             v,
                                                                         ) =>
@@ -2279,6 +2496,8 @@ function DriverTable({
                                                                                       ? 'capacity'
                                                                                       : 'volume',
                                                                                 v,
+                                                                                row,
+                                                                                name,
                                                                             )
                                                                         }
                                                                     />
@@ -2293,10 +2512,24 @@ function DriverTable({
                                                                             <RowInput
                                                                                 value={
                                                                                     isCharter
-                                                                                        ? cell.load *
+                                                                                        ? cellValue(
+                                                                                              cell,
+                                                                                              'load',
+                                                                                              cell.load,
+                                                                                          ) *
                                                                                           100
-                                                                                        : cell.unit_net
+                                                                                        : cellValue(
+                                                                                              cell,
+                                                                                              'unit_net',
+                                                                                              cell.unit_net,
+                                                                                          )
                                                                                 }
+                                                                                pending={cellChanged(
+                                                                                    cell,
+                                                                                    isCharter
+                                                                                        ? 'load'
+                                                                                        : 'unit_net',
+                                                                                )}
                                                                                 onCommit={(
                                                                                     v,
                                                                                 ) =>
@@ -2309,6 +2542,8 @@ function DriverTable({
                                                                                             ? v /
                                                                                                   100
                                                                                             : v,
+                                                                                        row,
+                                                                                        name,
                                                                                     )
                                                                                 }
                                                                             />
@@ -2318,11 +2553,21 @@ function DriverTable({
                                                                                 ? 'venit/pax (lei)'
                                                                                 : 'marjă/unit. (lei)'}
                                                                             <RowInput
-                                                                                value={
+                                                                                value={cellValue(
+                                                                                    cell,
+                                                                                    isCharter
+                                                                                        ? 'unit_net'
+                                                                                        : 'unit_margin',
                                                                                     isCharter
                                                                                         ? cell.unit_net
-                                                                                        : cell.unit_margin
-                                                                                }
+                                                                                        : cell.unit_margin,
+                                                                                )}
+                                                                                pending={cellChanged(
+                                                                                    cell,
+                                                                                    isCharter
+                                                                                        ? 'unit_net'
+                                                                                        : 'unit_margin',
+                                                                                )}
                                                                                 onCommit={(
                                                                                     v,
                                                                                 ) =>
@@ -2332,6 +2577,8 @@ function DriverTable({
                                                                                             ? 'unit_net'
                                                                                             : 'unit_margin',
                                                                                         v,
+                                                                                        row,
+                                                                                        name,
                                                                                     )
                                                                                 }
                                                                             />
@@ -2684,18 +2931,25 @@ function RowInput({
     onCommit,
     suffix,
     placeholder,
+    pending = false,
 }: {
     value: number;
     onCommit: (value: number) => void;
     suffix?: string;
     placeholder?: string;
+    /** Cifra din căsuță e scrisă acum și încă nu s-a salvat. */
+    pending?: boolean;
 }) {
     const [text, setText] = useState<string | null>(null);
 
     return (
         <span className="inline-flex items-center gap-1">
             <Input
-                className="h-7 w-20 text-right text-xs"
+                className={cn(
+                    'h-7 w-20 text-right text-xs',
+                    pending &&
+                        'border-amber-400 bg-amber-50 font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
+                )}
                 value={text ?? (value ? lei(value, value < 100 ? 1 : 0) : '')}
                 placeholder={placeholder}
                 onChange={(e) => setText(e.target.value)}
