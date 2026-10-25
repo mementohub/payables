@@ -17,6 +17,7 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\DueInvoicesController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
+use App\Http\Controllers\ForecastController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceCheckController;
 use App\Http\Controllers\InvoiceController;
@@ -210,6 +211,14 @@ Route::middleware('auth')->group(function () {
         // Scadențarul: ce e de plătit de azi înainte, factură cu factură.
         Route::get('reports/due', [DueInvoicesController::class, 'index'])->name('reports.due.index');
         Route::get('reports/due/export', [DueInvoicesController::class, 'export'])->name('reports.due.export');
+        // Planul anului: pârghiile din care se naște, nu un procent de creștere.
+        Route::get('reports/forecast', [ForecastController::class, 'index'])->name('reports.forecast.index');
+        Route::post('reports/forecast', [ForecastController::class, 'store'])->name('reports.forecast.store');
+        Route::post('reports/forecast/{plan}/reseed', [ForecastController::class, 'reseed'])->name('reports.forecast.reseed');
+        Route::put('reports/forecast/lines/{line}', [ForecastController::class, 'updateLine'])->name('reports.forecast.lines.update');
+        Route::put('reports/forecast/{plan}/row', [ForecastController::class, 'updateRow'])->name('reports.forecast.row.update');
+        Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
+        Route::delete('reports/forecast/{plan}', [ForecastController::class, 'destroy'])->name('reports.forecast.destroy');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
         Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');

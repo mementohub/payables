@@ -18,6 +18,7 @@ import {
     Route,
     ShieldCheck,
     Sparkles,
+    Target,
     Truck,
     Users,
     UserCog,
@@ -54,6 +55,7 @@ import { index as paymentRunsIndex } from '@/routes/payment-runs';
 import { index as cashFlowIndex } from '@/routes/reports/cash-flow';
 import { index as dueIndex } from '@/routes/reports/due';
 import { index as opexIndex } from '@/routes/reports/opex';
+import { index as forecastIndex } from '@/routes/reports/forecast';
 import { index as leasesIndex } from '@/routes/reports/leases';
 import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as contractsIndex } from '@/routes/contracts';
@@ -208,6 +210,12 @@ const mainNavItems = (
                           title: 'Scadențar',
                           href: dueIndex(),
                           icon: CalendarCheck,
+                      },
+                      {
+                          // Planul anului, din pârghiile lui.
+                          title: 'Forecast & Plan',
+                          href: forecastIndex(),
+                          icon: Target,
                       },
                   ],
               },

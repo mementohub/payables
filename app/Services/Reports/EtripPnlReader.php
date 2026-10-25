@@ -169,8 +169,75 @@ class EtripPnlReader
         return sprintf("regexp_replace(lower(translate(%s, 'ăâàîìșşțţ', 'aaaiisstt')), '[^a-z0-9]', '', 'g')", $expression);
     }
 
+    /**
+     * Cum se cheamă produsul unei rezervări: steagurile de pe pozițiile ei și
+     * felul în care se citesc.
+     *
+     * Stă deoparte fiindcă o citesc două rapoarte — P&L-ul și planificarea —
+     * iar dacă s-ar scrie de două ori, într-o zi ar spune lucruri diferite
+     * despre aceeași rezervare. Procentele sunt simple: cine o trece prin
+     * `sprintf` le dublează el.
+     */
+    public static function productCte(): string
+    {
+        return <<<'SQL'
+            pflags AS (
+                SELECT bi.booking,
+                       bool_or(fi.item IS NOT NULL) AS has_flight,
+                       bool_or(ti.item IS NOT NULL) AS has_transfer,
+                       bool_or(ai.item IS NOT NULL) AS has_accommodation,
+                       bool_or(sup.name ILIKE '%memento air%') AS has_memento_air,
+                       bool_or(sup.name ILIKE '%croazier%') AS has_cruise,
+                       bool_or(sup.name ILIKE '%circuite exotice%') AS has_exotic,
+                       bool_or(sup.name ILIKE '%sejururi exotice%') AS has_sejur_exotic,
+                       bool_or((sup.name ILIKE '%circuite%' AND sup.name NOT ILIKE '%circuite exotice%')
+                               OR sup.name ILIKE '%pelerinaje%') AS has_cultural,
+                       bool_or(sup.name ILIKE '%senior voyage%') AS has_senior,
+                       bool_or(bui.item IS NOT NULL
+                               OR pt.label ILIKE '%bus%' OR pt.label ILIKE '%autocar%'
+                               OR bi.short_description ILIKE '%autocar%'
+                               OR bi.description ILIKE '%autocar%') AS has_bus_charter
+                FROM bookings.items bi
+                LEFT JOIN flight.items fi ON fi.item = bi.id
+                LEFT JOIN transfer.items ti ON ti.item = bi.id
+                LEFT JOIN accommodation.items ai ON ai.item = bi.id
+                LEFT JOIN bus.items bui ON bui.item = bi.id
+                LEFT JOIN public.product_types pt ON pt.id = bi.product_type
+                LEFT JOIN suppliers.suppliers sup ON sup.code = bi.supplier
+                WHERE bi.client_status = 'confirmed'
+                  AND EXISTS (SELECT 1 FROM sel s WHERE s.id = bi.booking)
+                GROUP BY bi.booking
+            ),
+            typed AS (
+                SELECT pf.booking,
+                       CASE
+                         WHEN pf.has_cruise OR EXISTS (
+                              SELECT 1 FROM bookings.labels bl
+                              JOIN settings.booking_labels sbl ON sbl.id = bl.label
+                              WHERE bl.booking = pf.booking AND sbl.label ILIKE '%croazier%') THEN 'Croaziere'
+                         WHEN pf.has_exotic THEN 'Circuite Exotice'
+                         WHEN pf.has_sejur_exotic THEN 'Sejururi Exotice'
+                         WHEN pf.has_cultural THEN 'Circuite Culturale'
+                         WHEN pf.has_senior THEN 'Senior Voyage'
+                         WHEN pf.has_bus_charter AND NOT pf.has_flight THEN 'Charter Bus'
+                         WHEN pf.has_transfer AND pf.has_memento_air AND EXISTS (
+                              SELECT 1 FROM bookings.labels bl2
+                              JOIN settings.booking_labels sbl2 ON sbl2.id = bl2.label
+                              WHERE bl2.booking = pf.booking AND sbl2.label ILIKE '%dinamic memento%') THEN 'Pachet dinamic'
+                         WHEN pf.has_transfer AND pf.has_memento_air THEN 'Charter'
+                         WHEN pf.has_transfer THEN 'Marketplace'
+                         WHEN pf.has_flight AND NOT pf.has_accommodation THEN 'Ticketing'
+                         WHEN NOT pf.has_flight THEN 'Cazare'
+                         ELSE '- -'
+                       END AS product
+                FROM pflags pf
+            )
+SQL;
+    }
+
     private function sql(): string
     {
+        $product = str_replace('%', '%%', self::productCte());
         $normBranch = $this->norm('COALESCE(bo.name, \'\')');
         $normVia = $this->norm('COALESCE(dc.name, \'\')');
 
@@ -209,57 +276,7 @@ class EtripPnlReader
                   AND b.ctime >= ?::timestamp AND b.ctime < ?::timestamp
                   AND %s
             ),
-            pflags AS (
-                SELECT bi.booking,
-                       bool_or(fi.item IS NOT NULL) AS has_flight,
-                       bool_or(ti.item IS NOT NULL) AS has_transfer,
-                       bool_or(ai.item IS NOT NULL) AS has_accommodation,
-                       bool_or(sup.name ILIKE '%%memento air%%') AS has_memento_air,
-                       bool_or(sup.name ILIKE '%%croazier%%') AS has_cruise,
-                       bool_or(sup.name ILIKE '%%circuite exotice%%') AS has_exotic,
-                       bool_or(sup.name ILIKE '%%sejururi exotice%%') AS has_sejur_exotic,
-                       bool_or((sup.name ILIKE '%%circuite%%' AND sup.name NOT ILIKE '%%circuite exotice%%')
-                               OR sup.name ILIKE '%%pelerinaje%%') AS has_cultural,
-                       bool_or(sup.name ILIKE '%%senior voyage%%') AS has_senior,
-                       bool_or(bui.item IS NOT NULL
-                               OR pt.label ILIKE '%%bus%%' OR pt.label ILIKE '%%autocar%%'
-                               OR bi.short_description ILIKE '%%autocar%%'
-                               OR bi.description ILIKE '%%autocar%%') AS has_bus_charter
-                FROM bookings.items bi
-                LEFT JOIN flight.items fi ON fi.item = bi.id
-                LEFT JOIN transfer.items ti ON ti.item = bi.id
-                LEFT JOIN accommodation.items ai ON ai.item = bi.id
-                LEFT JOIN bus.items bui ON bui.item = bi.id
-                LEFT JOIN public.product_types pt ON pt.id = bi.product_type
-                LEFT JOIN suppliers.suppliers sup ON sup.code = bi.supplier
-                WHERE bi.client_status = 'confirmed'
-                  AND EXISTS (SELECT 1 FROM sel s WHERE s.id = bi.booking)
-                GROUP BY bi.booking
-            ),
-            typed AS (
-                SELECT pf.booking,
-                       CASE
-                         WHEN pf.has_cruise OR EXISTS (
-                              SELECT 1 FROM bookings.labels bl
-                              JOIN settings.booking_labels sbl ON sbl.id = bl.label
-                              WHERE bl.booking = pf.booking AND sbl.label ILIKE '%%croazier%%') THEN 'Croaziere'
-                         WHEN pf.has_exotic THEN 'Circuite Exotice'
-                         WHEN pf.has_sejur_exotic THEN 'Sejururi Exotice'
-                         WHEN pf.has_cultural THEN 'Circuite Culturale'
-                         WHEN pf.has_senior THEN 'Senior Voyage'
-                         WHEN pf.has_bus_charter AND NOT pf.has_flight THEN 'Charter Bus'
-                         WHEN pf.has_transfer AND pf.has_memento_air AND EXISTS (
-                              SELECT 1 FROM bookings.labels bl2
-                              JOIN settings.booking_labels sbl2 ON sbl2.id = bl2.label
-                              WHERE bl2.booking = pf.booking AND sbl2.label ILIKE '%%dinamic memento%%') THEN 'Pachet dinamic'
-                         WHEN pf.has_transfer AND pf.has_memento_air THEN 'Charter'
-                         WHEN pf.has_transfer THEN 'Marketplace'
-                         WHEN pf.has_flight AND NOT pf.has_accommodation THEN 'Ticketing'
-                         WHEN NOT pf.has_flight THEN 'Cazare'
-                         ELSE '- -'
-                       END AS product
-                FROM pflags pf
-            ),
+            {$product},
             val AS (
                 SELECT bi.booking,
                        sum(((bi.price).gross + (bi.price).tax - COALESCE((bi.price).commission, 0)) * s.fx) AS net,
