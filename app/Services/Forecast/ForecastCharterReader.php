@@ -151,6 +151,12 @@ class ForecastCharterReader
             JOIN flight.alloc_pools p ON p.id = v.pool
             WHERE v.date >= ?::date AND v.date < ?::date
               AND substring(p.label from '^([A-Z]{3})') IN ({$home})
+              -- Numai blocurile ferme. Alocările cu zile de release se dau
+              -- înapoi companiei aeriene dacă nu se vând, iar ele se vând
+              -- prost — în 2026, 14.768 de locuri cu 15,6% ocupare — așa că
+              -- ținute în socoteală strică și numărul de locuri, și gradul
+              -- de ocupare din care se face planul.
+              AND COALESCE(v.release_days, 0) = 0
             GROUP BY 1, 2, 3
             HAVING SUM(v.seats) > 0
             SQL;

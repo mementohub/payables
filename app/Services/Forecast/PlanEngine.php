@@ -829,11 +829,28 @@ class PlanEngine
      */
     private function lag(Plan $plan): ?array
     {
+        $open = PlanBuilder::openMonths($plan->base_year);
+
         $rows = ForecastHistory::query()
             ->where('company_id', $plan->company_id)
             ->where('year', $plan->base_year)
             ->where('kind', 'lag')
+            ->when($open !== [], fn ($query) => $query->whereNotIn('month', $open))
             ->get();
+
+        // Anul de bază n-a trăit toamna, iar toamna se vinde vara următoare:
+        // fără lunile alea, tiparul n-ar ști nimic despre vânzarea timpurie.
+        // Pentru ele se ia tiparul anului dinainte, care le-a trăit.
+        if ($open !== []) {
+            $rows = $rows->concat(
+                ForecastHistory::query()
+                    ->where('company_id', $plan->company_id)
+                    ->where('year', $plan->base_year - 1)
+                    ->where('kind', 'lag')
+                    ->whereIn('month', $open)
+                    ->get(),
+            );
+        }
 
         if ($rows->isEmpty()) {
             return null;
