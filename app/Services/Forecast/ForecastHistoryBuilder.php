@@ -28,7 +28,7 @@ class ForecastHistoryBuilder
     ) {}
 
     /**
-     * @return array{categories: int, charter: int}
+     * @return array{categories: int, charter: int, mix: int, lag: int, extra: int}
      */
     public function build(Company $company, int $year): array
     {
@@ -37,7 +37,63 @@ class ForecastHistoryBuilder
             'charter' => $this->charter($company, $year),
             'mix' => $this->mix($company, $year),
             'lag' => $this->lag($company, $year),
+            'extra' => $this->extra($company, $year),
         ];
+    }
+
+    /**
+     * Bazele de rezervări care aparțineau companiei în anul ăla.
+     *
+     * Vacanza are baza ei; din 2026 e a noastră. Istoricul le adună pe
+     * aceleași categorii și aceleași curse, fiindcă de la anul se vând
+     * dintr-un singur loc — iar planul trebuie să pornească de la toată
+     * afacerea, nu de la patru cincimi din ea.
+     *
+     * @return list<?string> null = baza companiei, din configurație
+     */
+    private function bases(Company $company, int $year): array
+    {
+        $out = [null];
+
+        foreach ((array) config('pnl.extra_bases', []) as $connection => $base) {
+            if ($year >= (int) ($base['from_year'] ?? 9999)) {
+                $out[] = (string) $connection;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Cât aduce fiecare bază în parte, ca să se poată spune pe față din ce
+     * e făcut anul de bază — și ca vederea lui să nu pară că sare.
+     */
+    private function extra(Company $company, int $year): int
+    {
+        $rows = [];
+
+        foreach ((array) config('pnl.extra_bases', []) as $connection => $base) {
+            if ($year < (int) ($base['from_year'] ?? 9999)) {
+                continue;
+            }
+
+            foreach ($this->etrip->byProduct($year, (string) $connection) as $row) {
+                $key = (string) ($base['label'] ?? $connection);
+                $cell = $rows[$key.'|'.$row['month']] ?? [
+                    'kind' => 'extra', 'unit' => PlanLine::PAX, 'key' => $key,
+                    'month' => $row['month'], 'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                ];
+
+                $rows[$key.'|'.$row['month']] = [
+                    ...$cell,
+                    'volume' => $cell['volume'] + $row['pax'],
+                    'net' => round($cell['net'] + $row['net'], 2),
+                    'margin' => round($cell['margin'] + $row['margin'], 2),
+                ];
+            }
+        }
+
+        return $this->write($company, $year, 'extra', array_values($rows));
     }
 
     /**
@@ -49,24 +105,26 @@ class ForecastHistoryBuilder
     {
         $rows = [];
 
-        foreach ($this->pnlEtrip->byChannelAndProduct($year) as $row) {
-            if (abs((float) $row['net']) < 0.5) {
-                continue;
+        foreach ($this->bases($company, $year) as $base) {
+            foreach ($this->pnlEtrip->byChannelAndProduct($year, $base) as $row) {
+                if (abs((float) $row['net']) < 0.5) {
+                    continue;
+                }
+
+                $key = $row['product'].'|'.$row['channel'].'|'.$row['month'];
+                $cell = $rows[$key] ?? [
+                    'kind' => 'mix', 'unit' => PlanLine::PAX, 'key' => $row['product'],
+                    'channel' => $row['channel'], 'month' => (int) $row['month'],
+                    'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                ];
+
+                $rows[$key] = [
+                    ...$cell,
+                    'volume' => $cell['volume'] + (int) $row['bookings'],
+                    'net' => round($cell['net'] + (float) $row['net'], 2),
+                    'margin' => round($cell['margin'] + (float) $row['margin'], 2),
+                ];
             }
-
-            $key = $row['product'].'|'.$row['channel'].'|'.$row['month'];
-            $cell = $rows[$key] ?? [
-                'kind' => 'mix', 'unit' => PlanLine::PAX, 'key' => $row['product'],
-                'channel' => $row['channel'], 'month' => (int) $row['month'],
-                'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
-            ];
-
-            $rows[$key] = [
-                ...$cell,
-                'volume' => $cell['volume'] + (int) $row['bookings'],
-                'net' => round($cell['net'] + (float) $row['net'], 2),
-                'margin' => round($cell['margin'] + (float) $row['margin'], 2),
-            ];
         }
 
         foreach ($this->pnlTina->byChannelAndProduct($year) as $row) {
@@ -103,25 +161,30 @@ class ForecastHistoryBuilder
     {
         $rows = [];
 
-        foreach ($this->etrip->lag($year) as $row) {
-            if (abs($row['net']) < 0.5 || $row['travelled'] < 1 || $row['travelled'] > 12) {
-                continue;
-            }
+        foreach ($this->bases($company, $year) as $base) {
+            foreach ($this->etrip->lag($year, $base) as $row) {
+                if (abs($row['net']) < 0.5 || $row['travelled'] < 1 || $row['travelled'] > 12) {
+                    continue;
+                }
 
-            $key = $row['product'].'|'.$row['booked'].'|'.$row['travelled'];
-            $rows[$key] = [
-                'kind' => 'lag',
-                'unit' => PlanLine::PAX,
-                'key' => $row['product'],
-                // Luna plecării stă în coloana de canal: tabelul are deja
-                // cheia potrivită, iar un rând de tipar n-are canal.
-                'channel' => (string) $row['travelled'],
-                'month' => $row['booked'],
-                'volume' => 0,
-                'net' => $row['net'],
-                'margin' => $row['margin'],
-                'cost' => 0.0,
-            ];
+                $key = $row['product'].'|'.$row['booked'].'|'.$row['travelled'];
+                $cell = $rows[$key] ?? [
+                    'kind' => 'lag',
+                    'unit' => PlanLine::PAX,
+                    'key' => $row['product'],
+                    // Luna plecării stă în coloana de canal: tabelul are deja
+                    // cheia potrivită, iar un rând de tipar n-are canal.
+                    'channel' => (string) $row['travelled'],
+                    'month' => $row['booked'],
+                    'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                ];
+
+                $rows[$key] = [
+                    ...$cell,
+                    'net' => round($cell['net'] + $row['net'], 2),
+                    'margin' => round($cell['margin'] + $row['margin'], 2),
+                ];
+            }
         }
 
         return $this->write($company, $year, 'lag', array_values($rows));
@@ -131,27 +194,35 @@ class ForecastHistoryBuilder
     {
         $rows = [];
 
-        foreach ($this->etrip->byProduct($year) as $row) {
-            if ($row['pax'] <= 0 && abs($row['net']) < 0.5) {
-                continue;
-            }
+        foreach ($this->bases($company, $year) as $base) {
+            foreach ($this->etrip->byProduct($year, $base) as $row) {
+                if ($row['pax'] <= 0 && abs($row['net']) < 0.5) {
+                    continue;
+                }
 
-            $rows[] = [
-                'kind' => PlanLine::CATEGORY,
-                'unit' => PlanLine::PAX,
-                'key' => $row['product'],
-                'month' => $row['month'],
-                'volume' => $row['pax'],
-                'net' => $row['net'],
-                'margin' => $row['margin'],
-                'cost' => 0.0,
-                // Partea care zboară pe locuri de charter: planul o scade
-                // din categorie, fiindcă o duce cursa.
-                'charter_volume' => $row['charter_pax'],
-                'charter_net' => $row['charter_net'],
-                'charter_margin' => $row['charter_margin'],
-            ];
+                $key = $row['product'].'|'.$row['month'];
+                $cell = $rows[$key] ?? [
+                    'kind' => PlanLine::CATEGORY,
+                    'unit' => PlanLine::PAX,
+                    'key' => $row['product'],
+                    'month' => $row['month'],
+                    'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                    'charter_volume' => 0, 'charter_net' => 0.0, 'charter_margin' => 0.0,
+                ];
+
+                $rows[$key] = [
+                    ...$cell,
+                    'volume' => $cell['volume'] + $row['pax'],
+                    'net' => round($cell['net'] + $row['net'], 2),
+                    'margin' => round($cell['margin'] + $row['margin'], 2),
+                    'charter_volume' => $cell['charter_volume'] + $row['charter_pax'],
+                    'charter_net' => round($cell['charter_net'] + $row['charter_net'], 2),
+                    'charter_margin' => round($cell['charter_margin'] + $row['charter_margin'], 2),
+                ];
+            }
         }
+
+        $rows = array_values($rows);
 
         foreach ($this->tina->byProduct($year) as $row) {
             if ($row['services'] <= 0) {
@@ -181,46 +252,59 @@ class ForecastHistoryBuilder
     {
         $rows = [];
 
-        foreach ($this->charter->capacity($year) as $row) {
-            $key = $row['home'].'→'.$row['destination'];
-            $rows[$key.'|'.$row['month']] = [
-                'kind' => PlanLine::CHARTER,
-                'unit' => PlanLine::PAX,
-                'key' => $key,
-                'month' => $row['month'],
-                'capacity' => $row['seats'],
-                'sold' => $row['sold'],
-                'volume' => $row['sold'],
-                'net' => 0.0,
-                'margin' => 0.0,
-                'cost' => 0.0,
-            ];
+        foreach ($this->bases($company, $year) as $base) {
+            foreach ($this->charter->capacity($year, $base) as $row) {
+                $key = $row['home'].'→'.$row['destination'];
+                $cell = $rows[$key.'|'.$row['month']] ?? [
+                    'kind' => PlanLine::CHARTER,
+                    'unit' => PlanLine::PAX,
+                    'key' => $key,
+                    'month' => $row['month'],
+                    'capacity' => 0, 'sold' => 0, 'volume' => 0.0,
+                    'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                ];
+
+                $rows[$key.'|'.$row['month']] = [
+                    ...$cell,
+                    'capacity' => (float) $cell['capacity'] + $row['seats'],
+                    'sold' => (float) $cell['sold'] + $row['sold'],
+                    'volume' => (float) $cell['volume'] + $row['sold'],
+                ];
+            }
+
+            foreach ($this->charter->money($year, $base) as $row) {
+                $key = $row['home'].'→'.$row['destination'];
+                $cell = $rows[$key.'|'.$row['month']] ?? [
+                    'kind' => PlanLine::CHARTER,
+                    'unit' => PlanLine::PAX,
+                    'key' => $key,
+                    'month' => $row['month'],
+                    'capacity' => 0, 'sold' => 0, 'volume' => 0.0,
+                    'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+                ];
+
+                // Pasagerii din rezervări sunt cei adevărați: „vândut” din
+                // alocare numără locuri, iar un copil în poală are loc, dar
+                // n-are scaun. De-aia volumul se ia de aici când există.
+                $rows[$key.'|'.$row['month']] = [
+                    ...$cell,
+                    'volume' => $row['pax'] > 0
+                        ? (float) $cell['volume'] - (float) ($cell['pax_seen'] ?? 0) + $row['pax']
+                        : (float) $cell['volume'],
+                    'pax_seen' => (float) ($cell['pax_seen'] ?? 0) + $row['pax'],
+                    'net' => round((float) $cell['net'] + $row['net'], 2),
+                    'margin' => round((float) $cell['margin'] + $row['margin'], 2),
+                    'cost' => round((float) $cell['cost'] + $row['flight_cost'], 2),
+                ];
+            }
         }
 
-        foreach ($this->charter->money($year) as $row) {
-            $key = $row['home'].'→'.$row['destination'];
-            $cell = $rows[$key.'|'.$row['month']] ?? [
-                'kind' => PlanLine::CHARTER,
-                'unit' => PlanLine::PAX,
-                'key' => $key,
-                'month' => $row['month'],
-                'capacity' => null,
-                'sold' => null,
-                'volume' => 0.0,
-            ];
+        // `pax_seen` e doar pentru socoteala de mai sus; în tabel n-are loc.
+        $rows = array_map(function (array $row) {
+            unset($row['pax_seen']);
 
-            // Pasagerii din rezervări sunt cei adevărați: „vândut” din
-            // alocare numără locuri, iar un copil în poală are loc, dar n-are
-            // scaun.
-            $rows[$key.'|'.$row['month']] = [
-                ...$cell,
-                'volume' => $row['pax'] > 0 ? $row['pax'] : ($cell['volume'] ?? 0),
-                'net' => $row['net'],
-                'margin' => $row['margin'],
-                // Ce plătim companiei aeriene pentru locurile alea.
-                'cost' => $row['flight_cost'],
-            ];
-        }
+            return $row;
+        }, $rows);
 
         return $this->write($company, $year, PlanLine::CHARTER, array_values($rows));
     }

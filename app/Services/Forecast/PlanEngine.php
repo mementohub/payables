@@ -212,6 +212,7 @@ class PlanEngine
                 // spun și când raportul anului nu e construit.
                 'estimated' => PlanBuilder::openMonths($year),
                 'pax' => $this->paxOf($plan, $year),
+                'apart' => $history[$year]['apart'] ?? [],
                 ...($history[$year]['totals'] ?? []),
             ], array_reverse(self::years($plan)))),
             'base' => [
@@ -1091,6 +1092,41 @@ class PlanEngine
     }
 
     /**
+     * Ce aduc bazele de rezervări care nu se văd în vederea operațională.
+     *
+     * Rezervările Vacanza stau în baza ei de eTrip. Contabilitatea le are —
+     * de la 2026 sunt ale companiei — dar raportul operațional citește doar
+     * baza Christian Tour. Pentru plan, anul de bază trebuie să fie întreg:
+     * altfel ar porni de la patru cincimi din afacere și orice creștere ar
+     * părea mai mare decât e.
+     *
+     * @param  list<int>  $lived
+     * @return array{net: float, margin: float, bases: array<string, float>}
+     */
+    private function apart(Plan $plan, int $year, array $lived): array
+    {
+        $rows = ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $year)
+            ->where('kind', 'extra')
+            ->whereIn('month', $lived === [] ? [0] : $lived)
+            ->get();
+
+        $out = ['net' => 0.0, 'margin' => 0.0, 'bases' => []];
+
+        foreach ($rows as $row) {
+            $out['net'] += (float) $row->net;
+            $out['margin'] += (float) $row->margin;
+            $out['bases'][(string) $row->key] = round(($out['bases'][(string) $row->key] ?? 0) + (float) $row->net, 2);
+        }
+
+        $out['net'] = round($out['net'], 2);
+        $out['margin'] = round($out['margin'], 2);
+
+        return $out;
+    }
+
+    /**
      * Cât adună lunile estimate ale anului de bază.
      *
      * @param  array<string, mixed>  $overlay
@@ -1177,7 +1213,16 @@ class PlanEngine
         $slice = $this->pnl->slice($report, $lived, $period, $basis, $mode);
         $extra = $this->overlay($overlay, $open);
 
-        $margin = (float) $slice['revenue']['total']['margin'] + $extra['margin'];
+        // Vacanza are rezervările în baza ei. Registrul contabil le are —
+        // deci vederea financiară e întreagă — dar vederea operațională
+        // citește doar baza Christian Tour, așa că i le adăugăm aici.
+        // Altfel anul de bază ar fi cu o cincime mai mic decât planul care
+        // pornește din el.
+        $apart = $mode === PnlReportService::MODE_OPERATIONAL
+            ? $this->apart($plan, $year, $lived)
+            : ['net' => 0.0, 'margin' => 0.0, 'bases' => []];
+
+        $margin = (float) $slice['revenue']['total']['margin'] + $extra['margin'] + $apart['margin'];
         $opex = (float) $slice['totals']['total'] + $extra['opex'];
         $below = array_map(
             fn (string $bucket) => (float) ($slice['below'][$bucket]['total'] ?? 0) + (float) ($extra['below'][$bucket] ?? 0),
@@ -1185,7 +1230,7 @@ class PlanEngine
         );
 
         $rows = [
-            'revenue' => (float) $slice['revenue']['total']['net'] + $extra['net'],
+            'revenue' => (float) $slice['revenue']['total']['net'] + $extra['net'] + $apart['net'],
             'margin' => $margin,
             'costs' => $opex,
             'ebitda' => $margin - $opex,
@@ -1228,6 +1273,7 @@ class PlanEngine
             'shares' => $shares,
             'columns' => $this->baseColumns($slice, $overlay, $open),
             'estimated' => $open,
+            'apart' => $apart['bases'],
             'totals' => [
                 'net' => round($rows['revenue'], 2),
                 'margin' => round($margin, 2),

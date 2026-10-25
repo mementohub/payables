@@ -193,6 +193,7 @@ type Output = {
         built: boolean;
         estimated: number[];
         pax: number;
+        apart?: Record<string, number>;
         net?: number;
         margin?: number;
         opex?: number;
@@ -3640,6 +3641,19 @@ function PlanStatement({
                             .join(
                                 ', ',
                             )} sunt estimate — altfel s-ar compara ${12 - open.estimated.length} luni cu un an întreg.`}
+                    {Object.entries(
+                        output.years.find(
+                            (one) => Object.keys(one.apart ?? {}).length > 0,
+                        )?.apart ?? {},
+                    ).map(([name, net]) => (
+                        <span key={name}>
+                            {' '}
+                            Rezervările {name} stau în baza lor de eTrip, pe
+                            care vederea operațională n-o citește: sunt adăugate
+                            aici ({mii(net)} mii lei), ca anul de bază să fie
+                            întreg.
+                        </span>
+                    ))}
                 </p>
             </div>
 

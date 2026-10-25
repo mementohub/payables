@@ -334,6 +334,30 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Bazele de rezervări care intră în plan
+    |--------------------------------------------------------------------------
+    |
+    | Vacanza are rezervările ei, în baza ei de eTrip. Din 2026 e în
+    | compania noastră — veniturile și cheltuielile ei intră în registru —
+    | dar vederea operațională citește doar baza Christian Tour, așa că
+    | planul n-o vedea deloc: aproape o cincime din afacere lipsea din
+    | cifrele din care se face bugetul.
+    |
+    | Aici se spune de când aparține fiecare bază companiei. Istoricul le
+    | adună pe toate cele active într-un an, pe aceleași categorii și
+    | aceleași curse, fiindcă de la anul se vând dintr-un singur loc.
+    |
+    */
+
+    'extra_bases' => [
+        'etrip_vcz' => [
+            'label' => 'Vacanza',
+            'from_year' => env('PNL_VACANZA_FROM_YEAR', 2026),
+        ],
+    ],
+
     'profit_tax' => [
         'rate' => env('PNL_PROFIT_TAX_RATE', 0.16),
         'turnover_rate' => env('PNL_TURNOVER_TAX_RATE', 0.005),
