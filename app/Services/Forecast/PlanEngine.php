@@ -31,7 +31,7 @@ class PlanEngine
         $months = [];
 
         foreach (range(1, 12) as $month) {
-            $months[$month] = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'below' => 0.0, 'pax' => 0.0, 'seats' => 0.0];
+            $months[$month] = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'below' => 0.0, 'pax' => 0.0, 'services' => 0.0, 'seats' => 0.0];
         }
 
         foreach ($lines as $line) {
@@ -42,11 +42,14 @@ class PlanEngine
             }
 
             match ($line->kind) {
+                // Pasagerii și serviciile se numără în coloane diferite: un
+                // bilet de avion vândut unei firme nu e un pasager plecat.
                 PlanLine::CATEGORY, PlanLine::CHARTER => $months[$month] = [
                     ...$months[$month],
                     'net' => $months[$month]['net'] + $line->net(),
                     'margin' => $months[$month]['margin'] + $line->margin(),
-                    'pax' => $months[$month]['pax'] + $line->pax(),
+                    'pax' => $months[$month]['pax'] + ($line->unit === PlanLine::SERVICE ? 0 : $line->pax()),
+                    'services' => $months[$month]['services'] + ($line->unit === PlanLine::SERVICE ? $line->pax() : 0),
                     'seats' => $months[$month]['seats'] + (float) ($line->capacity ?? 0),
                 ],
                 PlanLine::OPEX => $months[$month]['opex'] += (float) $line->amount,
@@ -64,6 +67,10 @@ class PlanEngine
         return [
             'months' => $months,
             'totals' => $this->totals($months),
+            // Planul în forma raportului: aceleași rânduri, în aceeași
+            // ordine, ca să se poată citi unul lângă altul cu P&L-ul
+            // adevărat, nu ca două tabele care seamănă.
+            'statement' => $this->statement($plan, $lines, $months),
             'categories' => $this->byKey($lines->whereIn('kind', [PlanLine::CATEGORY, PlanLine::CHARTER])),
             'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER)),
             'opex' => $this->byKey($lines->where('kind', PlanLine::OPEX)),
@@ -73,12 +80,152 @@ class PlanEngine
     }
 
     /**
+     * Planul, rând cu rând, ca în contul de profit și pierdere.
+     *
+     * @param  Collection<int, PlanLine>  $lines
+     * @param  array<int, array<string, float>>  $months
+     * @return list<array<string, mixed>>
+     */
+    private function statement(Plan $plan, Collection $lines, array $months): array
+    {
+        $rows = [];
+        $pick = fn (string $key) => array_map(fn (array $cell) => (float) ($cell[$key] ?? 0), $months);
+
+        $rows[] = $this->row('revenue', 'Venituri nete', 'strong', $pick('net'));
+        $rows[] = $this->row('margin', 'Marjă brută', 'strong', $pick('margin'));
+
+        // Cheltuielile se strâng pe grupele raportului, cu liniile sub ele.
+        $groups = [];
+
+        foreach ($lines->where('kind', PlanLine::OPEX) as $line) {
+            [$group, $label] = array_pad(explode(' · ', (string) $line->label, 2), 2, '');
+            $group = $group !== '' ? $group : 'Alte cheltuieli';
+
+            $groups[$group]['months'][(int) $line->month] = ($groups[$group]['months'][(int) $line->month] ?? 0) + (float) $line->amount;
+            $groups[$group]['lines'][$line->key]['label'] = $label !== '' ? $label : $line->key;
+            $groups[$group]['lines'][$line->key]['months'][(int) $line->month] =
+                ($groups[$group]['lines'][$line->key]['months'][(int) $line->month] ?? 0) + (float) $line->amount;
+        }
+
+        uasort($groups, fn (array $a, array $b) => array_sum($b['months']) <=> array_sum($a['months']));
+
+        foreach ($groups as $group => $cells) {
+            $rows[] = $this->row('group:'.$group, $group, 'group', $this->spread($cells['months']), count($cells['lines']));
+
+            uasort($cells['lines'], fn (array $a, array $b) => array_sum($b['months']) <=> array_sum($a['months']));
+
+            foreach ($cells['lines'] as $saf => $line) {
+                $rows[] = $this->row('line:'.$saf, $saf.' '.$line['label'], 'line', $this->spread($line['months']), null, $group);
+            }
+        }
+
+        $rows[] = $this->row('costs', 'Cheltuieli totale operaționale', 'strong', $pick('opex'));
+        $rows[] = $this->row('ebitda', 'EBITDA', 'result', $pick('ebitda'));
+
+        foreach ($lines->where('kind', PlanLine::BELOW)->groupBy('key') as $bucket => $group) {
+            $cells = [];
+
+            foreach ($group as $line) {
+                $cells[(int) $line->month] = ($cells[(int) $line->month] ?? 0) + (float) $line->amount;
+            }
+
+            $rows[] = $this->row(
+                'below:'.$bucket,
+                PnlReportService::BELOW_LABELS[$bucket] ?? (string) $bucket,
+                'cost',
+                $this->spread($cells),
+            );
+        }
+
+        $rows[] = $this->row('net', 'Profit net', 'result', $pick('net_profit'));
+
+        return $this->withBase($plan, $rows);
+    }
+
+    /**
+     * @param  array<int, float>  $months
+     * @return array<int, float>
+     */
+    private function spread(array $months): array
+    {
+        $out = [];
+
+        foreach (range(1, 12) as $month) {
+            $out[$month] = round((float) ($months[$month] ?? 0), 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, float>  $months
+     * @return array<string, mixed>
+     */
+    private function row(string $key, string $label, string $kind, array $months, ?int $lines = null, ?string $group = null): array
+    {
+        return [
+            'key' => $key,
+            'label' => $label,
+            'kind' => $kind,
+            'group' => $group,
+            'lines' => $lines,
+            'months' => array_map(fn (float $value) => round($value, 2), $months),
+            'total' => round(array_sum($months), 2),
+        ];
+    }
+
+    /**
+     * Pune lângă fiecare rând cifra anului de bază, din raportul adevărat.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function withBase(Plan $plan, array $rows): array
+    {
+        $report = $this->pnl->cached($plan->company, $plan->base_year);
+
+        if ($report === null || isset($report['error'])) {
+            return $rows;
+        }
+
+        $slice = $this->pnl->slice($report, range(1, 12), 'year', PnlReportService::BASIS_RAS, PnlReportService::MODE_OPERATIONAL);
+        $margin = (float) $slice['revenue']['total']['margin'];
+        $opex = (float) $slice['totals']['total'];
+        $below = array_map(
+            fn (string $bucket) => (float) ($slice['below'][$bucket]['total'] ?? 0),
+            array_combine(['amortizare', 'financiar', 'impozit'], ['amortizare', 'financiar', 'impozit']),
+        );
+
+        $actual = [
+            'revenue' => (float) $slice['revenue']['total']['net'],
+            'margin' => $margin,
+            'costs' => $opex,
+            'ebitda' => $margin - $opex,
+            'net' => $margin - $opex - array_sum($below),
+        ];
+
+        foreach ($below as $bucket => $value) {
+            $actual['below:'.$bucket] = $value;
+        }
+
+        foreach (($slice['lines'] ?? []) as $line) {
+            $actual['line:'.$line['saf']] = (float) $line['total'];
+            $actual['group:'.$line['group']] = ($actual['group:'.$line['group']] ?? 0) + (float) $line['total'];
+        }
+
+        return array_map(fn (array $row) => [
+            ...$row,
+            'base' => isset($actual[$row['key']]) ? round($actual[$row['key']], 2) : null,
+        ], $rows);
+    }
+
+    /**
      * @param  array<int, array<string, float>>  $months
      * @return array<string, float>
      */
     private function totals(array $months): array
     {
-        $totals = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'below' => 0.0, 'ebitda' => 0.0, 'net_profit' => 0.0, 'pax' => 0.0, 'seats' => 0.0];
+        $totals = ['net' => 0.0, 'margin' => 0.0, 'opex' => 0.0, 'below' => 0.0, 'ebitda' => 0.0, 'net_profit' => 0.0, 'pax' => 0.0, 'services' => 0.0, 'seats' => 0.0];
 
         foreach ($months as $cell) {
             foreach ($totals as $key => $value) {
@@ -124,6 +271,7 @@ class PlanEngine
                 return [
                     'key' => $key,
                     'kind' => $first->kind,
+                    'unit' => $first->unit ?? PlanLine::PAX,
                     'label' => $first->label ?: $key,
                     'months' => $months,
                     'pax' => round($group->sum(fn (PlanLine $line) => $line->pax()), 2),

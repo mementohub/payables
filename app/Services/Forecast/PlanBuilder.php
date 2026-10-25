@@ -2,9 +2,11 @@
 
 namespace App\Services\Forecast;
 
+use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Services\Reports\PnlReportService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -25,11 +27,10 @@ class PlanBuilder
     /** Categoria de charter se plănuiește pe destinații, nu pe ea însăși. */
     public const CHARTER_CATEGORY = 'Charter';
 
-    public function __construct(
-        private ForecastEtripReader $etrip,
-        private ForecastCharterReader $charter,
-        private PnlReportService $pnl,
-    ) {}
+    /** Rândurile venite din celălalt ERP își spun numele. */
+    public const TINA_PREFIX = 'Tina · ';
+
+    public function __construct(private PnlReportService $pnl) {}
 
     public function seed(Plan $plan, bool $keepManual = true): int
     {
@@ -48,22 +49,22 @@ class PlanBuilder
      */
     private function seedCategories(Plan $plan, bool $keepManual): int
     {
-        $history = $this->etrip->byProduct($plan->base_year);
         $rows = [];
 
-        foreach ($history as $row) {
-            if ($row['product'] === self::CHARTER_CATEGORY || $row['pax'] <= 0) {
+        foreach ($this->history($plan, $plan->base_year, PlanLine::CATEGORY) as $row) {
+            if ($row->key === self::CHARTER_CATEGORY || $row->volume <= 0) {
                 continue;
             }
 
             $rows[] = [
                 'kind' => PlanLine::CATEGORY,
-                'key' => $row['product'],
-                'label' => $row['product'],
-                'month' => $row['month'],
-                'volume' => $row['pax'],
-                'unit_net' => round($row['net'] / $row['pax'], 2),
-                'unit_margin' => round($row['margin'] / $row['pax'], 2),
+                'unit' => $row->unit,
+                'key' => $row->key,
+                'label' => $row->key,
+                'month' => $row->month,
+                'volume' => $row->volume,
+                'unit_net' => round($row->net / $row->volume, 2),
+                'unit_margin' => round($row->margin / $row->volume, 2),
             ];
         }
 
@@ -77,46 +78,61 @@ class PlanBuilder
      */
     private function seedCharter(Plan $plan, bool $keepManual): int
     {
-        $planned = $this->charter->capacity($plan->year);
-        $base = $this->charter->capacity($plan->base_year);
-        $contracted = $planned !== [] && array_sum(array_column($planned, 'seats')) > 0;
+        $planned = $this->history($plan, $plan->year, PlanLine::CHARTER);
+        $base = $this->history($plan, $plan->base_year, PlanLine::CHARTER);
+        $contracted = $planned->sum('capacity') > 0;
 
-        // Gradul de ocupare se ia de anul trecut, pe destinație și lună; dacă
-        // destinația e nouă, se ia media anului.
-        $loads = [];
-        $baseSeats = array_sum(array_column($base, 'seats'));
-        $baseSold = array_sum(array_column($base, 'sold'));
-        $average = $baseSeats > 0 ? $baseSold / $baseSeats : 0.75;
+        // Gradul de ocupare și banii pe pasager se iau de pe cursa ei, din
+        // anul de bază — nu dintr-o medie pe toată flota: la Monastir omul
+        // lasă 2.834 de lei, la Cluj–Antalya 4.091.
+        $byKey = $base->groupBy('key');
+        $seats = (float) $base->sum('capacity');
+        $sold = (float) $base->sum('sold');
+        $average = $seats > 0 ? $sold / $seats : 0.75;
+        $money = $this->charterMoney($base);
 
-        foreach ($base as $row) {
-            if ($row['seats'] > 0) {
-                $loads[self::route($row).'|'.$row['month']] = round($row['sold'] / $row['seats'], 4);
-            }
-        }
-
-        $money = $this->charterMoney($plan->base_year);
         $rows = [];
 
-        foreach ($contracted ? $planned : $base as $row) {
-            $route = self::route($row);
-            $key = $route.'|'.$row['month'];
+        foreach (($contracted ? $planned : $base) as $row) {
+            $theirs = $byKey->get($row->key, collect());
+            $month = $theirs->firstWhere('month', $row->month);
+            $load = $month !== null && $month->capacity > 0
+                ? round((float) $month->sold / (float) $month->capacity, 4)
+                : round($average, 4);
+
+            $pax = (float) $theirs->sum('volume');
 
             $rows[] = [
                 'kind' => PlanLine::CHARTER,
-                'key' => $route,
-                'label' => $route,
-                'month' => $row['month'],
-                'capacity' => $row['seats'],
-                'load' => min(1.0, $loads[$key] ?? round($average, 4)),
-                'unit_net' => $money['net'],
-                'unit_margin' => $money['margin'],
+                'unit' => PlanLine::PAX,
+                'key' => $row->key,
+                'label' => $row->key,
+                'month' => $row->month,
+                'capacity' => $row->capacity,
+                'load' => min(1.0, $load),
+                'unit_net' => $pax > 0 ? round((float) $theirs->sum('net') / $pax, 2) : $money['net'],
+                'unit_margin' => $pax > 0 ? round((float) $theirs->sum('margin') / $pax, 2) : $money['margin'],
                 'note' => $contracted
-                    ? sprintf('%d plecări contractate în eTrip pentru %d.', $row['departures'], $plan->year)
+                    ? sprintf('Locuri contractate în eTrip pentru %d; ocupare și bani pe pasager din %d.', $plan->year, $plan->base_year)
                     : sprintf('Locurile anului %d; pentru %d nu e contractat încă nimic.', $plan->base_year, $plan->year),
             ];
         }
 
         return $this->write($plan, PlanLine::CHARTER, $rows, $keepManual);
+    }
+
+    /**
+     * Istoricul strâns al unui an, pe felul cerut.
+     *
+     * @return Collection<int, ForecastHistory>
+     */
+    private function history(Plan $plan, int $year, string $kind): Collection
+    {
+        return ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $year)
+            ->where('kind', $kind)
+            ->get();
     }
 
     /**
@@ -130,17 +146,17 @@ class PlanBuilder
     }
 
     /**
-     * Banii pe pasager ai charterului, din anul de bază.
+     * Media flotei, pentru cursele fără istoric propriu.
      *
+     * @param  Collection<int, ForecastHistory>  $base
      * @return array{net: float, margin: float}
      */
-    private function charterMoney(int $year): array
+    private function charterMoney(Collection $base): array
     {
-        $rows = collect($this->etrip->byProduct($year))->where('product', self::CHARTER_CATEGORY);
-        $pax = (int) $rows->sum('pax');
+        $pax = (float) $base->sum('volume');
 
         return $pax > 0
-            ? ['net' => round($rows->sum('net') / $pax, 2), 'margin' => round($rows->sum('margin') / $pax, 2)]
+            ? ['net' => round((float) $base->sum('net') / $pax, 2), 'margin' => round((float) $base->sum('margin') / $pax, 2)]
             : ['net' => 0.0, 'margin' => 0.0];
     }
 
@@ -222,6 +238,7 @@ class PlanBuilder
 
                     $payload[] = [
                         'plan_id' => $plan->id,
+                        'unit' => PlanLine::PAX,
                         'manual' => false,
                         'note' => null,
                         'label' => null,

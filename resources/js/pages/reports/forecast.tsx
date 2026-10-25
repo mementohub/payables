@@ -60,6 +60,8 @@ type Cell = {
 type Row = {
     key: string;
     kind: 'category' | 'charter' | 'opex' | 'below';
+    /** Pe ce se numără: pasageri (turism) sau servicii facturate (Tina). */
+    unit: 'pax' | 'serviciu';
     label: string;
     months: Record<number, Cell>;
     pax: number;
@@ -68,6 +70,17 @@ type Row = {
     margin: number;
     amount: number;
     manual: boolean;
+};
+
+type StatementRow = {
+    key: string;
+    label: string;
+    kind: 'strong' | 'group' | 'line' | 'cost' | 'result';
+    group: string | null;
+    lines: number | null;
+    months: Record<number, number>;
+    total: number;
+    base: number | null;
 };
 
 type Output = {
@@ -81,6 +94,7 @@ type Output = {
             ebitda: number;
             net_profit: number;
             pax: number;
+            services: number;
             seats: number;
         }
     >;
@@ -92,8 +106,10 @@ type Output = {
         ebitda: number;
         net_profit: number;
         pax: number;
+        services: number;
         seats: number;
     };
+    statement: StatementRow[];
     categories: Row[];
     charter: Row[];
     opex: Row[];
@@ -109,6 +125,20 @@ type Output = {
         net_profit?: number;
     };
 };
+
+type History = Record<
+    string,
+    Record<
+        number,
+        {
+            volume: number;
+            capacity: number;
+            sold: number;
+            net: number;
+            margin: number;
+        }
+    >
+>;
 
 type Props = {
     companies: { id: number; name: string }[];
@@ -131,6 +161,8 @@ type Props = {
         note: string | null;
     } | null;
     output: Output | null;
+    history: History;
+    historyYears: number[];
     years: number[];
 };
 
@@ -163,6 +195,8 @@ export default function Forecast({
     plans,
     plan,
     output,
+    history,
+    historyYears,
     years,
 }: Props) {
     const [tab, setTab] = useState<'sumar' | 'categorii' | 'charter' | 'opex'>(
@@ -472,117 +506,11 @@ export default function Forecast({
                         </Tabs>
 
                         {tab === 'sumar' && (
-                            <Card>
-                                <CardContent className="overflow-x-auto p-0">
-                                    <Table className="text-xs">
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead className="w-44">
-                                                    Linie
-                                                </TableHead>
-                                                {MONTHS.map((m) => (
-                                                    <TableHead
-                                                        key={m}
-                                                        className="text-right"
-                                                    >
-                                                        {m}
-                                                    </TableHead>
-                                                ))}
-                                                <TableHead className="text-right font-semibold">
-                                                    An
-                                                </TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {(
-                                                [
-                                                    ['Pasageri', 'pax', false],
-                                                    ['Venit net', 'net', true],
-                                                    [
-                                                        'Marjă brută',
-                                                        'margin',
-                                                        true,
-                                                    ],
-                                                    [
-                                                        'Cheltuieli',
-                                                        'opex',
-                                                        true,
-                                                    ],
-                                                    ['EBITDA', 'ebitda', true],
-                                                    [
-                                                        'Sub EBITDA',
-                                                        'below',
-                                                        true,
-                                                    ],
-                                                    [
-                                                        'Profit net',
-                                                        'net_profit',
-                                                        true,
-                                                    ],
-                                                ] as const
-                                            ).map(([label, key, money]) => (
-                                                <TableRow
-                                                    key={key}
-                                                    className={
-                                                        key === 'net_profit' ||
-                                                        key === 'ebitda'
-                                                            ? 'bg-muted/30 font-semibold'
-                                                            : ''
-                                                    }
-                                                >
-                                                    <TableCell>
-                                                        {label}
-                                                        {money && (
-                                                            <span className="ml-1 text-[10px] text-muted-foreground">
-                                                                mii
-                                                            </span>
-                                                        )}
-                                                    </TableCell>
-                                                    {MONTHS.map((_, i) => (
-                                                        <TableCell
-                                                            key={i}
-                                                            className="text-right tabular-nums"
-                                                        >
-                                                            {money
-                                                                ? mii(
-                                                                      output
-                                                                          .months[
-                                                                          i + 1
-                                                                      ]?.[
-                                                                          key
-                                                                      ] ?? 0,
-                                                                  )
-                                                                : lei(
-                                                                      output
-                                                                          .months[
-                                                                          i + 1
-                                                                      ]?.[
-                                                                          key
-                                                                      ] ?? 0,
-                                                                  )}
-                                                        </TableCell>
-                                                    ))}
-                                                    <TableCell className="text-right font-semibold tabular-nums">
-                                                        {money
-                                                            ? mii(
-                                                                  output
-                                                                      .totals[
-                                                                      key
-                                                                  ],
-                                                              )
-                                                            : lei(
-                                                                  output
-                                                                      .totals[
-                                                                      key
-                                                                  ],
-                                                              )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </CardContent>
-                            </Card>
+                            <PlanStatement
+                                output={output}
+                                baseYear={plan.base_year}
+                                year={plan.year}
+                            />
                         )}
 
                         {tab !== 'sumar' && (
@@ -597,6 +525,8 @@ export default function Forecast({
                                           : output.opex
                                 }
                                 kind={tab}
+                                history={history}
+                                historyYears={historyYears}
                                 open={open}
                                 onToggle={toggle}
                                 onApply={applyRow}
@@ -618,6 +548,8 @@ export default function Forecast({
 function DriverTable({
     rows,
     kind,
+    history,
+    historyYears,
     open,
     onToggle,
     onApply,
@@ -626,6 +558,8 @@ function DriverTable({
 }: {
     rows: Row[];
     kind: 'categorii' | 'charter' | 'opex';
+    history: History;
+    historyYears: number[];
     open: Set<string>;
     onToggle: (key: string) => void;
     onApply: (
@@ -653,6 +587,14 @@ function DriverTable({
                                       ? 'Linie de cheltuială'
                                       : 'Categorie'}
                             </TableHead>
+                            {historyYears.map((year) => (
+                                <TableHead
+                                    key={year}
+                                    className="border-l text-right text-muted-foreground"
+                                >
+                                    {year}
+                                </TableHead>
+                            ))}
                             {isCharter && (
                                 <>
                                     <TableHead className="text-right">
@@ -666,13 +608,13 @@ function DriverTable({
                             {!isOpex && (
                                 <>
                                     <TableHead className="text-right">
-                                        Pax
+                                        Pax / servicii
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Venit / pax
+                                        Venit / unitate
                                     </TableHead>
                                     <TableHead className="text-right">
-                                        Marjă / pax
+                                        Marjă / unitate
                                     </TableHead>
                                 </>
                             )}
@@ -717,6 +659,72 @@ function DriverTable({
                                         )}
                                     </TableCell>
 
+                                    {historyYears.map((year) => {
+                                        const past =
+                                            history[`${row.kind}|${row.key}`]?.[
+                                                year
+                                            ];
+
+                                        if (!past) {
+                                            return (
+                                                <TableCell
+                                                    key={year}
+                                                    className="border-l text-right text-muted-foreground"
+                                                >
+                                                    –
+                                                </TableCell>
+                                            );
+                                        }
+
+                                        return (
+                                            <TableCell
+                                                key={year}
+                                                className="border-l text-right text-[11px] text-muted-foreground tabular-nums"
+                                                title={`${year}: ${lei(past.net)} lei venit, ${lei(past.margin)} marjă`}
+                                            >
+                                                {isOpex ? (
+                                                    lei(past.net)
+                                                ) : (
+                                                    <>
+                                                        <div>
+                                                            {lei(past.volume)}
+                                                            {isCharter &&
+                                                                past.capacity >
+                                                                    0 && (
+                                                                    <span className="ml-1">
+                                                                        /{' '}
+                                                                        {(
+                                                                            (past.sold /
+                                                                                past.capacity) *
+                                                                            100
+                                                                        ).toFixed(
+                                                                            0,
+                                                                        )}
+                                                                        %
+                                                                    </span>
+                                                                )}
+                                                        </div>
+                                                        <div>
+                                                            {past.volume > 0
+                                                                ? lei(
+                                                                      past.net /
+                                                                          past.volume,
+                                                                  )
+                                                                : '–'}{' '}
+                                                            /{' '}
+                                                            {past.volume > 0
+                                                                ? lei(
+                                                                      past.margin /
+                                                                          past.volume,
+                                                                  )
+                                                                : '–'}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </TableCell>
+                                        );
+                                    })}
+
                                     {isCharter && (
                                         <>
                                             <TableCell className="text-right tabular-nums">
@@ -749,6 +757,11 @@ function DriverTable({
                                         <>
                                             <TableCell className="text-right tabular-nums">
                                                 {lei(row.pax)}
+                                                {row.unit === 'serviciu' && (
+                                                    <span className="ml-1 text-[10px] text-muted-foreground">
+                                                        servicii
+                                                    </span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <RowInput
@@ -834,7 +847,10 @@ function DriverTable({
                                         className="bg-muted/20"
                                     >
                                         <TableCell
-                                            colSpan={isOpex ? 5 : isCharter ? 9 : 7}
+                                            colSpan={
+                                                (isOpex ? 5 : isCharter ? 9 : 7) +
+                                                historyYears.length
+                                            }
                                             className="p-3"
                                         >
                                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
@@ -950,5 +966,161 @@ function RowInput({
                 </span>
             )}
         </span>
+    );
+}
+
+/**
+ * Planul în forma contului de profit și pierdere: aceleași rânduri, în
+ * aceeași ordine ca raportul adevărat, cu lunile pe coloane și cu anul de
+ * bază alături — ca să se citească unul lângă altul, nu ca două tabele care
+ * seamănă.
+ */
+function PlanStatement({
+    output,
+    baseYear,
+    year,
+}: {
+    output: Output;
+    baseYear: number;
+    year: number;
+}) {
+    const [groups, setGroups] = useState(false);
+
+    const rows = output.statement.filter((row) =>
+        row.kind === 'line' || row.kind === 'group' ? groups : true,
+    );
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center gap-3">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGroups(!groups)}
+                >
+                    {groups ? 'Doar totalurile' : 'Desfă cheltuielile'}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                    Planul {year} are rândurile raportului; coloana din dreapta
+                    e anul {baseYear}, din P&L-ul adevărat.
+                </p>
+            </div>
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="sticky left-0 z-10 w-64 bg-card">
+                                    Linie
+                                </TableHead>
+                                {MONTHS.map((m) => (
+                                    <TableHead
+                                        key={m}
+                                        className="text-right"
+                                    >
+                                        {m}
+                                    </TableHead>
+                                ))}
+                                <TableHead className="border-l text-right font-semibold">
+                                    Plan {year}
+                                </TableHead>
+                                <TableHead className="text-right text-muted-foreground">
+                                    {baseYear}
+                                </TableHead>
+                                <TableHead className="text-right text-muted-foreground">
+                                    vs
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            <TableRow className="text-muted-foreground">
+                                <TableCell className="sticky left-0 z-10 bg-card">
+                                    Pasageri · servicii · locuri
+                                </TableCell>
+                                {MONTHS.map((_, i) => (
+                                    <TableCell
+                                        key={i}
+                                        className="text-right tabular-nums"
+                                    >
+                                        {lei(
+                                            output.months[i + 1]?.pax ?? 0,
+                                        )}
+                                    </TableCell>
+                                ))}
+                                <TableCell className="border-l text-right tabular-nums">
+                                    {lei(output.totals.pax)} ·{' '}
+                                    {lei(output.totals.services)} ·{' '}
+                                    {lei(output.totals.seats)}
+                                </TableCell>
+                                <TableCell colSpan={2} />
+                            </TableRow>
+
+                            {rows.map((row) => (
+                                <TableRow
+                                    key={row.key}
+                                    className={
+                                        row.kind === 'result'
+                                            ? 'bg-muted/40 font-semibold'
+                                            : row.kind === 'strong'
+                                              ? 'font-medium'
+                                              : row.kind === 'line'
+                                                ? 'text-muted-foreground'
+                                                : ''
+                                    }
+                                >
+                                    <TableCell
+                                        className={`sticky left-0 z-10 bg-card ${row.kind === 'line' ? 'pl-7' : ''}`}
+                                    >
+                                        {row.label}
+                                        {row.lines !== null &&
+                                            row.lines > 1 && (
+                                                <span className="ml-1 text-[10px] opacity-60">
+                                                    ({row.lines})
+                                                </span>
+                                            )}
+                                    </TableCell>
+                                    {MONTHS.map((_, i) => (
+                                        <TableCell
+                                            key={i}
+                                            className="text-right tabular-nums"
+                                        >
+                                            {mii(row.months[i + 1] ?? 0)}
+                                        </TableCell>
+                                    ))}
+                                    <TableCell className="border-l text-right font-semibold tabular-nums">
+                                        {mii(row.total)}
+                                    </TableCell>
+                                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                                        {row.base !== null
+                                            ? mii(row.base)
+                                            : '–'}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {row.base !== null && (
+                                            <span
+                                                className={
+                                                    row.total >= row.base
+                                                        ? 'text-emerald-600 dark:text-emerald-500'
+                                                        : 'text-red-600 dark:text-red-400'
+                                                }
+                                            >
+                                                {pct(row.total, row.base) ??
+                                                    '–'}
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+            <p className="text-xs text-muted-foreground">
+                Cifrele sunt în mii de lei. Rândul de sus numără pasagerii
+                planificați pe lună; la capăt stau pasagerii, serviciile din
+                Tina și locurile de charter ale anului.
+            </p>
+        </div>
     );
 }

@@ -23,6 +23,12 @@ class PlanLine extends Model
     /** Amortizare, rezultat financiar, impozit. */
     public const BELOW = 'below';
 
+    /** Turismul se numără pe pasageri. */
+    public const PAX = 'pax';
+
+    /** Corporate-ul din Tina se numără pe servicii facturate. */
+    public const SERVICE = 'serviciu';
+
     protected $guarded = [];
 
     protected function casts(): array

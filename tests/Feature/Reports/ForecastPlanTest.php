@@ -1,24 +1,30 @@
 <?php
 
 use App\Models\Company;
+use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Models\User;
-use App\Services\Forecast\ForecastCharterReader;
-use App\Services\Forecast\ForecastEtripReader;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
-use Mockery\MockInterface;
 
 /**
- * Istoricul din care pornește planul, înlocuit cu ce-i dăm noi.
+ * Istoricul strâns, pus de-a gata: planul citește de acolo, nu din ERP-uri.
+ *
+ * @param  list<array<string, mixed>>  $rows
  */
-function fakeForecastSources(array $products = [], array $capacity = []): void
+function fakeForecastHistory(array $rows): void
 {
-    test()->mock(ForecastEtripReader::class, fn (MockInterface $mock) => $mock->shouldReceive('byProduct')->andReturn($products));
-    test()->mock(ForecastCharterReader::class, function (MockInterface $mock) use ($capacity) {
-        $mock->shouldReceive('capacity')->andReturnUsing(fn (int $year) => $capacity[$year] ?? []);
-    });
+    foreach ($rows as $row) {
+        ForecastHistory::query()->create([
+            'company_id' => test()->company->id,
+            'unit' => 'pax',
+            'volume' => 0,
+            'net' => 0,
+            'margin' => 0,
+            ...$row,
+        ]);
+    }
 }
 
 function planFor(Company $company, int $year = 2027, int $base = 2026): Plan
@@ -35,11 +41,11 @@ beforeEach(function () {
 });
 
 test('a plan starts from the passengers of the base year, with their money per head', function () {
-    fakeForecastSources([
-        ['product' => 'Circuite Culturale', 'month' => 5, 'bookings' => 100, 'pax' => 200, 'net' => 700_000.0, 'margin' => 130_000.0],
-        ['product' => 'Circuite Culturale', 'month' => 6, 'bookings' => 50, 'pax' => 100, 'net' => 350_000.0, 'margin' => 65_000.0],
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Circuite Culturale', 'month' => 5, 'volume' => 200, 'net' => 700_000, 'margin' => 130_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Circuite Culturale', 'month' => 6, 'volume' => 100, 'net' => 350_000, 'margin' => 65_000],
         // Charterul se plănuiește pe destinații, nu pe el însuși.
-        ['product' => 'Charter', 'month' => 5, 'bookings' => 500, 'pax' => 1_000, 'net' => 4_000_000.0, 'margin' => 300_000.0],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Charter', 'month' => 5, 'volume' => 1_000, 'net' => 4_000_000, 'margin' => 300_000],
     ]);
 
     $plan = planFor($this->company);
@@ -56,15 +62,13 @@ test('a plan starts from the passengers of the base year, with their money per h
 });
 
 test('charter is planned on the seats already contracted for the year ahead', function () {
-    fakeForecastSources(
-        [['product' => 'Charter', 'month' => 6, 'bookings' => 500, 'pax' => 1_000, 'net' => 4_000_000.0, 'margin' => 300_000.0]],
-        [
-            // Anul de bază: 500 de locuri, 400 vândute → 80% grad de ocupare.
-            2026 => [['destination' => 'AYT', 'home' => 'OTP', 'month' => 6, 'departures' => 4, 'seats' => 500, 'sold' => 400]],
-            // Anul plănuit: s-au contractat deja 800.
-            2027 => [['destination' => 'AYT', 'home' => 'OTP', 'month' => 6, 'departures' => 6, 'seats' => 800, 'sold' => 0]],
-        ],
-    );
+    fakeForecastHistory([
+        // Anul de bază: 500 de locuri, 400 vândute → 80% ocupare, 4.000 lei
+        // de pasager pe cursa asta.
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 6, 'capacity' => 500, 'sold' => 400, 'volume' => 400, 'net' => 1_600_000, 'margin' => 120_000],
+        // Anul plănuit: s-au contractat deja 800 de locuri.
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 6, 'capacity' => 800, 'sold' => 0, 'volume' => 0],
+    ]);
 
     $plan = planFor($this->company);
     app(PlanBuilder::class)->seed($plan);
@@ -80,14 +84,14 @@ test('charter is planned on the seats already contracted for the year ahead', fu
         // 800 de locuri × 80% = 640 de pasageri.
         ->and($line->pax())->toEqual(640.0)
         ->and($line->net())->toEqual(2_560_000.0)
-        ->and($line->note)->toContain('6 plecări contractate');
+        ->and($line->note)->toContain('Locuri contractate în eTrip pentru 2027');
 });
 
 test('the planned P&L is the levers multiplied, month by month', function () {
-    fakeForecastSources(
-        [['product' => 'Croaziere', 'month' => 3, 'bookings' => 10, 'pax' => 20, 'net' => 200_000.0, 'margin' => 30_000.0]],
-        [2027 => [['destination' => 'AYT', 'home' => 'OTP', 'month' => 3, 'departures' => 2, 'seats' => 300, 'sold' => 0]]],
-    );
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Croaziere', 'month' => 3, 'volume' => 20, 'net' => 200_000, 'margin' => 30_000],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 3, 'capacity' => 300, 'sold' => 0, 'volume' => 0],
+    ]);
 
     $plan = planFor($this->company);
     app(PlanBuilder::class)->seed($plan);
@@ -108,8 +112,8 @@ test('the planned P&L is the levers multiplied, month by month', function () {
 });
 
 test('what the hand writes stays, and the refresh does not step over it', function () {
-    fakeForecastSources([
-        ['product' => 'Croaziere', 'month' => 3, 'bookings' => 10, 'pax' => 20, 'net' => 200_000.0, 'margin' => 30_000.0],
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Croaziere', 'month' => 3, 'volume' => 20, 'net' => 200_000, 'margin' => 30_000],
     ]);
 
     $plan = planFor($this->company);
@@ -138,9 +142,9 @@ test('what the hand writes stays, and the refresh does not step over it', functi
 });
 
 test('growth applies to every month of the row, keeping the shape of the year', function () {
-    fakeForecastSources([
-        ['product' => 'Cazare', 'month' => 1, 'bookings' => 10, 'pax' => 100, 'net' => 200_000.0, 'margin' => 20_000.0],
-        ['product' => 'Cazare', 'month' => 8, 'bookings' => 40, 'pax' => 400, 'net' => 800_000.0, 'margin' => 80_000.0],
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 8, 'volume' => 400, 'net' => 800_000, 'margin' => 80_000],
     ]);
 
     $plan = planFor($this->company);
@@ -158,7 +162,7 @@ test('growth applies to every month of the row, keeping the shape of the year', 
 });
 
 test('the page is top management only', function () {
-    fakeForecastSources();
+    fakeForecastHistory([]);
 
     $this->actingAs($this->boss)->get('/reports/forecast')->assertOk();
 
@@ -167,4 +171,68 @@ test('the page is top management only', function () {
             ->get('/reports/forecast')
             ->assertForbidden();
     }
+});
+
+test('the plan is laid out like the P&L, line for line, with the base year beside it', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Croaziere', 'month' => 3, 'volume' => 20, 'net' => 200_000, 'margin' => 30_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $statement = collect(app(PlanEngine::class)->compute($plan)['statement']);
+
+    // Rândurile raportului, în ordinea lui.
+    expect($statement->pluck('key')->take(2)->all())->toBe(['revenue', 'margin'])
+        ->and($statement->pluck('key')->contains('costs'))->toBeTrue()
+        ->and($statement->pluck('key')->contains('ebitda'))->toBeTrue()
+        ->and($statement->last()['key'])->toBe('net')
+        // Venitul e cel din pârghii, lună cu lună.
+        ->and($statement->firstWhere('key', 'revenue')['months'][3])->toEqual(200_000.0)
+        ->and($statement->firstWhere('key', 'revenue')['total'])->toEqual(200_000.0)
+        // Fără cheltuieli scrise, EBITDA e marja.
+        ->and($statement->firstWhere('key', 'ebitda')['total'])->toEqual(30_000.0);
+});
+
+test('Tina sits next to the tourism, counted in services, not in passengers', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 4, 'volume' => 100, 'net' => 300_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Tina · Ticketing', 'unit' => 'serviciu', 'month' => 4, 'volume' => 500, 'net' => 1_000_000, 'margin' => 350_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $out = app(PlanEngine::class)->compute($plan);
+
+    // Banii se adună împreună, volumele nu: un bilet de avion vândut unei
+    // firme nu e un pasager plecat în vacanță.
+    expect($out['totals']['net'])->toEqual(1_300_000.0)
+        ->and($out['totals']['pax'])->toEqual(100.0)
+        ->and($out['totals']['services'])->toEqual(500.0)
+        ->and(collect($out['categories'])->firstWhere('key', 'Tina · Ticketing')['unit'])->toBe('serviciu')
+        // Venitul pe serviciu: 1.000.000 / 500.
+        ->and(collect($out['categories'])->firstWhere('key', 'Tina · Ticketing')['net'])->toEqual(1_000_000.0);
+});
+
+test('every route carries its own money, not the average of the fleet', function () {
+    fakeForecastHistory([
+        // Monastir lasă 2.800 de lei de pasager, Antalya 4.100.
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→MIR', 'month' => 7, 'capacity' => 200, 'sold' => 180, 'volume' => 180, 'net' => 504_000, 'margin' => 32_400],
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 300, 'sold' => 240, 'volume' => 240, 'net' => 984_000, 'margin' => 72_000],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→MIR', 'month' => 7, 'capacity' => 400, 'sold' => 0, 'volume' => 0],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 600, 'sold' => 0, 'volume' => 0],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $lines = PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->get()->keyBy('key');
+
+    expect($lines['OTP→MIR']->unit_net)->toEqual(2_800.0)
+        ->and($lines['OTP→AYT']->unit_net)->toEqual(4_100.0)
+        // Și gradul de ocupare e al cursei: 90% la Monastir, 80% la Antalya.
+        ->and($lines['OTP→MIR']->load)->toEqual(0.9)
+        ->and($lines['OTP→AYT']->load)->toEqual(0.8);
 });

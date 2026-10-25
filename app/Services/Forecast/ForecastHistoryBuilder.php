@@ -1,0 +1,156 @@
+<?php
+
+namespace App\Services\Forecast;
+
+use App\Models\Company;
+use App\Models\ForecastHistory;
+use App\Models\PlanLine;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Strânge istoricul din care se judecă planul: cum a mers fiecare categorie
+ * și fiecare cursă, an de an.
+ *
+ * Se cheamă rar — o dată pe noapte sau când o cere omul — fiindcă citirea
+ * banilor pe cursă trece de două minute pe an. Pagina planului nu așteaptă
+ * după ea: citește ce s-a strâns aici.
+ */
+class ForecastHistoryBuilder
+{
+    public function __construct(
+        private ForecastEtripReader $etrip,
+        private ForecastCharterReader $charter,
+        private ForecastTinaReader $tina,
+    ) {}
+
+    /**
+     * @return array{categories: int, charter: int}
+     */
+    public function build(Company $company, int $year): array
+    {
+        return [
+            'categories' => $this->categories($company, $year),
+            'charter' => $this->charter($company, $year),
+        ];
+    }
+
+    private function categories(Company $company, int $year): int
+    {
+        $rows = [];
+
+        foreach ($this->etrip->byProduct($year) as $row) {
+            if ($row['pax'] <= 0 && abs($row['net']) < 0.5) {
+                continue;
+            }
+
+            $rows[] = [
+                'kind' => PlanLine::CATEGORY,
+                'unit' => PlanLine::PAX,
+                'key' => $row['product'],
+                'month' => $row['month'],
+                'volume' => $row['pax'],
+                'net' => $row['net'],
+                'margin' => $row['margin'],
+            ];
+        }
+
+        foreach ($this->tina->byProduct($year) as $row) {
+            if ($row['services'] <= 0) {
+                continue;
+            }
+
+            $rows[] = [
+                'kind' => PlanLine::CATEGORY,
+                'unit' => PlanLine::SERVICE,
+                'key' => PlanBuilder::TINA_PREFIX.$row['product'],
+                'month' => $row['month'],
+                'volume' => $row['services'],
+                'net' => $row['net'],
+                'margin' => $row['margin'],
+            ];
+        }
+
+        return $this->write($company, $year, PlanLine::CATEGORY, $rows);
+    }
+
+    /**
+     * Cursele: locurile contractate și vândute dintr-o parte, pasagerii și
+     * banii din cealaltă, lipite pe aceeași cheie.
+     */
+    private function charter(Company $company, int $year): int
+    {
+        $rows = [];
+
+        foreach ($this->charter->capacity($year) as $row) {
+            $key = $row['home'].'→'.$row['destination'];
+            $rows[$key.'|'.$row['month']] = [
+                'kind' => PlanLine::CHARTER,
+                'unit' => PlanLine::PAX,
+                'key' => $key,
+                'month' => $row['month'],
+                'capacity' => $row['seats'],
+                'sold' => $row['sold'],
+                'volume' => $row['sold'],
+                'net' => 0.0,
+                'margin' => 0.0,
+            ];
+        }
+
+        foreach ($this->charter->money($year) as $row) {
+            $key = $row['home'].'→'.$row['destination'];
+            $cell = $rows[$key.'|'.$row['month']] ?? [
+                'kind' => PlanLine::CHARTER,
+                'unit' => PlanLine::PAX,
+                'key' => $key,
+                'month' => $row['month'],
+                'capacity' => null,
+                'sold' => null,
+                'volume' => 0.0,
+            ];
+
+            // Pasagerii din rezervări sunt cei adevărați: „vândut” din
+            // alocare numără locuri, iar un copil în poală are loc, dar n-are
+            // scaun.
+            $rows[$key.'|'.$row['month']] = [
+                ...$cell,
+                'volume' => $row['pax'] > 0 ? $row['pax'] : ($cell['volume'] ?? 0),
+                'net' => $row['net'],
+                'margin' => $row['margin'],
+            ];
+        }
+
+        return $this->write($company, $year, PlanLine::CHARTER, array_values($rows));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function write(Company $company, int $year, string $kind, array $rows): int
+    {
+        return DB::transaction(function () use ($company, $year, $kind, $rows) {
+            ForecastHistory::query()
+                ->where('company_id', $company->getKey())
+                ->where('year', $year)
+                ->where('kind', $kind)
+                ->delete();
+
+            $written = 0;
+
+            foreach (array_chunk($rows, 400) as $chunk) {
+                ForecastHistory::query()->insert(array_map(fn (array $row) => [
+                    'company_id' => $company->getKey(),
+                    'year' => $year,
+                    'capacity' => null,
+                    'sold' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                    ...$row,
+                ], $chunk));
+
+                $written += count($chunk);
+            }
+
+            return $written;
+        });
+    }
+}

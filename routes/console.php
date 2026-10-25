@@ -118,6 +118,17 @@ Schedule::command('contracts:alerts', ['--digest' => true])
 if (config('notifications.cash_flow.weekdays_only', true)) {
     $cashFlowMail->weekdays();
 }
+/*
+ * Istoricul din care se judecă planul: cum a mers fiecare categorie și
+ * fiecare cursă. Se strânge noaptea, fiindcă banii pe cursă se adună în două
+ * minute pe an, iar pagina planului nu trebuie să aștepte după ei.
+ */
+Schedule::command('forecast:history', ['--years' => 3])
+    ->weeklyOn(1, '02:30')
+    ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping(120)
+    ->runInBackground();
+
 Schedule::command('pnl:build')
     ->dailyAt('05:15')
     ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))

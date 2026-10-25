@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Services\Forecast\PlanBuilder;
@@ -62,8 +63,56 @@ class ForecastController extends Controller
                 'note' => $plan->note,
             ] : null,
             'output' => $plan ? $this->engine->compute($plan) : null,
+            // Trei ani în urmă, pe fiecare rând: altfel gradul de ocupare și
+            // banii pe pasager s-ar hotărî dintr-un singur an, care poate să
+            // fi fost bun sau prost din întâmplare.
+            'history' => $plan ? $this->history($plan) : [],
+            'historyYears' => $plan ? $this->historyYears($plan) : [],
             'years' => range((int) now()->year + 1, (int) now()->year - 2),
         ]);
+    }
+
+    /**
+     * Cum a mers fiecare rând în anii dinainte.
+     *
+     * @return array<string, array<int, array<string, float>>>
+     */
+    private function history(Plan $plan): array
+    {
+        $rows = ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->whereIn('year', $this->historyYears($plan))
+            ->get();
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $key = $row->kind.'|'.$row->key;
+            $cell = $out[$key][$row->year] ?? ['volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0];
+
+            $out[$key][$row->year] = [
+                'volume' => round($cell['volume'] + $row->volume, 2),
+                'capacity' => round($cell['capacity'] + (float) $row->capacity, 2),
+                'sold' => round($cell['sold'] + (float) $row->sold, 2),
+                'net' => round($cell['net'] + $row->net, 2),
+                'margin' => round($cell['margin'] + $row->margin, 2),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Anii de istoric arătați: cel de bază și cei doi dinaintea lui, fără
+     * anul plănuit — pe el îl scriem noi.
+     *
+     * @return list<int>
+     */
+    private function historyYears(Plan $plan): array
+    {
+        $last = min((int) $plan->base_year, (int) $plan->year - 1);
+
+        return [$last, $last - 1, $last - 2];
     }
 
     public function store(Request $request): RedirectResponse
