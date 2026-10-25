@@ -6,6 +6,7 @@ use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Models\PlanVersion;
 use App\Services\Forecast\PlanBuilder;
+use App\Services\Forecast\PlanEngine;
 use App\Services\Reports\PnlReportService;
 use Illuminate\Support\Str;
 
@@ -23,6 +24,8 @@ use Illuminate\Support\Str;
 class PlanExport
 {
     public const FORMATS = ['xlsx', 'pdf', 'pptx'];
+
+    public function __construct(private PlanEngine $engine) {}
 
     /** @var array<int, string> */
     public const MONTHS = [
@@ -104,15 +107,71 @@ class PlanExport
         return [
             'title' => sprintf('Plan %d · %s', $plan->year, $plan->company?->name ?? Brand::company()),
             'subtitle' => $this->subtitle($plan, $output, $version),
-            'sections' => [
+            'sections' => array_values(array_filter([
+                $this->currentYear($plan, $output),
                 $this->statement($plan, $output),
                 $this->axis($plan, $output, 'product', 'Pe categorie de produs'),
                 $this->axis($plan, $output, 'channel', 'Pe canal de vânzare'),
                 $this->charter($output),
                 $this->levers($output),
                 $this->costs($output),
-            ],
+            ])),
             'assumptions' => $this->assumptions($plan, $output, $version),
+        ];
+    }
+
+    /**
+     * Anul în curs, așa cum se încheie: de aici pornesc premisele.
+     *
+     * Bugetul se face în octombrie–decembrie, când anul curent are nouă-zece
+     * luni trăite. Documentul care pleacă din aplicație trebuie să spună din
+     * ce an întreg s-a pornit, altfel cine îl citește crede că premisele
+     * sunt trei sferturi de an.
+     *
+     * @param  array<string, mixed>  $output
+     * @return array<string, mixed>|null
+     */
+    private function currentYear(Plan $plan, array $output): ?array
+    {
+        $current = $this->engine->currentYear($plan, (string) $output['basis'], (string) $output['mode']);
+
+        if ($current === null || $current['open'] === []) {
+            return null;
+        }
+
+        $rows = [];
+
+        foreach ($current['rows'] as $row) {
+            $rows[] = [
+                'cells' => [
+                    $row['label'],
+                    $row['actual'],
+                    $row['estimate'],
+                    $row['total'],
+                    $row['before'],
+                    $this->growth($row['total'], $row['before']),
+                ],
+                'style' => in_array($row['key'], ['net', 'ebitda'], true) ? 'total' : 'normal',
+            ];
+        }
+
+        return [
+            'title' => sprintf('Anul %d, așa cum se încheie', $current['year']),
+            'columns' => [
+                ['label' => 'Linie', 'width' => 44],
+                ['label' => sprintf('Realizat %d luni (lei)', count($current['lived'])), 'width' => 18, 'align' => 'right'],
+                ['label' => sprintf('Estimat %d luni (lei)', count($current['open'])), 'width' => 18, 'align' => 'right'],
+                ['label' => sprintf('Total %d (lei)', $current['year']), 'width' => 18, 'align' => 'right'],
+                ['label' => sprintf('%d (lei)', $current['year'] - 1), 'width' => 18, 'align' => 'right'],
+                ['label' => 'Δ (%)', 'width' => 10, 'align' => 'right'],
+            ],
+            'rows' => $rows,
+            'note' => sprintf(
+                'Planificarea anului %d se face în timp ce %d încă se întâmplă. Premisele pleacă din anul întreg — realizat plus ce mai vine — nu din lunile trăite: %s sunt estimate.',
+                $plan->year,
+                $current['year'],
+                implode(', ', array_map(fn (int $month) => self::MONTHS[$month] ?? $month, $current['open'])),
+            ),
         ];
     }
 
@@ -643,6 +702,22 @@ class PlanExport
                 'headers' => ['Linie', ...array_map(fn (string $month) => $month.' (lei)', array_values(self::MONTHS)), 'Total (lei)', 'Scris de mână'],
                 'widths' => [44, ...array_fill(0, 12, 12), 15, 12],
                 'rows' => $opexMonths,
+            ],
+            [
+                'name' => 'Anul în curs',
+                'headers' => [
+                    'Linie',
+                    'Realizat (lei)',
+                    'Estimat (lei)',
+                    'Total an (lei)',
+                    ($plan->base_year - 1).' (lei)',
+                    'Δ (%)',
+                ],
+                'widths' => [44, 18, 18, 18, 18, 10],
+                'rows' => array_map(
+                    fn (array $row) => $row['cells'],
+                    $this->currentYear($plan, $output)['rows'] ?? [],
+                ),
             ],
             [
                 'name' => 'Ipoteze',

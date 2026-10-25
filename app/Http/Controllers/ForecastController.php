@@ -98,6 +98,9 @@ class ForecastController extends Controller
             'output' => $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null,
             // Variantele salvate ale planului: la ele se întoarce omul când
             // vrea să vadă ce propunea acum două săptămâni.
+            // Anul în curs, așa cum se va încheia: din el pornesc premisele
+            // anului următor, nu din cele nouă luni trăite.
+            'current' => $plan ? $this->engine->currentYear($plan, $basis, $mode) : null,
             'versions' => $plan ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
                 'id' => $version->id,
                 'label' => $version->label,

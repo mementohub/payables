@@ -610,6 +610,105 @@ class PlanEngine
     }
 
     /**
+     * Anul în curs, așa cum se va încheia: realizat plus ce mai vine.
+     *
+     * Bugetul anului următor se face în octombrie–decembrie, când anul
+     * curent are nouă-zece luni trăite și două-trei care vin. Dacă premisele
+     * pleacă de la cele nouă luni, tot ce se plănuiește e strâmb de la
+     * început. Aici stă anul întreg: ce s-a realizat, ce se mai așteaptă și
+     * cât iese împreună — de aici pornește planul anului următor.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function currentYear(Plan $plan, string $basis = PnlReportService::BASIS_RAS, string $mode = PnlReportService::MODE_OPERATIONAL): ?array
+    {
+        $year = (int) $plan->base_year;
+        $open = PlanBuilder::openMonths($year);
+        $lived = PlanBuilder::livedMonths($year);
+        $all = range(1, 12);
+
+        $total = $this->actuals($plan, $year, $all, 'ytd12', $basis, $mode);
+
+        if ($total === null) {
+            return null;
+        }
+
+        // Realizatul: numai lunile trăite, fără estimare peste ele.
+        $done = $lived === []
+            ? null
+            : $this->actuals($plan, $year, $lived, 'ytd'.max($lived), $basis, $mode);
+
+        $before = $this->actuals($plan, $year - 1, $all, 'ytd12', $basis, $mode);
+
+        $rows = [];
+
+        foreach ($this->shape() as $key => $label) {
+            $sum = (float) ($total['rows'][$key] ?? 0);
+            $actual = (float) ($done['rows'][$key] ?? 0);
+
+            $rows[] = [
+                'key' => $key,
+                'label' => $label,
+                'actual' => round($actual, 2),
+                'estimate' => round($sum - $actual, 2),
+                'total' => round($sum, 2),
+                'before' => $before === null ? null : round((float) ($before['rows'][$key] ?? 0), 2),
+            ];
+        }
+
+        $categories = [];
+
+        foreach (($total['columns']['product']['revenue'] ?? []) as $key => $sum) {
+            $actual = (float) ($done['columns']['product']['revenue'][$key] ?? 0);
+
+            $categories[] = [
+                'key' => (string) $key,
+                'actual' => round($actual, 2),
+                'estimate' => round((float) $sum - $actual, 2),
+                'total' => round((float) $sum, 2),
+                'margin' => round((float) ($total['columns']['product']['margin'][$key] ?? 0), 2),
+                'before' => $before === null ? null : round((float) ($before['columns']['product']['revenue'][$key] ?? 0), 2),
+            ];
+        }
+
+        usort($categories, fn (array $a, array $b) => $b['total'] <=> $a['total']);
+
+        return [
+            'year' => $year,
+            'lived' => $lived,
+            'open' => $open,
+            'basis' => $basis,
+            'mode' => $mode,
+            'rows' => $rows,
+            'categories' => $categories,
+            'totals' => [
+                'actual' => $done['totals'] ?? [],
+                'total' => $total['totals'],
+                'before' => $before['totals'] ?? [],
+            ],
+        ];
+    }
+
+    /**
+     * Rândurile mari ale raportului, în ordinea lui.
+     *
+     * @return array<string, string>
+     */
+    private function shape(): array
+    {
+        return [
+            'revenue' => 'Venituri nete',
+            'margin' => 'Marjă brută',
+            'costs' => 'Cheltuieli totale operaționale',
+            'ebitda' => 'EBITDA',
+            'below:amortizare' => PnlReportService::BELOW_LABELS['amortizare'] ?? 'Amortizare',
+            'below:financiar' => PnlReportService::BELOW_LABELS['financiar'] ?? 'Rezultat financiar',
+            'below:impozit' => PnlReportService::BELOW_LABELS['impozit'] ?? 'Impozit pe profit',
+            'net' => 'Profit net',
+        ];
+    }
+
+    /**
      * Anii din care se judecă planul: anul de bază și cei dinaintea lui.
      *
      * @return list<int>

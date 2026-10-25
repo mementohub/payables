@@ -251,6 +251,33 @@ type Version = {
     };
 };
 
+type CurrentYear = {
+    year: number;
+    lived: number[];
+    open: number[];
+    rows: {
+        key: string;
+        label: string;
+        actual: number;
+        estimate: number;
+        total: number;
+        before: number | null;
+    }[];
+    categories: {
+        key: string;
+        actual: number;
+        estimate: number;
+        total: number;
+        margin: number;
+        before: number | null;
+    }[];
+    totals: {
+        actual: Record<string, number>;
+        total: Record<string, number>;
+        before: Record<string, number>;
+    };
+};
+
 type Props = {
     companies: { id: number; name: string }[];
     filters: {
@@ -280,6 +307,7 @@ type Props = {
     } | null;
     output: Output | null;
     versions: Version[];
+    current: CurrentYear | null;
     history: History;
     // Lunile pe care anul de bază nu le-a trăit încă și cifrele cu care
     // pornește planul pentru ele.
@@ -340,6 +368,7 @@ export default function Forecast({
     plan,
     output,
     versions,
+    current,
     history,
     historyYears,
     years,
@@ -349,7 +378,9 @@ export default function Forecast({
     // Întâi planul, în forma raportului; pârghiile din care iese stau
     // deoparte, sub „Configurare” — altfel tabelul de decizie e îngropat
     // sub o sută de rânduri de reglaje.
-    const [tab, setTab] = useState<'plan' | 'configurare' | 'variante'>('plan');
+    const [tab, setTab] = useState<
+        'plan' | 'curent' | 'configurare' | 'variante'
+    >('plan');
     // Varianta care se scrie acum: numele ei și de ce s-a salvat.
     const [version, setVersion] = useState({ label: '', note: '' });
     const [saving, setSaving] = useState(false);
@@ -1005,6 +1036,11 @@ export default function Forecast({
                                 <TabsTrigger value="plan">
                                     Plan {plan.year}
                                 </TabsTrigger>
+                                {current !== null && (
+                                    <TabsTrigger value="curent">
+                                        Anul în curs {current.year}
+                                    </TabsTrigger>
+                                )}
                                 <TabsTrigger value="configurare">
                                     Configurare
                                 </TabsTrigger>
@@ -1023,6 +1059,13 @@ export default function Forecast({
                                     ? `Tiparul rezervare → plecare e cel din ${plan.base_year}.`
                                     : `Nu există încă tiparul rezervare → plecare din ${plan.base_year}, așa că cele două vederi arată la fel.`}
                             </p>
+                        )}
+
+                        {tab === 'curent' && current !== null && (
+                            <CurrentYear
+                                current={current}
+                                planYear={plan.year}
+                            />
                         )}
 
                         {tab === 'plan' && (
@@ -2178,6 +2221,247 @@ function RowInput({
  * bază alături — ca să se citească unul lângă altul, nu ca două tabele care
  * seamănă.
  */
+/**
+ * Anul în curs, așa cum se va încheia.
+ *
+ * Bugetul anului următor se face în octombrie–decembrie, când anul curent
+ * are nouă-zece luni trăite. Dacă premisele pleacă de la atât, tot ce se
+ * plănuiește e strâmb de la început — așa că aici stă anul întreg: ce s-a
+ * realizat, ce se mai așteaptă și cât iese împreună.
+ */
+function CurrentYear({
+    current,
+    planYear,
+}: {
+    current: CurrentYear;
+    planYear: number;
+}) {
+    const cards = [
+        ['Venituri nete', 'net'],
+        ['Marjă brută', 'margin'],
+        ['EBITDA', 'ebitda'],
+        ['Profit net', 'net_profit'],
+    ] as const;
+
+    return (
+        <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+                {current.year} are{' '}
+                <strong className="text-foreground">
+                    {current.lived.length} luni realizate
+                </strong>{' '}
+                ({MONTHS[current.lived[0] - 1]}–
+                {MONTHS[current.lived[current.lived.length - 1] - 1]}) și{' '}
+                <strong className="text-foreground">
+                    {current.open.length} de estimat
+                </strong>{' '}
+                ({current.open.map((m) => MONTHS[m - 1]).join(', ')}). Planul{' '}
+                {planYear} pornește din coloana „Total an”, nu din lunile trăite
+                — altfel premisele anului următor ar pleca de la trei sferturi
+                de an. Lunile estimate se scriu de mână în Configurare, pe
+                fiecare rând.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {cards.map(([label, key]) => (
+                    <Card key={key}>
+                        <CardContent className="p-4">
+                            <p className="text-xs text-muted-foreground">
+                                {label}
+                            </p>
+                            <p className="text-lg font-semibold tabular-nums">
+                                {mii(current.totals.total[key] ?? 0)}
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                    mii lei, anul întreg
+                                </span>
+                            </p>
+                            <p className="text-xs text-muted-foreground tabular-nums">
+                                {mii(current.totals.actual[key] ?? 0)} realizat
+                                +{' '}
+                                {mii(
+                                    (current.totals.total[key] ?? 0) -
+                                        (current.totals.actual[key] ?? 0),
+                                )}{' '}
+                                estimat
+                            </p>
+                            {current.totals.before[key] !== undefined && (
+                                <p className="text-xs text-muted-foreground tabular-nums">
+                                    {current.year - 1}:{' '}
+                                    {mii(current.totals.before[key] ?? 0)} ·{' '}
+                                    <span
+                                        className={
+                                            (current.totals.total[key] ?? 0) >=
+                                            (current.totals.before[key] ?? 0)
+                                                ? 'text-emerald-600 dark:text-emerald-500'
+                                                : 'text-red-600 dark:text-red-400'
+                                        }
+                                    >
+                                        {pct(
+                                            current.totals.total[key] ?? 0,
+                                            current.totals.before[key],
+                                        ) ?? '–'}
+                                    </span>
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-72">Linie</TableHead>
+                                <TableHead className="border-l text-right">
+                                    Realizat ({current.lived.length} luni)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Estimat ({current.open.length} luni)
+                                </TableHead>
+                                <TableHead className="text-right font-semibold">
+                                    Total {current.year}
+                                </TableHead>
+                                <TableHead className="border-l text-right text-muted-foreground">
+                                    {current.year - 1}
+                                </TableHead>
+                                <TableHead className="text-right text-muted-foreground">
+                                    vs
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {current.rows.map((row) => (
+                                <TableRow
+                                    key={row.key}
+                                    className={cn(
+                                        (row.key === 'net' ||
+                                            row.key === 'ebitda') &&
+                                            'bg-muted/40 font-semibold',
+                                    )}
+                                >
+                                    <TableCell>{row.label}</TableCell>
+                                    <TableCell className="border-l text-right tabular-nums">
+                                        {mii(row.actual)}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {mii(row.estimate)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-semibold tabular-nums">
+                                        {mii(row.total)}
+                                    </TableCell>
+                                    <TableCell className="border-l text-right text-muted-foreground tabular-nums">
+                                        {row.before === null
+                                            ? '–'
+                                            : mii(row.before)}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {row.before !== null && (
+                                            <span
+                                                className={
+                                                    row.total >= row.before
+                                                        ? 'text-emerald-600 dark:text-emerald-500'
+                                                        : 'text-red-600 dark:text-red-400'
+                                                }
+                                            >
+                                                {pct(row.total, row.before) ??
+                                                    '–'}
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-72">
+                                    Categorie de produs
+                                </TableHead>
+                                <TableHead className="border-l text-right">
+                                    Venit realizat
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Venit estimat
+                                </TableHead>
+                                <TableHead className="text-right font-semibold">
+                                    Venit {current.year}
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Marjă {current.year}
+                                </TableHead>
+                                <TableHead className="border-l text-right text-muted-foreground">
+                                    Venit {current.year - 1}
+                                </TableHead>
+                                <TableHead className="text-right text-muted-foreground">
+                                    vs
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {current.categories.map((row) => (
+                                <TableRow key={row.key}>
+                                    <TableCell className="font-medium">
+                                        {row.key === '- -'
+                                            ? 'Fără categorie'
+                                            : row.key}
+                                    </TableCell>
+                                    <TableCell className="border-l text-right tabular-nums">
+                                        {mii(row.actual)}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {mii(row.estimate)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-semibold tabular-nums">
+                                        {mii(row.total)}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {mii(row.margin)}
+                                    </TableCell>
+                                    <TableCell className="border-l text-right text-muted-foreground tabular-nums">
+                                        {row.before === null
+                                            ? '–'
+                                            : mii(row.before)}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {row.before !== null && (
+                                            <span
+                                                className={
+                                                    row.total >= row.before
+                                                        ? 'text-emerald-600 dark:text-emerald-500'
+                                                        : 'text-red-600 dark:text-red-400'
+                                                }
+                                            >
+                                                {pct(row.total, row.before) ??
+                                                    '–'}
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <p className="text-xs text-muted-foreground">
+                Cifrele sunt în mii de lei, citite pe anul întreg, pe baza și pe
+                recunoașterea alese sus. Estimatul lunilor rămase e cel din care
+                pornește planul: volumul lunii din anul trecut, scalat cu cât a
+                crescut anul, cu banii pe unitate ai anului curent — sau cifra
+                scrisă de mână, dacă s-a scris.
+            </p>
+        </div>
+    );
+}
+
 /**
  * Cele trei formate în care pleacă planul din aplicație.
  *

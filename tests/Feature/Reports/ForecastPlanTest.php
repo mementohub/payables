@@ -779,3 +779,25 @@ test('the plan is read against three years, and an unfinished year says so', fun
         ->and(collect($out['statement'])->firstWhere('key', 'revenue'))
         ->toHaveKeys(['years', 'years_product', 'years_channel']);
 });
+
+test('the year in progress is shown whole: what has happened and what is still to come', function () {
+    fakeForecastHistory([
+        // Ianuarie e trăit, noiembrie nu: planul lui 2027 pornește din anul
+        // întreg, nu din lunile trăite.
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 300_000, 'margin' => 30_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 11, 'volume' => 80, 'net' => 240_000, 'margin' => 24_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $overlay = app(PlanBuilder::class)->openOverlay($plan);
+
+    // Lunile care n-au venit aduc venit în anul de bază, nu zero.
+    expect($overlay['months'])->toBe(PlanBuilder::openMonths(2026))
+        ->and($overlay['revenue'][11])->toEqual(80 * 3_000.0);
+
+    // Și planul pornește din ele: noiembrie 2027 are de unde pleca.
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('month', 11)->exists())->toBeTrue();
+});
