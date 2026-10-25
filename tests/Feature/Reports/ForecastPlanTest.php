@@ -8,6 +8,7 @@ use App\Models\PlanLine;
 use App\Models\User;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
+use Inertia\Testing\AssertableInertia as Inertia;
 
 /**
  * Istoricul strâns, pus de-a gata: planul citește de acolo, nu din ERP-uri.
@@ -506,4 +507,31 @@ test('the plan is read on columns too — product categories and sales channels 
         expect(round(array_sum($rows[$key]['product']), 2))->toEqual($rows[$key]['total'])
             ->and(round(array_sum($rows[$key]['channel']), 2))->toEqual($rows[$key]['total']);
     }
+});
+
+test('the period is chosen like on the P&L: one month and the way it is read', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 2, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 7, 'volume' => 300, 'net' => 900_000, 'margin' => 90_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // Implicit: anul întreg, cumulat până în decembrie.
+    $this->actingAs($this->boss)->get('/reports/forecast')
+        ->assertInertia(fn (Inertia $page) => $page
+            ->where('filters.period', 'ytd12')
+            ->where('output.totals.net', 1_100_000));
+
+    // Cumulat până în iulie, apoi doar iulie.
+    $this->actingAs($this->boss)->get('/reports/forecast?period=ytd7')
+        ->assertInertia(fn (Inertia $page) => $page->where('output.totals.net', 1_100_000));
+
+    $this->actingAs($this->boss)->get('/reports/forecast?period=mtd7')
+        ->assertInertia(fn (Inertia $page) => $page->where('output.totals.net', 900_000));
+
+    // Trimestrele, care nu mai au de unde fi alese, nu mai sunt primite.
+    $this->actingAs($this->boss)->get('/reports/forecast?period=q1')
+        ->assertInertia(fn (Inertia $page) => $page->where('filters.period', 'ytd12'));
 });

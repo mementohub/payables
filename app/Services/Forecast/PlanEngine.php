@@ -407,6 +407,8 @@ class PlanEngine
         return array_map(fn (array $row) => [
             ...$row,
             'base' => isset($actual['rows'][$row['key']]) ? round($actual['rows'][$row['key']], 2) : null,
+            'base_product' => $actual['columns']['product'][$row['key']] ?? [],
+            'base_channel' => $actual['columns']['channel'][$row['key']] ?? [],
         ], $rows);
     }
 
@@ -555,6 +557,8 @@ class PlanEngine
             // canal de vânzare.
             'product' => array_map(fn (float $value) => round($value, 2), $cut['product'] ?? []),
             'channel' => array_map(fn (float $value) => round($value, 2), $cut['channel'] ?? []),
+            'base_product' => [],
+            'base_channel' => [],
         ];
     }
 
@@ -610,6 +614,59 @@ class PlanEngine
     }
 
     /**
+     * Anul de bază, desfăcut pe coloane, rând cu rând.
+     *
+     * Ca să se vadă evoluția de la stânga la dreapta pe fiecare categorie și
+     * pe fiecare canal — nu doar pe totalul companiei.
+     *
+     * @param  array<string, mixed>  $slice
+     * @return array<string, array<string, array<string, float>>>
+     */
+    private function baseColumns(array $slice): array
+    {
+        $out = [];
+
+        foreach ([['product', 'by_product'], ['channel', 'by_channel']] as [$axis, $field]) {
+            $rows = [];
+
+            foreach (($slice['revenue'][$field] ?? []) as $key => $money) {
+                $rows['revenue'][(string) $key] = (float) $money['net'];
+                $rows['margin'][(string) $key] = (float) $money['margin'];
+            }
+
+            foreach (($slice['lines'] ?? []) as $line) {
+                foreach (($line[$field] ?? []) as $key => $value) {
+                    $rows['line:'.$line['saf']][(string) $key] = ($rows['line:'.$line['saf']][(string) $key] ?? 0) + (float) $value;
+                    $rows['group:'.$line['group']][(string) $key] = ($rows['group:'.$line['group']][(string) $key] ?? 0) + (float) $value;
+                    $rows['costs'][(string) $key] = ($rows['costs'][(string) $key] ?? 0) + (float) $value;
+                }
+            }
+
+            $under = [];
+
+            foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
+                foreach (($slice['below'][$bucket][$field] ?? []) as $key => $value) {
+                    $rows['below:'.$bucket][(string) $key] = ($rows['below:'.$bucket][(string) $key] ?? 0) + (float) $value;
+                    $under[(string) $key] = ($under[(string) $key] ?? 0) + (float) $value;
+                }
+            }
+
+            foreach ($rows['margin'] ?? [] as $key => $margin) {
+                $costs = (float) ($rows['costs'][$key] ?? 0);
+                $rows['ebitda'][$key] = $margin - $costs;
+                $rows['net'][$key] = $margin - $costs - (float) ($under[$key] ?? 0);
+            }
+
+            $out[$axis] = array_map(
+                fn (array $cells) => array_map(fn (float $value) => round($value, 2), $cells),
+                $rows,
+            );
+        }
+
+        return $out;
+    }
+
+    /**
      * O împărțire pe coloane, adusă la proporții; goală dacă n-are ce împărți.
      *
      * @param  array<string, float>  $cells
@@ -637,7 +694,7 @@ class PlanEngine
      * a venitului ca planul de lângă ea — altfel comparația ar minți.
      *
      * @param  list<int>  $wanted
-     * @return array{totals: array<string, float>, rows: array<string, float>, shares: array<string, array<string, array<string, float>>>}|null
+     * @return array{totals: array<string, float>, rows: array<string, float>, shares: array<string, array<string, array<string, float>>>, columns: array<string, array<string, array<string, float>>>}|null
      */
     private function actuals(Plan $plan, array $wanted, string $period, string $basis, string $mode): ?array
     {
@@ -691,6 +748,7 @@ class PlanEngine
 
         return [
             'shares' => $shares,
+            'columns' => $this->baseColumns($slice),
             'totals' => [
                 'net' => round($rows['revenue'], 2),
                 'margin' => round($margin, 2),

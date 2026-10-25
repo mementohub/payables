@@ -114,6 +114,8 @@ type StatementRow = {
     base: number | null;
     product: Record<string, number>;
     channel: Record<string, number>;
+    base_product: Record<string, number>;
+    base_channel: Record<string, number>;
 };
 
 type Output = {
@@ -282,6 +284,12 @@ export default function Forecast({
     // sub o sută de rânduri de reglaje.
     const [tab, setTab] = useState<'plan' | 'configurare'>('plan');
     const [view, setView] = useState<'produs' | 'canal' | 'luna'>('produs');
+
+    // Perioada se ține într-un singur câmp („ytd7”), dar se alege din două
+    // controale: luna și felul în care se citește — ca pe P&L.
+    const periodMatch = /^(ytd|mtd)(\d{1,2})$/.exec(filters.period);
+    const periodMode = periodMatch?.[1] === 'mtd' ? 'mtd' : 'ytd';
+    const periodMonth = periodMatch ? Number(periodMatch[2]) : 12;
     const [sheet, setSheet] = useState<'categorii' | 'charter' | 'opex'>(
         'categorii',
     );
@@ -445,42 +453,62 @@ export default function Forecast({
                     {plan && (
                         <>
                             <div className="grid gap-1.5">
-                                <Label>Perioada</Label>
+                                <Label htmlFor="period">
+                                    {view === 'luna' ? 'Până în luna' : 'Luna'}
+                                </Label>
                                 <Select
-                                    value={filters.period}
-                                    onValueChange={(v) => go({ period: v })}
+                                    value={String(periodMonth)}
+                                    onValueChange={(v) =>
+                                        go({ period: `${periodMode}${v}` })
+                                    }
                                 >
-                                    <SelectTrigger className="w-44">
+                                    <SelectTrigger id="period" className="w-36">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="year">
-                                            Anul întreg
-                                        </SelectItem>
-                                        {[1, 2, 3, 4].map((q) => (
-                                            <SelectItem key={q} value={`q${q}`}>
-                                                Trimestrul {q} (cumulat)
-                                            </SelectItem>
-                                        ))}
                                         {MONTHS.map((name, i) => (
                                             <SelectItem
-                                                key={`ytd${i + 1}`}
-                                                value={`ytd${i + 1}`}
+                                                key={name}
+                                                value={String(i + 1)}
                                             >
-                                                YTD până în {name}
-                                            </SelectItem>
-                                        ))}
-                                        {MONTHS.map((name, i) => (
-                                            <SelectItem
-                                                key={`mtd${i + 1}`}
-                                                value={`mtd${i + 1}`}
-                                            >
-                                                Doar {name}
+                                                {name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div
+                                className={cn(
+                                    'grid gap-1.5',
+                                    view === 'luna' && 'hidden',
+                                )}
+                            >
+                                <Label>Cumul</Label>
+                                <ToggleGroup
+                                    type="single"
+                                    value={periodMode}
+                                    onValueChange={(v) =>
+                                        v &&
+                                        go({ period: `${v}${periodMonth}` })
+                                    }
+                                    variant="outline"
+                                >
+                                    <ToggleGroupItem
+                                        value="ytd"
+                                        title="Cumulat de la începutul anului până în luna aleasă."
+                                    >
+                                        YTD
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem
+                                        value="mtd"
+                                        title="Doar luna aleasă."
+                                    >
+                                        MTD
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+
                             <div className="grid gap-1.5">
                                 <Label>Venit recunoscut</Label>
                                 <ToggleGroup
@@ -1532,6 +1560,14 @@ function PlanStatement({
             ? (row.months[Number(key)] ?? 0)
             : ((axis === 'produs' ? row.product : row.channel)[key] ?? 0);
 
+    // Anul de bază, pe aceeași coloană: istoricul stă la stânga, planul la
+    // dreapta, ca să se citească evoluția dintr-o privire.
+    const was = (row: StatementRow, key: string): number | null =>
+        axis === 'luna'
+            ? null
+            : ((axis === 'produs' ? row.base_product : row.base_channel)[key] ??
+              null);
+
     const revenue = output.statement.find((row) => row.key === 'revenue');
 
     // „% venit”, ca în P&L: cât ține rândul din venitul coloanei lui.
@@ -1564,8 +1600,10 @@ function PlanStatement({
                     {groups ? 'Doar totalurile' : 'Desfă cheltuielile'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                    Planul {year} are rândurile raportului, pe {label}; coloana
-                    din dreapta e anul {baseYear}, din P&L-ul adevărat.
+                    Planul {year} are rândurile raportului, pe {label}. Pe
+                    fiecare coloană stă întâi {baseYear}, din P&amp;L-ul
+                    adevărat, apoi {year}: evoluția se citește de la stânga la
+                    dreapta.
                 </p>
             </div>
 
@@ -1577,8 +1615,14 @@ function PlanStatement({
                                 <TableHead className="sticky left-0 z-10 w-64 bg-card">
                                     Linie
                                 </TableHead>
-                                <TableHead className="border-l text-right font-semibold">
+                                <TableHead className="border-l text-right text-muted-foreground">
+                                    {baseYear}
+                                </TableHead>
+                                <TableHead className="text-right font-semibold">
                                     Plan {year}
+                                </TableHead>
+                                <TableHead className="text-right text-muted-foreground">
+                                    vs
                                 </TableHead>
                                 {axis !== 'luna' && (
                                     <TableHead className="text-right text-muted-foreground">
@@ -1587,8 +1631,17 @@ function PlanStatement({
                                 )}
                                 {columns.map((column) => (
                                     <Fragment key={column.key}>
-                                        <TableHead className="text-right">
-                                            {column.label}
+                                        {axis !== 'luna' && (
+                                            <TableHead className="border-l text-right font-normal text-muted-foreground">
+                                                {column.label} {baseYear}
+                                            </TableHead>
+                                        )}
+                                        <TableHead
+                                            className={`text-right ${axis === 'luna' ? '' : 'font-semibold'}`}
+                                        >
+                                            {axis === 'luna'
+                                                ? column.label
+                                                : `${column.label} ${year}`}
                                         </TableHead>
                                         {axis !== 'luna' && (
                                             <TableHead className="text-right text-muted-foreground">
@@ -1597,12 +1650,6 @@ function PlanStatement({
                                         )}
                                     </Fragment>
                                 ))}
-                                <TableHead className="border-l text-right text-muted-foreground">
-                                    {baseYear}
-                                </TableHead>
-                                <TableHead className="text-right text-muted-foreground">
-                                    vs
-                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1610,14 +1657,19 @@ function PlanStatement({
                                 <TableCell className="sticky left-0 z-10 bg-card">
                                     Pasageri · servicii · locuri
                                 </TableCell>
-                                <TableCell className="border-l text-right tabular-nums">
+                                <TableCell className="border-l" />
+                                <TableCell className="text-right tabular-nums">
                                     {lei(output.totals.pax)} ·{' '}
                                     {lei(output.totals.services)} ·{' '}
                                     {lei(output.totals.seats)}
                                 </TableCell>
+                                <TableCell />
                                 {axis !== 'luna' && <TableCell />}
                                 {columns.map((column, i) => (
                                     <Fragment key={column.key}>
+                                        {axis !== 'luna' && (
+                                            <TableCell className="border-l" />
+                                        )}
                                         <TableCell className="text-right tabular-nums">
                                             {axis === 'luna'
                                                 ? lei(
@@ -1642,7 +1694,6 @@ function PlanStatement({
                                         {axis !== 'luna' && <TableCell />}
                                     </Fragment>
                                 ))}
-                                <TableCell colSpan={2} />
                             </TableRow>
 
                             {rows.map((row) => (
@@ -1669,31 +1720,13 @@ function PlanStatement({
                                                 </span>
                                             )}
                                     </TableCell>
-                                    <TableCell className="border-l text-right font-semibold tabular-nums">
-                                        {mii(row.total)}
-                                    </TableCell>
-                                    {axis !== 'luna' && (
-                                        <TableCell className="text-right text-muted-foreground tabular-nums">
-                                            {share(row, null) ?? ''}
-                                        </TableCell>
-                                    )}
-                                    {columns.map((column) => (
-                                        <Fragment key={column.key}>
-                                            <TableCell className="text-right tabular-nums">
-                                                {mii(value(row, column.key))}
-                                            </TableCell>
-                                            {axis !== 'luna' && (
-                                                <TableCell className="text-right text-muted-foreground tabular-nums">
-                                                    {share(row, column.key) ??
-                                                        ''}
-                                                </TableCell>
-                                            )}
-                                        </Fragment>
-                                    ))}
                                     <TableCell className="border-l text-right text-muted-foreground tabular-nums">
                                         {row.base !== null
                                             ? mii(row.base)
                                             : '–'}
+                                    </TableCell>
+                                    <TableCell className="text-right font-semibold tabular-nums">
+                                        {mii(row.total)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
                                         {row.base !== null && (
@@ -1709,6 +1742,37 @@ function PlanStatement({
                                             </span>
                                         )}
                                     </TableCell>
+                                    {axis !== 'luna' && (
+                                        <TableCell className="text-right text-muted-foreground tabular-nums">
+                                            {share(row, null) ?? ''}
+                                        </TableCell>
+                                    )}
+                                    {columns.map((column) => (
+                                        <Fragment key={column.key}>
+                                            {axis !== 'luna' && (
+                                                <TableCell className="border-l text-right text-muted-foreground tabular-nums">
+                                                    {was(row, column.key) !==
+                                                    null
+                                                        ? mii(
+                                                              was(
+                                                                  row,
+                                                                  column.key,
+                                                              ) as number,
+                                                          )
+                                                        : '–'}
+                                                </TableCell>
+                                            )}
+                                            <TableCell className="text-right tabular-nums">
+                                                {mii(value(row, column.key))}
+                                            </TableCell>
+                                            {axis !== 'luna' && (
+                                                <TableCell className="text-right text-muted-foreground tabular-nums">
+                                                    {share(row, column.key) ??
+                                                        ''}
+                                                </TableCell>
+                                            )}
+                                        </Fragment>
+                                    ))}
                                 </TableRow>
                             ))}
                         </TableBody>

@@ -44,10 +44,11 @@ class ForecastController extends Controller
             ? $plans->firstWhere('id', $request->integer('plan'))
             : $plans->first();
 
-        // Aceleași comenzi ca pe P&L: perioada și baza chiriilor.
-        $period = preg_match('/^(year|q[1-4]|(ytd|mtd)([1-9]|1[0-2]))$/', (string) $request->string('period')) === 1
+        // Aceleași comenzi ca pe P&L: luna și felul în care se citește —
+        // cumulat de la începutul anului sau doar luna aia.
+        $period = preg_match('/^(ytd|mtd)([1-9]|1[0-2])$/', (string) $request->string('period')) === 1
             ? (string) $request->string('period')
-            : 'year';
+            : 'ytd12';
         $basis = in_array($request->string('basis')->toString(), PnlReportService::BASES, true)
             ? $request->string('basis')->toString()
             : PnlReportService::BASIS_RAS;
