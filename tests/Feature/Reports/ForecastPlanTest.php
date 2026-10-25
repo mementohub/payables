@@ -236,3 +236,98 @@ test('every route carries its own money, not the average of the fleet', function
         ->and($lines['OTP→MIR']->load)->toEqual(0.9)
         ->and($lines['OTP→AYT']->load)->toEqual(0.8);
 });
+
+test('the plan reads on periods, like the report: the year, a quarter, YTD or one month', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 2, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 7, 'volume' => 300, 'net' => 900_000, 'margin' => 90_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $engine = app(PlanEngine::class);
+
+    expect($engine->compute($plan, 'year')['totals']['net'])->toEqual(1_100_000.0)
+        // Trimestrul I cumulat: numai februarie.
+        ->and($engine->compute($plan, 'q1')['totals']['net'])->toEqual(200_000.0)
+        // Cumulat până în iulie: amândouă.
+        ->and($engine->compute($plan, 'ytd7')['totals']['net'])->toEqual(1_100_000.0)
+        // Doar iulie.
+        ->and($engine->compute($plan, 'mtd7')['totals']['net'])->toEqual(900_000.0);
+});
+
+test('on IFRS 16 the planned rent leaves the costs and comes back as depreciation and interest', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 500_000, 'margin' => 100_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // O chirie planificată, pe linia de chirii a raportului.
+    App\Models\PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '4000', 'label' => 'Chirii · Chirie principala',
+        'month' => 1, 'amount' => 10_000, 'manual' => true,
+    ]);
+
+    // Și contractul din care se naște retratarea.
+    App\Models\Lease::query()->create([
+        'company_id' => $this->company->id, 'lessor' => 'Mall', 'currency' => 'Lei',
+        'monthly_payment' => 10_000, 'starts_on' => '2027-01-01', 'ends_on' => '2029-12-31',
+        'discount_rate' => 0.08, 'status' => App\Models\Lease::ACTIVE,
+    ]);
+
+    $engine = app(PlanEngine::class);
+    $statutory = $engine->compute($plan, 'mtd1', 'ras');
+    $ifrs = $engine->compute($plan, 'mtd1', 'ifrs16');
+
+    // Statutar: chiria e cheltuială de exploatare.
+    expect($statutory['totals']['opex'])->toEqual(10_000.0)
+        // IFRS 16: iese din exploatare, deci EBITDA crește cu ea.
+        ->and($ifrs['totals']['opex'])->toEqual(0.0)
+        ->and($ifrs['totals']['ebitda'])->toEqual($statutory['totals']['ebitda'] + 10_000.0)
+        // Și se întoarce sub EBITDA, ca amortizare plus dobândă.
+        ->and($ifrs['totals']['below'])->toBeGreaterThan(0.0)
+        ->and($ifrs['leases']['leases'])->toBe(1)
+        // Profitul se schimbă doar cu diferența de ritm, nu cu toată chiria.
+        ->and(abs($ifrs['totals']['net_profit'] - $statutory['totals']['net_profit']))->toBeLessThan(10_000.0);
+});
+
+test('the planned revenue is also read on sales channels, after the mix of the base year', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 100, 'net' => 400_000, 'margin' => 40_000],
+        // Anul de bază s-a vândut 75% prin agenții și 25% prin site.
+        ['year' => 2026, 'kind' => 'mix', 'key' => 'Cazare', 'channel' => 'retail', 'month' => 3, 'net' => 300_000, 'margin' => 30_000],
+        ['year' => 2026, 'kind' => 'mix', 'key' => 'Cazare', 'channel' => 'site', 'month' => 3, 'net' => 100_000, 'margin' => 10_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $channels = collect(app(PlanEngine::class)->compute($plan)['channels'])->keyBy('channel');
+
+    expect($channels['retail']['net'])->toEqual(300_000.0)
+        ->and($channels['site']['net'])->toEqual(100_000.0)
+        ->and($channels->sum('net'))->toEqual(400_000.0);
+});
+
+test('the months the base year has not lived yet are estimated, not left empty', function () {
+    fakeForecastHistory([
+        // 2026 are doar ianuarie; 2025 are și decembrie.
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 110, 'net' => 220_000, 'margin' => 22_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2025, 'kind' => 'category', 'key' => 'Cazare', 'month' => 12, 'volume' => 50, 'net' => 100_000, 'margin' => 10_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $lines = App\Models\PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'category')->get()->keyBy('month');
+
+    // Decembrie n-a existat în 2026: se ia din 2025, crescut cu cât a crescut
+    // anul (220.000 / 200.000 = 1,1).
+    expect($lines)->toHaveCount(2)
+        ->and($lines[12]->volume)->toEqual(55.0)
+        ->and($lines[12]->note)->toContain('estimat din 2025');
+});

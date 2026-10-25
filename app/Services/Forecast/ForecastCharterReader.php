@@ -34,7 +34,7 @@ class ForecastCharterReader
      * Interogarea trece de două minute pe un an: se cheamă din comanda care
      * strânge istoricul, nu dintr-o pagină.
      *
-     * @return list<array{destination: string, home: string, month: int, bookings: int, pax: int, net: float, margin: float}>
+     * @return list<array{destination: string, home: string, month: int, bookings: int, pax: int, net: float, margin: float, flight_cost: float}>
      */
     public function money(int $year, ?string $connection = null): array
     {
@@ -52,6 +52,23 @@ class ForecastCharterReader
                 JOIN bookings.items bi ON bi.id = j.item AND bi.uses_allocation AND bi.supplier_status = 'confirmed'
                 WHERE il.dep_date >= ?::date AND il.dep_date < ?::date AND il.allocation IS NOT NULL
                 ORDER BY bi.booking, il.dep_date
+            ),
+            cost AS (
+                -- Ce plătim companiei aeriene pentru locurile vândute: din
+                -- el ies pragul de rentabilitate și costul locului gol.
+                SELECT bi.booking,
+                       SUM((((bi.cost).gross + (bi.cost).tax - COALESCE((bi.cost).commission, 0)) / NULLIF(bi.exchange_rate, 0)) * COALESCE(fx.ron_per_unit, 1)) AS flight_cost
+                FROM bookings.items bi
+                JOIN flight.items fi ON fi.item = bi.id
+                JOIN bookings.bookings b ON b.id = bi.booking
+                LEFT JOIN LATERAL (
+                    SELECT hr.rate / NULLIF(hr.multiplier, 0) AS ron_per_unit
+                    FROM settings.historic_rates hr
+                    WHERE hr.currency = b.currency AND hr.date <= (b.ctime)::date
+                    ORDER BY hr.date DESC LIMIT 1
+                ) fx ON UPPER(b.currency) NOT IN ('RON', 'LEI')
+                WHERE bi.client_status = 'confirmed' AND bi.uses_allocation
+                GROUP BY bi.booking
             ),
             money AS (
                 SELECT bi.booking,
@@ -83,11 +100,13 @@ class ForecastCharterReader
                    count(*) AS bookings,
                    COALESCE(SUM(px.pax), 0)::int AS pax,
                    COALESCE(SUM(m.net), 0)::numeric(20,2) AS net,
-                   COALESCE(SUM(m.margin), 0)::numeric(20,2) AS margin
+                   COALESCE(SUM(m.margin), 0)::numeric(20,2) AS margin,
+                   COALESCE(SUM(c.flight_cost), 0)::numeric(20,2) AS flight_cost
             FROM outbound o
             JOIN flight.alloc_pools p ON p.id = o.pool
             JOIN money m ON m.booking = o.booking
             LEFT JOIN px ON px.booking = o.booking
+            LEFT JOIN cost c ON c.booking = o.booking
             WHERE substring(p.label from '^([A-Z]{3})') IN ({$home})
             GROUP BY 1, 2, 3
             SQL;
@@ -109,6 +128,7 @@ class ForecastCharterReader
             'pax' => (int) $row->pax,
             'net' => round((float) $row->net, 2),
             'margin' => round((float) $row->margin, 2),
+            'flight_cost' => round((float) $row->flight_cost, 2),
         ], $rows);
     }
 

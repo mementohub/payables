@@ -19,6 +19,7 @@ class ForecastHistory extends Model
             'volume' => 'float',
             'capacity' => 'float',
             'sold' => 'float',
+            'cost' => 'float',
             'net' => 'float',
             'margin' => 'float',
         ];

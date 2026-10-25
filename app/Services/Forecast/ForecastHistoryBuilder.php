@@ -5,6 +5,8 @@ namespace App\Services\Forecast;
 use App\Models\Company;
 use App\Models\ForecastHistory;
 use App\Models\PlanLine;
+use App\Services\Reports\EtripPnlReader;
+use App\Services\Reports\TinaPnlReader;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,6 +23,8 @@ class ForecastHistoryBuilder
         private ForecastEtripReader $etrip,
         private ForecastCharterReader $charter,
         private ForecastTinaReader $tina,
+        private EtripPnlReader $pnlEtrip,
+        private TinaPnlReader $pnlTina,
     ) {}
 
     /**
@@ -31,7 +35,60 @@ class ForecastHistoryBuilder
         return [
             'categories' => $this->categories($company, $year),
             'charter' => $this->charter($company, $year),
+            'mix' => $this->mix($company, $year),
         ];
+    }
+
+    /**
+     * Amestecul canalelor dintr-o categorie: cât a vândut retailul, cât
+     * B2B-ul, cât site-ul. Planul se face pe produs, dar se citește și pe
+     * canal, iar proporția se ia de aici.
+     */
+    private function mix(Company $company, int $year): int
+    {
+        $rows = [];
+
+        foreach ($this->pnlEtrip->byChannelAndProduct($year) as $row) {
+            if (abs((float) $row['net']) < 0.5) {
+                continue;
+            }
+
+            $key = $row['product'].'|'.$row['channel'].'|'.$row['month'];
+            $cell = $rows[$key] ?? [
+                'kind' => 'mix', 'unit' => PlanLine::PAX, 'key' => $row['product'],
+                'channel' => $row['channel'], 'month' => (int) $row['month'],
+                'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+            ];
+
+            $rows[$key] = [
+                ...$cell,
+                'volume' => $cell['volume'] + (int) $row['bookings'],
+                'net' => round($cell['net'] + (float) $row['net'], 2),
+                'margin' => round($cell['margin'] + (float) $row['margin'], 2),
+            ];
+        }
+
+        foreach ($this->pnlTina->byChannelAndProduct($year) as $row) {
+            if (abs((float) $row['net']) < 0.5) {
+                continue;
+            }
+
+            $key = PlanBuilder::TINA_PREFIX.$row['product'].'|'.$row['channel'].'|'.$row['month'];
+            $cell = $rows[$key] ?? [
+                'kind' => 'mix', 'unit' => PlanLine::SERVICE, 'key' => PlanBuilder::TINA_PREFIX.$row['product'],
+                'channel' => $row['channel'], 'month' => (int) $row['month'],
+                'volume' => 0, 'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
+            ];
+
+            $rows[$key] = [
+                ...$cell,
+                'volume' => $cell['volume'] + (int) $row['bookings'],
+                'net' => round($cell['net'] + (float) $row['net'], 2),
+                'margin' => round($cell['margin'] + (float) $row['margin'], 2),
+            ];
+        }
+
+        return $this->write($company, $year, 'mix', array_values($rows));
     }
 
     private function categories(Company $company, int $year): int
@@ -51,6 +108,7 @@ class ForecastHistoryBuilder
                 'volume' => $row['pax'],
                 'net' => $row['net'],
                 'margin' => $row['margin'],
+                'cost' => 0.0,
             ];
         }
 
@@ -67,6 +125,7 @@ class ForecastHistoryBuilder
                 'volume' => $row['services'],
                 'net' => $row['net'],
                 'margin' => $row['margin'],
+                'cost' => 0.0,
             ];
         }
 
@@ -93,6 +152,7 @@ class ForecastHistoryBuilder
                 'volume' => $row['sold'],
                 'net' => 0.0,
                 'margin' => 0.0,
+                'cost' => 0.0,
             ];
         }
 
@@ -116,6 +176,8 @@ class ForecastHistoryBuilder
                 'volume' => $row['pax'] > 0 ? $row['pax'] : ($cell['volume'] ?? 0),
                 'net' => $row['net'],
                 'margin' => $row['margin'],
+                // Ce plătim companiei aeriene pentru locurile alea.
+                'cost' => $row['flight_cost'],
             ];
         }
 
@@ -142,6 +204,8 @@ class ForecastHistoryBuilder
                     'year' => $year,
                     'capacity' => null,
                     'sold' => null,
+                    'cost' => 0,
+                    'channel' => null,
                     'created_at' => now(),
                     'updated_at' => now(),
                     ...$row,

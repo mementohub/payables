@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
+use App\Services\Reports\PnlReportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -42,9 +43,22 @@ class ForecastController extends Controller
             ? $plans->firstWhere('id', $request->integer('plan'))
             : $plans->first();
 
+        // Aceleași comenzi ca pe P&L: perioada și baza chiriilor.
+        $period = preg_match('/^(year|q[1-4]|(ytd|mtd)([1-9]|1[0-2]))$/', (string) $request->string('period')) === 1
+            ? (string) $request->string('period')
+            : 'year';
+        $basis = in_array($request->string('basis')->toString(), PnlReportService::BASES, true)
+            ? $request->string('basis')->toString()
+            : PnlReportService::BASIS_RAS;
+
         return Inertia::render('reports/forecast', [
             'companies' => $companies,
-            'filters' => ['company_id' => $companyId, 'plan' => $plan?->id],
+            'filters' => [
+                'company_id' => $companyId,
+                'plan' => $plan?->id,
+                'period' => $period,
+                'basis' => $basis,
+            ],
             'plans' => $plans->map(fn (Plan $one) => [
                 'id' => $one->id,
                 'year' => $one->year,
@@ -62,7 +76,7 @@ class ForecastController extends Controller
                 'status' => $plan->status,
                 'note' => $plan->note,
             ] : null,
-            'output' => $plan ? $this->engine->compute($plan) : null,
+            'output' => $plan ? $this->engine->compute($plan, $period, $basis) : null,
             // Trei ani în urmă, pe fiecare rând: altfel gradul de ocupare și
             // banii pe pasager s-ar hotărî dintr-un singur an, care poate să
             // fi fost bun sau prost din întâmplare.

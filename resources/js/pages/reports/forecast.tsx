@@ -37,6 +37,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import AppLayout from '@/layouts/app-layout';
 import { index as forecastIndex } from '@/routes/reports/forecast';
 
@@ -47,6 +48,10 @@ const MONTHS = [
 
 type Cell = {
     id: number;
+    unit_cost: number;
+    empty_seats: number;
+    empty_cost: number;
+    break_even: number | null;
     volume: number;
     capacity: number;
     load: number;
@@ -69,6 +74,11 @@ type Row = {
     net: number;
     margin: number;
     amount: number;
+    /** Charter: costul locului, pragul de rentabilitate și locurile goale. */
+    unit_cost: number;
+    break_even: number | null;
+    empty_seats: number;
+    empty_cost: number;
     manual: boolean;
 };
 
@@ -110,6 +120,20 @@ type Output = {
         seats: number;
     };
     statement: StatementRow[];
+    period: string;
+    basis: string;
+    leases: {
+        leases: number;
+        rent: number;
+        depreciation: number;
+        interest: number;
+    } | null;
+    channels: {
+        channel: string;
+        net: number;
+        margin: number;
+        months: Record<number, number>;
+    }[];
     categories: Row[];
     charter: Row[];
     opex: Row[];
@@ -142,7 +166,12 @@ type History = Record<
 
 type Props = {
     companies: { id: number; name: string }[];
-    filters: { company_id: number | null; plan: number | null };
+    filters: {
+        company_id: number | null;
+        plan: number | null;
+        period: string;
+        basis: string;
+    };
     plans: {
         id: number;
         year: number;
@@ -164,6 +193,16 @@ type Props = {
     history: History;
     historyYears: number[];
     years: number[];
+};
+
+const CHANNELS: Record<string, string> = {
+    retail: 'Agenții proprii',
+    b2b: 'B2B · agenții partenere',
+    site: 'Site',
+    cc: 'Call center',
+    franciza: 'Francize',
+    corporate: 'Corporate',
+    other: 'Altele',
 };
 
 const lei = (value: number, decimals = 0) =>
@@ -199,8 +238,13 @@ export default function Forecast({
     historyYears,
     years,
 }: Props) {
-    const [tab, setTab] = useState<'sumar' | 'categorii' | 'charter' | 'opex'>(
-        'sumar',
+    // Întâi planul, în forma raportului; pârghiile din care iese stau
+    // deoparte, sub „Configurare” — altfel tabelul de decizie e îngropat
+    // sub o sută de rânduri de reglaje.
+    const [tab, setTab] = useState<'plan' | 'configurare'>('plan');
+    const [view, setView] = useState<'produs' | 'canal'>('produs');
+    const [sheet, setSheet] = useState<'categorii' | 'charter' | 'opex'>(
+        'categorii',
     );
     const [open, setOpen] = useState<Set<string>>(new Set());
     const [creating, setCreating] = useState(false);
@@ -316,6 +360,85 @@ export default function Forecast({
                                 </SelectContent>
                             </Select>
                         </div>
+                    )}
+
+                    {plan && (
+                        <>
+                            <div className="grid gap-1.5">
+                                <Label>Perioada</Label>
+                                <Select
+                                    value={filters.period}
+                                    onValueChange={(v) => go({ period: v })}
+                                >
+                                    <SelectTrigger className="w-44">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="year">
+                                            Anul întreg
+                                        </SelectItem>
+                                        {[1, 2, 3, 4].map((q) => (
+                                            <SelectItem
+                                                key={q}
+                                                value={`q${q}`}
+                                            >
+                                                Trimestrul {q} (cumulat)
+                                            </SelectItem>
+                                        ))}
+                                        {MONTHS.map((name, i) => (
+                                            <SelectItem
+                                                key={`ytd${i + 1}`}
+                                                value={`ytd${i + 1}`}
+                                            >
+                                                YTD până în {name}
+                                            </SelectItem>
+                                        ))}
+                                        {MONTHS.map((name, i) => (
+                                            <SelectItem
+                                                key={`mtd${i + 1}`}
+                                                value={`mtd${i + 1}`}
+                                            >
+                                                Doar {name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label>Vedere</Label>
+                                <ToggleGroup
+                                    type="single"
+                                    value={view}
+                                    onValueChange={(v) =>
+                                        v && setView(v as typeof view)
+                                    }
+                                    variant="outline"
+                                >
+                                    <ToggleGroupItem value="produs">
+                                        Categorie de produs
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem value="canal">
+                                        Canal de vânzare
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label>Chirii</Label>
+                                <ToggleGroup
+                                    type="single"
+                                    value={filters.basis}
+                                    onValueChange={(v) => v && go({ basis: v })}
+                                    variant="outline"
+                                >
+                                    <ToggleGroupItem value="ras">
+                                        Statutar
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem value="ifrs16">
+                                        IFRS 16
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+                        </>
                     )}
 
                     <Dialog open={creating} onOpenChange={setCreating}>
@@ -487,25 +610,38 @@ export default function Forecast({
                             ))}
                         </div>
 
+                        {tab === 'configurare' && (
+                        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            <strong className="text-foreground">
+                                Cum se citesc cifrele.
+                            </strong>{' '}
+                            Categoriile se plănuiesc pe <em>pasageri</em>, la
+                            data rezervării — aceeași bază ca vederea
+                            operațională din P&amp;L. Charterul se plănuiește
+                            pe <em>locuri contractate × grad de ocupare</em>,
+                            la data plecării, fiindcă așa se cumpără avionul.
+                            Tina se numără pe <em>servicii facturate</em>, la
+                            data facturii. Istoricul din dreapta fiecărui rând
+                            arată aceleași mărimi în anii dinainte: volum,
+                            iar sub el venitul și marja pe unitate.
+                        </div>
+                        )}
+
                         <Tabs
                             value={tab}
                             onValueChange={(v) => setTab(v as typeof tab)}
                         >
                             <TabsList>
-                                <TabsTrigger value="sumar">Sumar</TabsTrigger>
-                                <TabsTrigger value="categorii">
-                                    Categorii ({output.categories.length})
+                                <TabsTrigger value="plan">
+                                    Plan {plan.year}
                                 </TabsTrigger>
-                                <TabsTrigger value="charter">
-                                    Charter ({output.charter.length})
-                                </TabsTrigger>
-                                <TabsTrigger value="opex">
-                                    Cheltuieli ({output.opex.length})
+                                <TabsTrigger value="configurare">
+                                    Configurare
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
 
-                        {tab === 'sumar' && (
+                        {tab === 'plan' && view === 'produs' && (
                             <PlanStatement
                                 output={output}
                                 baseYear={plan.base_year}
@@ -513,18 +649,115 @@ export default function Forecast({
                             />
                         )}
 
-                        {tab !== 'sumar' && (
+                        {tab === 'plan' && view === 'canal' && (
+                            <Card>
+                                <CardContent className="overflow-x-auto p-0">
+                                    <Table className="text-xs">
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-48">
+                                                    Canal de vânzare
+                                                </TableHead>
+                                                {MONTHS.map((m) => (
+                                                    <TableHead
+                                                        key={m}
+                                                        className="text-right"
+                                                    >
+                                                        {m}
+                                                    </TableHead>
+                                                ))}
+                                                <TableHead className="border-l text-right font-semibold">
+                                                    Venit an
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                    Marjă an
+                                                </TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {output.channels.map((row) => (
+                                                <TableRow key={row.channel}>
+                                                    <TableCell className="font-medium">
+                                                        {CHANNELS[
+                                                            row.channel
+                                                        ] ?? row.channel}
+                                                    </TableCell>
+                                                    {MONTHS.map((_, i) => (
+                                                        <TableCell
+                                                            key={i}
+                                                            className="text-right tabular-nums"
+                                                        >
+                                                            {mii(
+                                                                row.months[
+                                                                    i + 1
+                                                                ] ?? 0,
+                                                            )}
+                                                        </TableCell>
+                                                    ))}
+                                                    <TableCell className="border-l text-right font-semibold tabular-nums">
+                                                        {mii(row.net)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right tabular-nums">
+                                                        {mii(row.margin)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {tab === 'plan' && view === 'canal' && (
+                            <p className="text-xs text-muted-foreground">
+                                Planul se face pe categorie de produs, fiindcă
+                                acolo stau pârghiile. Pe canale se citește
+                                după amestecul anului de bază: cât a vândut
+                                fiecare canal din categoria aia. Cheltuielile
+                                nu se împart pe canale în plan.
+                            </p>
+                        )}
+
+                        {tab === 'configurare' && (
+                            <Tabs
+                                value={sheet}
+                                onValueChange={(v) =>
+                                    setSheet(v as typeof sheet)
+                                }
+                            >
+                                <TabsList>
+                                    <TabsTrigger value="categorii">
+                                        Categorii de produs (
+                                        {
+                                            output.categories.filter(
+                                                (r) => r.kind === 'category',
+                                            ).length
+                                        }
+                                        )
+                                    </TabsTrigger>
+                                    <TabsTrigger value="charter">
+                                        Charter · curse ({output.charter.length}
+                                        )
+                                    </TabsTrigger>
+                                    <TabsTrigger value="opex">
+                                        Cheltuieli ({output.opex.length})
+                                    </TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                        )}
+
+                        {tab === 'configurare' && (
                             <DriverTable
                                 rows={
-                                    tab === 'categorii'
+                                    sheet === 'categorii'
                                         ? output.categories.filter(
                                               (r) => r.kind === 'category',
                                           )
-                                        : tab === 'charter'
+                                        : sheet === 'charter'
                                           ? output.charter
                                           : output.opex
                                 }
-                                kind={tab}
+                                kind={sheet}
                                 history={history}
                                 historyYears={historyYears}
                                 open={open}
@@ -602,6 +835,16 @@ function DriverTable({
                                     </TableHead>
                                     <TableHead className="text-right">
                                         G.D.O.
+                                    </TableHead>
+                                </>
+                            )}
+                            {isCharter && (
+                                <>
+                                    <TableHead className="text-right">
+                                        Prag
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                        Loc. goale
                                     </TableHead>
                                 </>
                             )}
@@ -753,6 +996,46 @@ function DriverTable({
                                         </>
                                     )}
 
+                                    {isCharter && (
+                                        <>
+                                            <TableCell
+                                                className="text-right tabular-nums"
+                                                title={`Costul zborului: ${lei(row.unit_cost)} lei pe loc. De la gradul ăsta de ocupare cursa își acoperă avionul.`}
+                                            >
+                                                {row.break_even !== null ? (
+                                                    <span
+                                                        className={
+                                                            row.seats > 0 &&
+                                                            row.pax /
+                                                                row.seats <
+                                                                row.break_even
+                                                                ? 'font-semibold text-red-600 dark:text-red-400'
+                                                                : ''
+                                                        }
+                                                    >
+                                                        {(
+                                                            row.break_even * 100
+                                                        ).toFixed(0)}
+                                                        %
+                                                    </span>
+                                                ) : (
+                                                    '–'
+                                                )}
+                                            </TableCell>
+                                            <TableCell
+                                                className="text-right text-[11px] tabular-nums"
+                                                title="Locurile rămase nevândute și cât costă: avionul se plătește întreg."
+                                            >
+                                                <div>
+                                                    {lei(row.empty_seats)}
+                                                </div>
+                                                <div className="text-muted-foreground">
+                                                    {lei(row.empty_cost)} lei
+                                                </div>
+                                            </TableCell>
+                                        </>
+                                    )}
+
                                     {!isOpex && (
                                         <>
                                             <TableCell className="text-right tabular-nums">
@@ -848,7 +1131,7 @@ function DriverTable({
                                     >
                                         <TableCell
                                             colSpan={
-                                                (isOpex ? 5 : isCharter ? 9 : 7) +
+                                                (isOpex ? 5 : isCharter ? 11 : 7) +
                                                 historyYears.length
                                             }
                                             className="p-3"
@@ -884,6 +1167,16 @@ function DriverTable({
                                                                     </span>
                                                                 )}
                                                             </div>
+                                                            <div className="text-[10px] text-muted-foreground">
+                                                                {isOpex
+                                                                    ? 'cheltuială (lei)'
+                                                                    : isCharter
+                                                                      ? 'locuri contractate'
+                                                                      : row.unit ===
+                                                                          'serviciu'
+                                                                        ? 'servicii'
+                                                                        : 'pasageri'}
+                                                            </div>
                                                             <RowInput
                                                                 value={
                                                                     isOpex
@@ -904,11 +1197,39 @@ function DriverTable({
                                                                     )
                                                                 }
                                                             />
-                                                            <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                                                                {isOpex
-                                                                    ? 'lei'
-                                                                    : `${lei(cell.amount)} lei`}
-                                                            </div>
+                                                            {!isOpex && (
+                                                                <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+                                                                    {isCharter && (
+                                                                        <div>
+                                                                            {(
+                                                                                cell.load *
+                                                                                100
+                                                                            ).toFixed(
+                                                                                0,
+                                                                            )}
+                                                                            % ocupare ·{' '}
+                                                                            {lei(
+                                                                                cell.volume,
+                                                                            )}{' '}
+                                                                            pax
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        venit{' '}
+                                                                        {lei(
+                                                                            cell.amount,
+                                                                        )}{' '}
+                                                                        lei
+                                                                    </div>
+                                                                    <div>
+                                                                        marjă{' '}
+                                                                        {lei(
+                                                                            cell.margin,
+                                                                        )}{' '}
+                                                                        lei
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}

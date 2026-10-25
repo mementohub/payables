@@ -51,7 +51,13 @@ class PlanBuilder
     {
         $rows = [];
 
-        foreach ($this->history($plan, $plan->base_year, PlanLine::CATEGORY) as $row) {
+        $base = $this->complete(
+            $this->history($plan, $plan->base_year, PlanLine::CATEGORY),
+            $this->history($plan, $plan->base_year - 1, PlanLine::CATEGORY),
+            $plan->base_year,
+        );
+
+        foreach ($base as $row) {
             if ($row->key === self::CHARTER_CATEGORY || $row->volume <= 0) {
                 continue;
             }
@@ -65,6 +71,9 @@ class PlanBuilder
                 'volume' => $row->volume,
                 'unit_net' => round($row->net / $row->volume, 2),
                 'unit_margin' => round($row->margin / $row->volume, 2),
+                'note' => ($row->estimated ?? false)
+                    ? sprintf('Luna n-avea încă cifre în %d: estimat din %d.', $plan->base_year, $plan->base_year - 1)
+                    : null,
             ];
         }
 
@@ -79,7 +88,11 @@ class PlanBuilder
     private function seedCharter(Plan $plan, bool $keepManual): int
     {
         $planned = $this->history($plan, $plan->year, PlanLine::CHARTER);
-        $base = $this->history($plan, $plan->base_year, PlanLine::CHARTER);
+        $base = $this->complete(
+            $this->history($plan, $plan->base_year, PlanLine::CHARTER),
+            $this->history($plan, $plan->base_year - 1, PlanLine::CHARTER),
+            $plan->base_year,
+        );
         $contracted = $planned->sum('capacity') > 0;
 
         // Gradul de ocupare și banii pe pasager se iau de pe cursa ei, din
@@ -112,6 +125,9 @@ class PlanBuilder
                 'load' => min(1.0, $load),
                 'unit_net' => $pax > 0 ? round((float) $theirs->sum('net') / $pax, 2) : $money['net'],
                 'unit_margin' => $pax > 0 ? round((float) $theirs->sum('margin') / $pax, 2) : $money['margin'],
+                // Cât plătim avionului pentru un loc: din el ies pragul și
+                // costul locurilor goale.
+                'unit_cost' => $pax > 0 ? round((float) $theirs->sum('cost') / $pax, 2) : $money['cost'],
                 'note' => $contracted
                     ? sprintf('Locuri contractate în eTrip pentru %d; ocupare și bani pe pasager din %d.', $plan->year, $plan->base_year)
                     : sprintf('Locurile anului %d; pentru %d nu e contractat încă nimic.', $plan->base_year, $plan->year),
@@ -119,6 +135,74 @@ class PlanBuilder
         }
 
         return $this->write($plan, PlanLine::CHARTER, $rows, $keepManual);
+    }
+
+    /**
+     * Anul întreg al unei cheltuieli: lunile care n-au venit încă iau media
+     * celor care au.
+     *
+     * Un plan pornit în octombrie din anul curent ar avea salarii nouă luni
+     * și zero în ultimele trei — iar EBITDA planificat ar ieși fals de bun.
+     *
+     * @param  array<int, float>  $months
+     * @return array<int, float>
+     */
+    private function fillYear(array $months): array
+    {
+        if ($months === []) {
+            return [];
+        }
+
+        $average = round(array_sum($months) / count($months), 2);
+        $out = [];
+
+        foreach (range(1, 12) as $month) {
+            $out[$month] = $months[$month] ?? $average;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Anul de bază întregit: lunile care n-au venit încă se estimează.
+     *
+     * Un plan pornit din 2026 în octombrie ar lua nouă luni adevărate și
+     * trei goale, iar anul ar ieși cu un sfert mai mic decât va fi. Așa că
+     * lunile lipsă se iau din anul dinainte, înmulțite cu cât a crescut
+     * anul până acum — și se spune pe rând că sunt estimate.
+     *
+     * @param  Collection<int, ForecastHistory>  $base
+     * @param  Collection<int, ForecastHistory>  $before
+     * @return Collection<int, ForecastHistory>
+     */
+    private function complete(Collection $base, Collection $before, int $baseYear): Collection
+    {
+        $months = $base->pluck('month')->unique();
+
+        if ($months->isEmpty() || $months->count() === 12) {
+            return $base;
+        }
+
+        // Cât a crescut anul pe lunile care există în amândouă.
+        $common = $before->whereIn('month', $months->all());
+        $growth = $common->sum('net') > 0 ? $base->sum('net') / $common->sum('net') : 1.0;
+        $growth = max(0.2, min(3.0, $growth));
+
+        $filled = $before
+            ->whereNotIn('month', $months->all())
+            ->map(function (ForecastHistory $row) use ($growth, $baseYear) {
+                $copy = $row->replicate();
+                $copy->year = $baseYear;
+                $copy->volume = round($row->volume * $growth, 2);
+                $copy->net = round($row->net * $growth, 2);
+                $copy->margin = round($row->margin * $growth, 2);
+                $copy->cost = round($row->cost * $growth, 2);
+                $copy->estimated = true;
+
+                return $copy;
+            });
+
+        return $base->concat($filled)->values();
     }
 
     /**
@@ -149,15 +233,19 @@ class PlanBuilder
      * Media flotei, pentru cursele fără istoric propriu.
      *
      * @param  Collection<int, ForecastHistory>  $base
-     * @return array{net: float, margin: float}
+     * @return array{net: float, margin: float, cost: float}
      */
     private function charterMoney(Collection $base): array
     {
         $pax = (float) $base->sum('volume');
 
         return $pax > 0
-            ? ['net' => round((float) $base->sum('net') / $pax, 2), 'margin' => round((float) $base->sum('margin') / $pax, 2)]
-            : ['net' => 0.0, 'margin' => 0.0];
+            ? [
+                'net' => round((float) $base->sum('net') / $pax, 2),
+                'margin' => round((float) $base->sum('margin') / $pax, 2),
+                'cost' => round((float) $base->sum('cost') / $pax, 2),
+            ]
+            : ['net' => 0.0, 'margin' => 0.0, 'cost' => 0.0];
     }
 
     /**
@@ -174,17 +262,26 @@ class PlanBuilder
         $rows = [];
 
         foreach (($report['lines'] ?? []) as $line) {
+            $months = [];
+
             foreach (($line['months'] ?? []) as $month => $cell) {
                 if (abs((float) $cell['total']) < 0.005) {
                     continue;
                 }
 
+                $months[(int) $month] = round((float) $cell['total'], 2);
+            }
+
+            foreach ($this->fillYear($months) as $month => $amount) {
                 $rows[] = [
                     'kind' => PlanLine::OPEX,
                     'key' => (string) $line['saf'],
                     'label' => trim((string) $line['group'].' · '.$line['label']),
-                    'month' => (int) $month,
-                    'amount' => round((float) $cell['total'], 2),
+                    'month' => $month,
+                    'amount' => $amount,
+                    'note' => isset($months[$month])
+                        ? null
+                        : sprintf('Luna n-avea încă cheltuieli în %d: pusă media lunilor cu mișcare.', $plan->base_year),
                 ];
             }
         }
@@ -193,17 +290,23 @@ class PlanBuilder
         $below = [];
 
         foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
+            $months = [];
+
             foreach (($report['below'][$bucket]['months'] ?? []) as $month => $cell) {
                 if (abs((float) $cell['total']) < 0.005) {
                     continue;
                 }
 
+                $months[(int) $month] = round((float) $cell['total'], 2);
+            }
+
+            foreach ($this->fillYear($months) as $month => $amount) {
                 $below[] = [
                     'kind' => PlanLine::BELOW,
                     'key' => $bucket,
                     'label' => PnlReportService::BELOW_LABELS[$bucket] ?? $bucket,
-                    'month' => (int) $month,
-                    'amount' => round((float) $cell['total'], 2),
+                    'month' => $month,
+                    'amount' => $amount,
                 ];
             }
         }
