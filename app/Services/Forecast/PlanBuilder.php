@@ -1000,6 +1000,12 @@ class PlanBuilder
                         continue;
                     }
 
+                    // Un rând scos din plan cu mâna nu se întoarce de la
+                    // sine: pornirea din istoric sare peste el.
+                    if ($plan->isRemoved($kind, (string) $row['key'])) {
+                        continue;
+                    }
+
                     $payload[] = [
                         'plan_id' => $plan->id,
                         'unit' => PlanLine::PAX,

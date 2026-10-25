@@ -304,6 +304,7 @@ type Props = {
         start: 'trend' | 'base';
         status: string;
         note: string | null;
+        removed: string[];
     } | null;
     output: Output | null;
     versions: Version[];
@@ -381,6 +382,20 @@ export default function Forecast({
     const [tab, setTab] = useState<
         'plan' | 'curent' | 'configurare' | 'variante'
     >('plan');
+    // Rândul care se adaugă acum: o cursă nouă, o categorie nouă.
+    const [adding, setAdding] = useState(false);
+    const [row, setRow] = useState({
+        key: '',
+        capacity: 180,
+        load: 85,
+        unit_net: 0,
+        unit_margin: 0,
+        unit_cost: 0,
+        volume: 0,
+        amount: 0,
+        months: [] as number[],
+    });
+
     // Varianta care se scrie acum: numele ei și de ce s-a salvat.
     const [version, setVersion] = useState({ label: '', note: '' });
     const [saving, setSaving] = useState(false);
@@ -461,6 +476,18 @@ export default function Forecast({
             { kind: row.kind, key: row.key },
             { preserveScroll: true, preserveState: true },
         );
+
+    // Scoaterea unui rând nu e o ștergere de linii: planul ține minte că nu-l
+    // mai vrea, altfel împrospătarea din istoric l-ar aduce înapoi.
+    const removeRow = (row: Row) =>
+        plan &&
+        confirm(
+            `Scoți „${row.label}” din planul ${plan.year}? Se poate pune înapoi de sub tabel.`,
+        ) &&
+        router.delete(`/reports/forecast/${plan.id}/rows`, {
+            data: { kind: row.kind, key: row.key },
+            preserveScroll: true,
+        });
 
     const editCell = (cell: Cell, field: string, value: number) =>
         setCells((prev) => ({
@@ -1276,6 +1303,367 @@ export default function Forecast({
                         )}
 
                         {tab === 'configurare' && (
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Dialog open={adding} onOpenChange={setAdding}>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" size="sm">
+                                            <Plus className="size-4" />
+                                            {sheet === 'charter'
+                                                ? 'Cursă nouă'
+                                                : sheet === 'categorii'
+                                                  ? 'Categorie nouă'
+                                                  : 'Linie nouă'}
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>
+                                                {sheet === 'charter'
+                                                    ? 'Cursă nouă în plan'
+                                                    : sheet === 'categorii'
+                                                      ? 'Categorie nouă în plan'
+                                                      : 'Linie nouă de cheltuială'}
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                {sheet === 'charter'
+                                                    ? 'O cursă pe care o zburăm abia anul viitor nu are istoric: locurile, ocuparea și banii pe pasager se scriu aici. Alege lunile în care zboară.'
+                                                    : 'Un rând care nu vine din istoric: se scrie de mână și nu se mai calcă la împrospătare.'}
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="grid gap-3">
+                                            <div className="grid gap-1.5">
+                                                <Label>
+                                                    {sheet === 'charter'
+                                                        ? 'Cursa (ex. OTP→AYT)'
+                                                        : 'Numele rândului'}
+                                                </Label>
+                                                <Input
+                                                    value={row.key}
+                                                    onChange={(e) =>
+                                                        setRow({
+                                                            ...row,
+                                                            key: e.target.value,
+                                                        })
+                                                    }
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {sheet === 'charter' ? (
+                                                    <>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Locuri / lună
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.capacity
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        capacity:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Ocupare (%)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={row.load}
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        load: Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Cost / loc (lei)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_cost
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_cost:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </>
+                                                ) : sheet === 'categorii' ? (
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Volum / lună (nr.)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={row.volume}
+                                                            onChange={(e) =>
+                                                                setRow({
+                                                                    ...row,
+                                                                    volume: Number(
+                                                                        e.target
+                                                                            .value,
+                                                                    ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Sumă / lună (lei)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={row.amount}
+                                                            onChange={(e) =>
+                                                                setRow({
+                                                                    ...row,
+                                                                    amount: Number(
+                                                                        e.target
+                                                                            .value,
+                                                                    ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {sheet !== 'opex' && (
+                                                    <>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Venit / unitate
+                                                                (lei)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_net
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_net:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Marjă / unitate
+                                                                (lei)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_margin
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_margin:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            <div className="grid gap-1.5">
+                                                <Label>
+                                                    Lunile în care se întâmplă
+                                                </Label>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {MONTHS.map((name, i) => (
+                                                        <Button
+                                                            key={name}
+                                                            type="button"
+                                                            size="sm"
+                                                            variant={
+                                                                row.months.includes(
+                                                                    i + 1,
+                                                                )
+                                                                    ? 'default'
+                                                                    : 'outline'
+                                                            }
+                                                            onClick={() =>
+                                                                setRow({
+                                                                    ...row,
+                                                                    months: row.months.includes(
+                                                                        i + 1,
+                                                                    )
+                                                                        ? row.months.filter(
+                                                                              (
+                                                                                  m,
+                                                                              ) =>
+                                                                                  m !==
+                                                                                  i +
+                                                                                      1,
+                                                                          )
+                                                                        : [
+                                                                              ...row.months,
+                                                                              i +
+                                                                                  1,
+                                                                          ],
+                                                                })
+                                                            }
+                                                        >
+                                                            {name}
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button
+                                                disabled={
+                                                    row.key.trim() === '' ||
+                                                    row.months.length === 0
+                                                }
+                                                onClick={() =>
+                                                    router.post(
+                                                        `/reports/forecast/${plan.id}/rows`,
+                                                        {
+                                                            kind:
+                                                                sheet ===
+                                                                'charter'
+                                                                    ? 'charter'
+                                                                    : sheet ===
+                                                                        'categorii'
+                                                                      ? 'category'
+                                                                      : 'opex',
+                                                            key: row.key,
+                                                            label: row.key,
+                                                            months: row.months,
+                                                            capacity:
+                                                                sheet ===
+                                                                'charter'
+                                                                    ? row.capacity
+                                                                    : null,
+                                                            load:
+                                                                sheet ===
+                                                                'charter'
+                                                                    ? row.load /
+                                                                      100
+                                                                    : null,
+                                                            volume:
+                                                                sheet ===
+                                                                'categorii'
+                                                                    ? row.volume
+                                                                    : null,
+                                                            amount:
+                                                                sheet === 'opex'
+                                                                    ? row.amount
+                                                                    : null,
+                                                            unit_net:
+                                                                sheet !== 'opex'
+                                                                    ? row.unit_net
+                                                                    : null,
+                                                            unit_margin:
+                                                                sheet !== 'opex'
+                                                                    ? row.unit_margin
+                                                                    : null,
+                                                            unit_cost:
+                                                                sheet ===
+                                                                'charter'
+                                                                    ? row.unit_cost
+                                                                    : null,
+                                                        },
+                                                        {
+                                                            preserveScroll: true,
+                                                            onSuccess: () =>
+                                                                setAdding(
+                                                                    false,
+                                                                ),
+                                                        },
+                                                    )
+                                                }
+                                            >
+                                                Adaugă în plan
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+
+                                {plan.removed.length > 0 && (
+                                    <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                        Scoase din plan:
+                                        {plan.removed.map((one) => (
+                                            <Button
+                                                key={one}
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 text-xs"
+                                                title="Pune rândul înapoi, cu cifrele din istoric."
+                                                onClick={() =>
+                                                    router.put(
+                                                        `/reports/forecast/${plan.id}/rows/restore`,
+                                                        {
+                                                            kind: one.split(
+                                                                '|',
+                                                            )[0],
+                                                            key: one
+                                                                .split('|')
+                                                                .slice(1)
+                                                                .join('|'),
+                                                        },
+                                                        {
+                                                            preserveScroll: true,
+                                                        },
+                                                    )
+                                                }
+                                            >
+                                                <RotateCcw className="size-3" />
+                                                {one
+                                                    .split('|')
+                                                    .slice(1)
+                                                    .join('|')}
+                                            </Button>
+                                        ))}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'configurare' && (
                             <DriverTable
                                 rows={
                                     sheet === 'categorii'
@@ -1300,6 +1688,7 @@ export default function Forecast({
                                 onToggle={toggle}
                                 onApply={applyRow}
                                 onReset={resetRow}
+                                onRemove={removeRow}
                                 onEditCell={editCell}
                             />
                         )}
@@ -1330,6 +1719,7 @@ function DriverTable({
     onToggle,
     onApply,
     onReset,
+    onRemove,
     onEditCell,
 }: {
     rows: Row[];
@@ -1355,6 +1745,7 @@ function DriverTable({
         growth: number | null,
     ) => void;
     onReset: (row: Row) => void;
+    onRemove: (row: Row) => void;
     onEditCell: (cell: Cell, field: string, value: number) => void;
 }) {
     const isCharter = kind === 'charter';
@@ -1448,7 +1839,7 @@ function DriverTable({
                             >
                                 Creștere (%)
                             </TableHead>
-                            <TableHead className="w-10" />
+                            <TableHead className="w-20" />
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1701,7 +2092,7 @@ function DriverTable({
                                             }
                                         />
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right whitespace-nowrap">
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -1709,6 +2100,18 @@ function DriverTable({
                                             onClick={() => onReset(row)}
                                         >
                                             <RotateCcw className="size-3" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            title={
+                                                isCharter
+                                                    ? 'Scoate cursa din plan: nu o mai zburăm anul viitor.'
+                                                    : 'Scoate rândul din plan.'
+                                            }
+                                            onClick={() => onRemove(row)}
+                                        >
+                                            <Trash2 className="size-3" />
                                         </Button>
                                     </TableCell>
                                 </TableRow>

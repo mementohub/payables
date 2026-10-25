@@ -222,6 +222,11 @@ Route::middleware('auth')->group(function () {
         Route::get('reports/forecast/{plan}/export', [ForecastController::class, 'export'])->name('reports.forecast.export');
         // Lunile pe care anul de bază nu le-a trăit încă, scrise de mână.
         Route::put('reports/forecast/{plan}/start', [ForecastController::class, 'updateStart'])->name('reports.forecast.start.update');
+        // Rânduri scoase din plan sau adăugate cu mâna: o cursă pe care n-o
+        // mai zburăm, una pe care abia o deschidem.
+        Route::post('reports/forecast/{plan}/rows', [ForecastController::class, 'storeRow'])->name('reports.forecast.rows.store');
+        Route::delete('reports/forecast/{plan}/rows', [ForecastController::class, 'destroyRow'])->name('reports.forecast.rows.destroy');
+        Route::put('reports/forecast/{plan}/rows/restore', [ForecastController::class, 'restoreRow'])->name('reports.forecast.rows.restore');
         Route::put('reports/forecast/{plan}/base', [ForecastController::class, 'updateBase'])->name('reports.forecast.base.update');
         Route::put('reports/forecast/{plan}/base/reset', [ForecastController::class, 'resetBase'])->name('reports.forecast.base.reset');
         // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.

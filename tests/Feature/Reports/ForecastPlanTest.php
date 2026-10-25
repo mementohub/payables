@@ -801,3 +801,64 @@ test('the year in progress is shown whole: what has happened and what is still t
     // Și planul pornește din ele: noiembrie 2027 are de unde pleca.
     expect(PlanLine::query()->where('plan_id', $plan->id)->where('month', 11)->exists())->toBeTrue();
 });
+
+test('a route can be dropped from the plan and the refresh does not bring it back', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→MIR', 'month' => 7, 'capacity' => 200, 'sold' => 180, 'volume' => 180, 'net' => 504_000, 'margin' => 32_400],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→MIR', 'month' => 7, 'capacity' => 400, 'sold' => 0, 'volume' => 0],
+    ]);
+
+    $plan = planFor($this->company);
+    $builder = app(PlanBuilder::class);
+    $builder->seed($plan);
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->count())->toBe(1);
+
+    $this->actingAs($this->boss)->delete('/reports/forecast/'.$plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'key' => 'OTP→MIR',
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->count())->toBe(0)
+        ->and($plan->fresh()->removed)->toBe(['charter|OTP→MIR']);
+
+    // Împrospătarea din istoric n-o aduce înapoi.
+    $builder->seed($plan->fresh());
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->count())->toBe(0);
+
+    // Până nu se cere înapoi.
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/rows/restore', [
+        'kind' => PlanLine::CHARTER, 'key' => 'OTP→MIR',
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->count())->toBe(1)
+        ->and($plan->fresh()->removed)->toBe([]);
+});
+
+test('a route that has never flown can be written into the plan by hand', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Charter', 'month' => 7, 'volume' => 100, 'net' => 400_000, 'margin' => 40_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $this->actingAs($this->boss)->post('/reports/forecast/'.$plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'key' => 'OTP→RAK', 'label' => 'OTP→RAK',
+        'months' => [6, 7, 8], 'capacity' => 189, 'load' => 0.8,
+        'unit_net' => 4_500, 'unit_margin' => 400, 'unit_cost' => 1_500,
+    ])->assertRedirect();
+
+    $lines = PlanLine::query()->where('plan_id', $plan->id)->where('key', 'OTP→RAK')->get();
+
+    expect($lines)->toHaveCount(3)
+        ->and($lines->every(fn (PlanLine $line) => $line->manual))->toBeTrue()
+        ->and($lines->first()->pax())->toEqual(151.2)
+        // 189 × 80% × 4.500 de lei, pe fiecare din cele trei luni.
+        ->and(round($lines->sum(fn (PlanLine $line) => $line->net())))->toEqual(2_041_200.0);
+
+    // Și nu se poate adăuga de două ori.
+    $this->actingAs($this->boss)->post('/reports/forecast/'.$plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'key' => 'OTP→RAK', 'months' => [6],
+    ])->assertStatus(422);
+});

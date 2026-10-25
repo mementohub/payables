@@ -17,6 +17,20 @@ class Plan extends Model
 
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            // „kind|key” pentru fiecare rând scos din plan cu mâna.
+            'removed' => 'array',
+        ];
+    }
+
+    /** Rândul ăsta a fost scos din plan? */
+    public function isRemoved(string $kind, string $key): bool
+    {
+        return in_array($kind.'|'.$key, (array) ($this->removed ?? []), true);
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

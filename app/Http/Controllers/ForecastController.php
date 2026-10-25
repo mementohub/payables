@@ -94,6 +94,7 @@ class ForecastController extends Controller
                 'start' => $plan->start,
                 'status' => $plan->status,
                 'note' => $plan->note,
+                'removed' => array_values((array) ($plan->removed ?? [])),
             ] : null,
             'output' => $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null,
             // Variantele salvate ale planului: la ele se întoarce omul când
@@ -545,6 +546,132 @@ class ForecastController extends Controller
                 'note' => $line->note,
             ])
             ->all();
+    }
+
+    /**
+     * Un rând nou în plan: o cursă pe care o zburăm abia anul viitor, o
+     * categorie pe care o deschidem.
+     *
+     * Rândul se scrie de mână, deci pornirea din istoric nu-l mai atinge.
+     */
+    public function storeRow(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'key' => ['required', 'string', 'max:255'],
+            'label' => ['nullable', 'string', 'max:255'],
+            'unit' => ['nullable', Rule::in([PlanLine::PAX, PlanLine::SERVICE])],
+            'months' => ['required', 'array', 'min:1'],
+            'months.*' => ['integer', 'between:1,12'],
+            'volume' => ['nullable', 'numeric', 'min:0'],
+            'capacity' => ['nullable', 'numeric', 'min:0'],
+            'load' => ['nullable', 'numeric', 'between:0,1.5'],
+            'unit_net' => ['nullable', 'numeric'],
+            'unit_margin' => ['nullable', 'numeric'],
+            'unit_cost' => ['nullable', 'numeric'],
+            'amount' => ['nullable', 'numeric'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $key = trim($validated['key']);
+
+        abort_if(
+            $plan->lines()->where('kind', $validated['kind'])->where('key', $key)->exists(),
+            422,
+            'Rândul există deja în plan.',
+        );
+
+        DB::transaction(function () use ($plan, $validated, $key) {
+            // Dacă fusese scos cândva, acum se întoarce.
+            $plan->update([
+                'removed' => array_values(array_diff(
+                    (array) ($plan->removed ?? []),
+                    [$validated['kind'].'|'.$key],
+                )),
+            ]);
+
+            foreach ($validated['months'] as $month) {
+                $plan->lines()->create([
+                    'kind' => $validated['kind'],
+                    'unit' => $validated['unit'] ?? PlanLine::PAX,
+                    'key' => $key,
+                    'label' => $validated['label'] ?: $key,
+                    'month' => (int) $month,
+                    'volume' => $validated['volume'] ?? null,
+                    'capacity' => $validated['capacity'] ?? null,
+                    'load' => $validated['load'] ?? null,
+                    'unit_net' => $validated['unit_net'] ?? null,
+                    'unit_margin' => $validated['unit_margin'] ?? null,
+                    'unit_cost' => $validated['unit_cost'] ?? null,
+                    'amount' => $validated['amount'] ?? null,
+                    'manual' => true,
+                    'note' => $validated['note'] ?? 'Rând adăugat cu mâna, în afara istoricului.',
+                ]);
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            '„%s” a intrat în plan, pe %d %s.',
+            $key, count($validated['months']), count($validated['months']) === 1 ? 'lună' : 'luni',
+        )]);
+
+        return back();
+    }
+
+    /**
+     * Scoate un rând din plan — cu tot cu lunile lui.
+     *
+     * Nu se șterg doar liniile: pornirea din istoric le-ar aduce înapoi la
+     * prima împrospătare. Planul ține minte că rândul nu se mai vrea, și tot
+     * de acolo se poate pune la loc.
+     */
+    public function destroyRow(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'key' => ['required', 'string', 'max:255'],
+        ]);
+
+        DB::transaction(function () use ($plan, $validated) {
+            $plan->lines()->where('kind', $validated['kind'])->where('key', $validated['key'])->delete();
+
+            $plan->update([
+                'removed' => array_values(array_unique([
+                    ...(array) ($plan->removed ?? []),
+                    $validated['kind'].'|'.$validated['key'],
+                ])),
+            ]);
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            '„%s” a ieșit din plan. Se poate pune înapoi de sub tabel.', $validated['key'],
+        )]);
+
+        return back();
+    }
+
+    /** Pune înapoi un rând scos, cu cifrele lui din istoric. */
+    public function restoreRow(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'key' => ['required', 'string', 'max:255'],
+        ]);
+
+        $plan->update([
+            'removed' => array_values(array_diff(
+                (array) ($plan->removed ?? []),
+                [$validated['kind'].'|'.$validated['key']],
+            )),
+        ]);
+
+        $this->builder->seed($plan);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            '„%s” s-a întors în plan, cu cifrele din istoric.', $validated['key'],
+        )]);
+
+        return back();
     }
 
     /**
