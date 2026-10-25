@@ -58,6 +58,17 @@ return [
         'enabled' => (bool) env('NOTIFICATIONS_DISPUTED_ENABLED', true),
     ],
 
+    /*
+     * Ce a trecut de departamente și așteaptă semnătura Top Management-ului.
+     * Pleacă în zilele de lucru, numai când e ceva de semnat; ce stă de mai
+     * multe zile decât pragul de mai jos se scrie cu roșu.
+     */
+    'awaiting_final' => [
+        'enabled' => (bool) env('NOTIFICATIONS_AWAITING_FINAL_ENABLED', true),
+        'hour' => env('NOTIFICATIONS_AWAITING_FINAL_HOUR', '09:30'),
+        'stale_days' => (int) env('NOTIFICATIONS_AWAITING_FINAL_STALE_DAYS', 3),
+    ],
+
     'routed' => [
         'enabled' => (bool) env('NOTIFICATIONS_ROUTED_ENABLED', true),
     ],

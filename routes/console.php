@@ -63,6 +63,18 @@ Schedule::command('invoices:trace-suppliers', ['--months' => 3])
  * niciodată.
  */
 /*
+ * Dimineața, Top Management-ul află ce a trecut de departamente și așteaptă
+ * semnătura lui. Între aprobarea de departament și cea finală nu trecea
+ * nimic, iar facturile stăteau în coadă fără să știe nimeni.
+ */
+Schedule::command('invoices:mail-awaiting-final')
+    ->dailyAt((string) config('notifications.awaiting_final.hour', '09:30'))
+    ->timezone((string) config('notifications.cash_flow.timezone', 'Europe/Bucharest'))
+    ->when(fn () => (bool) config('notifications.enabled', true) && (bool) config('notifications.awaiting_final.enabled', true))
+    ->weekdays()
+    ->withoutOverlapping(30);
+
+/*
  * Joia dimineața, trezoreria află ce s-a aprobat și așteaptă plata.
  *
  * Aprobarea se dă într-un loc, plata se face în altul, iar între ele nu
