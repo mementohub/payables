@@ -125,12 +125,13 @@ class PlanExport
     private function statement(Plan $plan, array $output): array
     {
         $rows = [];
+        $years = $this->years($output);
 
         foreach ($output['statement'] as $row) {
             $rows[] = [
                 'cells' => [
                     $row['label'],
-                    $row['base'],
+                    ...array_map(fn (array $year) => $row['years'][$year['year']] ?? null, $years),
                     $row['total'],
                     $this->growth($row['total'], $row['base']),
                 ],
@@ -148,14 +149,18 @@ class PlanExport
             'title' => 'Contul de profit și pierdere planificat',
             'columns' => [
                 ['label' => 'Linie', 'width' => 54],
-                ['label' => $plan->base_year.' (lei)', 'width' => 16, 'align' => 'right'],
+                ...array_map(fn (array $year) => [
+                    'label' => $this->yearLabel($year).' (lei)',
+                    'width' => 16,
+                    'align' => 'right',
+                ], $years),
                 ['label' => 'Plan '.$plan->year.' (lei)', 'width' => 16, 'align' => 'right'],
                 ['label' => 'Δ (%)', 'width' => 10, 'align' => 'right'],
             ],
             'rows' => $rows,
             'note' => sprintf(
-                'Aceleași rânduri ca în raportul P&L. Coloana %d e anul de bază citit pe aceeași perioadă și pe aceeași bază.',
-                $plan->base_year,
+                'Aceleași rânduri ca în raportul P&L. Anii dinainte sunt citiți pe aceeași perioadă, pe aceeași bază de chirii și pe aceeași recunoaștere a venitului ca planul.%s',
+                $this->openNote($output),
             ),
         ];
     }
@@ -489,10 +494,12 @@ class PlanExport
 
         $statement = [];
 
+        $years = $this->years($output);
+
         foreach ($output['statement'] as $row) {
             $statement[] = [
                 $row['label'],
-                $row['base'],
+                ...array_map(fn (array $year) => $row['years'][$year['year']] ?? null, $years),
                 $row['total'],
                 $this->growth($row['total'], $row['base']),
                 ...array_map(fn (int $month) => (float) ($row['months'][$month] ?? 0), range(1, 12)),
@@ -556,8 +563,13 @@ class PlanExport
         return [
             [
                 'name' => 'P&L plan',
-                'headers' => ['Linie', $plan->base_year.' (lei)', 'Plan '.$plan->year.' (lei)', 'Δ (%)', ...array_map(fn (string $month) => $month.' (lei)', array_values(self::MONTHS))],
-                'widths' => [46, 15, 15, 9, ...array_fill(0, 12, 13)],
+                'headers' => [
+                    'Linie',
+                    ...array_map(fn (array $year) => $this->yearLabel($year).' (lei)', $years),
+                    'Plan '.$plan->year.' (lei)', 'Δ (%)',
+                    ...array_map(fn (string $month) => $month.' (lei)', array_values(self::MONTHS)),
+                ],
+                'widths' => [46, ...array_fill(0, count($years), 15), 15, 9, ...array_fill(0, 12, 13)],
                 'rows' => $statement,
             ],
             [
@@ -732,6 +744,54 @@ class PlanExport
         }
 
         return $slides;
+    }
+
+    /**
+     * Anii din care se judecă planul, de la cel mai vechi la cel mai nou.
+     *
+     * @param  array<string, mixed>  $output
+     * @return list<array<string, mixed>>
+     */
+    private function years(array $output): array
+    {
+        return array_values(array_filter(
+            $output['years'] ?? [],
+            fn (array $year) => $year['built'] ?? false,
+        ));
+    }
+
+    /**
+     * Anul, cu lunile care îi lipsesc spuse pe față.
+     *
+     * @param  array<string, mixed>  $year
+     */
+    private function yearLabel(array $year): string
+    {
+        $estimated = count($year['estimated'] ?? []);
+
+        return $estimated === 0
+            ? (string) $year['year']
+            : sprintf('%d (%d real + %d est.)', $year['year'], 12 - $estimated, $estimated);
+    }
+
+    /**
+     * @param  array<string, mixed>  $output
+     */
+    private function openNote(array $output): string
+    {
+        foreach ($this->years($output) as $year) {
+            if (($year['estimated'] ?? []) !== []) {
+                return sprintf(
+                    ' %d nu e încheiat: %d luni sunt realizate, iar %s sunt estimate — altfel s-ar compara %d luni cu un an întreg.',
+                    $year['year'],
+                    12 - count($year['estimated']),
+                    implode(', ', array_map(fn (int $month) => self::MONTHS[$month] ?? $month, $year['estimated'])),
+                    12 - count($year['estimated']),
+                );
+            }
+        }
+
+        return '';
     }
 
     private function growth(?float $now, ?float $before): ?string

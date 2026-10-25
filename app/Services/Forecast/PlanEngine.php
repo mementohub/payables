@@ -45,10 +45,20 @@ class PlanEngine
         $lines = $plan->relationLoaded('lines') ? $plan->lines : $plan->lines()->get();
         $wanted = PnlReportService::months($period);
 
-        // Anul de bază, citit cu aceeași măsură: aceeași perioadă, aceeași
-        // bază de chirii, aceeași recunoaștere a venitului. Altfel coloana
-        // de alături ar fi un alt raport, nu termenul de comparație.
-        $actual = $this->actuals($plan, $wanted, $period, $basis, $mode);
+        // Anii dinainte, citiți cu aceeași măsură: aceeași perioadă, aceeași
+        // bază de chirii, aceeași recunoaștere a venitului. Altfel coloanele
+        // de alături ar fi alte rapoarte, nu termeni de comparație.
+        $history = [];
+
+        foreach (self::years($plan) as $year) {
+            $read = $this->actuals($plan, $year, $wanted, $period, $basis, $mode);
+
+            if ($read !== null) {
+                $history[$year] = $read;
+            }
+        }
+
+        $actual = $history[(int) $plan->base_year] ?? null;
 
         // Chiriile retratate ca în raport: ies din exploatare și se întorc ca
         // amortizare și dobândă, după contractele din registru.
@@ -168,7 +178,7 @@ class PlanEngine
             // Planul în forma raportului: aceleași rânduri, în aceeași
             // ordine, ca să se poată citi unul lângă altul cu P&L-ul
             // adevărat, nu ca două tabele care seamănă.
-            'statement' => $this->statement($plan, $lines->whereIn('month', $wanted), $months, $leases, $actual, $axes, $this->keep($buckets, $wanted)),
+            'statement' => $this->statement($plan, $lines->whereIn('month', $wanted), $months, $leases, $actual, $axes, $this->keep($buckets, $wanted), $history),
             // Coloanele raportului: aceleași rânduri, citite pe categorie de
             // produs și pe canal de vânzare.
             'columns' => [
@@ -190,6 +200,16 @@ class PlanEngine
             'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER)),
             'opex' => $this->byKey($lines->where('kind', PlanLine::OPEX)),
             'below' => $this->belowRows($lines->where('kind', PlanLine::BELOW), $buckets, $wanted),
+            // Anii din care se judecă planul, de la cel mai vechi la cel mai
+            // nou, cu lunile care le lipsesc spuse pe față.
+            'years' => array_values(array_map(fn (int $year) => [
+                'year' => $year,
+                'built' => isset($history[$year]),
+                // Lunile care n-au venit încă sunt o faptă de calendar: se
+                // spun și când raportul anului nu e construit.
+                'estimated' => PlanBuilder::openMonths($year),
+                ...($history[$year]['totals'] ?? []),
+            ], array_reverse(self::years($plan)))),
             'base' => [
                 'year' => $plan->base_year,
                 'built' => $actual !== null,
@@ -294,7 +314,7 @@ class PlanEngine
      * @param  array<int, array<string, float>>  $months
      * @return list<array<string, mixed>>
      */
-    private function statement(Plan $plan, Collection $lines, array $months, ?array $leases = null, ?array $actual = null, array $axes = ['product' => [], 'channel' => []], array $buckets = []): array
+    private function statement(Plan $plan, Collection $lines, array $months, ?array $leases = null, ?array $actual = null, array $axes = ['product' => [], 'channel' => []], array $buckets = [], array $history = []): array
     {
         $rows = [];
         $pick = fn (string $key) => array_map(fn (array $cell) => (float) ($cell[$key] ?? 0), $months);
@@ -417,12 +437,28 @@ class PlanEngine
             return $rows;
         }
 
-        return array_map(fn (array $row) => [
-            ...$row,
-            'base' => isset($actual['rows'][$row['key']]) ? round($actual['rows'][$row['key']], 2) : null,
-            'base_product' => $actual['columns']['product'][$row['key']] ?? [],
-            'base_channel' => $actual['columns']['channel'][$row['key']] ?? [],
-        ], $rows);
+        return array_map(function (array $row) use ($actual, $history) {
+            $years = [];
+            $product = [];
+            $channel = [];
+
+            // Aceeași linie, în fiecare an din care se judecă planul.
+            foreach ($history as $year => $read) {
+                $years[$year] = isset($read['rows'][$row['key']]) ? round($read['rows'][$row['key']], 2) : null;
+                $product[$year] = $read['columns']['product'][$row['key']] ?? [];
+                $channel[$year] = $read['columns']['channel'][$row['key']] ?? [];
+            }
+
+            return [
+                ...$row,
+                'base' => isset($actual['rows'][$row['key']]) ? round($actual['rows'][$row['key']], 2) : null,
+                'base_product' => $actual['columns']['product'][$row['key']] ?? [],
+                'base_channel' => $actual['columns']['channel'][$row['key']] ?? [],
+                'years' => $years,
+                'years_product' => $product,
+                'years_channel' => $channel,
+            ];
+        }, $rows);
     }
 
     /**
@@ -574,6 +610,19 @@ class PlanEngine
     }
 
     /**
+     * Anii din care se judecă planul: anul de bază și cei dinaintea lui.
+     *
+     * @return list<int>
+     */
+    public static function years(Plan $plan): array
+    {
+        return array_map(
+            fn (int $step) => (int) $plan->base_year - $step,
+            range(0, PlanBuilder::YEARS - 1),
+        );
+    }
+
+    /**
      * Încotro se mută o linie, ca să fie citită pe baza cerută.
      *
      * Categoriile stau pe luna rezervării: pe financiar se duc înainte, în
@@ -717,6 +766,9 @@ class PlanEngine
             // Anul de bază se pune peste la urmă, dacă raportul lui e
             // construit; forma rândului rămâne aceeași oricum.
             'base' => null,
+            'years' => [],
+            'years_product' => [],
+            'years_channel' => [],
             // Aceeași cifră, citită pe coloane: pe categorie de produs și pe
             // canal de vânzare.
             'product' => array_map(fn (float $value) => round($value, 2), $cut['product'] ?? []),
@@ -912,9 +964,9 @@ class PlanEngine
      * @param  list<int>  $wanted
      * @return array{totals: array<string, float>, rows: array<string, float>, shares: array<string, array<string, array<string, float>>>, columns: array<string, array<string, array<string, float>>>}|null
      */
-    private function actuals(Plan $plan, array $wanted, string $period, string $basis, string $mode): ?array
+    private function actuals(Plan $plan, int $year, array $wanted, string $period, string $basis, string $mode): ?array
     {
-        $report = $this->pnl->cached($plan->company, $plan->base_year);
+        $report = $this->pnl->cached($plan->company, $year);
 
         if ($report === null || isset($report['error'])) {
             return null;
@@ -922,8 +974,11 @@ class PlanEngine
 
         // Anul de bază se citește pe lunile pe care le-a trăit; cele care
         // n-au venit încă vin din estimare, ca să nu se pună nouă luni
-        // lângă douăsprezece și să iasă o creștere închipuită.
-        $overlay = $this->builder->openOverlay($plan);
+        // lângă douăsprezece și să iasă o creștere închipuită. Anii dinainte
+        // sunt închiși: ei se citesc cum sunt.
+        $overlay = $year === (int) $plan->base_year
+            ? $this->builder->openOverlay($plan)
+            : ['months' => [], 'revenue' => [], 'margin' => [], 'products' => [], 'lines' => [], 'groups' => [], 'below' => []];
         $lived = array_values(array_diff($wanted, $overlay['months']));
         $open = array_values(array_intersect($wanted, $overlay['months']));
 

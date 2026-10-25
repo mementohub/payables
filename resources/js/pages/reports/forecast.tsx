@@ -121,6 +121,9 @@ type StatementRow = {
     channel: Record<string, number>;
     base_product: Record<string, number>;
     base_channel: Record<string, number>;
+    years: Record<string, number | null>;
+    years_product: Record<string, Record<string, number>>;
+    years_channel: Record<string, Record<string, number>>;
 };
 
 type Output = {
@@ -174,6 +177,16 @@ type Output = {
     charter: Row[];
     opex: Row[];
     below: Row[];
+    years: {
+        year: number;
+        built: boolean;
+        estimated: number[];
+        net?: number;
+        margin?: number;
+        opex?: number;
+        ebitda?: number;
+        net_profit?: number;
+    }[];
     base: {
         year: number;
         built: boolean;
@@ -2239,6 +2252,13 @@ function PlanStatement({
     axis: 'luna' | 'produs' | 'canal';
 }) {
     const [groups, setGroups] = useState(false);
+    // Trei ani de istoric lățesc tabelul: cine vrea doar anul de bază îl
+    // poate strânge la loc.
+    const [wide, setWide] = useState(true);
+
+    const built = output.years.filter((one) => one.built);
+    const history = wide ? built : built.filter((one) => one.year === baseYear);
+    const open = built.find((one) => one.estimated.length > 0);
 
     const rows = output.statement.filter((row) =>
         row.kind === 'line' || row.kind === 'group' ? groups : true,
@@ -2264,13 +2284,22 @@ function PlanStatement({
             ? (row.months[Number(key)] ?? 0)
             : ((axis === 'produs' ? row.product : row.channel)[key] ?? 0);
 
-    // Anul de bază, pe aceeași coloană: istoricul stă la stânga, planul la
+    // Anii dinainte, pe aceeași coloană: istoricul stă la stânga, planul la
     // dreapta, ca să se citească evoluția dintr-o privire.
-    const was = (row: StatementRow, key: string): number | null =>
-        axis === 'luna'
-            ? null
-            : ((axis === 'produs' ? row.base_product : row.base_channel)[key] ??
-              null);
+    const past = (
+        row: StatementRow,
+        year: number,
+        key: string | null,
+    ): number | null => {
+        if (key === null) {
+            return row.years?.[String(year)] ?? null;
+        }
+
+        const byYear =
+            axis === 'produs' ? row.years_product : row.years_channel;
+
+        return byYear?.[String(year)]?.[key] ?? null;
+    };
 
     const revenue = output.statement.find((row) => row.key === 'revenue');
 
@@ -2303,11 +2332,26 @@ function PlanStatement({
                 >
                     {groups ? 'Doar totalurile' : 'Desfă cheltuielile'}
                 </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setWide(!wide)}
+                >
+                    {wide
+                        ? `Doar ${baseYear}`
+                        : `Toți anii (${built[0]?.year ?? baseYear}–${baseYear})`}
+                </Button>
                 <p className="text-xs text-muted-foreground">
-                    Planul {year} are rândurile raportului, pe {label}. Pe
-                    fiecare coloană stă întâi {baseYear}, din P&amp;L-ul
-                    adevărat, apoi {year}: evoluția se citește de la stânga la
-                    dreapta.
+                    Planul {year} are rândurile raportului, pe {label}, în mii
+                    de lei. Pe fiecare coloană stau anii dinainte, din
+                    P&amp;L-ul adevărat, apoi {year}: evoluția se citește de la
+                    stânga la dreapta.
+                    {open !== undefined &&
+                        ` ${open.year} nu e încheiat: ${12 - open.estimated.length} luni sunt realizate, iar ${open.estimated
+                            .map((m) => MONTHS[m - 1])
+                            .join(
+                                ', ',
+                            )} sunt estimate — altfel s-ar compara ${12 - open.estimated.length} luni cu un an întreg.`}
                 </p>
             </div>
 
@@ -2319,12 +2363,24 @@ function PlanStatement({
                                 <TableHead className="sticky left-0 z-10 w-64 bg-card">
                                     Linie
                                 </TableHead>
-                                <TableHead className="border-l text-right text-muted-foreground">
-                                    {baseYear}
-                                    <span className="block text-[10px] font-normal opacity-70">
-                                        mii lei
-                                    </span>
-                                </TableHead>
+                                {history.map((one) => (
+                                    <TableHead
+                                        key={one.year}
+                                        className="border-l text-right text-muted-foreground"
+                                        title={
+                                            one.estimated.length > 0
+                                                ? `${one.year} nu e încheiat: ${12 - one.estimated.length} luni realizate și ${one.estimated.length} estimate.`
+                                                : `${one.year}, an încheiat.`
+                                        }
+                                    >
+                                        {one.year}
+                                        <span className="block text-[10px] font-normal opacity-70">
+                                            {one.estimated.length > 0
+                                                ? `${12 - one.estimated.length} real + ${one.estimated.length} est.`
+                                                : 'mii lei'}
+                                        </span>
+                                    </TableHead>
+                                ))}
                                 <TableHead className="text-right font-semibold">
                                     Plan {year}
                                     <span className="block text-[10px] font-normal opacity-70">
@@ -2341,11 +2397,19 @@ function PlanStatement({
                                 )}
                                 {columns.map((column) => (
                                     <Fragment key={column.key}>
-                                        {axis !== 'luna' && (
-                                            <TableHead className="border-l text-right font-normal text-muted-foreground">
-                                                {column.label} {baseYear}
-                                            </TableHead>
-                                        )}
+                                        {axis !== 'luna' &&
+                                            history.map((one, index) => (
+                                                <TableHead
+                                                    key={one.year}
+                                                    className={cn(
+                                                        'text-right font-normal text-muted-foreground',
+                                                        index === 0 &&
+                                                            'border-l',
+                                                    )}
+                                                >
+                                                    {column.label} {one.year}
+                                                </TableHead>
+                                            ))}
                                         <TableHead
                                             className={`text-right ${axis === 'luna' ? '' : 'font-semibold'}`}
                                         >
@@ -2367,7 +2431,12 @@ function PlanStatement({
                                 <TableCell className="sticky left-0 z-10 bg-card">
                                     Pasageri · servicii · locuri (nr.)
                                 </TableCell>
-                                <TableCell className="border-l" />
+                                {history.map((one) => (
+                                    <TableCell
+                                        key={one.year}
+                                        className="border-l"
+                                    />
+                                ))}
                                 <TableCell className="text-right tabular-nums">
                                     {lei(output.totals.pax)} ·{' '}
                                     {lei(output.totals.services)} ·{' '}
@@ -2377,9 +2446,16 @@ function PlanStatement({
                                 {axis !== 'luna' && <TableCell />}
                                 {columns.map((column, i) => (
                                     <Fragment key={column.key}>
-                                        {axis !== 'luna' && (
-                                            <TableCell className="border-l" />
-                                        )}
+                                        {axis !== 'luna' &&
+                                            history.map((one, index) => (
+                                                <TableCell
+                                                    key={one.year}
+                                                    className={cn(
+                                                        index === 0 &&
+                                                            'border-l',
+                                                    )}
+                                                />
+                                            ))}
                                         <TableCell className="text-right tabular-nums">
                                             {axis === 'luna'
                                                 ? lei(
@@ -2430,11 +2506,22 @@ function PlanStatement({
                                                 </span>
                                             )}
                                     </TableCell>
-                                    <TableCell className="border-l text-right text-muted-foreground tabular-nums">
-                                        {row.base !== null
-                                            ? mii(row.base)
-                                            : '–'}
-                                    </TableCell>
+                                    {history.map((one) => (
+                                        <TableCell
+                                            key={one.year}
+                                            className="border-l text-right text-muted-foreground tabular-nums"
+                                        >
+                                            {past(row, one.year, null) !== null
+                                                ? mii(
+                                                      past(
+                                                          row,
+                                                          one.year,
+                                                          null,
+                                                      ) as number,
+                                                  )
+                                                : '–'}
+                                        </TableCell>
+                                    ))}
                                     <TableCell className="text-right font-semibold tabular-nums">
                                         {mii(row.total)}
                                     </TableCell>
@@ -2459,19 +2546,31 @@ function PlanStatement({
                                     )}
                                     {columns.map((column) => (
                                         <Fragment key={column.key}>
-                                            {axis !== 'luna' && (
-                                                <TableCell className="border-l text-right text-muted-foreground tabular-nums">
-                                                    {was(row, column.key) !==
-                                                    null
-                                                        ? mii(
-                                                              was(
-                                                                  row,
-                                                                  column.key,
-                                                              ) as number,
-                                                          )
-                                                        : '–'}
-                                                </TableCell>
-                                            )}
+                                            {axis !== 'luna' &&
+                                                history.map((one, index) => (
+                                                    <TableCell
+                                                        key={one.year}
+                                                        className={cn(
+                                                            'text-right text-muted-foreground tabular-nums',
+                                                            index === 0 &&
+                                                                'border-l',
+                                                        )}
+                                                    >
+                                                        {past(
+                                                            row,
+                                                            one.year,
+                                                            column.key,
+                                                        ) !== null
+                                                            ? mii(
+                                                                  past(
+                                                                      row,
+                                                                      one.year,
+                                                                      column.key,
+                                                                  ) as number,
+                                                              )
+                                                            : '–'}
+                                                    </TableCell>
+                                                ))}
                                             <TableCell className="text-right tabular-nums">
                                                 {mii(value(row, column.key))}
                                             </TableCell>
@@ -2493,7 +2592,9 @@ function PlanStatement({
                 Cifrele sunt în mii de lei.{' '}
                 {axis === 'luna'
                     ? 'Rândul de sus numără pasagerii planificați pe lună; la capăt stau pasagerii, serviciile din Tina și locurile de charter ale anului.'
-                    : 'Cheltuielile se împart pe coloane după cum s-au împărțit aceleași linii în anul de bază; liniile noi, după venit.'}
+                    : 'Cheltuielile se împart pe coloane după cum s-au împărțit aceleași linii în anul de bază; liniile noi, după venit.'}{' '}
+                {open !== undefined &&
+                    `Anii dinainte sunt citiți pe aceeași perioadă și pe aceeași bază ca planul; ${open.year} e singurul neîncheiat, cu ${open.estimated.length} luni estimate.`}
             </p>
         </div>
     );

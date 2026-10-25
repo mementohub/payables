@@ -757,3 +757,25 @@ test('a plan can be asked to start from the base year as it is, with no growth o
     expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CATEGORY)->sole()->volume)
         ->toEqual(133.1);
 });
+
+test('the plan is read against three years, and an unfinished year says so', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $out = app(PlanEngine::class)->compute($plan);
+    $years = collect($out['years']);
+
+    // Anii se citesc de la cel mai vechi la cel mai nou, ca evoluția să
+    // meargă de la stânga la dreapta.
+    expect($years->pluck('year')->all())->toBe([2024, 2025, 2026])
+        // Anul de bază e neîncheiat: lunile care n-au venit sunt spuse.
+        ->and($years->firstWhere('year', 2026)['estimated'])
+        ->toBe(PlanBuilder::openMonths(2026))
+        // Fiecare rând poartă cifra fiecărui an, nu doar a anului de bază.
+        ->and(collect($out['statement'])->firstWhere('key', 'revenue'))
+        ->toHaveKeys(['years', 'years_product', 'years_channel']);
+});
