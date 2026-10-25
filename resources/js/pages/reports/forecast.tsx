@@ -1431,6 +1431,19 @@ export default function Forecast({
                         )}
 
                         {tab === 'configurare' && (
+                            <p className="text-xs text-muted-foreground">
+                                {sheet === 'charter'
+                                    ? 'Cursele se citesc pe luna plecării: locurile sunt cele contractate în eTrip pentru anul plănuit, iar ocuparea și banii pe pasager vin de pe aceeași cursă din anul de bază. Volumul lor nu urmează niciun trend — un loc contractat e o faptă, nu o presupunere.'
+                                    : sheet === 'categorii'
+                                      ? 'Categoriile se citesc pe luna rezervării, ca vederea operațională din P&L: pasagerii sunt cei care au cumpărat în luna aia, oricând ar plăti sau ar pleca. Tina se numără pe servicii facturate, la data facturii.'
+                                      : 'Cheltuielile se citesc pe luna din registru, ca în raport: acolo unde a căzut documentul, nu unde s-a consumat serviciul.'}{' '}
+                                Pe fila Plan, tot ce nu stă pe baza aleasă sus e
+                                mutat acolo, după tiparul rezervare → plecare
+                                din anul de bază.
+                            </p>
+                        )}
+
+                        {tab === 'configurare' && (
                             <div className="flex flex-wrap items-center gap-3">
                                 <Dialog open={adding} onOpenChange={setAdding}>
                                     <DialogTrigger asChild>
