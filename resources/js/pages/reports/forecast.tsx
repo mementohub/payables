@@ -177,10 +177,22 @@ type Output = {
     charter: Row[];
     opex: Row[];
     below: Row[];
+    risk: {
+        charter_share: number;
+        load: number;
+        break_even: number;
+        empty_seats: number;
+        empty_cost: number;
+        routes: number;
+        tax: number;
+        tax_is_minimum: boolean;
+        per_point: number;
+    };
     years: {
         year: number;
         built: boolean;
         estimated: number[];
+        pax: number;
         net?: number;
         margin?: number;
         opex?: number;
@@ -346,6 +358,34 @@ const lei = (value: number, decimals = 0) =>
     }).format(value);
 
 const mii = (value: number) => lei(value / 1000);
+
+/**
+ * Reperul unei luni din istoric, scris cu aceleași mărimi ca în căsuțele de
+ * deasupra: altfel omul compară pere cu mere.
+ */
+const reper = (
+    was: { volume: number; capacity: number; net: number; margin: number },
+    isOpex: boolean,
+    isCharter: boolean,
+    unit: string,
+) => {
+    if (isOpex) {
+        return `${lei(was.net)} lei`;
+    }
+
+    const perUnit = was.volume > 0 ? was.net / was.volume : 0;
+
+    if (isCharter) {
+        const load = was.capacity > 0 ? (was.volume / was.capacity) * 100 : 0;
+
+        return `${lei(was.capacity)} locuri · ${lei(load, 1)}% ocupare · ${lei(perUnit)} lei/pax · venit ${lei(was.net)}`;
+    }
+
+    const name = unit === 'serviciu' ? 'servicii' : 'pax';
+    const margin = was.volume > 0 ? was.margin / was.volume : 0;
+
+    return `${lei(was.volume)} ${name} · ${lei(perUnit)} lei/${name === 'servicii' ? 'serviciu' : 'pax'} · marjă ${lei(margin)} · venit ${lei(was.net)}`;
+};
 
 const pct = (now: number, before?: number) => {
     if (before === undefined || Math.abs(before) < 0.005) {
@@ -515,8 +555,6 @@ export default function Forecast({
                 },
             },
         );
-
-    const base = output?.base;
 
     return (
         <AppLayout
@@ -979,51 +1017,7 @@ export default function Forecast({
                     </Card>
                 ) : (
                     <>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                            {(
-                                [
-                                    ['Venit net', 'net'],
-                                    ['Marjă brută', 'margin'],
-                                    ['Cheltuieli', 'opex'],
-                                    ['EBITDA', 'ebitda'],
-                                    ['Profit net', 'net_profit'],
-                                ] as const
-                            ).map(([label, key]) => (
-                                <Card key={key}>
-                                    <CardContent className="p-4">
-                                        <p className="text-xs text-muted-foreground">
-                                            {label}
-                                        </p>
-                                        <p className="text-lg font-semibold tabular-nums">
-                                            {mii(output.totals[key])}
-                                            <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                                mii lei
-                                            </span>
-                                        </p>
-                                        {base?.built && (
-                                            <p className="text-xs text-muted-foreground">
-                                                {base.year}:{' '}
-                                                {mii(base[key] ?? 0)} ·{' '}
-                                                <span
-                                                    className={
-                                                        (output.totals[key] ??
-                                                            0) >=
-                                                        (base[key] ?? 0)
-                                                            ? 'text-emerald-600 dark:text-emerald-500'
-                                                            : 'text-red-600 dark:text-red-400'
-                                                    }
-                                                >
-                                                    {pct(
-                                                        output.totals[key],
-                                                        base[key],
-                                                    ) ?? '–'}
-                                                </span>
-                                            </p>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                        <PlanHeader output={output} planYear={plan.year} />
 
                         {tab === 'configurare' && (
                             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -2151,13 +2145,75 @@ function DriverTable({
                                                         row.months[i + 1];
 
                                                     if (!cell) {
+                                                        // Luna n-a existat în
+                                                        // istoric, dar poate
+                                                        // că la anul o vrem:
+                                                        // se adaugă aici.
+                                                        const any =
+                                                            Object.values(
+                                                                row.months,
+                                                            )[0];
+
                                                         return (
                                                             <div
                                                                 key={name}
-                                                                className="rounded-md border border-dashed p-2 text-center text-[11px] text-muted-foreground"
+                                                                className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground"
                                                             >
-                                                                {name} · fără
-                                                                plan
+                                                                <span>
+                                                                    {name}{' '}
+                                                                    {planYear} ·
+                                                                    n-a fost
+                                                                    niciodată
+                                                                </span>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="h-7 text-[11px]"
+                                                                    onClick={() =>
+                                                                        router.post(
+                                                                            `/reports/forecast/${planId}/rows`,
+                                                                            {
+                                                                                kind: row.kind,
+                                                                                key: row.key,
+                                                                                label: row.label,
+                                                                                unit: row.unit,
+                                                                                months: [
+                                                                                    i +
+                                                                                        1,
+                                                                                ],
+                                                                                capacity:
+                                                                                    any?.capacity ??
+                                                                                    null,
+                                                                                load:
+                                                                                    any?.load ??
+                                                                                    null,
+                                                                                volume:
+                                                                                    any?.volume ??
+                                                                                    null,
+                                                                                amount: isOpex
+                                                                                    ? (any?.amount ??
+                                                                                      null)
+                                                                                    : null,
+                                                                                unit_net:
+                                                                                    any?.unit_net ??
+                                                                                    null,
+                                                                                unit_margin:
+                                                                                    any?.unit_margin ??
+                                                                                    null,
+                                                                                unit_cost:
+                                                                                    any?.unit_cost ??
+                                                                                    null,
+                                                                                note: `Lună adăugată cu mâna: ${row.key} n-a avut ${name} în istoric.`,
+                                                                            },
+                                                                            {
+                                                                                preserveScroll: true,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <Plus className="size-3" />
+                                                                    Adaugă luna
+                                                                </Button>
                                                             </div>
                                                         );
                                                     }
@@ -2331,9 +2387,12 @@ function DriverTable({
 
                                                                                 :{' '}
                                                                                 {was
-                                                                                    ? isOpex
-                                                                                        ? `${lei(was.net)} lei`
-                                                                                        : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'}${isCharter && was.capacity > 0 ? ` din ${lei(was.capacity)} locuri` : ''} · ${lei(was.net)} lei`
+                                                                                    ? reper(
+                                                                                          was,
+                                                                                          isOpex,
+                                                                                          isCharter,
+                                                                                          row.unit,
+                                                                                      )
                                                                                     : '–'}
                                                                             </div>
                                                                         );
@@ -2588,9 +2647,12 @@ function DriverTable({
 
                                                                                                 :{' '}
                                                                                                 {was
-                                                                                                    ? isOpex
-                                                                                                        ? `${lei(was.net)} lei`
-                                                                                                        : `${lei(was.volume)} ${isCharter ? 'pax' : row.unit === 'serviciu' ? 'servicii' : 'pax'} · ${lei(was.net)} lei`
+                                                                                                    ? reper(
+                                                                                                          was,
+                                                                                                          isOpex,
+                                                                                                          isCharter,
+                                                                                                          row.unit,
+                                                                                                      )
                                                                                                     : '–'}
                                                                                             </div>
                                                                                         );
@@ -2666,6 +2728,222 @@ function RowInput({
  * bază alături — ca să se citească unul lângă altul, nu ca două tabele care
  * seamănă.
  */
+/**
+ * Antetul filei Plan: patru ani de context și ce atârnă greu.
+ *
+ * Cinci casete cu totalurile anului nu spuneau nimic ce nu se vede în
+ * tabelul de dedesubt. Aici stă ce nu se vede: cum s-a mișcat fiecare cifră
+ * în ultimii trei ani, și din ce stă planul în picioare — cât din venit
+ * vine din curse, cât de plin trebuie să fie avionul, câte locuri rămân
+ * goale și cât costă, și cât ia statul chiar când profitul e mic.
+ */
+function PlanHeader({
+    output,
+    planYear,
+}: {
+    output: Output;
+    planYear: number;
+}) {
+    const years = output.years.filter((one) => one.built);
+    const risk = output.risk;
+
+    const share = (value: number, of: number) =>
+        of > 0 ? (value / of) * 100 : 0;
+
+    // Fiecare casetă: cifra planului, cei trei ani dinainte și o bară pe an.
+    const cards = [
+        {
+            key: 'net',
+            label: 'Venit net',
+            now: mii(output.totals.net),
+            unit: 'mii lei',
+            series: years.map((one) => one.net ?? 0),
+            plan: output.totals.net,
+            good: true,
+            foot: years.map((one) => mii(one.net ?? 0)).join(' · '),
+        },
+        {
+            key: 'margin',
+            label: 'Marjă brută',
+            now: `${share(output.totals.margin, output.totals.net).toFixed(1)}%`,
+            unit: 'din venit',
+            series: years.map((one) => share(one.margin ?? 0, one.net ?? 0)),
+            plan: share(output.totals.margin, output.totals.net),
+            good: true,
+            foot: years
+                .map(
+                    (one) =>
+                        `${share(one.margin ?? 0, one.net ?? 0).toFixed(1)}%`,
+                )
+                .join(' · '),
+        },
+        {
+            key: 'ebitda',
+            label: 'EBITDA',
+            now: mii(output.totals.ebitda),
+            unit: 'mii lei',
+            series: years.map((one) => one.ebitda ?? 0),
+            plan: output.totals.ebitda,
+            good: true,
+            foot: years.map((one) => mii(one.ebitda ?? 0)).join(' · '),
+        },
+        {
+            key: 'net_profit',
+            label: 'Profit net',
+            now: mii(output.totals.net_profit),
+            unit: 'mii lei',
+            series: years.map((one) => one.net_profit ?? 0),
+            plan: output.totals.net_profit,
+            good: true,
+            foot: years.map((one) => mii(one.net_profit ?? 0)).join(' · '),
+        },
+        {
+            key: 'pax',
+            label: 'Pasageri',
+            now: lei(output.totals.pax),
+            unit: 'persoane',
+            series: years.map((one) => one.pax ?? 0),
+            plan: output.totals.pax,
+            good: true,
+            foot: `${lei(output.totals.services)} servicii Tina · ${lei(output.totals.seats)} locuri`,
+        },
+    ];
+
+    return (
+        <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {cards.map((card) => {
+                    const last = card.series[card.series.length - 1] ?? 0;
+                    const top = Math.max(
+                        ...card.series.map(Math.abs),
+                        Math.abs(card.plan),
+                        1,
+                    );
+                    const up = card.plan >= last;
+
+                    return (
+                        <Card key={card.key}>
+                            <CardContent className="space-y-2 p-4">
+                                <p className="text-xs text-muted-foreground uppercase">
+                                    {card.label}
+                                </p>
+                                <p className="flex items-baseline gap-2">
+                                    <span className="text-xl font-semibold tabular-nums">
+                                        {card.now}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {card.unit}
+                                    </span>
+                                    <span
+                                        className={cn(
+                                            'text-xs font-medium',
+                                            up
+                                                ? 'text-emerald-600 dark:text-emerald-500'
+                                                : 'text-red-600 dark:text-red-400',
+                                        )}
+                                    >
+                                        {pct(card.plan, last) ?? ''}
+                                    </span>
+                                </p>
+                                <div
+                                    className="flex h-10 items-end gap-1"
+                                    aria-hidden="true"
+                                >
+                                    {[...card.series, card.plan].map(
+                                        (value, i) => (
+                                            <div
+                                                key={i}
+                                                className={cn(
+                                                    'flex-1 rounded-sm',
+                                                    i === card.series.length
+                                                        ? up
+                                                            ? 'bg-primary'
+                                                            : 'bg-red-500'
+                                                        : 'bg-muted-foreground/25',
+                                                )}
+                                                style={{
+                                                    height: `${Math.max(2, (Math.abs(value) / top) * 40)}px`,
+                                                }}
+                                            />
+                                        ),
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground tabular-nums">
+                                    {years.map((one) => one.year).join(' · ')} ·{' '}
+                                    <strong className="text-foreground">
+                                        {planYear}
+                                    </strong>
+                                </p>
+                                <p className="truncate text-[11px] text-muted-foreground tabular-nums">
+                                    {card.foot}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+            </div>
+
+            <Card className="border-l-4 border-l-orange-500">
+                <CardContent className="flex flex-wrap items-center gap-x-10 gap-y-3 p-4">
+                    <span className="text-xs text-muted-foreground uppercase">
+                        Ce atârnă greu
+                    </span>
+
+                    <span>
+                        <span className="block text-base font-semibold tabular-nums">
+                            {risk.charter_share}%
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            din venit vine din cele {risk.routes} de curse
+                        </span>
+                    </span>
+
+                    <span>
+                        <span className="block text-base font-semibold tabular-nums">
+                            {risk.load}%
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            ocupare planificată, față de {risk.break_even}%
+                            pragul mediu
+                        </span>
+                    </span>
+
+                    <span>
+                        <span className="block text-base font-semibold text-red-600 tabular-nums dark:text-red-400">
+                            {lei(risk.empty_seats)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            locuri rămase goale · {mii(risk.empty_cost)} mii lei
+                            plătiți degeaba
+                        </span>
+                    </span>
+
+                    <span>
+                        <span className="block text-base font-semibold tabular-nums">
+                            {mii(risk.per_point)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            mii lei venit la fiecare punct de ocupare
+                        </span>
+                    </span>
+
+                    <span>
+                        <span className="block text-base font-semibold tabular-nums">
+                            {mii(risk.tax)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            impozit
+                            {risk.tax_is_minimum
+                                ? ' — minimul pe cifra de afaceri, plătit chiar pe profit mic'
+                                : ' — 16% pe profitul impozabil'}
+                        </span>
+                    </span>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
 /**
  * Anul în curs, așa cum se va încheia.
  *

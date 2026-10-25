@@ -898,3 +898,29 @@ test('a charter seat carries passengers of several categories, and the plan coun
         // Împreună: exact cât a fost, nu de două ori.
         ->and(round($route->net() + $senior->net()))->toEqual(700_000.0);
 });
+
+test('a month a route has never flown can still be added to the plan', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 200, 'sold' => 160, 'volume' => 160, 'net' => 700_000, 'margin' => 70_000],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 200, 'sold' => 0, 'volume' => 0],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    // Cursa zboară numai în iulie; la anul o vrem și în noiembrie.
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->pluck('month')->all())->toBe([7]);
+
+    $this->actingAs($this->boss)->post('/reports/forecast/'.$plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'key' => 'OTP→AYT',
+        'months' => [7, 11], 'capacity' => 189, 'load' => 0.7, 'unit_net' => 4_000,
+    ])->assertRedirect();
+
+    $lines = PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'charter')->orderBy('month')->get();
+
+    // Iulie rămâne cum era, noiembrie intră nou și scris de mână.
+    expect($lines->pluck('month')->all())->toBe([7, 11])
+        ->and($lines->firstWhere('month', 7)->capacity)->toEqual(200.0)
+        ->and($lines->firstWhere('month', 11)->capacity)->toEqual(189.0)
+        ->and($lines->firstWhere('month', 11)->manual)->toBeTrue();
+});

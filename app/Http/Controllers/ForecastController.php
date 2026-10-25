@@ -575,11 +575,23 @@ class ForecastController extends Controller
 
         $key = trim($validated['key']);
 
-        abort_if(
-            $plan->lines()->where('kind', $validated['kind'])->where('key', $key)->exists(),
-            422,
-            'Rândul există deja în plan.',
-        );
+        // Lunile care există deja nu se scriu a doua oară: cererea poate fi
+        // și „mai adaugă-i noiembrie”, pe un rând care are deja restul
+        // anului — o cursă pe care n-am zburat-o niciodată în noiembrie, dar
+        // pe care vrem s-o zburăm la anul.
+        $taken = $plan->lines()
+            ->where('kind', $validated['kind'])
+            ->where('key', $key)
+            ->pluck('month')
+            ->map(fn ($month) => (int) $month)
+            ->all();
+
+        $validated['months'] = array_values(array_diff(
+            array_map('intval', $validated['months']),
+            $taken,
+        ));
+
+        abort_if($validated['months'] === [], 422, 'Lunile cerute sunt deja în plan.');
 
         DB::transaction(function () use ($plan, $validated, $key) {
             // Dacă fusese scos cândva, acum se întoarce.
@@ -595,7 +607,7 @@ class ForecastController extends Controller
                     'kind' => $validated['kind'],
                     'unit' => $validated['unit'] ?? PlanLine::PAX,
                     'key' => $key,
-                    'label' => $validated['label'] ?: $key,
+                    'label' => ($validated['label'] ?? null) ?: $key,
                     'month' => (int) $month,
                     'volume' => $validated['volume'] ?? null,
                     'capacity' => $validated['capacity'] ?? null,

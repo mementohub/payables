@@ -202,12 +202,16 @@ class PlanEngine
             'below' => $this->belowRows($lines->where('kind', PlanLine::BELOW), $buckets, $wanted),
             // Anii din care se judecă planul, de la cel mai vechi la cel mai
             // nou, cu lunile care le lipsesc spuse pe față.
+            // Ce atârnă greu în plan: de unde vine venitul, cât de plin
+            // trebuie să fie avionul și ce se întâmplă dacă nu e.
+            'risk' => $this->risk($plan, $months, $buckets, $lines, $wanted),
             'years' => array_values(array_map(fn (int $year) => [
                 'year' => $year,
                 'built' => isset($history[$year]),
                 // Lunile care n-au venit încă sunt o faptă de calendar: se
                 // spun și când raportul anului nu e construit.
                 'estimated' => PlanBuilder::openMonths($year),
+                'pax' => $this->paxOf($plan, $year),
                 ...($history[$year]['totals'] ?? []),
             ], array_reverse(self::years($plan)))),
             'base' => [
@@ -607,6 +611,78 @@ class PlanEngine
         }
 
         return $rows;
+    }
+
+    /**
+     * Câți pasageri a dus compania într-un an, din istoricul strâns.
+     */
+    private function paxOf(Plan $plan, int $year): float
+    {
+        return round((float) ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $year)
+            ->where('kind', PlanLine::CATEGORY)
+            ->where('unit', PlanLine::PAX)
+            ->sum('volume'), 0);
+    }
+
+    /**
+     * Ce atârnă greu în planul ăsta.
+     *
+     * Un antet de buget nu e un loc pentru cinci cifre care se văd oricum în
+     * tabel: e locul unde se spune din ce stă planul în picioare și ce-l
+     * poate dărâma. Cât din venit vine din curse, cât de plin trebuie să fie
+     * avionul ca să-și scoată banii, câte locuri rămân goale și cât costă
+     * ele, și cât ia statul chiar dacă profitul e mic.
+     *
+     * @param  array<int, array<string, float>>  $months
+     * @param  array<int, array<string, float>>  $buckets
+     * @param  Collection<int, PlanLine>  $lines
+     * @param  list<int>  $wanted
+     * @return array<string, float|bool>
+     */
+    private function risk(Plan $plan, array $months, array $buckets, Collection $lines, array $wanted): array
+    {
+        $charter = $lines->where('kind', PlanLine::CHARTER)->whereIn('month', $wanted);
+        $seats = (float) $charter->sum('capacity');
+        $pax = (float) $charter->sum(fn (PlanLine $line) => $line->pax());
+        $fromCharter = (float) $charter->sum(fn (PlanLine $line) => $line->net());
+
+        $net = 0.0;
+        $pretax = 0.0;
+        $tax = 0.0;
+
+        foreach ($wanted as $month) {
+            $net += (float) ($months[$month]['net'] ?? 0);
+            $tax += (float) ($buckets[$month][self::TAX] ?? 0);
+            $under = 0.0;
+
+            foreach ($buckets[$month] ?? [] as $bucket => $amount) {
+                if ($bucket !== self::TAX) {
+                    $under += (float) $amount;
+                }
+            }
+
+            $pretax += (float) ($months[$month]['margin'] ?? 0) - (float) ($months[$month]['opex'] ?? 0) - $under;
+        }
+
+        // Cât venit aduce un punct de ocupare pe toată flota: cu el se
+        // judecă dacă planul mai stă în picioare la o vară mai slabă.
+        $perPoint = $pax > 0 ? $seats * 0.01 * ($fromCharter / $pax) : 0.0;
+
+        return [
+            'charter_share' => $net > 0 ? round($fromCharter / $net * 100, 1) : 0.0,
+            'load' => $seats > 0 ? round($pax / $seats * 100, 1) : 0.0,
+            'break_even' => round((float) $charter->avg(fn (PlanLine $line) => $line->breakEven() ?? 0) * 100, 1),
+            'empty_seats' => round((float) $charter->sum(fn (PlanLine $line) => $line->emptySeats()), 0),
+            'empty_cost' => round((float) $charter->sum(fn (PlanLine $line) => $line->emptyCost()), 2),
+            'routes' => $charter->pluck('key')->unique()->count(),
+            'tax' => round($tax, 2),
+            // Impozitul minim pe cifra de afaceri se plătește și pe profit
+            // mic: atunci statul ia mai mult decât 16% din profit.
+            'tax_is_minimum' => $tax > (float) config('pnl.profit_tax.rate', 0.16) * max($pretax, 0.0) + 0.5,
+            'per_point' => round($perPoint, 2),
+        ];
     }
 
     /**
