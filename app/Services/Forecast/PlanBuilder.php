@@ -1073,8 +1073,16 @@ class PlanBuilder
                 ->get()->keyBy(fn (PlanLine $line) => $line->key.'|'.$line->month)
             : collect();
 
-        return DB::transaction(function () use ($plan, $kind, $rows, $manual) {
-            PlanLine::query()->where('plan_id', $plan->id)->where('kind', $kind)->where('manual', false)->delete();
+        return DB::transaction(function () use ($plan, $kind, $rows, $manual, $keepManual) {
+            // Pornirea de la zero șterge tot rândul; cea obișnuită lasă pe
+            // loc ce s-a scris de mână. Fără deosebirea asta, pornirea de la
+            // zero lăsa linia scrisă de mână în tabel și încerca să scrie
+            // alta peste ea, pe aceeași lună.
+            PlanLine::query()
+                ->where('plan_id', $plan->id)
+                ->where('kind', $kind)
+                ->when($keepManual, fn ($query) => $query->where('manual', false))
+                ->delete();
 
             $written = 0;
 
