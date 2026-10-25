@@ -36,6 +36,7 @@ class ForecastHistoryBuilder
             'categories' => $this->categories($company, $year),
             'charter' => $this->charter($company, $year),
             'mix' => $this->mix($company, $year),
+            'lag' => $this->lag($company, $year),
         ];
     }
 
@@ -89,6 +90,41 @@ class ForecastHistoryBuilder
         }
 
         return $this->write($company, $year, 'mix', array_values($rows));
+    }
+
+    /**
+     * Tiparul „vândut în luna X, plecat în luna Y”, pe categorie.
+     *
+     * Din el se mută venitul între vederea operațională (la rezervare) și
+     * cea financiară (la plecare), fără să se inventeze nimic: din ce s-a
+     * vândut în februarie, 24% a plecat în iulie și 23% în august.
+     */
+    private function lag(Company $company, int $year): int
+    {
+        $rows = [];
+
+        foreach ($this->etrip->lag($year) as $row) {
+            if (abs($row['net']) < 0.5 || $row['travelled'] < 1 || $row['travelled'] > 12) {
+                continue;
+            }
+
+            $key = $row['product'].'|'.$row['booked'].'|'.$row['travelled'];
+            $rows[$key] = [
+                'kind' => 'lag',
+                'unit' => PlanLine::PAX,
+                'key' => $row['product'],
+                // Luna plecării stă în coloana de canal: tabelul are deja
+                // cheia potrivită, iar un rând de tipar n-are canal.
+                'channel' => (string) $row['travelled'],
+                'month' => $row['booked'],
+                'volume' => 0,
+                'net' => $row['net'],
+                'margin' => $row['margin'],
+                'cost' => 0.0,
+            ];
+        }
+
+        return $this->write($company, $year, 'lag', array_values($rows));
     }
 
     private function categories(Company $company, int $year): int

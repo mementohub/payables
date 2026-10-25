@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\ForecastHistory;
+use App\Models\Lease;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Models\User;
@@ -266,16 +267,16 @@ test('on IFRS 16 the planned rent leaves the costs and comes back as depreciatio
     app(PlanBuilder::class)->seed($plan);
 
     // O chirie planificată, pe linia de chirii a raportului.
-    App\Models\PlanLine::query()->create([
+    PlanLine::query()->create([
         'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '4000', 'label' => 'Chirii · Chirie principala',
         'month' => 1, 'amount' => 10_000, 'manual' => true,
     ]);
 
     // Și contractul din care se naște retratarea.
-    App\Models\Lease::query()->create([
+    Lease::query()->create([
         'company_id' => $this->company->id, 'lessor' => 'Mall', 'currency' => 'Lei',
         'monthly_payment' => 10_000, 'starts_on' => '2027-01-01', 'ends_on' => '2029-12-31',
-        'discount_rate' => 0.08, 'status' => App\Models\Lease::ACTIVE,
+        'discount_rate' => 0.08, 'status' => Lease::ACTIVE,
     ]);
 
     $engine = app(PlanEngine::class);
@@ -323,11 +324,186 @@ test('the months the base year has not lived yet are estimated, not left empty',
     $plan = planFor($this->company);
     app(PlanBuilder::class)->seed($plan);
 
-    $lines = App\Models\PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'category')->get()->keyBy('month');
+    $lines = PlanLine::query()->where('plan_id', $plan->id)->where('kind', 'category')->get()->keyBy('month');
 
     // Decembrie n-a existat în 2026: se ia din 2025, crescut cu cât a crescut
     // anul (220.000 / 200.000 = 1,1).
     expect($lines)->toHaveCount(2)
         ->and($lines[12]->volume)->toEqual(55.0)
         ->and($lines[12]->note)->toContain('estimat din 2025');
+});
+
+test('operational keeps the booking month, financial moves the money to the month of departure', function () {
+    fakeForecastHistory([
+        // S-a vândut tot în ianuarie: 100 de pasageri, 1.000.000 de lei.
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Sejur Extern', 'month' => 1, 'volume' => 100, 'net' => 1_000_000, 'margin' => 100_000],
+        // Din care un sfert a plecat tot în ianuarie și trei sferturi în iulie.
+        ['year' => 2026, 'kind' => 'lag', 'key' => 'Sejur Extern', 'month' => 1, 'channel' => '1', 'net' => 250_000],
+        ['year' => 2026, 'kind' => 'lag', 'key' => 'Sejur Extern', 'month' => 1, 'channel' => '7', 'net' => 750_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $engine = app(PlanEngine::class);
+    $operational = $engine->compute($plan, 'year', 'ras', 'operational');
+    $financial = $engine->compute($plan, 'year', 'ras', 'financial');
+
+    // Operațional: banii stau în luna rezervării, aia e baza lor.
+    expect($operational['months'][1]['net'])->toEqual(1_000_000.0)
+        ->and($operational['months'][7]['net'])->toEqual(0.0)
+        ->and($operational['shifted'])->toBeFalse()
+        // Financiar: se duc în lunile plecării, după tiparul anului de bază.
+        ->and($financial['months'][1]['net'])->toEqual(250_000.0)
+        ->and($financial['months'][7]['net'])->toEqual(750_000.0)
+        ->and($financial['months'][7]['pax'])->toEqual(75.0)
+        ->and($financial['shifted'])->toBeTrue()
+        // Anul e același pe amândouă: nu se pierde și nu se naște venit.
+        ->and($financial['totals']['net'])->toEqual($operational['totals']['net']);
+});
+
+test('charter is planned on the month of the flight, so the operational view gives it back to the months of sale', function () {
+    fakeForecastHistory([
+        // Anul de bază: cursa a dus 100 de oameni, la 4.000 de lei de om.
+        ['year' => 2026, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 100, 'sold' => 100, 'volume' => 100, 'net' => 400_000, 'margin' => 40_000],
+        ['year' => 2027, 'kind' => 'charter', 'key' => 'OTP→AYT', 'month' => 7, 'capacity' => 100, 'sold' => 0, 'volume' => 0],
+        // Ce a plecat în iulie se vânduse jumătate în martie, jumătate în iulie.
+        ['year' => 2026, 'kind' => 'lag', 'key' => 'Charter', 'month' => 3, 'channel' => '7', 'net' => 200_000],
+        ['year' => 2026, 'kind' => 'lag', 'key' => 'Charter', 'month' => 7, 'channel' => '7', 'net' => 200_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+    PlanLine::query()->where('plan_id', $plan->id)->where('kind', PlanLine::CHARTER)->update(['load' => 1]);
+
+    $engine = app(PlanEngine::class);
+    $operational = $engine->compute($plan->fresh(), 'year', 'ras', 'operational');
+    $financial = $engine->compute($plan->fresh(), 'year', 'ras', 'financial');
+
+    // Financiar: cursa rămâne în luna în care zboară.
+    expect($financial['months'][7]['net'])->toEqual(400_000.0)
+        ->and($financial['months'][3]['net'])->toEqual(0.0)
+        // Operațional: jumătate din bani se întorc în martie, când s-au vândut.
+        ->and($operational['months'][3]['net'])->toEqual(200_000.0)
+        ->and($operational['months'][7]['net'])->toEqual(200_000.0)
+        ->and($operational['totals']['net'])->toEqual(400_000.0);
+});
+
+test('a category without a pattern of its own stays where it is, on both views', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Tina · Ticketing', 'unit' => 'serviciu', 'month' => 4, 'volume' => 500, 'net' => 1_000_000, 'margin' => 350_000],
+        // Tiparul e al altei categorii; Tina nu trece prin eTrip.
+        ['year' => 2026, 'kind' => 'lag', 'key' => 'Sejur Extern', 'month' => 4, 'channel' => '8', 'net' => 900_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $financial = app(PlanEngine::class)->compute($plan, 'year', 'ras', 'financial');
+
+    expect($financial['months'][4]['net'])->toEqual(1_000_000.0)
+        ->and($financial['months'][8]['net'])->toEqual(0.0);
+});
+
+test('the whole table is saved at once, cells and rows together', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 2, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Croaziere', 'month' => 1, 'volume' => 10, 'net' => 100_000, 'margin' => 10_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    $lines = PlanLine::query()->where('plan_id', $plan->id)->get();
+    $january = $lines->firstWhere(fn (PlanLine $line) => $line->key === 'Cazare' && (int) $line->month === 1);
+
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$plan->id.'/bulk', [
+        // O lună anume, scrisă cu mâna.
+        'cells' => [['id' => $january->id, 'field' => 'volume', 'value' => 180]],
+        // Și două rânduri întregi: unul pus la o cifră, altul crescut.
+        'rows' => [
+            ['kind' => PlanLine::CATEGORY, 'key' => 'Cazare', 'field' => 'unit_net', 'value' => 2_500],
+            ['kind' => PlanLine::CATEGORY, 'key' => 'Croaziere', 'field' => 'volume', 'growth' => 50],
+        ],
+    ])->assertRedirect();
+
+    $after = PlanLine::query()->where('plan_id', $plan->id)->get();
+    $cazare = $after->where('key', 'Cazare')->keyBy('month');
+
+    // Celula bate rândul: ianuarie are 180, februarie a rămas la 100.
+    expect($cazare[1]->volume)->toEqual(180.0)
+        ->and($cazare[2]->volume)->toEqual(100.0)
+        // Rândul întreg a prins amândouă lunile.
+        ->and($cazare[1]->unit_net)->toEqual(2_500.0)
+        ->and($cazare[2]->unit_net)->toEqual(2_500.0)
+        ->and($after->firstWhere('key', 'Croaziere')->volume)->toEqual(15.0)
+        ->and($after->every(fn (PlanLine $line) => $line->manual))->toBeTrue();
+});
+
+test('a bulk save only writes into its own plan, and only the fields of the plan', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 1, 'volume' => 100, 'net' => 200_000, 'margin' => 20_000],
+    ]);
+
+    $mine = planFor($this->company);
+    $other = planFor($this->company, 2028, 2026);
+    $builder = app(PlanBuilder::class);
+    $builder->seed($mine);
+    $builder->seed($other);
+
+    $stranger = PlanLine::query()->where('plan_id', $other->id)->sole();
+
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$mine->id.'/bulk', [
+        'cells' => [['id' => $stranger->id, 'field' => 'volume', 'value' => 999]],
+    ])->assertRedirect();
+
+    expect($stranger->fresh()->volume)->toEqual(100.0);
+
+    // Și nu se scrie orice coloană.
+    $this->actingAs($this->boss)->put('/reports/forecast/'.$mine->id.'/bulk', [
+        'cells' => [['id' => PlanLine::query()->where('plan_id', $mine->id)->value('id'), 'field' => 'manual', 'value' => 0]],
+    ])->assertSessionHasErrors('cells.0.field');
+});
+
+test('the plan is read on columns too — product categories and sales channels — and every row closes', function () {
+    fakeForecastHistory([
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Cazare', 'month' => 3, 'volume' => 100, 'net' => 600_000, 'margin' => 60_000],
+        ['year' => 2026, 'kind' => 'category', 'key' => 'Croaziere', 'month' => 3, 'volume' => 20, 'net' => 200_000, 'margin' => 20_000],
+        ['year' => 2026, 'kind' => 'mix', 'key' => 'Cazare', 'channel' => 'retail', 'month' => 3, 'net' => 450_000],
+        ['year' => 2026, 'kind' => 'mix', 'key' => 'Cazare', 'channel' => 'site', 'month' => 3, 'net' => 150_000],
+        ['year' => 2026, 'kind' => 'mix', 'key' => 'Croaziere', 'channel' => 'retail', 'month' => 3, 'net' => 200_000],
+    ]);
+
+    $plan = planFor($this->company);
+    app(PlanBuilder::class)->seed($plan);
+
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '6210', 'label' => 'Salarii · Salarii',
+        'month' => 3, 'amount' => 80_000, 'manual' => true,
+    ]);
+
+    $out = app(PlanEngine::class)->compute($plan);
+
+    $product = collect($out['columns']['product'])->keyBy('key');
+    $channel = collect($out['columns']['channel'])->keyBy('key');
+    $rows = collect($out['statement'])->keyBy('key');
+
+    // Coloanele: venitul fiecărei categorii și al fiecărui canal.
+    expect($product['Cazare']['net'])->toEqual(600_000.0)
+        ->and($product['Croaziere']['net'])->toEqual(200_000.0)
+        ->and($channel['retail']['net'])->toEqual(650_000.0)
+        ->and($channel['site']['net'])->toEqual(150_000.0)
+        // Aceleași rânduri ca în P&L, citite pe coloane.
+        ->and($rows['revenue']['product']['Cazare'])->toEqual(600_000.0)
+        // Cheltuiala comună se împarte după venit, cât timp n-are anul de
+        // bază construit: 600.000 / 800.000 din 80.000.
+        ->and($rows['line:6210']['product']['Cazare'])->toEqual(60_000.0)
+        ->and($rows['line:6210']['channel']['site'])->toEqual(15_000.0);
+
+    // Și fiecare rând se închide pe orizontală, nu doar pe verticală.
+    foreach (['revenue', 'margin', 'costs', 'ebitda', 'net'] as $key) {
+        expect(round(array_sum($rows[$key]['product']), 2))->toEqual($rows[$key]['total'])
+            ->and(round(array_sum($rows[$key]['channel']), 2))->toEqual($rows[$key]['total']);
+    }
 });

@@ -11,6 +11,7 @@ use App\Services\Forecast\PlanEngine;
 use App\Services\Reports\PnlReportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -50,6 +51,10 @@ class ForecastController extends Controller
         $basis = in_array($request->string('basis')->toString(), PnlReportService::BASES, true)
             ? $request->string('basis')->toString()
             : PnlReportService::BASIS_RAS;
+        // Operațional: venitul la data rezervării. Financiar: la data plecării.
+        $mode = in_array($request->string('mode')->toString(), PnlReportService::MODES, true)
+            ? $request->string('mode')->toString()
+            : PnlReportService::MODE_OPERATIONAL;
 
         return Inertia::render('reports/forecast', [
             'companies' => $companies,
@@ -58,6 +63,7 @@ class ForecastController extends Controller
                 'plan' => $plan?->id,
                 'period' => $period,
                 'basis' => $basis,
+                'mode' => $mode,
             ],
             'plans' => $plans->map(fn (Plan $one) => [
                 'id' => $one->id,
@@ -76,7 +82,7 @@ class ForecastController extends Controller
                 'status' => $plan->status,
                 'note' => $plan->note,
             ] : null,
-            'output' => $plan ? $this->engine->compute($plan, $period, $basis) : null,
+            'output' => $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null,
             // Trei ani în urmă, pe fiecare rând: altfel gradul de ocupare și
             // banii pe pasager s-ar hotărî dintr-un singur an, care poate să
             // fi fost bun sau prost din întâmplare.
@@ -102,9 +108,24 @@ class ForecastController extends Controller
 
         foreach ($rows as $row) {
             $key = $row->kind.'|'.$row->key;
-            $cell = $out[$key][$row->year] ?? ['volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0];
+            $cell = $out[$key][$row->year] ?? [
+                'volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0, 'months' => [],
+            ];
+
+            $month = (int) $row->month;
+            $before = $cell['months'][$month] ?? ['volume' => 0.0, 'capacity' => 0.0, 'net' => 0.0, 'margin' => 0.0];
+
+            // Și pe luni, nu doar pe an: cardul fiecărei luni arată cu ce a
+            // venit anul de bază, ca omul să vadă de la ce pornește.
+            $cell['months'][$month] = [
+                'volume' => round($before['volume'] + $row->volume, 2),
+                'capacity' => round($before['capacity'] + (float) $row->capacity, 2),
+                'net' => round($before['net'] + $row->net, 2),
+                'margin' => round($before['margin'] + $row->margin, 2),
+            ];
 
             $out[$key][$row->year] = [
+                ...$cell,
                 'volume' => round($cell['volume'] + $row->volume, 2),
                 'capacity' => round($cell['capacity'] + (float) $row->capacity, 2),
                 'sold' => round($cell['sold'] + (float) $row->sold, 2),
@@ -209,6 +230,70 @@ class ForecastController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => sprintf('%d luni schimbate pe „%s”.', $lines->count(), $validated['key'])]);
+
+        return back();
+    }
+
+    /**
+     * Toate schimbările deodată.
+     *
+     * Omul reglează zeci de celule până iese planul cum vrea; dacă fiecare
+     * cifră ar fi o cerere la server, ar aștepta de zeci de ori și ar fi
+     * aruncat înapoi în tabelul de sus la fiecare apăsare. Așa, scrie liniștit
+     * și salvează o dată.
+     */
+    public function bulk(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'cells' => ['array'],
+            'cells.*.id' => ['required', 'integer'],
+            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
+            'cells.*.value' => ['required', 'numeric'],
+            'rows' => ['array'],
+            'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'rows.*.key' => ['required', 'string', 'max:255'],
+            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
+            'rows.*.value' => ['nullable', 'numeric'],
+            'rows.*.growth' => ['nullable', 'numeric', 'between:-100,500'],
+        ]);
+
+        $cells = 0;
+        $rows = 0;
+
+        DB::transaction(function () use ($plan, $validated, &$cells, &$rows) {
+            foreach (($validated['rows'] ?? []) as $row) {
+                $lines = $plan->lines()->where('kind', $row['kind'])->where('key', $row['key'])->get();
+
+                foreach ($lines as $line) {
+                    $value = ($row['value'] ?? null) !== null
+                        ? (float) $row['value']
+                        : round((float) $line->{$row['field']} * (1 + (float) ($row['growth'] ?? 0) / 100), 4);
+
+                    $line->update([$row['field'] => $value, 'manual' => true]);
+                }
+
+                $rows++;
+            }
+
+            // Celulele se scriu după rânduri: ce s-a reglat pe o lună anume
+            // bate ce s-a pus pe tot anul.
+            foreach (($validated['cells'] ?? []) as $cell) {
+                $line = $plan->lines()->whereKey($cell['id'])->first();
+
+                if ($line === null) {
+                    continue;
+                }
+
+                $line->update([$cell['field'] => (float) $cell['value'], 'manual' => true]);
+                $cells++;
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            'Salvat: %d %s și %d %s.',
+            $cells, $cells === 1 ? 'lună' : 'luni',
+            $rows, $rows === 1 ? 'rând întreg' : 'rânduri întregi',
+        )]);
 
         return back();
     }

@@ -39,8 +39,8 @@ class BuildForecastHistory extends Command
                 }
 
                 $this->info(sprintf(
-                    '%s %d: %d rânduri pe categorii, %d pe curse, %d pe canale (%ds).',
-                    $company->name, $year, $out['categories'], $out['charter'], $out['mix'], (int) (microtime(true) - $started),
+                    '%s %d: %d pe categorii, %d pe curse, %d pe canale, %d tipare de plecare (%ds).',
+                    $company->name, $year, $out['categories'], $out['charter'], $out['mix'], $out['lag'], (int) (microtime(true) - $started),
                 ));
             }
         }

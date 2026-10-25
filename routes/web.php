@@ -217,6 +217,7 @@ Route::middleware('auth')->group(function () {
         Route::post('reports/forecast/{plan}/reseed', [ForecastController::class, 'reseed'])->name('reports.forecast.reseed');
         Route::put('reports/forecast/lines/{line}', [ForecastController::class, 'updateLine'])->name('reports.forecast.lines.update');
         Route::put('reports/forecast/{plan}/row', [ForecastController::class, 'updateRow'])->name('reports.forecast.row.update');
+        Route::put('reports/forecast/{plan}/bulk', [ForecastController::class, 'bulk'])->name('reports.forecast.bulk');
         Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
         Route::delete('reports/forecast/{plan}', [ForecastController::class, 'destroy'])->name('reports.forecast.destroy');
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
