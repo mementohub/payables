@@ -221,6 +221,18 @@ const mainNavItems = (
               },
           ]
         : []),
+    // Bugetul nu e numai al conducerii: șeful de departament își scrie
+    // bucata lui. Lui îi arătăm doar intrarea asta, nu tot raftul de
+    // rapoarte — restul cifrelor companiei nu sunt ale lui.
+    ...(!can.reports && can.forecast
+        ? [
+              {
+                  title: 'Forecast & Plan',
+                  href: forecastIndex(),
+                  icon: Target,
+              },
+          ]
+        : []),
     // Contractele stau la rolul lor: cine nu-l are nici nu vede tabul.
     // Închirierile sunt tot contracte, deci stau aici, nu la Rapoarte — chiar
     // dacă din ele iese retratarea IFRS 16, care rămâne a Top Management-ului.

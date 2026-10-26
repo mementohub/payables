@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\BaseEstimate;
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
 use App\Models\PlanSection;
 use App\Models\PlanVersion;
+use App\Models\User;
 use App\Services\Exports\PlanExport;
 use App\Services\Exports\PlanPdfWriter;
 use App\Services\Exports\PptxWriter;
@@ -109,6 +111,12 @@ class ForecastController extends Controller
             // tuturor bucăților, dar scrie numai în ale lui.
             'sections' => $plan ? $this->sections->all($plan) : [],
             'mine' => $plan && $request->user() ? $this->sections->mine($request->user(), $plan) : [],
+            // Departamentele, pentru categoria nouă: cine o ține de-acum.
+            'departments' => Department::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name')
+                ->all(),
             'all_mine' => (bool) $request->user()?->canSeeReports(),
             'versions' => $plan ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
                 'id' => $version->id,
@@ -711,6 +719,9 @@ class ForecastController extends Controller
             'unit_cost' => ['nullable', 'numeric'],
             'amount' => ['nullable', 'numeric'],
             'note' => ['nullable', 'string', 'max:500'],
+            // O categorie nouă își alege stăpânul: cea venită din istoric îl
+            // știe din configurație, asta n-are de unde.
+            'department' => ['nullable', 'string', 'max:255'],
         ]);
 
         $key = trim($validated['key']);
@@ -763,6 +774,17 @@ class ForecastController extends Controller
                 ]);
             }
         });
+
+        // Stăpânul categoriei noi, scris în plan. Numai conducerea îl pune:
+        // ea deschide categorii, ceilalți scriu în ale lor.
+        $owner = trim((string) ($validated['department'] ?? ''));
+
+        if ($owner !== '' && $validated['kind'] === PlanLine::CATEGORY && $request->user()?->hasRole(User::ROLE_TOP_MANAGEMENT)) {
+            PlanSection::query()->updateOrCreate(
+                ['plan_id' => $plan->id, 'key' => $this->sections->forLine(PlanLine::CATEGORY, $key)],
+                ['department' => $owner],
+            );
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
             '„%s” a intrat în plan, pe %d %s.',
@@ -827,6 +849,67 @@ class ForecastController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
             '„%s” s-a întors în plan, cu cifrele din istoric.', $validated['key'],
+        )]);
+
+        return back();
+    }
+
+    /**
+     * Scoate o categorie de produs întreagă din plan.
+     *
+     * Nu orice bucată: rețeaua de agenții și cheltuielile rămân acolo
+     * oricum, fiindcă fără ele planul n-ar mai fi un plan. O categorie de
+     * produs, însă, se poate închide — nu mai vindem Charter Bus la anul —
+     * și atunci ies toate rândurile ei, cu tot cu sub-linii. Planul ține
+     * minte, ca la orice rând scos, ca să nu le aducă împrospătarea înapoi.
+     */
+    public function destroySection(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+        ]);
+
+        $key = $validated['key'];
+
+        abort_unless(
+            str_starts_with($key, 'category:'),
+            422,
+            'Numai categoriile de produs ies din plan; rețeaua de agenții și cheltuielile rămân.',
+        );
+
+        $user = $request->user();
+
+        abort_unless(
+            $user !== null && $this->sections->editable($user, $plan, $key),
+            403,
+            sprintf('„%s” e ținută de alt departament sau a fost deja trimisă spre consolidare.', $this->sections->label($key)),
+        );
+
+        $lines = $plan->lines()->get()
+            ->filter(fn (PlanLine $line) => $this->sections->forLine($line->kind, $line->key, $line->label) === $key);
+
+        abort_if($lines->isEmpty(), 422, 'Categoria nu mai are niciun rând în plan.');
+
+        $gone = $lines->map(fn (PlanLine $line) => $line->kind.'|'.$line->key)->unique()->values()->all();
+
+        DB::transaction(function () use ($plan, $lines, $gone, $key) {
+            $plan->lines()->whereIn('id', $lines->pluck('id')->all())->delete();
+
+            $plan->update([
+                'removed' => array_values(array_unique([
+                    ...(array) ($plan->removed ?? []),
+                    ...$gone,
+                ])),
+            ]);
+
+            PlanSection::query()->where('plan_id', $plan->id)->where('key', $key)->delete();
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            '„%s” a ieșit din plan, cu tot cu %d %s. Se poate pune înapoi de sub tabel.',
+            $this->sections->label($key),
+            count($gone),
+            count($gone) === 1 ? 'rând' : 'rânduri',
         )]);
 
         return back();

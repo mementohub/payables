@@ -286,3 +286,67 @@ test('the salary line left after the shops are taken out belongs to administrati
         'kind' => PlanLine::OPEX, 'key' => '20200', 'field' => 'amount', 'value' => 1,
     ])->assertForbidden();
 });
+
+test('a new product category is opened with the department that will hold it', function () {
+    $boss = $this->boss;
+    $sef = personOf('Croaziere fluviale');
+
+    $this->actingAs($boss)->post('/reports/forecast/'.$this->plan->id.'/rows', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Croaziere Dunăre', 'label' => 'Croaziere Dunăre',
+        'department' => 'Croaziere fluviale',
+        'months' => [5, 6, 7], 'volume' => 40, 'unit_net' => 6_000, 'unit_margin' => 900,
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('key', 'Croaziere Dunăre')->count())->toBe(3);
+
+    // Categoria nouă n-are cum să-și știe stăpânul din configurație, deci
+    // și-l poartă în plan — iar șeful departamentului o are de-acum a lui.
+    $sections = app(PlanSections::class);
+
+    expect($sections->department('category:Croaziere Dunăre', $this->plan->fresh()))->toBe('Croaziere fluviale')
+        ->and($sections->mine($sef, $this->plan->fresh()))->toContain('category:Croaziere Dunăre');
+
+    // Și scrie în ea, fiindcă e a lui.
+    $this->actingAs($sef)->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Croaziere Dunăre', 'field' => 'volume', 'value' => 55,
+    ])->assertRedirect();
+});
+
+test('a product category can be dropped from the plan, the costs and the shops cannot', function () {
+    $sef = personOf('Senior Voyage');
+
+    // O sub-linie a categoriei: iese și ea, odată cu categoria.
+    PlanLine::query()->create([
+        'plan_id' => $this->plan->id, 'kind' => PlanLine::CATEGORY,
+        'key' => 'Senior Voyage · Grecia', 'label' => 'Senior Voyage · Grecia',
+        'month' => 7, 'volume' => 10, 'unit_net' => 3_000, 'manual' => true,
+    ]);
+
+    $this->actingAs($sef)->delete('/reports/forecast/'.$this->plan->id.'/sections', [
+        'key' => 'category:Senior Voyage',
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('key', 'Senior Voyage')->count())->toBe(0)
+        ->and(PlanLine::query()->where('key', 'Senior Voyage · Grecia')->count())->toBe(0)
+        ->and($this->plan->fresh()->removed)->toContain('category|Senior Voyage')
+        // Cealaltă categorie rămâne neatinsă.
+        ->and(PlanLine::query()->where('key', 'Cazare')->count())->toBeGreaterThan(0);
+
+    // Pornirea din istoric n-o aduce înapoi.
+    app(PlanBuilder::class)->seed($this->plan->fresh());
+
+    expect(PlanLine::query()->where('key', 'Senior Voyage')->count())->toBe(0);
+
+    // Cheltuielile și rețeaua de agenții nu se scot nicicum.
+    $this->actingAs($this->boss)->delete('/reports/forecast/'.$this->plan->id.'/sections', [
+        'key' => 'cost:retail',
+    ])->assertStatus(422);
+});
+
+test('a category held by someone else does not go out at a stranger s hand', function () {
+    $this->actingAs(personOf('Marketing'))->delete('/reports/forecast/'.$this->plan->id.'/sections', [
+        'key' => 'category:Senior Voyage',
+    ])->assertForbidden();
+
+    expect(PlanLine::query()->where('key', 'Senior Voyage')->count())->toBeGreaterThan(0);
+});

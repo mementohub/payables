@@ -110,10 +110,13 @@ class User extends Authenticatable
             return true;
         }
 
-        $owners = [
+        $owners = array_values(array_unique([
             ...array_values((array) config('pnl.plan_owners.categories', [])),
             ...array_column((array) config('pnl.plan_owners.costs', []), 'department'),
-        ];
+            // Și cui i s-a dat o categorie deschisă direct în plan: una
+            // nouă n-are cum să fie încă în configurație.
+            ...PlanSection::query()->whereNotNull('department')->distinct()->pluck('department')->all(),
+        ]));
 
         // Șeful de departament — coroana din fila Departamente — intră la
         // bugetul lui; echipa, numai dacă se deschide din configurație.

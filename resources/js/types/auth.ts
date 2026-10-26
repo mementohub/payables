@@ -22,6 +22,8 @@ export type Capabilities = {
     invoices: boolean;
     routing: boolean;
     reports: boolean;
+    /** Bugetul: conducerea, sau șeful de departament cu bucata lui. */
+    forecast: boolean;
     /** Repertoriul de contracte, la rolul lui. */
     contracts: boolean;
     /** Registrul de închirieri: Financiarul îl ține, Top Management îl citește. */

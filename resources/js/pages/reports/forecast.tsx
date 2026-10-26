@@ -357,6 +357,8 @@ type Props = {
     mine: string[];
     /** Conducerea vede tot și primește sau dă înapoi bucățile. */
     all_mine: boolean;
+    /** Departamentele active: din ele își alege stăpânul o categorie nouă. */
+    departments: string[];
     current: CurrentYear | null;
     history: History;
     // Lunile pe care anul de bază nu le-a trăit încă și cifrele cu care
@@ -460,6 +462,7 @@ export default function Forecast({
     sections,
     mine,
     all_mine: boss,
+    departments,
     current,
     history,
     historyYears,
@@ -542,6 +545,21 @@ export default function Forecast({
         months: [] as number[],
     });
 
+    // Categoria de produs care se deschide acum: un produs pe care nu l-am
+    // vândut niciodată, deci fără istoric — și omul care o ține de-acum.
+    const [adding2, setAdding2] = useState(false);
+    const [cat, setCat] = useState({
+        key: '',
+        department: '',
+        volume: 0,
+        unit_net: 0,
+        unit_margin: 0,
+        months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    });
+
+    // Categoria care iese din plan, cu tot cu sub-liniile ei.
+    const [dropping, setDropping] = useState(false);
+
     // Varianta care se scrie acum: numele ei și de ce s-a salvat.
     const [version, setVersion] = useState({ label: '', note: '' });
     const [saving, setSaving] = useState(false);
@@ -559,6 +577,10 @@ export default function Forecast({
     // cele trei file de casă: cursele, agențiile, cheltuielile.
     const categorie = sheet.startsWith('category:');
     const numele = categorie ? sheet.replace('category:', '') : '';
+    // Bucata din spatele filei. Numai categoriile de produs se scot din
+    // plan: fără rețeaua de agenții și fără cheltuieli n-ar mai fi un plan.
+    const sectiunea = foi[sheet]?.rows[0]?.section ?? '';
+    const sescoate = sectiunea.startsWith('category:');
     const [open, setOpen] = useState<Set<string>>(new Set());
     // Ce s-a scris și încă nu s-a salvat: celule (o lună) și rânduri (tot
     // anul). Se trimit o dată, la „Salvează”.
@@ -2025,6 +2047,325 @@ export default function Forecast({
                                         </DialogFooter>
                                     </DialogContent>
                                 </Dialog>
+
+                                {/* Categoriile de produs se deschid și se
+                                    închid: un produs nou n-are istoric, iar
+                                    unul pe care nu-l mai vindem n-are ce
+                                    căuta în planul anului viitor. */}
+                                {boss && (
+                                    <Dialog
+                                        open={adding2}
+                                        onOpenChange={setAdding2}
+                                    >
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" size="sm">
+                                                <Plus className="size-4" />
+                                                Categorie nouă
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>
+                                                    Categorie de produs nouă
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Un produs pe care nu l-am
+                                                    vândut niciodată n-are
+                                                    istoric: pasagerii și banii
+                                                    pe pasager se scriu aici.
+                                                    Categoria își primește fila
+                                                    ei și departamentul care o
+                                                    ține — șeful lui o scrie și
+                                                    o trimite spre consolidare.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="grid gap-3">
+                                                <div className="grid gap-1.5">
+                                                    <Label>
+                                                        Categoria (ex. Croaziere
+                                                        fluviale)
+                                                    </Label>
+                                                    <Input
+                                                        value={cat.key}
+                                                        onChange={(e) =>
+                                                            setCat({
+                                                                ...cat,
+                                                                key: e.target
+                                                                    .value,
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-1.5">
+                                                    <Label>
+                                                        Departamentul care o
+                                                        ține
+                                                    </Label>
+                                                    <Select
+                                                        value={cat.department}
+                                                        onValueChange={(v) =>
+                                                            setCat({
+                                                                ...cat,
+                                                                department: v,
+                                                            })
+                                                        }
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Alege departamentul" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {departments.map(
+                                                                (one) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            one
+                                                                        }
+                                                                        value={
+                                                                            one
+                                                                        }
+                                                                    >
+                                                                        {one}
+                                                                    </SelectItem>
+                                                                ),
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Pasageri / lună
+                                                            (nr.)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={cat.volume}
+                                                            onChange={(e) =>
+                                                                setCat({
+                                                                    ...cat,
+                                                                    volume: Number(
+                                                                        e.target
+                                                                            .value,
+                                                                    ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Venit / pax (lei)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={cat.unit_net}
+                                                            onChange={(e) =>
+                                                                setCat({
+                                                                    ...cat,
+                                                                    unit_net:
+                                                                        Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Marjă / pax (lei)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={
+                                                                cat.unit_margin
+                                                            }
+                                                            onChange={(e) =>
+                                                                setCat({
+                                                                    ...cat,
+                                                                    unit_margin:
+                                                                        Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid gap-1.5">
+                                                    <Label>
+                                                        Lunile în care se vinde
+                                                    </Label>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {MONTHS.map(
+                                                            (name, i) => (
+                                                                <Button
+                                                                    key={name}
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant={
+                                                                        cat.months.includes(
+                                                                            i +
+                                                                                1,
+                                                                        )
+                                                                            ? 'default'
+                                                                            : 'outline'
+                                                                    }
+                                                                    onClick={() =>
+                                                                        setCat({
+                                                                            ...cat,
+                                                                            months: cat.months.includes(
+                                                                                i +
+                                                                                    1,
+                                                                            )
+                                                                                ? cat.months.filter(
+                                                                                      (
+                                                                                          m,
+                                                                                      ) =>
+                                                                                          m !==
+                                                                                          i +
+                                                                                              1,
+                                                                                  )
+                                                                                : [
+                                                                                      ...cat.months,
+                                                                                      i +
+                                                                                          1,
+                                                                                  ],
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {name}
+                                                                </Button>
+                                                            ),
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <DialogFooter>
+                                                <Button
+                                                    disabled={
+                                                        cat.key.trim() === '' ||
+                                                        cat.months.length === 0
+                                                    }
+                                                    onClick={() =>
+                                                        router.post(
+                                                            `/reports/forecast/${plan.id}/rows`,
+                                                            {
+                                                                kind: 'category',
+                                                                key: cat.key.trim(),
+                                                                label: cat.key.trim(),
+                                                                department:
+                                                                    cat.department ||
+                                                                    null,
+                                                                months: cat.months,
+                                                                volume: cat.volume,
+                                                                unit_net:
+                                                                    cat.unit_net,
+                                                                unit_margin:
+                                                                    cat.unit_margin,
+                                                            },
+                                                            {
+                                                                preserveScroll: true,
+                                                                onSuccess:
+                                                                    () => {
+                                                                        setSheet(
+                                                                            `category:${cat.key.trim()}`,
+                                                                        );
+                                                                        setAdding2(
+                                                                            false,
+                                                                        );
+                                                                    },
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    Deschide categoria
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                )}
+
+                                {sescoate && (
+                                    <Dialog
+                                        open={dropping}
+                                        onOpenChange={setDropping}
+                                    >
+                                        <DialogTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-destructive"
+                                            >
+                                                <Trash2 className="size-4" />
+                                                Scoate{' '}
+                                                {foi[sheet]?.label ?? 'fila'}
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>
+                                                    Scoatem „{foi[sheet]?.label}
+                                                    ” din plan?
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Ies toate cele{' '}
+                                                    {foi[sheet]?.rows.length}{' '}
+                                                    rânduri ale ei, cu tot cu
+                                                    sub-linii, și fila se
+                                                    închide. Planul ține minte,
+                                                    deci nici împrospătarea din
+                                                    istoric nu le mai aduce
+                                                    înapoi — dar se pot pune la
+                                                    loc de sub tabel.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <DialogFooter>
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        setDropping(false)
+                                                    }
+                                                >
+                                                    Lasă-o în plan
+                                                </Button>
+                                                <Button
+                                                    variant="destructive"
+                                                    onClick={() =>
+                                                        router.delete(
+                                                            `/reports/forecast/${plan.id}/sections`,
+                                                            {
+                                                                data: {
+                                                                    key: sectiunea,
+                                                                },
+                                                                preserveScroll: true,
+                                                                onSuccess:
+                                                                    () => {
+                                                                        setDropping(
+                                                                            false,
+                                                                        );
+                                                                        // Fila s-a închis: se
+                                                                        // deschide prima
+                                                                        // rămasă.
+                                                                        setSheet(
+                                                                            '',
+                                                                        );
+                                                                    },
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    Scoate categoria
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                )}
 
                                 {plan.removed.length > 0 && (
                                     <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

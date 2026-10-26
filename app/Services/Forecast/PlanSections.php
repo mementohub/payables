@@ -23,6 +23,9 @@ class PlanSections
     /** Bucata care ține tot ce nu și-a revendicat nimeni. */
     public const FALLBACK = 'cost:admin';
 
+    /** Stăpânii scriși în plan, pe plan — ca să nu-i citim de zeci de ori. */
+    private array $own = [];
+
     /**
      * A cui e rândul ăsta.
      */
@@ -79,9 +82,20 @@ class PlanSections
 
     /**
      * Departamentul care ține bucata asta.
+     *
+     * Întâi ce scrie în plan — o categorie adăugată cu mâna își alege
+     * stăpânul la naștere — și abia pe urmă configurația.
      */
-    public function department(string $section): ?string
+    public function department(string $section, ?Plan $plan = null): ?string
     {
+        if ($plan !== null) {
+            $own = $this->overrides($plan);
+
+            if (isset($own[$section])) {
+                return $own[$section];
+            }
+        }
+
         if (str_starts_with($section, 'category:')) {
             $category = substr($section, strlen('category:'));
 
@@ -93,6 +107,21 @@ class PlanSections
         $name = substr($section, strlen('cost:'));
 
         return config('pnl.plan_owners.costs.'.$name.'.department');
+    }
+
+    /**
+     * Stăpânii scriși în planul ăsta, peste cei din configurație.
+     *
+     * @return array<string, string>
+     */
+    private function overrides(Plan $plan): array
+    {
+        return $this->own[$plan->getKey()] ??= PlanSection::query()
+            ->where('plan_id', $plan->getKey())
+            ->whereNotNull('department')
+            ->pluck('department', 'key')
+            ->map(fn ($name) => (string) $name)
+            ->all();
     }
 
     public function label(string $section): string
@@ -131,7 +160,7 @@ class PlanSections
         $out = [];
 
         foreach ($this->keys($plan) as $section) {
-            $department = $this->department($section);
+            $department = $this->department($section, $plan);
 
             if ($department !== null && in_array($department, $his, true)) {
                 $out[] = $section;
@@ -190,7 +219,7 @@ class PlanSections
         foreach ($this->keys($plan) as $key) {
             $own = $lines->filter(fn (PlanLine $line) => $this->forLine($line->kind, $line->key, $line->label) === $key);
             $section = $saved->get($key);
-            $department = $this->department($key);
+            $department = $this->department($key, $plan);
 
             $out[] = [
                 'key' => $key,

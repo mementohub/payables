@@ -70,6 +70,10 @@ class HandleInertiaRequests extends Middleware
                     'invoices' => $user->canSeeInvoices(),
                     'routing' => $user->canSeeRouting(),
                     'reports' => $user->canSeeReports(),
+                    // Bugetul se face în mai multe mâini: șeful de
+                    // departament își vede bucata lui, chiar dacă restul
+                    // rapoartelor rămân ale conducerii.
+                    'forecast' => $user->canSeeForecast(),
                     'contracts' => $user->canSeeContracts(),
                     'leases' => $user->canSeeLeases(),
                     'team' => $user->canManageOwnTeam(),

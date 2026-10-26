@@ -221,6 +221,7 @@ Route::middleware('auth')->group(function () {
         Route::post('reports/forecast/{plan}/rows', [ForecastController::class, 'storeRow'])->name('reports.forecast.rows.store');
         Route::delete('reports/forecast/{plan}/rows', [ForecastController::class, 'destroyRow'])->name('reports.forecast.rows.destroy');
         Route::put('reports/forecast/{plan}/rows/restore', [ForecastController::class, 'restoreRow'])->name('reports.forecast.rows.restore');
+        Route::delete('reports/forecast/{plan}/sections', [ForecastController::class, 'destroySection'])->name('reports.forecast.sections.destroy');
         Route::put('reports/forecast/{plan}/base', [ForecastController::class, 'updateBase'])->name('reports.forecast.base.update');
         Route::put('reports/forecast/{plan}/base/reset', [ForecastController::class, 'resetBase'])->name('reports.forecast.base.reset');
         // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.
