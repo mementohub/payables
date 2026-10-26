@@ -243,3 +243,24 @@ test('an agency can be dropped from the plan and a new one written in', function
 
     expect(PlanLine::query()->where('key', 'Plaza')->count())->toBe(0);
 });
+
+test('the salary line left after the shops are taken out belongs to administration', function () {
+    PlanLine::query()->create([
+        'plan_id' => $this->plan->id, 'kind' => PlanLine::OPEX, 'key' => '20200',
+        'label' => 'Salarii si Contributii · Cheltuieli salarii angajati',
+        'month' => 7, 'amount' => 1_000_000, 'manual' => true,
+    ]);
+
+    $sections = app(PlanSections::class);
+
+    // Partea magazinelor s-a mutat pe fila rețelei; ce rămâne în linie sunt
+    // oamenii din centrală, deci e al administrativului.
+    expect($sections->forLine(PlanLine::OPEX, '20200', 'Salarii si Contributii · Cheltuieli salarii angajati'))
+        ->toBe('cost:admin')
+        ->and($sections->forLine(PlanLine::RETAIL, 'Plaza'))->toBe('cost:retail');
+
+    // Iar retailul nu umblă la salariile centralei.
+    $this->actingAs(personOf('Agenții retail'))->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::OPEX, 'key' => '20200', 'field' => 'amount', 'value' => 1,
+    ])->assertForbidden();
+});

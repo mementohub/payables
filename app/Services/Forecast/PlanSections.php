@@ -48,12 +48,10 @@ class PlanSections
 
         $costs = (array) config('pnl.plan_owners.costs', []);
 
-        foreach ($costs as $name => $block) {
-            if (in_array($key, (array) ($block['lines'] ?? []), true)) {
-                return 'cost:'.$name;
-            }
-        }
-
+        // Liniile de salarii nu sunt ale rețelei de agenții: din ele s-a
+        // scos deja partea magazinelor, care se bugetează pe fila lor. Ce
+        // rămâne în linie sunt oamenii din centrală și din celelalte canale,
+        // deci merge la grupa ei, ca orice cheltuială.
         [$group] = array_pad(explode(' · ', (string) $label, 2), 2, '');
 
         foreach ($costs as $name => $block) {

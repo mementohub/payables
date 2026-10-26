@@ -489,8 +489,11 @@ export default function Forecast({
           }
         : { categorii: [], charter: [], opex: [], retail: [] };
 
-    // Câte bucăți de buget au fost trimise spre consolidare.
+    // Câte bucăți de buget au fost trimise spre consolidare. Conducerea le
+    // vede pe toate; ceilalți, numai pe ale lor — altfel fila de predare ar
+    // arăta cifrele întregului buget oricui are o bucată din el.
     const strânse = sections.filter((one) => one.status !== 'draft').length;
+    const alemele = sections.filter((one) => mine.includes(one.key));
 
     // Rândul care se adaugă acum: o cursă nouă, o categorie nouă.
     const [adding, setAdding] = useState(false);
@@ -1294,7 +1297,9 @@ export default function Forecast({
                                     {boss ? 'Configurare' : 'Partea mea'}
                                 </TabsTrigger>
                                 <TabsTrigger value="sectiuni">
-                                    Secțiuni ({strânse}/{sections.length})
+                                    {boss
+                                        ? `Predarea bugetului (${strânse} din ${sections.length} trimise)`
+                                        : `Trimite partea mea (${alemele.filter((one) => one.status !== 'draft').length} din ${alemele.length})`}
                                 </TabsTrigger>
                                 {boss && (
                                     <TabsTrigger value="variante">
@@ -1317,7 +1322,7 @@ export default function Forecast({
 
                         {tab === 'sectiuni' && (
                             <Sections
-                                sections={sections}
+                                sections={boss ? sections : alemele}
                                 mine={mine}
                                 boss={boss}
                                 planId={plan.id}
@@ -3701,9 +3706,9 @@ function Sections({
     return (
         <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-                Fiecare bucată are departamentul care o scrie. Cine o termină o
-                trimite spre consolidare și de-atunci nu se mai umblă la ea,
-                până n-o dă conducerea înapoi.
+                {boss
+                    ? 'Bugetul se strânge pe bucăți: fiecare categorie de produs și fiecare bloc de cheltuieli are departamentul care îl scrie. Aici se vede ce a venit, ce se mai așteaptă și de la cine — iar bucata trimisă se primește sau se dă înapoi cu un cuvânt de ce.'
+                    : 'Astea sunt bucățile de buget pe care le scrieți dumneavoastră. Când una e gata, trimiteți-o spre consolidare: de-atunci se încuie și n-o mai schimbă nimeni, nici dumneavoastră, până n-o dă conducerea înapoi.'}
             </p>
 
             <Card>
@@ -3712,7 +3717,7 @@ function Sections({
                         <TableHeader>
                             <TableRow>
                                 <TableHead className="w-64">Bucata</TableHead>
-                                <TableHead>Departamentul</TableHead>
+                                {boss && <TableHead>Departamentul</TableHead>}
                                 <TableHead className="text-right">
                                     Rânduri
                                 </TableHead>
@@ -3744,16 +3749,18 @@ function Sections({
                                                 </span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                            {one.department ?? '–'}
-                                            {one.people.length > 0 && (
-                                                <span className="block text-[10px]">
-                                                    {one.people
-                                                        .slice(0, 3)
-                                                        .join(', ')}
-                                                </span>
-                                            )}
-                                        </TableCell>
+                                        {boss && (
+                                            <TableCell className="text-muted-foreground">
+                                                {one.department ?? '–'}
+                                                {one.people.length > 0 && (
+                                                    <span className="block text-[10px]">
+                                                        {one.people
+                                                            .slice(0, 3)
+                                                            .join(', ')}
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        )}
                                         <TableCell className="text-right tabular-nums">
                                             {one.rows}
                                         </TableCell>
