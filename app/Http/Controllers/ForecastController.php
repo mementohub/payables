@@ -258,7 +258,9 @@ class ForecastController extends Controller
     {
         $last = min((int) $plan->base_year, (int) $plan->year - 1);
 
-        return [$last, $last - 1, $last - 2];
+        // De la cel mai vechi la cel mai nou: anii se citesc de la stânga la
+        // dreapta, iar planul vine după ei, ca peste tot în pagină.
+        return [$last - 2, $last - 1, $last];
     }
 
     public function store(Request $request): RedirectResponse

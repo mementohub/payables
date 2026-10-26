@@ -2364,11 +2364,8 @@ function DriverTable({
                                                 : scrie în căsuțe ce vrei să se
                                                 întâmple. Sub fiecare lună stă
                                                 ce a fost în aceeași lună din{' '}
-                                                {historyYears
-                                                    .slice()
-                                                    .reverse()
-                                                    .join(', ')}
-                                                , ca reper.
+                                                {historyYears.join(', ')}, ca
+                                                reper.
                                             </div>
                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                                 {MONTHS.map((name, i) => {

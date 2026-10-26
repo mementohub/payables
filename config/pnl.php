@@ -355,6 +355,11 @@ return [
         'etrip_vcz' => [
             'label' => 'Vacanza',
             'from_year' => env('PNL_VACANZA_FROM_YEAR', 2026),
+            // Fuziunea e din iunie 2026, iar rezervările necălătorite s-au
+            // mutat atunci în baza Christian Tour — care le numără de-acolo
+            // încolo. Din baza Vacanza se ia deci numai până în iunie; mai
+            // departe ar fi aceiași bani de două ori.
+            'until' => env('PNL_VACANZA_UNTIL', '2026-06'),
         ],
     ],
 
