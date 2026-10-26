@@ -253,7 +253,19 @@ class ForecastController extends Controller
         // omul n-ar avea pe ce judeca o creștere.
         $out = $this->costHistory($plan);
 
-        foreach ($rows as $row) {
+        // Amestecul de canale al fiecărui an: din el iese cât s-a vândut
+        // atunci prin agenții partenere. Fără reperul ăsta, omul scrie
+        // partea de B2B a anului viitor fără să vadă de unde vine.
+        $mix = [];
+
+        foreach ($rows->where('kind', 'mix') as $row) {
+            $where = &$mix[(string) $row->key][(int) $row->year][(int) $row->month];
+            $where['all'] = ($where['all'] ?? 0) + (float) $row->net;
+            $where['b2b'] = ($where['b2b'] ?? 0) + (in_array((string) $row->channel, (array) config('pnl.segments.b2b.channels', ['b2b']), true) ? (float) $row->net : 0);
+            unset($where);
+        }
+
+        foreach ($rows->where('kind', '!=', 'mix') as $row) {
             $key = $row->kind.'|'.$row->key;
             $cell = $out[$key][$row->year] ?? [
                 'volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0, 'months' => [],
@@ -279,6 +291,54 @@ class ForecastController extends Controller
                 'net' => round($cell['net'] + $row->net, 2),
                 'margin' => round($cell['margin'] + $row->margin, 2),
             ];
+        }
+
+        return $this->withB2b($out, $mix);
+    }
+
+    /**
+     * Cât s-a vândut prin agenții partenere, pe fiecare lună din istoric.
+     *
+     * Amestecul se ține pe categorie de produs; o cursă de charter îl ia pe
+     * al categoriei ei, fiindcă un loc de avion se vinde pe aceleași
+     * drumuri ca restul produsului.
+     *
+     * @param  array<string, array<int, array<string, mixed>>>  $out
+     * @param  array<string, array<int, array<int, array<string, float>>>>  $mix
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function withB2b(array $out, array $mix): array
+    {
+        foreach ($out as $key => $years) {
+            [$kind, $name] = array_pad(explode('|', (string) $key, 2), 2, '');
+
+            if (! in_array($kind, [PlanLine::CATEGORY, PlanLine::CHARTER], true)) {
+                continue;
+            }
+
+            $theirs = $mix[$kind === PlanLine::CHARTER ? PlanBuilder::CHARTER_CATEGORY : $name] ?? null;
+
+            if ($theirs === null) {
+                continue;
+            }
+
+            foreach ($years as $year => $cell) {
+                $all = 0.0;
+                $b2b = 0.0;
+
+                foreach (($theirs[$year] ?? []) as $month => $share) {
+                    $all += $share['all'] ?? 0;
+                    $b2b += $share['b2b'] ?? 0;
+
+                    if (isset($cell['months'][$month]) && ($share['all'] ?? 0) > 0) {
+                        $out[$key][$year]['months'][$month]['b2b'] = round($share['b2b'] / $share['all'], 4);
+                    }
+                }
+
+                if ($all > 0) {
+                    $out[$key][$year]['b2b'] = round($b2b / $all, 4);
+                }
+            }
         }
 
         return $out;

@@ -245,6 +245,8 @@ type History = Record<
             net: number;
             margin: number;
             estimated?: number;
+            /** Cât s-a vândut atunci prin agenții partenere. */
+            b2b?: number;
             months: Record<
                 number,
                 {
@@ -252,6 +254,7 @@ type History = Record<
                     capacity: number;
                     net: number;
                     margin: number;
+                    b2b?: number;
                 }
             >;
         }
@@ -424,7 +427,13 @@ const mii = (value: number) => lei(value / 1000);
  * deasupra: altfel omul compară pere cu mere.
  */
 const reper = (
-    was: { volume: number; capacity: number; net: number; margin: number },
+    was: {
+        volume: number;
+        capacity: number;
+        net: number;
+        margin: number;
+        b2b?: number;
+    },
     isOpex: boolean,
     isCharter: boolean,
     unit: string,
@@ -434,17 +443,20 @@ const reper = (
     }
 
     const perUnit = was.volume > 0 ? was.net / was.volume : 0;
+    // Cât s-a vândut atunci prin agenții partenere: de la cifra asta
+    // pornește partea de B2B a anului plănuit.
+    const b2b = was.b2b === undefined ? '' : ` · B2B ${lei(was.b2b * 100, 1)}%`;
 
     if (isCharter) {
         const load = was.capacity > 0 ? (was.volume / was.capacity) * 100 : 0;
 
-        return `${lei(was.capacity)} locuri · ${lei(load, 1)}% ocupare · ${lei(perUnit)} lei/pax · venit ${lei(was.net)}`;
+        return `${lei(was.capacity)} locuri · ${lei(load, 1)}% ocupare · ${lei(perUnit)} lei/pax · venit ${lei(was.net)}${b2b}`;
     }
 
     const name = unit === 'serviciu' ? 'servicii' : 'pax';
     const margin = was.volume > 0 ? was.margin / was.volume : 0;
 
-    return `${lei(was.volume)} ${name} · ${lei(perUnit)} lei/${name === 'servicii' ? 'serviciu' : 'pax'} · marjă ${lei(margin)} · venit ${lei(was.net)}`;
+    return `${lei(was.volume)} ${name} · ${lei(perUnit)} lei/${name === 'servicii' ? 'serviciu' : 'pax'} · marjă ${lei(margin)} · venit ${lei(was.net)}${b2b}`;
 };
 
 const pct = (now: number, before?: number) => {
@@ -2912,6 +2924,23 @@ function DriverTable({
                                                                   )
                                                                 : '–'}
                                                         </div>
+                                                        {/* Cât s-a vândut
+                                                            atunci prin agenții
+                                                            partenere: reperul
+                                                            de lângă pârghia
+                                                            de azi. */}
+                                                        {past.b2b !==
+                                                            undefined && (
+                                                            <div className="opacity-70">
+                                                                B2B{' '}
+                                                                {lei(
+                                                                    past.b2b *
+                                                                        100,
+                                                                    1,
+                                                                )}
+                                                                %
+                                                            </div>
+                                                        )}
                                                     </>
                                                 )}
                                             </TableCell>

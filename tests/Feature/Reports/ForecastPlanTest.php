@@ -978,3 +978,36 @@ test('a category is split between partner agencies and direct selling', function
         ->and($channels['retail']['net'])->toEqual(round($row['net'] * 0.5 * (2 / 3), 2))
         ->and($channels['site']['net'])->toEqual(round($row['net'] * 0.5 * (1 / 3), 2));
 });
+
+test('the months of the history carry what went through partner agencies', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->withRoles('top_management')->create();
+
+    ForecastHistory::query()->create([
+        'company_id' => $company->id, 'year' => 2026, 'kind' => 'category', 'key' => 'Croaziere',
+        'month' => 7, 'unit' => 'pax', 'volume' => 100, 'net' => 500_000, 'margin' => 50_000,
+    ]);
+
+    foreach ([['b2b', 200_000], ['retail', 300_000]] as [$channel, $net]) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'kind' => 'mix', 'key' => 'Croaziere',
+            'channel' => $channel, 'month' => 7, 'unit' => 'pax', 'volume' => 0, 'net' => $net, 'margin' => 0,
+        ]);
+    }
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    app(PlanBuilder::class)->seed($plan);
+
+    $this->actingAs($user)
+        ->get('/reports/forecast?company_id='.$company->id.'&plan='.$plan->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            // 200.000 din 500.000 au trecut prin agenții partenere.
+            ->where('history.category|Croaziere.2026.b2b', 0.4)
+            ->where('history.category|Croaziere.2026.months.7.b2b', 0.4)
+        );
+});
