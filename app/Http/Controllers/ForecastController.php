@@ -7,12 +7,14 @@ use App\Models\Company;
 use App\Models\ForecastHistory;
 use App\Models\Plan;
 use App\Models\PlanLine;
+use App\Models\PlanSection;
 use App\Models\PlanVersion;
 use App\Services\Exports\PlanExport;
 use App\Services\Exports\PlanPdfWriter;
 use App\Services\Exports\PptxWriter;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
+use App\Services\Forecast\PlanSections;
 use App\Services\Reports\PnlReportService;
 use App\Services\Xlsx\XlsxWorkbook;
 use Illuminate\Http\RedirectResponse;
@@ -38,6 +40,7 @@ class ForecastController extends Controller
         private PlanBuilder $builder,
         private PlanEngine $engine,
         private PnlReportService $pnl,
+        private PlanSections $sections,
     ) {}
 
     public function index(Request $request): Response
@@ -102,6 +105,11 @@ class ForecastController extends Controller
             // Anul în curs, așa cum se va încheia: din el pornesc premisele
             // anului următor, nu din cele nouă luni trăite.
             'current' => $plan ? $this->engine->currentYear($plan, $basis, $mode) : null,
+            // Bugetul se scrie în mai multe mâini: fiecare vede starea
+            // tuturor bucăților, dar scrie numai în ale lui.
+            'sections' => $plan ? $this->sections->all($plan) : [],
+            'mine' => $plan && $request->user() ? $this->sections->mine($request->user(), $plan) : [],
+            'all_mine' => (bool) $request->user()?->canSeeReports(),
             'versions' => $plan ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
                 'id' => $version->id,
                 'label' => $version->label,
@@ -337,6 +345,8 @@ class ForecastController extends Controller
             'note' => ['nullable', 'string', 'max:500'],
         ]);
 
+        $this->allow($request, $line->plan, $line->kind, $line->key, $line->label);
+
         $line->update([...array_filter($validated, fn ($value) => $value !== null), 'manual' => true]);
 
         return back();
@@ -357,6 +367,8 @@ class ForecastController extends Controller
         ]);
 
         $lines = $plan->lines()->where('kind', $validated['kind'])->where('key', $validated['key'])->get();
+
+        $this->allow($request, $plan, $validated['kind'], $validated['key'], $lines->first()?->label);
 
         foreach ($lines as $line) {
             $value = ($validated['value'] ?? null) !== null
@@ -396,6 +408,18 @@ class ForecastController extends Controller
 
         $cells = 0;
         $rows = 0;
+
+        foreach (($validated['rows'] ?? []) as $row) {
+            $this->allow($request, $plan, $row['kind'], $row['key']);
+        }
+
+        foreach (($validated['cells'] ?? []) as $cell) {
+            $line = $plan->lines()->whereKey($cell['id'])->first();
+
+            if ($line !== null) {
+                $this->allow($request, $plan, $line->kind, $line->key, $line->label);
+            }
+        }
 
         DB::transaction(function () use ($plan, $validated, &$cells, &$rows) {
             foreach (($validated['rows'] ?? []) as $row) {
@@ -442,6 +466,8 @@ class ForecastController extends Controller
             'kind' => ['required', 'string', 'max:12'],
             'key' => ['required', 'string', 'max:255'],
         ]);
+
+        $this->allow($request, $plan, $validated['kind'], $validated['key']);
 
         $plan->lines()->where('kind', $validated['kind'])->where('key', $validated['key'])->update(['manual' => false]);
         $this->builder->seed($plan);
@@ -574,6 +600,95 @@ class ForecastController extends Controller
     }
 
     /**
+     * Ține mâna celui care n-are voie să scrie aici.
+     *
+     * Conducerea umblă oriunde; restul, numai în bucata departamentului lor
+     * și numai cât timp n-au trimis-o spre consolidare.
+     */
+    private function allow(Request $request, Plan $plan, string $kind, string $key, ?string $label = null): void
+    {
+        $user = $request->user();
+        $section = $this->sections->forLine($kind, $key, $label);
+
+        abort_unless(
+            $user !== null && $this->sections->editable($user, $plan, $section),
+            403,
+            sprintf('„%s” e ținută de alt departament sau a fost deja trimisă spre consolidare.', $this->sections->label($section)),
+        );
+    }
+
+    /**
+     * Trimite o bucată de buget spre consolidare. După asta se încuie.
+     */
+    public function submitSection(Request $request, Plan $plan): RedirectResponse
+    {
+        $validated = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $user = $request->user();
+
+        abort_unless(
+            $user !== null && $this->sections->editable($user, $plan, $validated['key']),
+            403,
+            'Bucata asta nu e a dumneavoastră sau e deja trimisă.',
+        );
+
+        PlanSection::query()->updateOrCreate(
+            ['plan_id' => $plan->id, 'key' => $validated['key']],
+            [
+                'status' => PlanSection::SUBMITTED,
+                'submitted_by_id' => $user->id,
+                'submitted_at' => now(),
+                'accepted_by_id' => null,
+                'accepted_at' => null,
+                'note' => $validated['note'] ?? null,
+            ],
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            '„%s” a plecat spre consolidare. Până se dă înapoi, nu se mai scrie în ea.',
+            $this->sections->label($validated['key']),
+        )]);
+
+        return back();
+    }
+
+    /**
+     * Conducerea primește o bucată, sau o dă înapoi cu un cuvânt de ce.
+     */
+    public function reviewSection(Request $request, Plan $plan): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->canSeeReports(), 403);
+
+        $validated = $request->validate([
+            'key' => ['required', 'string', 'max:120'],
+            'status' => ['required', Rule::in([PlanSection::ACCEPTED, PlanSection::DRAFT])],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $accepted = $validated['status'] === PlanSection::ACCEPTED;
+
+        PlanSection::query()->updateOrCreate(
+            ['plan_id' => $plan->id, 'key' => $validated['key']],
+            [
+                'status' => $validated['status'],
+                'accepted_by_id' => $accepted ? $request->user()?->id : null,
+                'accepted_at' => $accepted ? now() : null,
+                'note' => $validated['note'] ?? null,
+            ],
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
+            $accepted ? '„%s” a fost primită.' : '„%s” s-a întors la departament.',
+            $this->sections->label($validated['key']),
+        )]);
+
+        return back();
+    }
+
+    /**
      * Un rând nou în plan: o cursă pe care o zburăm abia anul viitor, o
      * categorie pe care o deschidem.
      *
@@ -599,6 +714,8 @@ class ForecastController extends Controller
         ]);
 
         $key = trim($validated['key']);
+
+        $this->allow($request, $plan, $validated['kind'], $key, $validated['label'] ?? null);
 
         // Lunile care există deja nu se scriu a doua oară: cererea poate fi
         // și „mai adaugă-i noiembrie”, pe un rând care are deja restul
@@ -669,6 +786,8 @@ class ForecastController extends Controller
             'key' => ['required', 'string', 'max:255'],
         ]);
 
+        $this->allow($request, $plan, $validated['kind'], $validated['key']);
+
         DB::transaction(function () use ($plan, $validated) {
             $plan->lines()->where('kind', $validated['kind'])->where('key', $validated['key'])->delete();
 
@@ -694,6 +813,8 @@ class ForecastController extends Controller
             'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
             'key' => ['required', 'string', 'max:255'],
         ]);
+
+        $this->allow($request, $plan, $validated['kind'], $validated['key']);
 
         $plan->update([
             'removed' => array_values(array_diff(
@@ -736,6 +857,8 @@ class ForecastController extends Controller
             'note' => ['nullable', 'string', 'max:500'],
         ]);
 
+        $this->allow($request, $plan, $validated['kind'], $validated['key'], $validated['label'] ?? null);
+
         BaseEstimate::query()->updateOrCreate(
             [
                 'company_id' => $plan->company_id,
@@ -766,6 +889,8 @@ class ForecastController extends Controller
             'key' => ['required', 'string', 'max:255'],
             'month' => ['nullable', 'integer', 'between:1,12'],
         ]);
+
+        $this->allow($request, $plan, $validated['kind'], $validated['key']);
 
         BaseEstimate::query()
             ->where('company_id', $plan->company_id)

@@ -25,6 +25,7 @@ class EnsureUserCanSee
         'payable-list' => 'canSeePayableList',
         'payments' => 'canSeePayments',
         'reports' => 'canSeeReports',
+        'forecast' => 'canSeeForecast',
         'routing' => 'canSeeRouting',
         'team' => 'canManageOwnTeam',
         'invoice' => 'canOpenInvoice',

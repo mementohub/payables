@@ -81,6 +81,7 @@ type Cell = {
 
 type Row = {
     key: string;
+    section: string;
     kind: 'category' | 'charter' | 'opex' | 'below';
     /** Pe ce se numără: pasageri (turism) sau servicii facturate (Tina). */
     unit: 'pax' | 'serviciu';
@@ -292,6 +293,23 @@ type CurrentYear = {
     };
 };
 
+type Section = {
+    key: string;
+    label: string;
+    kind: 'category' | 'cost';
+    department: string | null;
+    people: string[];
+    status: 'draft' | 'submitted' | 'accepted';
+    submitted_by: string | null;
+    submitted_at: string | null;
+    accepted_by: string | null;
+    accepted_at: string | null;
+    note: string | null;
+    rows: number;
+    net: number;
+    amount: number;
+};
+
 type Props = {
     companies: { id: number; name: string }[];
     filters: {
@@ -322,6 +340,11 @@ type Props = {
     } | null;
     output: Output | null;
     versions: Version[];
+    sections: Section[];
+    /** Bucățile de buget pe care le ține omul care se uită. */
+    mine: string[];
+    /** Conducerea vede tot și primește sau dă înapoi bucățile. */
+    all_mine: boolean;
     current: CurrentYear | null;
     history: History;
     // Lunile pe care anul de bază nu le-a trăit încă și cifrele cu care
@@ -422,6 +445,9 @@ export default function Forecast({
     plan,
     output,
     versions,
+    sections,
+    mine,
+    all_mine: boss,
     current,
     history,
     historyYears,
@@ -433,8 +459,11 @@ export default function Forecast({
     // deoparte, sub „Configurare” — altfel tabelul de decizie e îngropat
     // sub o sută de rânduri de reglaje.
     const [tab, setTab] = useState<
-        'plan' | 'curent' | 'configurare' | 'variante'
-    >('plan');
+        'plan' | 'curent' | 'configurare' | 'variante' | 'sectiuni'
+    >(boss ? 'plan' : 'configurare');
+    // Câte bucăți de buget au fost trimise spre consolidare.
+    const strânse = sections.filter((one) => one.status !== 'draft').length;
+
     // Rândul care se adaugă acum: o cursă nouă, o categorie nouă.
     const [adding, setAdding] = useState(false);
     const [row, setRow] = useState({
@@ -1153,7 +1182,19 @@ export default function Forecast({
                     </Card>
                 ) : (
                     <>
-                        <PlanHeader output={output} planYear={plan.year} />
+                        {boss && (
+                            <PlanHeader output={output} planYear={plan.year} />
+                        )}
+
+                        {!boss && (
+                            <p className="text-xs text-muted-foreground">
+                                Vedeți și scrieți numai bucățile bugetului
+                                ținute de departamentul dumneavoastră. Când o
+                                bucată e gata, trimiteți-o spre consolidare din
+                                fila „Secțiuni”: de-atunci nu se mai umblă la ea
+                                până n-o dă conducerea înapoi.
+                            </p>
+                        )}
 
                         {tab === 'configurare' && (
                             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -1190,20 +1231,27 @@ export default function Forecast({
                             onValueChange={(v) => setTab(v as typeof tab)}
                         >
                             <TabsList>
-                                <TabsTrigger value="plan">
-                                    Plan {plan.year}
-                                </TabsTrigger>
-                                {current !== null && (
+                                {boss && (
+                                    <TabsTrigger value="plan">
+                                        Plan {plan.year}
+                                    </TabsTrigger>
+                                )}
+                                {boss && current !== null && (
                                     <TabsTrigger value="curent">
                                         Anul în curs {current.year}
                                     </TabsTrigger>
                                 )}
                                 <TabsTrigger value="configurare">
-                                    Configurare
+                                    {boss ? 'Configurare' : 'Partea mea'}
                                 </TabsTrigger>
-                                <TabsTrigger value="variante">
-                                    Variante ({versions.length})
+                                <TabsTrigger value="sectiuni">
+                                    Secțiuni ({strânse}/{sections.length})
                                 </TabsTrigger>
+                                {boss && (
+                                    <TabsTrigger value="variante">
+                                        Variante ({versions.length})
+                                    </TabsTrigger>
+                                )}
                             </TabsList>
                         </Tabs>
 
@@ -1216,6 +1264,15 @@ export default function Forecast({
                                     ? `Tiparul rezervare → plecare e cel din ${plan.base_year}.`
                                     : `Nu există încă tiparul rezervare → plecare din ${plan.base_year}, așa că cele două vederi arată la fel.`}
                             </p>
+                        )}
+
+                        {tab === 'sectiuni' && (
+                            <Sections
+                                sections={sections}
+                                mine={mine}
+                                boss={boss}
+                                planId={plan.id}
+                            />
                         )}
 
                         {tab === 'curent' && current !== null && (
@@ -1808,15 +1865,18 @@ export default function Forecast({
 
                         {tab === 'configurare' && (
                             <DriverTable
-                                rows={
-                                    sheet === 'categorii'
-                                        ? output.categories.filter(
-                                              (r) => r.kind === 'category',
-                                          )
-                                        : sheet === 'charter'
-                                          ? output.charter
-                                          : [...output.opex, ...output.below]
-                                }
+                                rows={(sheet === 'categorii'
+                                    ? output.categories.filter(
+                                          (r) => r.kind === 'category',
+                                      )
+                                    : sheet === 'charter'
+                                      ? output.charter
+                                      : [...output.opex, ...output.below]
+                                ).filter(
+                                    // Conducerea vede tot; ceilalți, numai
+                                    // bucata lor.
+                                    (r) => boss || mine.includes(r.section),
+                                )}
                                 kind={sheet}
                                 history={history}
                                 openMonths={openMonths}
@@ -3217,6 +3277,264 @@ function PlanHeader({
                                 : ' — 16% pe profitul impozabil'}
                         </span>
                     </span>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+/**
+ * Bucățile bugetului și starea lor.
+ *
+ * Bugetul se face în mai multe mâini: fiecare categorie are departamentul
+ * ei, rețeaua de agenții își bugetează oamenii, marketingul cheltuielile
+ * lui, administrativul restul. Aici se vede cine ce ține, ce a trimis și pe
+ * cine se mai așteaptă — iar conducerea primește bucata sau o dă înapoi.
+ */
+function Sections({
+    sections,
+    mine,
+    boss,
+    planId,
+}: {
+    sections: Section[];
+    mine: string[];
+    boss: boolean;
+    planId: number;
+}) {
+    const [note, setNote] = useState('');
+    const [open, setOpen] = useState<string | null>(null);
+
+    const stare = {
+        draft: { label: 'în lucru', className: 'text-muted-foreground' },
+        submitted: {
+            label: 'trimisă',
+            className: 'text-amber-700 dark:text-amber-500',
+        },
+        accepted: {
+            label: 'primită',
+            className: 'text-emerald-600 dark:text-emerald-500',
+        },
+    } as const;
+
+    return (
+        <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+                Fiecare bucată are departamentul care o scrie. Cine o termină o
+                trimite spre consolidare și de-atunci nu se mai umblă la ea,
+                până n-o dă conducerea înapoi.
+            </p>
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-64">Bucata</TableHead>
+                                <TableHead>Departamentul</TableHead>
+                                <TableHead className="text-right">
+                                    Rânduri
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Cifra (mii lei)
+                                </TableHead>
+                                <TableHead>Starea</TableHead>
+                                <TableHead className="w-72" />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {sections.map((one) => {
+                                const owned = mine.includes(one.key);
+
+                                return (
+                                    <TableRow
+                                        key={one.key}
+                                        className={cn(
+                                            owned && 'bg-muted/40',
+                                            one.status === 'submitted' &&
+                                                'border-l-2 border-l-amber-400',
+                                        )}
+                                    >
+                                        <TableCell className="font-medium">
+                                            {one.label}
+                                            {owned && (
+                                                <span className="ml-2 text-[10px] text-muted-foreground">
+                                                    partea mea
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {one.department ?? '–'}
+                                            {one.people.length > 0 && (
+                                                <span className="block text-[10px]">
+                                                    {one.people
+                                                        .slice(0, 3)
+                                                        .join(', ')}
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right tabular-nums">
+                                            {one.rows}
+                                        </TableCell>
+                                        <TableCell className="text-right font-medium tabular-nums">
+                                            {mii(one.net || one.amount)}
+                                        </TableCell>
+                                        <TableCell>
+                                            <span
+                                                className={
+                                                    stare[one.status].className
+                                                }
+                                            >
+                                                {stare[one.status].label}
+                                            </span>
+                                            {one.submitted_at && (
+                                                <span className="block text-[10px] text-muted-foreground">
+                                                    {one.submitted_by} ·{' '}
+                                                    {one.submitted_at}
+                                                </span>
+                                            )}
+                                            {one.note && (
+                                                <span className="block max-w-xs text-[10px] whitespace-pre-line text-muted-foreground">
+                                                    {one.note}
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right whitespace-nowrap">
+                                            {owned &&
+                                                one.status === 'draft' && (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <Input
+                                                            className="h-7 w-40 text-xs"
+                                                            placeholder="pe ce s-a sprijinit"
+                                                            value={
+                                                                open === one.key
+                                                                    ? note
+                                                                    : ''
+                                                            }
+                                                            onFocus={() => {
+                                                                setOpen(
+                                                                    one.key,
+                                                                );
+                                                                setNote('');
+                                                            }}
+                                                            onChange={(e) =>
+                                                                setNote(
+                                                                    e.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                        />
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                router.post(
+                                                                    `/reports/forecast/${planId}/sections/submit`,
+                                                                    {
+                                                                        key: one.key,
+                                                                        note:
+                                                                            open ===
+                                                                            one.key
+                                                                                ? note
+                                                                                : null,
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                        onSuccess:
+                                                                            () => {
+                                                                                setOpen(
+                                                                                    null,
+                                                                                );
+                                                                                setNote(
+                                                                                    '',
+                                                                                );
+                                                                            },
+                                                                    },
+                                                                )
+                                                            }
+                                                        >
+                                                            Trimite
+                                                        </Button>
+                                                    </span>
+                                                )}
+
+                                            {boss &&
+                                                one.status === 'submitted' && (
+                                                    <span className="inline-flex gap-1">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                router.post(
+                                                                    `/reports/forecast/${planId}/sections/review`,
+                                                                    {
+                                                                        key: one.key,
+                                                                        status: 'accepted',
+                                                                    },
+                                                                    {
+                                                                        preserveScroll: true,
+                                                                    },
+                                                                )
+                                                            }
+                                                        >
+                                                            Primesc
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => {
+                                                                const why =
+                                                                    prompt(
+                                                                        `De ce se întoarce „${one.label}” la departament?`,
+                                                                    );
+
+                                                                if (
+                                                                    why !== null
+                                                                ) {
+                                                                    router.post(
+                                                                        `/reports/forecast/${planId}/sections/review`,
+                                                                        {
+                                                                            key: one.key,
+                                                                            status: 'draft',
+                                                                            note: why,
+                                                                        },
+                                                                        {
+                                                                            preserveScroll: true,
+                                                                        },
+                                                                    );
+                                                                }
+                                                            }}
+                                                        >
+                                                            Înapoi
+                                                        </Button>
+                                                    </span>
+                                                )}
+
+                                            {boss &&
+                                                one.status === 'accepted' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            router.post(
+                                                                `/reports/forecast/${planId}/sections/review`,
+                                                                {
+                                                                    key: one.key,
+                                                                    status: 'draft',
+                                                                },
+                                                                {
+                                                                    preserveScroll: true,
+                                                                },
+                                                            )
+                                                        }
+                                                    >
+                                                        Redeschide
+                                                    </Button>
+                                                )}
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
                 </CardContent>
             </Card>
         </div>

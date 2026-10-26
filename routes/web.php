@@ -198,6 +198,38 @@ Route::middleware('auth')->group(function () {
         Route::post('reports/leases/propose', [LeaseController::class, 'propose'])->name('reports.leases.propose');
     });
 
+    // Planul anului se face în mai multe mâini: conducerea îl vede
+    // întreg, iar fiecare departament care ține o bucată intră ca să-și
+    // scrie partea. De-aia stă în zona lui, nu în cea a rapoartelor.
+    Route::middleware('area:forecast')->group(function () {
+        Route::get('reports/forecast', [ForecastController::class, 'index'])->name('reports.forecast.index');
+        Route::post('reports/forecast', [ForecastController::class, 'store'])->name('reports.forecast.store');
+        Route::post('reports/forecast/{plan}/reseed', [ForecastController::class, 'reseed'])->name('reports.forecast.reseed');
+        Route::put('reports/forecast/lines/{line}', [ForecastController::class, 'updateLine'])->name('reports.forecast.lines.update');
+        Route::put('reports/forecast/{plan}/row', [ForecastController::class, 'updateRow'])->name('reports.forecast.row.update');
+        Route::put('reports/forecast/{plan}/bulk', [ForecastController::class, 'bulk'])->name('reports.forecast.bulk');
+        Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
+        Route::get('reports/forecast/{plan}/export', [ForecastController::class, 'export'])->name('reports.forecast.export');
+        // Lunile pe care anul de bază nu le-a trăit încă, scrise de mână.
+        Route::put('reports/forecast/{plan}/start', [ForecastController::class, 'updateStart'])->name('reports.forecast.start.update');
+        // Rânduri scoase din plan sau adăugate cu mâna: o cursă pe care n-o
+        // mai zburăm, una pe care abia o deschidem.
+        // Predarea bucăților de buget: departamentul trimite, conducerea
+        // primește sau dă înapoi.
+        Route::post('reports/forecast/{plan}/sections/submit', [ForecastController::class, 'submitSection'])->name('reports.forecast.sections.submit');
+        Route::post('reports/forecast/{plan}/sections/review', [ForecastController::class, 'reviewSection'])->name('reports.forecast.sections.review');
+        Route::post('reports/forecast/{plan}/rows', [ForecastController::class, 'storeRow'])->name('reports.forecast.rows.store');
+        Route::delete('reports/forecast/{plan}/rows', [ForecastController::class, 'destroyRow'])->name('reports.forecast.rows.destroy');
+        Route::put('reports/forecast/{plan}/rows/restore', [ForecastController::class, 'restoreRow'])->name('reports.forecast.rows.restore');
+        Route::put('reports/forecast/{plan}/base', [ForecastController::class, 'updateBase'])->name('reports.forecast.base.update');
+        Route::put('reports/forecast/{plan}/base/reset', [ForecastController::class, 'resetBase'])->name('reports.forecast.base.reset');
+        // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.
+        Route::post('reports/forecast/{plan}/versions', [ForecastController::class, 'storeVersion'])->name('reports.forecast.versions.store');
+        Route::post('reports/forecast/{plan}/versions/{version}/restore', [ForecastController::class, 'restoreVersion'])->name('reports.forecast.versions.restore');
+        Route::delete('reports/forecast/{plan}/versions/{version}', [ForecastController::class, 'destroyVersion'])->name('reports.forecast.versions.destroy');
+        Route::delete('reports/forecast/{plan}', [ForecastController::class, 'destroy'])->name('reports.forecast.destroy');
+    });
+
     // Rapoartele arată cifrele companiei întregi — venit, marjă, costuri,
     // profit — deci sunt ale Top Management-ului (și ale administratorilor,
     // fiindcă „admin” cuprinde toate rolurile).
@@ -211,29 +243,7 @@ Route::middleware('auth')->group(function () {
         // Scadențarul: ce e de plătit de azi înainte, factură cu factură.
         Route::get('reports/due', [DueInvoicesController::class, 'index'])->name('reports.due.index');
         Route::get('reports/due/export', [DueInvoicesController::class, 'export'])->name('reports.due.export');
-        // Planul anului: pârghiile din care se naște, nu un procent de creștere.
-        Route::get('reports/forecast', [ForecastController::class, 'index'])->name('reports.forecast.index');
-        Route::post('reports/forecast', [ForecastController::class, 'store'])->name('reports.forecast.store');
-        Route::post('reports/forecast/{plan}/reseed', [ForecastController::class, 'reseed'])->name('reports.forecast.reseed');
-        Route::put('reports/forecast/lines/{line}', [ForecastController::class, 'updateLine'])->name('reports.forecast.lines.update');
-        Route::put('reports/forecast/{plan}/row', [ForecastController::class, 'updateRow'])->name('reports.forecast.row.update');
-        Route::put('reports/forecast/{plan}/bulk', [ForecastController::class, 'bulk'])->name('reports.forecast.bulk');
-        Route::put('reports/forecast/{plan}/row/reset', [ForecastController::class, 'resetRow'])->name('reports.forecast.row.reset');
-        Route::get('reports/forecast/{plan}/export', [ForecastController::class, 'export'])->name('reports.forecast.export');
-        // Lunile pe care anul de bază nu le-a trăit încă, scrise de mână.
-        Route::put('reports/forecast/{plan}/start', [ForecastController::class, 'updateStart'])->name('reports.forecast.start.update');
-        // Rânduri scoase din plan sau adăugate cu mâna: o cursă pe care n-o
-        // mai zburăm, una pe care abia o deschidem.
-        Route::post('reports/forecast/{plan}/rows', [ForecastController::class, 'storeRow'])->name('reports.forecast.rows.store');
-        Route::delete('reports/forecast/{plan}/rows', [ForecastController::class, 'destroyRow'])->name('reports.forecast.rows.destroy');
-        Route::put('reports/forecast/{plan}/rows/restore', [ForecastController::class, 'restoreRow'])->name('reports.forecast.rows.restore');
-        Route::put('reports/forecast/{plan}/base', [ForecastController::class, 'updateBase'])->name('reports.forecast.base.update');
-        Route::put('reports/forecast/{plan}/base/reset', [ForecastController::class, 'resetBase'])->name('reports.forecast.base.reset');
-        // Variantele planului: salvate întregi, încărcate înapoi, scoase pe hârtie.
-        Route::post('reports/forecast/{plan}/versions', [ForecastController::class, 'storeVersion'])->name('reports.forecast.versions.store');
-        Route::post('reports/forecast/{plan}/versions/{version}/restore', [ForecastController::class, 'restoreVersion'])->name('reports.forecast.versions.restore');
-        Route::delete('reports/forecast/{plan}/versions/{version}', [ForecastController::class, 'destroyVersion'])->name('reports.forecast.versions.destroy');
-        Route::delete('reports/forecast/{plan}', [ForecastController::class, 'destroy'])->name('reports.forecast.destroy');
+
         Route::get('reports/opex', [OpExController::class, 'index'])->name('reports.opex.index');
         Route::post('reports/opex/{company}/refresh', [OpExController::class, 'refresh'])->name('reports.opex.refresh');
         Route::get('reports/opex/{company}/invoices', [OpExController::class, 'invoices'])->name('reports.opex.invoices');

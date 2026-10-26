@@ -25,7 +25,11 @@ class PlanEngine
     /** Linia de sub EBITDA care nu se poartă din istoric, ci se socotește. */
     public const TAX = 'impozit';
 
-    public function __construct(private PnlReportService $pnl, private PlanBuilder $builder) {}
+    public function __construct(
+        private PnlReportService $pnl,
+        private PlanBuilder $builder,
+        private PlanSections $sections,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -1344,6 +1348,8 @@ class PlanEngine
                 return [
                     'key' => $key,
                     'kind' => $first->kind,
+                    // A cui e linia: fiecare își vede și scrie partea lui.
+                    'section' => $this->sections->forLine($first->kind, $key, $first->label),
                     'unit' => $first->unit ?? PlanLine::PAX,
                     'label' => $first->label ?: $key,
                     'months' => $months,

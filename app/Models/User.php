@@ -100,6 +100,24 @@ class User extends Authenticatable
         return $this->hasRole(self::ROLE_TOP_MANAGEMENT);
     }
 
+    /**
+     * Bugetul anului: conducerea îl vede întreg, iar fiecare departament
+     * care ține o bucată din el intră ca să-și scrie partea.
+     */
+    public function canSeeForecast(): bool
+    {
+        if ($this->canSeeReports()) {
+            return true;
+        }
+
+        $owners = [
+            ...array_values((array) config('pnl.plan_owners.categories', [])),
+            ...array_column((array) config('pnl.plan_owners.costs', []), 'department'),
+        ];
+
+        return $this->departments()->whereIn('name', $owners)->exists();
+    }
+
     /** Aprobarea finală a plăților. */
     public function canApproveFinal(): bool
     {

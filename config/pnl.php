@@ -363,6 +363,67 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Cine scrie fiecare bucată de buget
+    |--------------------------------------------------------------------------
+    |
+    | Bugetul nu se face de un singur om: fiecare categorie de produs are
+    | responsabilul ei, rețeaua de agenții își bugetează oamenii și
+    | bonusurile, marketingul cheltuielile lui, iar administrativul tot ce
+    | rămâne. Aici se spune care departament ține care bucată.
+    |
+    | Cheile din stânga sunt categoriile de produs așa cum vin din eTrip și
+    | din Tina; cele din dreapta, numele departamentelor din aplicație.
+    | Categoria care nu e trecută aici rămâne la administrativ.
+    |
+    */
+
+    'plan_owners' => [
+        'categories' => [
+            'Charter' => 'Charters',
+            'Charter Bus' => 'Transport BUS & Turism Scolar',
+            'Senior Voyage' => 'Senior Voyage',
+            'Circuite Culturale' => 'Circuite Culturale',
+            'Circuite Exotice' => 'Circuite Exotice',
+            'Sejururi Exotice' => 'Sejururi Exotice',
+            'Croaziere' => 'Croaziere',
+            'Cazare' => 'Cazări Individuale',
+            'Ticketing' => 'Ticketing',
+            'Marketplace' => 'Sales B2C',
+            'Hello Romania' => 'Hello Romania - Turism Intern',
+            'Tina · Ticketing' => 'Corporate',
+            'Tina · Cazare' => 'Corporate',
+            'Tina · Altele' => 'Corporate',
+            'Tina · Pachete' => 'Corporate',
+            'Tina · Transfer' => 'Corporate',
+            '- -' => 'Administrativ',
+        ],
+
+        /** Cheltuielile, pe trei mâini. */
+        'costs' => [
+            'retail' => [
+                'label' => 'Rețeaua de agenții',
+                'department' => 'Agenții retail',
+                // Salariile și bonusurile agențiilor: se bugetează pe
+                // magazin, din oameni și din vânzări.
+                'lines' => ['20200', '20000'],
+            ],
+            'marketing' => [
+                'label' => 'Marketing',
+                'department' => 'Marketing',
+                // Grupele de cheltuială care îi aparțin, după numele din P&L.
+                'groups' => ['Marketing si promovare', 'Sponsorizari'],
+            ],
+            'admin' => [
+                'label' => 'Administrativ',
+                'department' => 'Administrativ',
+                // Restul: tot ce nu e mai sus.
+                'groups' => ['*'],
+            ],
+        ],
+    ],
+
     'profit_tax' => [
         'rate' => env('PNL_PROFIT_TAX_RATE', 0.16),
         'turnover_rate' => env('PNL_TURNOVER_TAX_RATE', 0.005),
