@@ -392,8 +392,11 @@ return [
             'Ticketing' => 'Ticketing',
             'Marketplace' => 'Sales B2C',
             'Hello Romania' => 'Hello Romania - Turism Intern',
-            'Tina · Ticketing' => 'Corporate',
-            'Tina · Cazare' => 'Corporate',
+            // Corporate-ul din Tina se bugetează la produsul lui: biletele
+            // la Ticketing, cazările la Cazări Individuale — aceiași oameni
+            // care țin și cifra de turism, nu o mână aparte.
+            'Tina · Ticketing' => 'Ticketing',
+            'Tina · Cazare' => 'Cazări Individuale',
             'Tina · Altele' => 'Corporate',
             'Tina · Pachete' => 'Corporate',
             'Tina · Transfer' => 'Corporate',

@@ -438,3 +438,27 @@ test('a shop pays its people, its bonus and its rent, and the rent leaves the co
         'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'rent', 'value' => 99,
     ])->assertForbidden();
 });
+
+test('the corporate lines from Tina are held by the product that sells them', function () {
+    $sections = app(PlanSections::class);
+
+    // Biletele corporate stau la Ticketing, cazările corporate la cazări:
+    // aceiași oameni care țin și cifra de turism.
+    expect($sections->department('category:Tina · Ticketing'))->toBe('Ticketing')
+        ->and($sections->department('category:Tina · Cazare'))->toBe('Cazări Individuale')
+        ->and($sections->department('category:Tina · Transfer'))->toBe('Corporate');
+
+    $sef = personOf('Ticketing');
+
+    PlanLine::query()->create([
+        'plan_id' => $this->plan->id, 'kind' => PlanLine::CATEGORY,
+        'key' => 'Tina · Ticketing', 'label' => 'Tina · Ticketing',
+        'unit' => PlanLine::SERVICE, 'month' => 7, 'volume' => 20, 'unit_net' => 1_500,
+    ]);
+
+    expect($sections->mine($sef, $this->plan))->toContain('category:Tina · Ticketing');
+
+    $this->actingAs($sef)->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::CATEGORY, 'key' => 'Tina · Ticketing', 'field' => 'volume', 'value' => 30,
+    ])->assertRedirect();
+});
