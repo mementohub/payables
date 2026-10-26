@@ -49,19 +49,43 @@ class ForecastHistoryBuilder
      * dintr-un singur loc — iar planul trebuie să pornească de la toată
      * afacerea, nu de la patru cincimi din ea.
      *
-     * @return list<?string> null = baza companiei, din configurație
+     * @return list<array{connection: ?string, months: ?list<int>}>
      */
     private function bases(Company $company, int $year): array
     {
-        $out = [null];
+        $out = [['connection' => null, 'months' => null]];
 
         foreach ((array) config('pnl.extra_bases', []) as $connection => $base) {
-            if ($year >= (int) ($base['from_year'] ?? 9999)) {
-                $out[] = (string) $connection;
+            if ($year < (int) ($base['from_year'] ?? 9999)) {
+                continue;
             }
+
+            $out[] = ['connection' => (string) $connection, 'months' => $this->window($base, $year)];
         }
 
         return $out;
+    }
+
+    /**
+     * Până când se citește dintr-o bază, în anul ăla.
+     *
+     * Fuziunea Vacanza e din iunie 2026, iar rezervările necălătorite s-au
+     * mutat atunci în baza Christian Tour, care le numără de-acolo încolo.
+     * Din baza ei se ia deci numai până în iunie — mai departe ar fi aceiași
+     * bani de două ori.
+     *
+     * @param  array<string, mixed>  $base
+     * @return list<int>|null null = tot anul
+     */
+    private function window(array $base, int $year): ?array
+    {
+        $until = (string) ($base['until'] ?? '');
+
+        if (preg_match('/^(\d{4})-(\d{1,2})$/', $until, $parts) !== 1 || $year < (int) $parts[1]) {
+            return null;
+        }
+
+        return $year === (int) $parts[1] ? range(1, (int) $parts[2]) : [];
     }
 
     /**
@@ -77,7 +101,13 @@ class ForecastHistoryBuilder
                 continue;
             }
 
+            $window = $this->window($base, $year);
+
             foreach ($this->etrip->byProduct($year, (string) $connection) as $row) {
+                if ($window !== null && ! in_array((int) $row['month'], $window, true)) {
+                    continue;
+                }
+
                 $key = (string) ($base['label'] ?? $connection);
                 $cell = $rows[$key.'|'.$row['month']] ?? [
                     'kind' => 'extra', 'unit' => PlanLine::PAX, 'key' => $key,
@@ -106,8 +136,12 @@ class ForecastHistoryBuilder
         $rows = [];
 
         foreach ($this->bases($company, $year) as $base) {
-            foreach ($this->pnlEtrip->byChannelAndProduct($year, $base) as $row) {
+            foreach ($this->pnlEtrip->byChannelAndProduct($year, $base['connection']) as $row) {
                 if (abs((float) $row['net']) < 0.5) {
+                    continue;
+                }
+
+                if ($base['months'] !== null && ! in_array((int) $row['month'], $base['months'], true)) {
                     continue;
                 }
 
@@ -162,8 +196,12 @@ class ForecastHistoryBuilder
         $rows = [];
 
         foreach ($this->bases($company, $year) as $base) {
-            foreach ($this->etrip->lag($year, $base) as $row) {
+            foreach ($this->etrip->lag($year, $base['connection']) as $row) {
                 if (abs($row['net']) < 0.5 || $row['travelled'] < 1 || $row['travelled'] > 12) {
+                    continue;
+                }
+
+                if ($base['months'] !== null && ! in_array((int) $row['booked'], $base['months'], true)) {
                     continue;
                 }
 
@@ -195,8 +233,12 @@ class ForecastHistoryBuilder
         $rows = [];
 
         foreach ($this->bases($company, $year) as $base) {
-            foreach ($this->etrip->byProduct($year, $base) as $row) {
+            foreach ($this->etrip->byProduct($year, $base['connection']) as $row) {
                 if ($row['pax'] <= 0 && abs($row['net']) < 0.5) {
+                    continue;
+                }
+
+                if ($base['months'] !== null && ! in_array((int) $row['month'], $base['months'], true)) {
                     continue;
                 }
 
@@ -253,7 +295,11 @@ class ForecastHistoryBuilder
         $rows = [];
 
         foreach ($this->bases($company, $year) as $base) {
-            foreach ($this->charter->capacity($year, $base) as $row) {
+            foreach ($this->charter->capacity($year, $base['connection']) as $row) {
+                if ($base['months'] !== null && ! in_array((int) $row['month'], $base['months'], true)) {
+                    continue;
+                }
+
                 $key = $row['home'].'→'.$row['destination'];
                 $cell = $rows[$key.'|'.$row['month']] ?? [
                     'kind' => PlanLine::CHARTER,
@@ -272,7 +318,11 @@ class ForecastHistoryBuilder
                 ];
             }
 
-            foreach ($this->charter->money($year, $base) as $row) {
+            foreach ($this->charter->money($year, $base['connection']) as $row) {
+                if ($base['months'] !== null && ! in_array((int) $row['month'], $base['months'], true)) {
+                    continue;
+                }
+
                 $key = $row['home'].'→'.$row['destination'];
                 $cell = $rows[$key.'|'.$row['month']] ?? [
                     'kind' => PlanLine::CHARTER,
