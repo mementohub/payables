@@ -344,6 +344,35 @@ class PlanEngine
         ];
     }
 
+    /**
+     * Cât din amestecul ăsta de canale trece prin agenții partenere.
+     *
+     * @param  array<string, float>  $mix
+     */
+    private function b2bOf(array $mix): ?float
+    {
+        if ($mix === []) {
+            return null;
+        }
+
+        $keys = (array) config('pnl.segments.b2b.channels', ['b2b']);
+        $all = array_sum($mix);
+
+        if ($all <= 0) {
+            return null;
+        }
+
+        $theirs = 0.0;
+
+        foreach ($mix as $channel => $share) {
+            if (in_array((string) $channel, $keys, true)) {
+                $theirs += $share;
+            }
+        }
+
+        return round($theirs / $all, 4);
+    }
+
     private function cut(array $mix, ?float $b2b): array
     {
         if ($b2b === null) {
@@ -1515,6 +1544,10 @@ class PlanEngine
             ->map(function (Collection $group, string $key) use ($mix) {
                 $first = $group->first();
                 $months = [];
+                // Amestecul categoriei: de pe el se citește partea de B2B a
+                // lunilor pe care nu le-a scris încă nimeni.
+                $theirs = $mix[$first->kind === PlanLine::CHARTER ? PlanBuilder::CHARTER_CATEGORY : $key] ?? [];
+                $share = $this->b2bOf($theirs);
 
                 foreach ($group as $line) {
                     $months[(int) $line->month] = [
@@ -1530,6 +1563,8 @@ class PlanEngine
                         'load' => (float) $line->load,
                         'unit_net' => (float) $line->unit_net,
                         'unit_margin' => (float) $line->unit_margin,
+                        // Cât din luna asta se vinde prin agenții partenere.
+                        'b2b' => $line->b2b ?? $share,
                         'amount' => $line->kind === PlanLine::OPEX || $line->kind === PlanLine::BELOW
                             ? (float) $line->amount
                             : $line->net(),
@@ -1566,7 +1601,7 @@ class PlanEngine
                     // agenții partenere și direct. Ce nu intră în niciuna —
                     // corporate, altele — se arată deoparte, nu se
                     // înghesuie unde nu-i e locul.
-                    ...$this->split($group, $mix[$first->kind === PlanLine::CHARTER ? PlanBuilder::CHARTER_CATEGORY : $key] ?? []),
+                    ...$this->split($group, $theirs),
                 ];
             })
             ->sortByDesc(fn (array $row) => abs($row['kind'] === PlanLine::OPEX || $row['kind'] === PlanLine::BELOW ? $row['amount'] : $row['net']))

@@ -74,6 +74,8 @@ type Cell = {
     load: number;
     unit_net: number;
     unit_margin: number;
+    /** Cât din luna asta se vinde prin agenții partenere. */
+    b2b: number | null;
     amount: number;
     margin: number;
     manual: boolean;
@@ -3094,7 +3096,13 @@ function DriverTable({
                                         <>
                                             <TableCell className="text-right">
                                                 <RowInput
-                                                    value={(row.b2b ?? 0) * 100}
+                                                    value={
+                                                        rowValue(
+                                                            row,
+                                                            'b2b',
+                                                            row.b2b ?? 0,
+                                                        ) * 100
+                                                    }
                                                     suffix="%"
                                                     pending={
                                                         rowEdits[
@@ -3451,6 +3459,45 @@ function DriverTable({
                                                                                             ? 'unit_net'
                                                                                             : 'unit_margin',
                                                                                         v,
+                                                                                        row,
+                                                                                        name,
+                                                                                    )
+                                                                                }
+                                                                            />
+                                                                        </label>
+                                                                        <label className="text-[10px] text-muted-foreground">
+                                                                            B2B
+                                                                            (%
+                                                                            din
+                                                                            venit)
+                                                                            <RowInput
+                                                                                value={
+                                                                                    cellValue(
+                                                                                        cell,
+                                                                                        'b2b',
+                                                                                        cell.b2b ??
+                                                                                            0,
+                                                                                    ) *
+                                                                                    100
+                                                                                }
+                                                                                pending={cellChanged(
+                                                                                    cell,
+                                                                                    'b2b',
+                                                                                )}
+                                                                                onCommit={(
+                                                                                    v,
+                                                                                ) =>
+                                                                                    onEditCell(
+                                                                                        cell,
+                                                                                        'b2b',
+                                                                                        Math.min(
+                                                                                            1,
+                                                                                            Math.max(
+                                                                                                0,
+                                                                                                v /
+                                                                                                    100,
+                                                                                            ),
+                                                                                        ),
                                                                                         row,
                                                                                         name,
                                                                                     )

@@ -1011,3 +1011,46 @@ test('the months of the history carry what went through partner agencies', funct
             ->where('history.category|Croaziere.2026.months.7.b2b', 0.4)
         );
 });
+
+test('the partner-agency share can be written month by month', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->withRoles('top_management')->create();
+
+    foreach ([6, 7] as $month) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'kind' => 'category', 'key' => 'Croaziere',
+            'month' => $month, 'unit' => 'pax', 'volume' => 100, 'net' => 400_000, 'margin' => 40_000,
+        ]);
+
+        foreach ([['b2b', 100_000], ['retail', 300_000]] as [$channel, $net]) {
+            ForecastHistory::query()->create([
+                'company_id' => $company->id, 'year' => 2026, 'kind' => 'mix', 'key' => 'Croaziere',
+                'channel' => $channel, 'month' => $month, 'unit' => 'pax', 'volume' => 0, 'net' => $net, 'margin' => 0,
+            ]);
+        }
+    }
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    app(PlanBuilder::class)->seed($plan);
+
+    $iulie = PlanLine::query()->where('plan_id', $plan->id)->where('key', 'Croaziere')->where('month', 7)->sole();
+
+    // Iulie merge pe agenții partenere, iunie rămâne cum a fost.
+    $this->actingAs($user)->put('/reports/forecast/'.$plan->id.'/bulk', [
+        'cells' => [['id' => $iulie->id, 'field' => 'b2b', 'value' => 0.6]],
+    ])->assertRedirect();
+
+    $out = app(PlanEngine::class)->compute($plan->fresh(), 'ytd12', 'ras', 'operational');
+    $row = collect($out['categories'])->firstWhere('key', 'Croaziere');
+
+    expect($row['months'][7]['b2b'])->toEqual(0.6)
+        ->and($row['months'][6]['b2b'])->toEqual(0.25)
+        // Venitul pe B2B urmează fiecare lună cu partea ei.
+        ->and($row['net_b2b'])->toEqual(round(
+            $row['months'][7]['amount'] * 0.6 + $row['months'][6]['amount'] * 0.25, 2,
+        ));
+});
