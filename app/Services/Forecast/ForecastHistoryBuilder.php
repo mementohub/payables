@@ -292,7 +292,17 @@ class ForecastHistoryBuilder
      */
     private function charter(Company $company, int $year): int
     {
-        $rows = [];
+        // Locurile și vândutele vin din alocări, banii și pasagerii din
+        // rezervări. Se strâng deoparte, fiindcă se adună din mai multe baze
+        // și fiecare are socoteala ei: „vândut” numără locuri, iar un copil
+        // în poală are loc, dar n-are scaun.
+        $seats = [];
+        $sold = [];
+        $pax = [];
+        $net = [];
+        $margin = [];
+        $cost = [];
+        $where = [];
 
         foreach ($this->bases($company, $year) as $base) {
             foreach ($this->charter->capacity($year, $base['connection']) as $row) {
@@ -300,22 +310,10 @@ class ForecastHistoryBuilder
                     continue;
                 }
 
-                $key = $row['home'].'→'.$row['destination'];
-                $cell = $rows[$key.'|'.$row['month']] ?? [
-                    'kind' => PlanLine::CHARTER,
-                    'unit' => PlanLine::PAX,
-                    'key' => $key,
-                    'month' => $row['month'],
-                    'capacity' => 0, 'sold' => 0, 'volume' => 0.0,
-                    'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
-                ];
-
-                $rows[$key.'|'.$row['month']] = [
-                    ...$cell,
-                    'capacity' => (float) $cell['capacity'] + $row['seats'],
-                    'sold' => (float) $cell['sold'] + $row['sold'],
-                    'volume' => (float) $cell['volume'] + $row['sold'],
-                ];
+                $cell = $row['home'].'→'.$row['destination'].'|'.$row['month'];
+                $where[$cell] = [$row['home'].'→'.$row['destination'], (int) $row['month']];
+                $seats[$cell] = ($seats[$cell] ?? 0) + $row['seats'];
+                $sold[$cell] = ($sold[$cell] ?? 0) + $row['sold'];
             }
 
             foreach ($this->charter->money($year, $base['connection']) as $row) {
@@ -323,40 +321,35 @@ class ForecastHistoryBuilder
                     continue;
                 }
 
-                $key = $row['home'].'→'.$row['destination'];
-                $cell = $rows[$key.'|'.$row['month']] ?? [
-                    'kind' => PlanLine::CHARTER,
-                    'unit' => PlanLine::PAX,
-                    'key' => $key,
-                    'month' => $row['month'],
-                    'capacity' => 0, 'sold' => 0, 'volume' => 0.0,
-                    'net' => 0.0, 'margin' => 0.0, 'cost' => 0.0,
-                ];
-
-                // Pasagerii din rezervări sunt cei adevărați: „vândut” din
-                // alocare numără locuri, iar un copil în poală are loc, dar
-                // n-are scaun. De-aia volumul se ia de aici când există.
-                $rows[$key.'|'.$row['month']] = [
-                    ...$cell,
-                    'volume' => $row['pax'] > 0
-                        ? (float) $cell['volume'] - (float) ($cell['pax_seen'] ?? 0) + $row['pax']
-                        : (float) $cell['volume'],
-                    'pax_seen' => (float) ($cell['pax_seen'] ?? 0) + $row['pax'],
-                    'net' => round((float) $cell['net'] + $row['net'], 2),
-                    'margin' => round((float) $cell['margin'] + $row['margin'], 2),
-                    'cost' => round((float) $cell['cost'] + $row['flight_cost'], 2),
-                ];
+                $cell = $row['home'].'→'.$row['destination'].'|'.$row['month'];
+                $where[$cell] = [$row['home'].'→'.$row['destination'], (int) $row['month']];
+                $pax[$cell] = ($pax[$cell] ?? 0) + $row['pax'];
+                $net[$cell] = round(($net[$cell] ?? 0) + $row['net'], 2);
+                $margin[$cell] = round(($margin[$cell] ?? 0) + $row['margin'], 2);
+                $cost[$cell] = round(($cost[$cell] ?? 0) + $row['flight_cost'], 2);
             }
         }
 
-        // `pax_seen` e doar pentru socoteala de mai sus; în tabel n-are loc.
-        $rows = array_map(function (array $row) {
-            unset($row['pax_seen']);
+        $rows = [];
 
-            return $row;
-        }, $rows);
+        foreach ($where as $cell => [$key, $month]) {
+            $rows[] = [
+                'kind' => PlanLine::CHARTER,
+                'unit' => PlanLine::PAX,
+                'key' => $key,
+                'month' => $month,
+                'capacity' => $seats[$cell] ?? null,
+                'sold' => $sold[$cell] ?? null,
+                // Pasagerii din rezervări sunt cei adevărați; fără ei,
+                // rămân locurile vândute din alocare.
+                'volume' => ($pax[$cell] ?? 0) > 0 ? $pax[$cell] : ($sold[$cell] ?? 0),
+                'net' => $net[$cell] ?? 0.0,
+                'margin' => $margin[$cell] ?? 0.0,
+                'cost' => $cost[$cell] ?? 0.0,
+            ];
+        }
 
-        return $this->write($company, $year, PlanLine::CHARTER, array_values($rows));
+        return $this->write($company, $year, PlanLine::CHARTER, $rows);
     }
 
     /**
