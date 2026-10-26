@@ -64,10 +64,19 @@ class PlanBuilder
      */
     private array $taken = [];
 
+    /**
+     * Și cât s-a scos din liniile de chirii, tot pentru rețea: spațiile
+     * magazinelor se bugetează pe magazine, nu în linia de cheltuieli.
+     *
+     * @var array<int, float>
+     */
+    private array $rents = [];
+
     public function seed(Plan $plan, bool $keepManual = true): int
     {
         $written = 0;
         $this->taken = [];
+        $this->rents = [];
 
         $written += $this->seedCategories($plan, $keepManual);
         $written += $this->seedCharter($plan, $keepManual);
@@ -908,10 +917,11 @@ class PlanBuilder
             // repartizată pe canalul retail se bugetează pe magazine, în
             // fila lor, iar aici rămân oamenii din centrală și din
             // celelalte canale. Altfel salariile ar intra de două ori.
-            $apart = $this->retailShare($line);
+            $apart = $this->retailShare($line, 'lines');
+            $rent = $this->retailShare($line, 'rent_lines');
 
             foreach ($months as $month => $amount) {
-                $months[$month] = round($amount - ($apart[$month] ?? 0), 2);
+                $months[$month] = round($amount - ($apart[$month] ?? 0) - ($rent[$month] ?? 0), 2);
             }
 
             // Partea rețelei pleacă de aici, dar trece prin aceleași mâini
@@ -920,6 +930,10 @@ class PlanBuilder
             // magazinelor ar rămâne în urmă cu un an.
             foreach ($this->fillYear($apart, [], $open) as $month => $cell) {
                 $this->taken[$month] = round(($this->taken[$month] ?? 0) + $cell['amount'] * $step['ratio'], 2);
+            }
+
+            foreach ($this->fillYear($rent, [], $open) as $month => $cell) {
+                $this->rents[$month] = round(($this->rents[$month] ?? 0) + $cell['amount'] * $step['ratio'], 2);
             }
 
             foreach ($this->fillYear($months, $hand[PlanLine::OPEX][$saf] ?? [], $open, $before[PlanLine::OPEX][$saf] ?? []) as $month => $cell) {
@@ -966,19 +980,21 @@ class PlanBuilder
     /**
      * Cât din linia asta de cheltuială ține de rețeaua de agenții.
      *
-     * Raportul repartizează salariile pe canale: din ele, partea de retail
-     * se bugetează pe magazine — oameni și bonusuri — iar restul rămâne la
-     * administrativ. Linia care nu e a rețelei nu se atinge.
+     * Raportul repartizează cheltuielile pe canale: din salarii și din
+     * chirii, partea de retail se bugetează pe magazine — oameni, bonusuri
+     * și spațiu — iar restul rămâne la administrativ. Linia care nu e a
+     * rețelei nu se atinge.
      *
      * @param  array<string, mixed>  $line
+     * @param  string  $which  `lines` pentru salarii, `rent_lines` pentru chirii
      * @return array<int, float>
      */
-    private function retailShare(array $line): array
+    private function retailShare(array $line, string $which = 'lines'): array
     {
         $block = (array) config('pnl.plan_owners.costs.retail', []);
         $channel = (string) ($block['channel'] ?? 'retail');
 
-        if (! in_array((string) $line['saf'], (array) ($block['lines'] ?? []), true)) {
+        if (! in_array((string) $line['saf'], (array) ($block[$which] ?? []), true)) {
             return [];
         }
 
@@ -1016,6 +1032,10 @@ class PlanBuilder
         // departe cu trendul și întregit pe an.
         $payroll = $this->taken;
 
+        // Și chiriile scoase din linia de spații: până când rețeaua scrie
+        // chiria fiecărui magazin, se împart după cât vinde fiecare.
+        $rents = $this->rents;
+
         // Și cât a vândut fiecare magazin: din asta iese bonusul, și tot din
         // asta se împarte masa salarială pe magazine.
         $sales = [];
@@ -1048,6 +1068,7 @@ class PlanBuilder
         }
 
         $rows = [];
+        $rent = [];
 
         foreach ($sales as $shop => $months) {
             foreach (range(1, 12) as $month) {
@@ -1059,6 +1080,7 @@ class PlanBuilder
 
                 $share = $all > 0 ? (float) ($months[$month] ?? 0) / $all : 0.0;
                 $mass = (float) ($payroll[$month] ?? 0);
+                $rent[$shop][$month] = round((float) ($rents[$month] ?? 0) * $share, 2);
 
                 $rows[] = [
                     'kind' => PlanLine::RETAIL,
@@ -1075,8 +1097,10 @@ class PlanBuilder
                     // bonusul.
                     'unit_net' => round((float) ($months[$month] ?? 0), 2),
                     'amount' => round($mass * $share, 2),
+                    // Chiria spațiului: tot din istoric, până o scrie rețeaua.
+                    'rent' => $rent[$shop][$month],
                     'note' => sprintf(
-                        'Din %s: %s lei vânzări în luna asta. Cât timp nu scrie nimeni câți oameni lucrează aici, costul e partea magazinului din salariile repartizate pe retail.',
+                        'Din %s: %s lei vânzări în luna asta. Cât timp nu scrie nimeni câți oameni lucrează aici, costul e partea magazinului din salariile și chiriile repartizate pe retail.',
                         $plan->base_year,
                         number_format((float) ($months[$month] ?? 0), 0, ',', '.'),
                     ),
@@ -1084,7 +1108,22 @@ class PlanBuilder
             }
         }
 
-        return $this->write($plan, PlanLine::RETAIL, $rows, $keepManual);
+        $written = $this->write($plan, PlanLine::RETAIL, $rows, $keepManual);
+
+        // Rândurile scrise de mână n-au fost călcate, și bine: acolo rețeaua
+        // și-a scris oamenii. Chiria e însă o mărime nouă, pe care n-a scris-o
+        // încă nimeni — se umple o singură dată, din istoric, ca spațiul
+        // magazinului să nu lipsească din plan. Odată scrisă, rămâne scrisă.
+        $blank = $plan->lines()
+            ->where('kind', PlanLine::RETAIL)
+            ->whereNull('rent')
+            ->get(['id', 'key', 'month']);
+
+        foreach ($blank as $line) {
+            $line->update(['rent' => $rent[$line->key][(int) $line->month] ?? 0]);
+        }
+
+        return $written;
     }
 
     /**

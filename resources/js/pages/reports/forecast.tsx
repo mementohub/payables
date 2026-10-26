@@ -183,6 +183,8 @@ type Output = {
         fte: number;
         cost_per_fte: number;
         bonus: number;
+        /** Chiria spațiului, pe lună. */
+        rent: number;
         sales: number;
         amount: number;
         manual: boolean;
@@ -540,6 +542,7 @@ export default function Forecast({
         unit_net: 0,
         unit_margin: 0,
         unit_cost: 0,
+        rent: 0,
         volume: 0,
         amount: 0,
         months: [] as number[],
@@ -1818,6 +1821,97 @@ export default function Forecast({
                                                             }
                                                         />
                                                     </div>
+                                                ) : sheet === 'retail' ? (
+                                                    <>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Oameni (FTE)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.volume
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        volume: Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Cost / om
+                                                                (lei/lună)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_cost
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_cost:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Chirie
+                                                                (lei/lună)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={row.rent}
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        rent: Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Vânzare
+                                                                așteptată
+                                                                (lei/lună)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_net
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_net:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </>
                                                 ) : (
                                                     <div className="grid gap-1.5">
                                                         <Label>
@@ -2036,6 +2130,11 @@ export default function Forecast({
                                                                 sheet ===
                                                                     'retail'
                                                                     ? row.unit_cost
+                                                                    : null,
+                                                            rent:
+                                                                sheet ===
+                                                                'retail'
+                                                                    ? row.rent
                                                                     : null,
                                                         },
                                                         {
@@ -3862,21 +3961,26 @@ function RetailTable({
     const oameni = shops.reduce((sum, one) => sum + one.fte, 0);
     const cost = shops.reduce((sum, one) => sum + one.amount, 0);
     const sales = shops.reduce((sum, one) => sum + one.sales, 0);
+    // Chiria se scrie pe lună, deci anul rețelei are douăsprezece.
+    const chirie = shops.reduce((sum, one) => sum + one.rent, 0) * 12;
 
     return (
         <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
                 Costul fiecărei agenții în {planYear} ={' '}
                 <strong>oameni × cost pe om</strong> +{' '}
-                <strong>bonus × vânzările magazinului</strong>. Vânzarea
-                planificată a magazinului se desface din venitul canalului
-                retail, după cât a vândut fiecare în anul de bază. Cât timp
-                numărul de oameni e zero, costul rămâne cel purtat din istoric,
-                iar cifrele scrise aici iau locul părții de salarii repartizate
-                pe retail — nu se adună peste ea.
+                <strong>bonus × vânzările magazinului</strong> +{' '}
+                <strong>chiria spațiului</strong>. Vânzarea planificată a
+                magazinului se desface din venitul canalului retail, după cât a
+                vândut fiecare în anul de bază. Cât timp numărul de oameni e
+                zero, partea de salarii rămâne cea purtată din istoric; chiria
+                se adaugă oricum, fiindcă se plătește și fără oameni scriși.
+                Cifrele de aici iau locul părții de salarii și de chirii
+                repartizate pe retail în fila de cheltuieli — nu se adună peste
+                ea, altfel costul ar intra de două ori în plan.
             </p>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
                 <Card>
                     <CardContent className="p-4">
                         <p className="text-xs text-muted-foreground">
@@ -3899,6 +4003,19 @@ function RetailTable({
                             {mii(cost)}
                             <span className="ml-1 text-xs font-normal text-muted-foreground">
                                 mii lei
+                            </span>
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">
+                            Chiria rețelei
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                            {mii(chirie)}
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                mii lei / an
                             </span>
                         </p>
                     </CardContent>
@@ -3937,6 +4054,9 @@ function RetailTable({
                                 </TableHead>
                                 <TableHead className="text-right">
                                     Bonus (% din vânzări)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Chirie (lei/lună)
                                 </TableHead>
                                 <TableHead className="text-right">
                                     Cost an (lei)
@@ -3989,6 +4109,14 @@ function RetailTable({
                                             suffix="%"
                                             onCommit={(v) =>
                                                 apply(one.key, 'load', v / 100)
+                                            }
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <RowInput
+                                            value={one.rent}
+                                            onCommit={(v) =>
+                                                apply(one.key, 'rent', v)
                                             }
                                         />
                                     </TableCell>

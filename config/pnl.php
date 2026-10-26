@@ -410,6 +410,9 @@ return [
                 // ia partea repartizată pe canalul retail — restul rămâne
                 // la administrativ, cu oamenii din centrală.
                 'lines' => ['20200', '20000'],
+                // Chiria spațiilor: la fel, partea retailului se bugetează
+                // pe magazine, nu rămâne în linia de cheltuieli.
+                'rent_lines' => ['4000'],
                 'channel' => 'retail',
                 // Cât costă un om pe lună, cu tot cu contribuții, până când
                 // rețeaua scrie altceva pe magazinul ei.

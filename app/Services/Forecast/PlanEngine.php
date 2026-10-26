@@ -535,6 +535,7 @@ class PlanEngine
                     'fte' => (float) $line->volume,
                     'cost_per_fte' => (float) $line->unit_cost,
                     'bonus' => (float) $line->load,
+                    'rent' => (float) $line->rent,
                     'sales' => $mine,
                     'was' => (float) $line->unit_net,
                     'amount' => $amount,
@@ -561,6 +562,8 @@ class PlanEngine
                 'fte' => round((float) $group->avg('volume'), 2),
                 'cost_per_fte' => round((float) $group->avg('unit_cost'), 2),
                 'bonus' => round((float) $group->avg('load'), 4),
+                // Chiria se scrie pe lună, ca și costul unui om.
+                'rent' => round((float) $group->avg('rent'), 2),
                 'sales' => round($sales, 2),
                 'amount' => round($cost, 2),
                 'manual' => $group->contains('manual', true),

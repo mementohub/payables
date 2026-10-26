@@ -49,6 +49,7 @@ class PlanLine extends Model
             'unit_net' => 'float',
             'unit_margin' => 'float',
             'unit_cost' => 'float',
+            'rent' => 'float',
             'amount' => 'float',
             'manual' => 'boolean',
         ];
@@ -60,10 +61,13 @@ class PlanLine extends Model
     }
 
     /**
-     * Cât costă magazinul într-o lună: oamenii plus bonusul din vânzări.
+     * Cât costă magazinul într-o lună: oamenii, bonusul din vânzări și
+     * chiria spațiului.
      *
-     * Cât timp rețeaua n-a scris câți oameni are acolo, rămâne cifra din
-     * istoric — altfel planul ar porni cu zero salarii în agenții.
+     * Cât timp rețeaua n-a scris câți oameni are acolo, partea de salarii
+     * rămâne cifra din istoric — altfel planul ar porni cu zero salarii în
+     * agenții. Chiria se adaugă oricum: ea se plătește și dacă nu știm încă
+     * de câți oameni e nevoie.
      *
      * @param  float  $sales  vânzările planificate ale magazinului în luna aia
      */
@@ -73,11 +77,13 @@ class PlanLine extends Model
             return (float) $this->amount;
         }
 
+        $rent = (float) $this->rent;
+
         if ((float) $this->volume <= 0) {
-            return (float) $this->amount;
+            return round((float) $this->amount + $rent, 2);
         }
 
-        return round((float) $this->volume * (float) $this->unit_cost + (float) $this->load * $sales, 2);
+        return round((float) $this->volume * (float) $this->unit_cost + (float) $this->load * $sales + $rent, 2);
     }
 
     /** Pasagerii lunii: la charter ies din locuri × grad de ocupare. */

@@ -411,3 +411,30 @@ test('viewing through a department head s eyes shows his piece, not the whole bu
         ->post('/reports/forecast/'.$this->plan->id.'/reseed')
         ->assertRedirect();
 });
+
+test('a shop pays its people, its bonus and its rent, and the rent leaves the cost line', function () {
+    $line = PlanLine::query()->create([
+        'plan_id' => $this->plan->id, 'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'label' => 'Plaza',
+        'month' => 7, 'volume' => 2, 'unit_cost' => 6_500, 'load' => 0.01, 'rent' => 4_000,
+    ]);
+
+    // Doi oameni × 6.500 + 1% din 300.000 vânduți + 4.000 chirie.
+    expect($line->shop(300_000))->toEqual(20_000.0);
+
+    // Fără oameni scriși, partea de salarii rămâne cea din istoric, dar
+    // chiria se plătește oricum.
+    $line->update(['volume' => 0, 'amount' => 9_000]);
+
+    expect($line->fresh()->shop(300_000))->toEqual(13_000.0);
+
+    // Și o scrie rețeaua, nu altcineva.
+    $this->actingAs(personOf('Agenții retail'))->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'rent', 'value' => 5_500,
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('key', 'Plaza')->sole()->rent)->toEqual(5_500.0);
+
+    $this->actingAs(personOf('Marketing'))->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'rent', 'value' => 99,
+    ])->assertForbidden();
+});

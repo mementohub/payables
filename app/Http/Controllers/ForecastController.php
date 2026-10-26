@@ -395,7 +395,7 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
-            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
+            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'value' => ['nullable', 'numeric'],
             'growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -430,12 +430,12 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'cells' => ['array'],
             'cells.*.id' => ['required', 'integer'],
-            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
+            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'cells.*.value' => ['required', 'numeric'],
             'rows' => ['array'],
             'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'rows.*.key' => ['required', 'string', 'max:255'],
-            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
+            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'rows.*.value' => ['nullable', 'numeric'],
             'rows.*.growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -766,6 +766,7 @@ class ForecastController extends Controller
             'unit_net' => ['nullable', 'numeric'],
             'unit_margin' => ['nullable', 'numeric'],
             'unit_cost' => ['nullable', 'numeric'],
+            'rent' => ['nullable', 'numeric'],
             'amount' => ['nullable', 'numeric'],
             'note' => ['nullable', 'string', 'max:500'],
             // O categorie nouă își alege stăpânul: cea venită din istoric îl
@@ -817,6 +818,7 @@ class ForecastController extends Controller
                     'unit_net' => $validated['unit_net'] ?? null,
                     'unit_margin' => $validated['unit_margin'] ?? null,
                     'unit_cost' => $validated['unit_cost'] ?? null,
+                    'rent' => $validated['rent'] ?? null,
                     'amount' => $validated['amount'] ?? null,
                     'manual' => true,
                     'note' => $validated['note'] ?? 'Rând adăugat cu mâna, în afara istoricului.',
