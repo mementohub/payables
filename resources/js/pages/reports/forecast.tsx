@@ -369,7 +369,10 @@ type Props = {
         status: string;
         note: string | null;
         removed: string[];
+        seeded_at: string | null;
     } | null;
+    /** Raportul P&L s-a refăcut după ultima împrospătare a planului. */
+    stale: { report: string; plan: string } | null;
     output: Output | null;
     versions: Version[];
     sections: Section[];
@@ -519,6 +522,7 @@ export default function Forecast({
     filters,
     plans,
     plan,
+    stale,
     output,
     versions,
     sections,
@@ -1333,6 +1337,36 @@ export default function Forecast({
                                 </li>
                             ))}
                         </ul>
+                    </div>
+                )}
+
+                {/* Planul stă pe raportul P&L al anului de bază. Dacă
+                    raportul s-a refăcut între timp — o corectură de cont, o
+                    cheltuială mutată pe altă linie — planul are cifre vechi
+                    sub mână până la împrospătare. */}
+                {plan && stale && boss && (
+                    <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50/70 p-3 text-xs dark:border-amber-900 dark:bg-amber-950/30">
+                        <span>
+                            Raportul P&amp;L al anului {plan.base_year} s-a
+                            refăcut pe <strong>{stale.report}</strong>, iar
+                            planul a fost umplut din el ultima oară{' '}
+                            <strong>{stale.plan}</strong>. Cheltuielile din plan
+                            sunt cele de dinainte.
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                                router.post(
+                                    `/reports/forecast/${plan.id}/reseed`,
+                                    {},
+                                    { preserveScroll: true },
+                                )
+                            }
+                        >
+                            <RefreshCw className="size-4" />
+                            Împrospătează din {plan.base_year}
+                        </Button>
                     </div>
                 )}
 

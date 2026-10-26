@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ForecastController;
 use App\Models\BaseEstimate;
 use App\Models\Company;
 use App\Models\ForecastHistory;
@@ -9,6 +10,7 @@ use App\Models\PlanLine;
 use App\Models\User;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Inertia;
 
 /**
@@ -1111,4 +1113,42 @@ test('the bank fees and the online promotion follow the revenue, not the calenda
     $wanted = $opex['6000']['amount'] + $opex['16960']['amount'];
 
     expect(round($out['months'][7]['opex'], 2))->toEqual(round($wanted, 2));
+});
+
+test('the plan says when the P&L report moved under it', function () {
+    $company = Company::factory()->create();
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT, 'seeded_at' => now(),
+    ]);
+
+    $stale = function (Plan $plan) {
+        $method = new ReflectionMethod(ForecastController::class, 'stale');
+
+        return $method->invoke(app(ForecastController::class), $plan);
+    };
+
+    // Raport construit înaintea împrospătării: planul e la zi.
+    Cache::put('pnl_report:v10:'.$company->id.':2026', [
+        'year' => 2026, 'meta' => ['generated_at' => now()->subHour()->toIso8601String()],
+    ], 3600);
+
+    expect($stale($plan))->toBeNull();
+
+    // Raportul se reface după aceea: planul a rămas pe cifrele vechi.
+    Cache::put('pnl_report:v10:'.$company->id.':2026', [
+        'year' => 2026, 'meta' => ['generated_at' => now()->addMinute()->toIso8601String()],
+    ], 3600);
+
+    expect($stale($plan->fresh()))->toHaveKeys(['report', 'plan']);
+
+    // Iar împrospătarea îl pune la zi, pe raportul de atunci.
+    Cache::put('pnl_report:v10:'.$company->id.':2026', [
+        'year' => 2026, 'meta' => ['generated_at' => now()->toIso8601String()],
+    ], 3600);
+
+    app(PlanBuilder::class)->seed($plan);
+
+    expect($stale($plan->fresh()))->toBeNull();
 });

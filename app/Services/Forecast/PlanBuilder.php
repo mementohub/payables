@@ -83,6 +83,10 @@ class PlanBuilder
         $written += $this->seedCosts($plan, $keepManual);
         $written += $this->seedRetail($plan, $keepManual);
 
+        // De aici încolo planul stă pe raportul de acum: dacă P&L-ul se
+        // reface, se vede că planul a rămas în urmă.
+        $plan->forceFill(['seeded_at' => now()])->save();
+
         return $written;
     }
 

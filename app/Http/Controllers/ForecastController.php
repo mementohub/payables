@@ -22,6 +22,7 @@ use App\Services\Xlsx\XlsxWorkbook;
 use App\Support\ViewAs;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -117,7 +118,13 @@ class ForecastController extends Controller
                 'status' => $plan->status,
                 'note' => $plan->note,
                 'removed' => array_values((array) ($plan->removed ?? [])),
+                'seeded_at' => $plan->seeded_at?->format('d.m.Y H:i'),
             ] : null,
+            // Planul stă pe raportul P&L al anului de bază: cheltuielile,
+            // linie cu linie, de acolo vin. Dacă raportul s-a refăcut după
+            // ultima împrospătare — o corectură, o cheltuială mutată — se
+            // spune pe față, ca omul să știe că are cifre vechi sub mână.
+            'stale' => $plan ? $this->stale($plan) : null,
             'output' => $output,
             // Variantele salvate ale planului: la ele se întoarce omul când
             // vrea să vadă ce propunea acum două săptămâni.
@@ -342,6 +349,32 @@ class ForecastController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * S-a refăcut raportul P&L după ultima împrospătare a planului?
+     *
+     * @return array<string, string>|null
+     */
+    private function stale(Plan $plan): ?array
+    {
+        $report = $this->pnl->cached($plan->company, $plan->base_year);
+        $built = $report['meta']['generated_at'] ?? null;
+
+        if ($built === null) {
+            return null;
+        }
+
+        $at = Carbon::parse((string) $built);
+
+        if ($plan->seeded_at !== null && $at->lte($plan->seeded_at)) {
+            return null;
+        }
+
+        return [
+            'report' => $at->format('d.m.Y H:i'),
+            'plan' => $plan->seeded_at?->format('d.m.Y H:i') ?? 'niciodată',
+        ];
     }
 
     /**

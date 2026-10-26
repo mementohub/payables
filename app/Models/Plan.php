@@ -22,6 +22,7 @@ class Plan extends Model
         return [
             // „kind|key” pentru fiecare rând scos din plan cu mâna.
             'removed' => 'array',
+            'seeded_at' => 'datetime',
         ];
     }
 
