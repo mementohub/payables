@@ -56,36 +56,39 @@ class ForecastHistoryBuilder
         $out = [['connection' => null, 'months' => null]];
 
         foreach ((array) config('pnl.extra_bases', []) as $connection => $base) {
-            if ($year < (int) ($base['from_year'] ?? 9999)) {
+            $months = $this->window($base, $year);
+
+            if ($months === []) {
                 continue;
             }
 
-            $out[] = ['connection' => (string) $connection, 'months' => $this->window($base, $year)];
+            $out[] = ['connection' => (string) $connection, 'months' => $months];
         }
 
         return $out;
     }
 
     /**
-     * Până când se citește dintr-o bază, în anul ăla.
+     * De când se citește dintr-o bază, în anul ăla.
      *
-     * Fuziunea Vacanza e din iunie 2026, iar rezervările necălătorite s-au
-     * mutat atunci în baza Christian Tour, care le numără de-acolo încolo.
-     * Din baza ei se ia deci numai până în iunie — mai departe ar fi aceiași
-     * bani de două ori.
+     * Până în iunie 2026, Vacanza era altă societate: ce s-a vândut atunci
+     * nu e al nostru și n-are ce căuta în comparație. De la fuziune încolo
+     * e a noastră, iar rezervările necălătorite s-au mutat atunci în baza
+     * Christian Tour, care le numără de-acolo — deci din baza ei se ia
+     * numai de la luna fuziunii încolo.
      *
      * @param  array<string, mixed>  $base
-     * @return list<int>|null null = tot anul
+     * @return list<int>|null null = tot anul, [] = niciun an
      */
     private function window(array $base, int $year): ?array
     {
-        $until = (string) ($base['until'] ?? '');
+        $from = (string) ($base['from'] ?? '');
 
-        if (preg_match('/^(\d{4})-(\d{1,2})$/', $until, $parts) !== 1 || $year < (int) $parts[1]) {
-            return null;
+        if (preg_match('/^(\d{4})-(\d{1,2})$/', $from, $parts) !== 1 || $year < (int) $parts[1]) {
+            return [];
         }
 
-        return $year === (int) $parts[1] ? range(1, (int) $parts[2]) : [];
+        return $year === (int) $parts[1] ? range((int) $parts[2], 12) : null;
     }
 
     /**
@@ -97,11 +100,11 @@ class ForecastHistoryBuilder
         $rows = [];
 
         foreach ((array) config('pnl.extra_bases', []) as $connection => $base) {
-            if ($year < (int) ($base['from_year'] ?? 9999)) {
+            $window = $this->window($base, $year);
+
+            if ($window === []) {
                 continue;
             }
-
-            $window = $this->window($base, $year);
 
             foreach ($this->etrip->byProduct($year, (string) $connection) as $row) {
                 if ($window !== null && ! in_array((int) $row['month'], $window, true)) {
