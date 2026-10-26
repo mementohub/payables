@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Lease;
 use App\Models\LeaseRate;
+use App\Models\User;
 use App\Services\Reports\Ifrs16Engine;
 use Illuminate\Support\Carbon;
 
@@ -154,4 +155,28 @@ test('the register rebuilds the figures of the company IFRS 16 file', function (
     // (R 10.4 se oprește la linia 174). Diferența e cunoscută și se vede.
     expect($totals['liability_close'])->toBeGreaterThan($control['liability_close'])
         ->and($totals['liability_close'])->toBeLessThan(7_000_000.0);
+});
+
+test('the register page shows the movement of the year, not just a list', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->withRoles('top_management')->create();
+
+    leaseLine($company, [
+        'line_no' => 1, 'group_no' => 1, 'monthly_payment' => 1000,
+        'starts_on' => '2024-01-01', 'ends_on' => '2027-12-31', 'term_months' => 48,
+        'discount_rate' => 0.05, 'opening_on' => '2025-12-31',
+        'opening_rou' => 24000, 'opening_liability' => 22000, 'monthly_depreciation' => 1000,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/reports/leases?company_id='.$company->id.'&year=2026')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('summary.opening_rou', 24000)
+            ->where('summary.opening_liability', 22000)
+            ->where('summary.depreciation', 12000)
+            // Datoria de la sfârșitul anului, nu de la capătul contractului.
+            ->where('summary.liability', fn ($value) => $value > 10000 && $value < 11500)
+            ->where('leases.0.rou_close', 12000)
+        );
 });

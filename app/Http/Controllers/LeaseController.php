@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Lease;
+use App\Services\Reports\Ifrs16Engine;
 use App\Services\Reports\Ifrs16Schedule;
 use App\Services\Reports\OmcPnlCostReader;
 use App\Services\Reports\PnlReportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -50,7 +52,17 @@ class LeaseController extends Controller
         }
 
         $counted = $leases->where('status', Lease::ACTIVE)->where('exempt', false);
-        $schedule = $engine->forYear($counted, $year);
+
+        // Mișcarea anului, în moneda contractelor: de la soldurile cu care
+        // s-a închis anul trecut, prin contractele noi, prelungiri,
+        // remăsurări și încetări, până la soldurile de acum.
+        $roll = app(Ifrs16Engine::class)->rollForward(
+            $counted,
+            Carbon::create($year, 1, 1),
+            Carbon::create($year, 12, 31),
+        );
+
+        $totals = $roll['totals'];
 
         return Inertia::render('reports/leases', [
             'companies' => $companies,
@@ -70,15 +82,39 @@ class LeaseController extends Controller
                 'status' => $lease->status,
                 'source' => $lease->source,
                 'note' => $lease->note,
+                // Linia din calculul IFRS 16, cu evenimentul ei.
+                'line_no' => $lease->line_no === null ? null : (int) $lease->line_no,
+                'event' => $lease->event,
+                'event_on' => $lease->event_on?->toDateString(),
+                'successor_no' => $lease->successor_no === null ? null : (int) $lease->successor_no,
+                'category' => $lease->category,
+                'opening_rou' => $lease->opening_rou === null ? null : round((float) $lease->opening_rou, 2),
+                'opening_liability' => $lease->opening_liability === null ? null : round((float) $lease->opening_liability, 2),
+                'rou_close' => round((float) ($roll['lines'][(string) $lease->line_no]['rou_close'] ?? 0), 2),
+                'liability_close' => round((float) ($roll['lines'][(string) $lease->line_no]['liability_close'] ?? 0), 2),
             ])->values(),
             'summary' => [
                 'rent' => round($rent, 2),
-                'covered' => round((float) $schedule['totals']['payment'], 2),
-                'depreciation' => round((float) $schedule['totals']['depreciation'], 2),
-                'interest' => round((float) $schedule['totals']['interest'], 2),
-                'liability' => round((float) $schedule['totals']['liability'], 2),
+                'covered' => round((float) $totals['payments'], 2),
+                'depreciation' => round((float) $totals['depreciation'], 2),
+                'interest' => round((float) $totals['interest'], 2),
+                'liability' => round((float) $totals['liability_close'], 2),
                 'counted' => $counted->count(),
                 'drafts' => $leases->where('status', Lease::DRAFT)->count(),
+                // Mișcarea anului, de la un sold la altul.
+                'currency' => (string) ($counted->first()?->currency ?? 'EUR'),
+                'opening_rou' => round((float) $totals['opening_rou'], 2),
+                'opening_liability' => round((float) $totals['opening_liability'], 2),
+                'recognised' => round((float) $totals['recognised'], 2),
+                'rou_transferred' => round((float) $totals['rou_transferred'], 2),
+                'liability_transferred' => round((float) $totals['liability_transferred'], 2),
+                'rou_derecognised' => round((float) $totals['rou_derecognised'], 2),
+                'liability_derecognised' => round((float) $totals['liability_derecognised'], 2),
+                'gain' => round((float) $totals['gain'], 2),
+                'rou' => round((float) $totals['rou_close'], 2),
+                'current' => round((float) $totals['current'], 2),
+                'long_term' => round((float) $totals['long_term'], 2),
+                'maturity' => array_map(fn ($value) => round((float) $value, 2), (array) $totals['maturity']),
             ],
         ]);
     }

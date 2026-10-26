@@ -40,6 +40,16 @@ type Lease = {
     status: 'draft' | 'active' | 'ended';
     source: string;
     note: string | null;
+    /** Linia din calculul IFRS 16 și ce i s-a întâmplat anul ăsta. */
+    line_no: number | null;
+    event: 'remeasure' | 'derecognise' | 'cancelled' | null;
+    event_on: string | null;
+    successor_no: number | null;
+    category: string | null;
+    opening_rou: number | null;
+    opening_liability: number | null;
+    rou_close: number;
+    liability_close: number;
 };
 
 type Props = {
@@ -54,6 +64,19 @@ type Props = {
         liability: number;
         counted: number;
         drafts: number;
+        currency: string;
+        opening_rou: number;
+        opening_liability: number;
+        recognised: number;
+        rou_transferred: number;
+        liability_transferred: number;
+        rou_derecognised: number;
+        liability_derecognised: number;
+        gain: number;
+        rou: number;
+        current: number;
+        long_term: number;
+        maturity: Record<string, number>;
     };
 };
 
@@ -76,7 +99,10 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
         );
 
     const edit = (lease: Lease, patch: Partial<Lease>) =>
-        setDraft((prev) => ({ ...prev, [lease.id]: { ...prev[lease.id], ...patch } }));
+        setDraft((prev) => ({
+            ...prev,
+            [lease.id]: { ...prev[lease.id], ...patch },
+        }));
 
     const value = <K extends keyof Lease>(lease: Lease, key: K): Lease[K] =>
         (draft[lease.id]?.[key] ?? lease[key]) as Lease[K];
@@ -193,7 +219,10 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
                             'Acoperită de contracte',
                             `${lei(summary.covered)} lei · ${coverage}%`,
                         ],
-                        ['Amortizare IFRS 16', lei(summary.depreciation) + ' lei'],
+                        [
+                            'Amortizare IFRS 16',
+                            lei(summary.depreciation) + ' lei',
+                        ],
                         ['Dobândă IFRS 16', lei(summary.interest) + ' lei'],
                         [
                             'Datorie la sfârșit de an',
@@ -213,10 +242,122 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
                     ))}
                 </div>
 
+                {/* Mișcarea anului, în moneda contractelor: de unde a pornit
+                    portofoliul, ce s-a adăugat, ce s-a amortizat și plătit,
+                    ce a ieșit și cu ce rămâne. */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm">
+                            Mișcarea anului {filters.year} ({summary.currency})
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="overflow-x-auto p-0">
+                        <Table className="text-xs">
+                            <TableHeader>
+                                <TableRow className="[&>th]:font-semibold">
+                                    <TableHead className="w-72">
+                                        Mișcare
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                        Drept de utilizare
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                        Datorie de leasing
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {[
+                                    [
+                                        'Sold la începutul anului',
+                                        summary.opening_rou,
+                                        summary.opening_liability,
+                                    ],
+                                    [
+                                        'Contracte noi, prelungiri, remăsurări',
+                                        summary.recognised,
+                                        summary.recognised,
+                                    ],
+                                    [
+                                        'Transfer pe liniile noi (remăsurări)',
+                                        -summary.rou_transferred,
+                                        -summary.liability_transferred,
+                                    ],
+                                    ['Amortizare', -summary.depreciation, 0],
+                                    ['Dobândă', 0, summary.interest],
+                                    ['Plăți', 0, -summary.covered],
+                                    [
+                                        'Încetări',
+                                        -summary.rou_derecognised,
+                                        -summary.liability_derecognised,
+                                    ],
+                                    [
+                                        'Sold la sfârșitul perioadei',
+                                        summary.rou,
+                                        summary.liability,
+                                    ],
+                                ].map(([label, rou, debt], i, all) => (
+                                    <TableRow
+                                        key={label as string}
+                                        className={
+                                            i === 0 || i === all.length - 1
+                                                ? 'font-semibold'
+                                                : ''
+                                        }
+                                    >
+                                        <TableCell>{label}</TableCell>
+                                        <TableCell className="text-right tabular-nums">
+                                            {(rou as number) === 0
+                                                ? '–'
+                                                : lei(rou as number)}
+                                        </TableCell>
+                                        <TableCell className="text-right tabular-nums">
+                                            {(debt as number) === 0
+                                                ? '–'
+                                                : lei(debt as number)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+
+                <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
+                    <span>
+                        Datoria la sfârșit:{' '}
+                        <strong className="text-foreground">
+                            {lei(summary.current)}
+                        </strong>{' '}
+                        sub un an,{' '}
+                        <strong className="text-foreground">
+                            {lei(summary.long_term)}
+                        </strong>{' '}
+                        pe termen lung.
+                    </span>
+                    <span>
+                        Plăți viitoare neactualizate:{' '}
+                        {lei(summary.maturity['<1y'] ?? 0)} sub 1 an ·{' '}
+                        {lei(summary.maturity['1-5y'] ?? 0)} 1-5 ani ·{' '}
+                        {lei(summary.maturity['>5y'] ?? 0)} peste 5 ani.
+                    </span>
+                    <span>
+                        Din spațiile închise{' '}
+                        {summary.gain >= 0
+                            ? 'a rămas un câștig de '
+                            : 'a rămas o pierdere de '}
+                        <strong className="text-foreground">
+                            {lei(Math.abs(summary.gain))}
+                        </strong>
+                        , în contul de profit și pierdere.
+                    </span>
+                </div>
+
                 <p className="text-sm text-muted-foreground">
                     Raportul retratează numai chiria acoperită de contractele
                     confirmate; restul rămâne cheltuială de exploatare, ca în
-                    contabilitate. {summary.drafts > 0 && (
+                    contabilitate.{' '}
+                    {summary.drafts > 0 && (
                         <span className="text-amber-600 dark:text-amber-400">
                             {summary.drafts} contracte propuse așteaptă durata
                             și rata din contractul adevărat.
@@ -318,7 +459,7 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
                                                 onBlur={() => save(lease)}
                                             />
                                         </TableCell>
-                                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                                        <TableCell className="text-right text-muted-foreground tabular-nums">
                                             {lease.months}
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -379,7 +520,9 @@ export default function Leases({ companies, filters, leases, summary }: Props) {
                                                 onClick={() =>
                                                     router.delete(
                                                         `/reports/leases/${lease.id}`,
-                                                        { preserveScroll: true },
+                                                        {
+                                                            preserveScroll: true,
+                                                        },
                                                     )
                                                 }
                                             >
