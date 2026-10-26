@@ -778,7 +778,10 @@ export default function Forecast({
                         </div>
                     )}
 
-                    {plan && (
+                    {/* Comenzile raportului întreg — perioada, vederea,
+                        baza, pornirea planului, variantele, exportul — sunt
+                        ale conducerii. Cine ține o bucată o scrie, atât. */}
+                    {plan && boss && (
                         <>
                             <div className="grid gap-1.5">
                                 <Label htmlFor="period">
@@ -908,92 +911,95 @@ export default function Forecast({
                         </>
                     )}
 
-                    <Dialog open={creating} onOpenChange={setCreating}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline">
-                                <Plus className="size-4" />
-                                Plan nou
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Plan nou</DialogTitle>
-                                <DialogDescription>
-                                    Pornește din anul de bază: pasagerii, banii
-                                    pe pasager și cheltuielile lui, plus
-                                    locurile de charter contractate pentru anul
-                                    plănuit.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-3">
-                                <div className="grid gap-1.5">
-                                    <Label>Numele planului</Label>
-                                    <Input
-                                        value={draft.name}
-                                        onChange={(e) =>
-                                            setDraft({
-                                                ...draft,
-                                                name: e.target.value,
-                                            })
-                                        }
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="grid gap-1.5">
-                                        <Label>Anul plănuit</Label>
-                                        <Input
-                                            type="number"
-                                            value={draft.year}
-                                            onChange={(e) =>
-                                                setDraft({
-                                                    ...draft,
-                                                    year: Number(
-                                                        e.target.value,
-                                                    ),
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                    <div className="grid gap-1.5">
-                                        <Label>Anul de bază</Label>
-                                        <Input
-                                            type="number"
-                                            value={draft.base_year}
-                                            onChange={(e) =>
-                                                setDraft({
-                                                    ...draft,
-                                                    base_year: Number(
-                                                        e.target.value,
-                                                    ),
-                                                })
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    onClick={() =>
-                                        router.post(
-                                            '/reports/forecast',
-                                            {
-                                                ...draft,
-                                                company_id: filters.company_id,
-                                            },
-                                            {
-                                                onSuccess: () =>
-                                                    setCreating(false),
-                                            },
-                                        )
-                                    }
-                                >
-                                    Construiește planul
+                    {boss && (
+                        <Dialog open={creating} onOpenChange={setCreating}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline">
+                                    <Plus className="size-4" />
+                                    Plan nou
                                 </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Plan nou</DialogTitle>
+                                    <DialogDescription>
+                                        Pornește din anul de bază: pasagerii,
+                                        banii pe pasager și cheltuielile lui,
+                                        plus locurile de charter contractate
+                                        pentru anul plănuit.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-3">
+                                    <div className="grid gap-1.5">
+                                        <Label>Numele planului</Label>
+                                        <Input
+                                            value={draft.name}
+                                            onChange={(e) =>
+                                                setDraft({
+                                                    ...draft,
+                                                    name: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid gap-1.5">
+                                            <Label>Anul plănuit</Label>
+                                            <Input
+                                                type="number"
+                                                value={draft.year}
+                                                onChange={(e) =>
+                                                    setDraft({
+                                                        ...draft,
+                                                        year: Number(
+                                                            e.target.value,
+                                                        ),
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="grid gap-1.5">
+                                            <Label>Anul de bază</Label>
+                                            <Input
+                                                type="number"
+                                                value={draft.base_year}
+                                                onChange={(e) =>
+                                                    setDraft({
+                                                        ...draft,
+                                                        base_year: Number(
+                                                            e.target.value,
+                                                        ),
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button
+                                        onClick={() =>
+                                            router.post(
+                                                '/reports/forecast',
+                                                {
+                                                    ...draft,
+                                                    company_id:
+                                                        filters.company_id,
+                                                },
+                                                {
+                                                    onSuccess: () =>
+                                                        setCreating(false),
+                                                },
+                                            )
+                                        }
+                                    >
+                                        Construiește planul
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
 
-                    {plan && (
+                    {plan && boss && (
                         <>
                             <div className="grid gap-1.5">
                                 <Label>Pornirea planului</Label>

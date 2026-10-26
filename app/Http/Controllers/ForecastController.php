@@ -19,6 +19,7 @@ use App\Services\Forecast\PlanEngine;
 use App\Services\Forecast\PlanSections;
 use App\Services\Reports\PnlReportService;
 use App\Services\Xlsx\XlsxWorkbook;
+use App\Support\ViewAs;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +74,22 @@ class ForecastController extends Controller
             ? $request->string('mode')->toString()
             : PnlReportService::MODE_OPERATIONAL;
 
+        // Cât timp un administrator se uită prin ochii altuia, pagina se
+        // desenează după drepturile aceluia: vede numai bucățile lui de
+        // buget, fără tabloul întreg. Scrisul rămâne însă al contului lui —
+        // `allow()` cântărește tot omul logat.
+        $seer = ViewAs::effective($request);
+        $boss = (bool) $seer?->canSeeReports();
+        $mine = $plan && $seer ? $this->sections->mine($seer, $plan) : [];
+        $output = $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null;
+
+        // Cine ține o bucată vede bucata, nu bugetul casei. Tăiem aici, nu
+        // în pagină: altfel cifrele ar călători oricum la el, ascunse doar
+        // de ochi.
+        if ($output !== null && ! $boss) {
+            $output = $this->onlyHis($output, $mine);
+        }
+
         return Inertia::render('reports/forecast', [
             'companies' => $companies,
             'filters' => [
@@ -101,24 +118,27 @@ class ForecastController extends Controller
                 'note' => $plan->note,
                 'removed' => array_values((array) ($plan->removed ?? [])),
             ] : null,
-            'output' => $plan ? $this->engine->compute($plan, $period, $basis, $mode) : null,
+            'output' => $output,
             // Variantele salvate ale planului: la ele se întoarce omul când
             // vrea să vadă ce propunea acum două săptămâni.
             // Anul în curs, așa cum se va încheia: din el pornesc premisele
             // anului următor, nu din cele nouă luni trăite.
-            'current' => $plan ? $this->engine->currentYear($plan, $basis, $mode) : null,
-            // Bugetul se scrie în mai multe mâini: fiecare vede starea
-            // tuturor bucăților, dar scrie numai în ale lui.
-            'sections' => $plan ? $this->sections->all($plan) : [],
-            'mine' => $plan && $request->user() ? $this->sections->mine($request->user(), $plan) : [],
+            'current' => $plan && $boss ? $this->engine->currentYear($plan, $basis, $mode) : null,
+            // Bugetul se scrie în mai multe mâini: conducerea vede starea
+            // tuturor bucăților, ceilalți numai a lor.
+            'sections' => $plan ? array_values(array_filter(
+                $this->sections->all($plan),
+                fn (array $one) => $boss || in_array($one['key'], $mine, true),
+            )) : [],
+            'mine' => $mine,
             // Departamentele, pentru categoria nouă: cine o ține de-acum.
             'departments' => Department::query()
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->pluck('name')
                 ->all(),
-            'all_mine' => (bool) $request->user()?->canSeeReports(),
-            'versions' => $plan ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
+            'all_mine' => $boss,
+            'versions' => $plan && $boss ? $plan->versions()->with('createdBy:id,name')->get()->map(fn (PlanVersion $version) => [
                 'id' => $version->id,
                 'label' => $version->label,
                 'note' => $version->note,
@@ -288,6 +308,8 @@ class ForecastController extends Controller
             'name' => ['required', 'string', 'max:80'],
         ]);
 
+        $this->boss($request);
+
         $plan = Plan::query()->create([
             ...$validated,
             'status' => Plan::DRAFT,
@@ -318,6 +340,8 @@ class ForecastController extends Controller
             'start' => ['required', Rule::in([PlanBuilder::START_TREND, PlanBuilder::START_BASE])],
         ]);
 
+        $this->boss($request);
+
         $plan->update($validated);
         $written = $this->builder->seed($plan);
 
@@ -331,6 +355,8 @@ class ForecastController extends Controller
     /** Pornește din nou din istoric, fără să calce peste ce s-a scris de mână. */
     public function reseed(Request $request, Plan $plan): RedirectResponse
     {
+        $this->boss($request);
+
         $written = $this->builder->seed($plan, keepManual: ! $request->boolean('wipe'));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $request->boolean('wipe')
@@ -502,6 +528,8 @@ class ForecastController extends Controller
             'mode' => ['nullable', Rule::in(PnlReportService::MODES)],
         ]);
 
+        $this->boss($request);
+
         $period = preg_match('/^(ytd|mtd)([1-9]|1[0-2])$/', (string) ($validated['period'] ?? '')) === 1
             ? (string) $validated['period']
             : 'ytd12';
@@ -547,8 +575,10 @@ class ForecastController extends Controller
      * întreabă înainte. Rândurile se scriu toate deodată: un plan pe jumătate
      * încărcat ar fi mai rău decât niciunul.
      */
-    public function restoreVersion(Plan $plan, PlanVersion $version): RedirectResponse
+    public function restoreVersion(Request $request, Plan $plan, PlanVersion $version): RedirectResponse
     {
+        $this->boss($request);
+
         abort_unless($version->plan_id === $plan->id, 404);
 
         DB::transaction(function () use ($plan, $version) {
@@ -567,8 +597,10 @@ class ForecastController extends Controller
         return back();
     }
 
-    public function destroyVersion(Plan $plan, PlanVersion $version): RedirectResponse
+    public function destroyVersion(Request $request, Plan $plan, PlanVersion $version): RedirectResponse
     {
+        $this->boss($request);
+
         abort_unless($version->plan_id === $plan->id, 404);
 
         $version->delete();
@@ -622,6 +654,23 @@ class ForecastController extends Controller
             $user !== null && $this->sections->editable($user, $plan, $section),
             403,
             sprintf('„%s” e ținută de alt departament sau a fost deja trimisă spre consolidare.', $this->sections->label($section)),
+        );
+    }
+
+    /**
+     * Planul întreg e al conducerii.
+     *
+     * Un șef de departament scrie în bucata lui — pârghiile ei, rândurile
+     * ei — dar planul ca întreg (pornirea, împrospătarea, variantele,
+     * exportul, ștergerea) rămâne al celor care văd tot. Altfel ar lua
+     * acasă, într-un Excel, bugetul la care n-are drept.
+     */
+    private function boss(Request $request): void
+    {
+        abort_unless(
+            (bool) $request->user()?->canSeeReports(),
+            403,
+            'Planul întreg e al conducerii; dumneavoastră scrieți bucata dumneavoastră.',
         );
     }
 
@@ -855,6 +904,50 @@ class ForecastController extends Controller
     }
 
     /**
+     * Planul, tăiat pe cât vede omul.
+     *
+     * Un șef de departament își scrie bucata lui: rândurile ei le vede, dar
+     * raportul întreg al casei — venitul, marja, impozitul, variantele — nu
+     * sunt ale lui. Rândurile celorlalți nici nu pleacă din server.
+     *
+     * @param  array<string, mixed>  $output
+     * @param  list<string>  $mine
+     * @return array<string, mixed>
+     */
+    private function onlyHis(array $output, array $mine): array
+    {
+        $his = fn (array $rows) => array_values(array_filter(
+            $rows,
+            fn (array $row) => in_array((string) ($row['section'] ?? ''), $mine, true),
+        ));
+
+        $zero = fn (array $numbers) => array_map(fn () => 0, $numbers);
+
+        return [
+            ...$output,
+            'categories' => $his((array) $output['categories']),
+            'charter' => $his((array) $output['charter']),
+            'opex' => $his((array) $output['opex']),
+            'below' => $his((array) $output['below']),
+            'retail' => $his((array) $output['retail']),
+            // Tabloul casei rămâne la casă.
+            'statement' => [],
+            'columns' => ['product' => [], 'channel' => []],
+            'channels' => [],
+            'months' => (object) [],
+            'totals' => $zero((array) $output['totals']),
+            'risk' => $zero((array) $output['risk']),
+            'years' => [],
+            'leases' => null,
+            'base' => [
+                'year' => $output['base']['year'] ?? null,
+                'built' => $output['base']['built'] ?? false,
+                'estimated' => $output['base']['estimated'] ?? [],
+            ],
+        ];
+    }
+
+    /**
      * Scoate o categorie de produs întreagă din plan.
      *
      * Nu orice bucată: rețeaua de agenții și cheltuielile rămân acolo
@@ -1006,6 +1099,8 @@ class ForecastController extends Controller
         PlanPdfWriter $pdf,
         PptxWriter $pptx,
     ): HttpResponse {
+        $this->boss($request);
+
         $format = in_array($request->string('format')->toString(), PlanExport::FORMATS, true)
             ? $request->string('format')->toString()
             : 'xlsx';
@@ -1068,8 +1163,10 @@ class ForecastController extends Controller
         return [$plan, $period, $basis, $mode];
     }
 
-    public function destroy(Plan $plan): RedirectResponse
+    public function destroy(Request $request, Plan $plan): RedirectResponse
     {
+        $this->boss($request);
+
         $plan->delete();
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Planul a fost șters.']);

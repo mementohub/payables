@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Forecast\PlanBuilder;
 use App\Services\Forecast\PlanEngine;
 use App\Services\Forecast\PlanSections;
+use App\Support\ViewAs;
 
 /**
  * Bugetul se face în mai multe mâini: fiecare scrie în bucata lui, o trimite
@@ -349,4 +350,64 @@ test('a category held by someone else does not go out at a stranger s hand', fun
     ])->assertForbidden();
 
     expect(PlanLine::query()->where('key', 'Senior Voyage')->count())->toBeGreaterThan(0);
+});
+
+test('a department head gets his piece and nothing else, not even in the payload', function () {
+    $sef = personOf('Senior Voyage');
+
+    $this->actingAs($sef)
+        ->get('/reports/forecast?company_id='.$this->company->id.'&plan='.$this->plan->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('all_mine', false)
+            ->where('mine', ['category:Senior Voyage'])
+            // O singură bucată în fila de predare, a lui.
+            ->has('sections', 1)
+            ->where('sections.0.key', 'category:Senior Voyage')
+            // Rândurile celorlalți nici nu pleacă din server.
+            ->has('output.categories', 1)
+            ->where('output.categories.0.key', 'Senior Voyage')
+            // Nici raportul casei, nici variantele, nici anul în curs.
+            ->has('output.statement', 0)
+            ->has('versions', 0)
+            ->where('current', null)
+            ->where('output.totals.net', 0)
+        );
+
+    // Și nu ia planul întreg acasă, într-un Excel.
+    $this->actingAs($sef)->get('/reports/forecast/'.$this->plan->id.'/export?format=xlsx')->assertForbidden();
+    $this->actingAs($sef)->post('/reports/forecast/'.$this->plan->id.'/reseed')->assertForbidden();
+    $this->actingAs($sef)->put('/reports/forecast/'.$this->plan->id.'/start', ['start' => 'base'])->assertForbidden();
+    $this->actingAs($sef)->post('/reports/forecast/'.$this->plan->id.'/versions', ['label' => 'A mea'])->assertForbidden();
+    $this->actingAs($sef)->delete('/reports/forecast/'.$this->plan->id)->assertForbidden();
+
+    // Conducerea, în schimb, vede tot.
+    $this->actingAs($this->boss)
+        ->get('/reports/forecast?company_id='.$this->company->id.'&plan='.$this->plan->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('all_mine', true)->has('output.statement'));
+});
+
+test('viewing through a department head s eyes shows his piece, not the whole budget', function () {
+    $sef = personOf('Senior Voyage');
+    $admin = User::factory()->withRoles('admin', 'top_management')->create();
+
+    $this->actingAs($admin)
+        ->withSession([ViewAs::SESSION => $sef->id])
+        ->get('/reports/forecast?company_id='.$this->company->id.'&plan='.$this->plan->id)
+        ->assertOk()
+        // Pagina se desenează după drepturile lui, nu ale celui logat.
+        ->assertInertia(fn ($page) => $page
+            ->where('all_mine', false)
+            ->where('mine', ['category:Senior Voyage'])
+            ->has('sections', 1)
+            ->has('output.statement', 0)
+        );
+
+    // Dar scrisul rămâne al contului lui: împrospătarea trece, fiindcă el e
+    // conducerea — previzualizarea strânge ce se vede, nu ce se poate face.
+    $this->actingAs($admin)
+        ->withSession([ViewAs::SESSION => $sef->id])
+        ->post('/reports/forecast/'.$this->plan->id.'/reseed')
+        ->assertRedirect();
 });
