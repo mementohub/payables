@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Lease;
 use App\Models\PnlCostOverride;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -867,6 +868,20 @@ class PnlReportService
                 $byMonth[$month] = ($byMonth[$month] ?? 0.0) - $value;
             }
 
+            // Și câștigul sau pierderea din încetări, tot în exploatare:
+            // câștigul scade cheltuiala, pierderea o crește.
+            if (isset($leases['operating'])) {
+                $total -= $leases['operating']['total'];
+
+                foreach ($leases['operating']['by_channel'] as $key => $value) {
+                    $byChannel[$key] = ($byChannel[$key] ?? 0.0) - $value;
+                }
+
+                foreach ($leases['operating']['by_product'] as $key => $value) {
+                    $byProduct[$key] = ($byProduct[$key] ?? 0.0) - $value;
+                }
+            }
+
             $lines = array_values(array_map(
                 fn (array $line) => in_array($line['saf'], $leases['lines'], true)
                     ? [...$line, 'reclassified' => true]
@@ -1377,18 +1392,20 @@ class PnlReportService
      */
     private function leasesFor(array $report, array $months, array $expense, array $channels, array $products): ?array
     {
-        $schedule = $report['leases'] ?? null;
+        $roll = $report['leases'] ?? null;
 
-        if ($schedule === null || ($schedule['leases'] ?? 0) === 0) {
+        if ($roll === null || ($roll['leases'] ?? 0) === 0 || ($roll['months'] ?? []) === []) {
             return null;
         }
 
         $payment = 0.0;
         $depreciation = 0.0;
         $interest = 0.0;
+        $fx = 0.0;
+        $gain = 0.0;
 
         foreach ($months as $month) {
-            $cell = $schedule['months'][$month] ?? null;
+            $cell = $roll['months'][$month] ?? null;
 
             if ($cell === null) {
                 continue;
@@ -1397,26 +1414,25 @@ class PnlReportService
             $payment += (float) $cell['payment'];
             $depreciation += (float) $cell['depreciation'];
             $interest += (float) $cell['interest'];
+            $fx += (float) ($cell['fx'] ?? 0);
+            $gain += (float) ($cell['gain'] ?? 0);
         }
 
-        if (abs($payment) < 0.005) {
+        if (abs($payment) < 0.005 && abs($depreciation) < 0.005) {
             return null;
         }
 
-        // Nu scoatem din exploatare mai mult decât s-a cheltuit acolo: dacă
-        // registrul spune mai mult decât registrul contabil, se oprește la
-        // ce e în contabilitate.
-        $covered = min($payment, abs($expense['total']));
-        $share = abs($expense['total']) > 0.005 ? $covered / abs($expense['total']) : 0.0;
-
-        $part = fn (string $axis) => array_map(fn (float $value) => $value * $share, $expense[$axis]);
-
+        // Chiria spațiilor din IFRS 16 iese întreagă din exploatare: ea e
+        // înlocuită de amortizare și dobândă. Plata din contracte poate fi
+        // mai mare decât ce s-a facturat — chirii scadente nefacturate — dar
+        // diferența e datorie comercială, nu cheltuială, așa că nu se atinge
+        // de contul de profit și pierdere.
         $removed = [
-            'total' => $expense['total'] * $share,
-            'direct' => $expense['direct'] * $share,
-            'by_channel' => $part('by_channel'),
-            'by_product' => $part('by_product'),
-            'by_month' => array_map(fn (float $value) => $value * $share, $expense['by_month']),
+            'total' => $expense['total'],
+            'direct' => $expense['direct'],
+            'by_channel' => $expense['by_channel'],
+            'by_product' => $expense['by_product'],
+            'by_month' => $expense['by_month'],
         ];
 
         $spread = fn (float $amount, string $axis) => array_map(
@@ -1424,30 +1440,55 @@ class PnlReportService
             $expense[$axis],
         );
 
+        // Câștigul sau pierderea din încetări stă în exploatare, lângă
+        // chiria pe care o înlocuiește: un spațiu închis înainte de termen
+        // lasă în urmă diferența dintre datorie și activ.
+        $last = $months === [] ? 12 : max($months);
+        $closing = $roll['closing'][$last] ?? [];
+
         return [
             'expense' => $removed,
+            'operating' => [
+                'total' => $gain,
+                'by_channel' => $spread($gain, 'by_channel'),
+                'by_product' => $spread($gain, 'by_product'),
+            ],
             'amortizare' => [
                 'total' => $depreciation,
                 'by_channel' => $spread($depreciation, 'by_channel'),
                 'by_product' => $spread($depreciation, 'by_product'),
             ],
             'financiar' => [
-                'total' => $interest,
-                'by_channel' => $spread($interest, 'by_channel'),
-                'by_product' => $spread($interest, 'by_product'),
+                'total' => $interest + $fx,
+                'by_channel' => $spread($interest + $fx, 'by_channel'),
+                'by_product' => $spread($interest + $fx, 'by_product'),
             ],
             'summary' => [
-                'basis' => 'contracte',
-                'leases' => (int) $schedule['leases'],
+                'basis' => 'registru',
+                'leases' => (int) $roll['leases'],
+                'currency' => (string) ($roll['currency'] ?? 'EUR'),
                 'lease_expense' => round($expense['total'], 2),
-                'covered' => round($covered, 2),
-                'coverage' => abs($expense['total']) > 0.005 ? round($share, 4) : 0.0,
-                'uncovered' => round($expense['total'] - $covered, 2),
-                'liability' => round((float) ($schedule['totals']['liability'] ?? 0.0), 2),
+                'payments' => round($payment, 2),
+                // Ce s-a plătit după contracte, dar n-a ajuns încă factură:
+                // datorie comercială, fără efect în profit.
+                'unbilled' => round($payment - abs($expense['total']), 2),
                 'depreciation' => round($depreciation, 2),
                 'interest' => round($interest, 2),
-                'effect_on_ebitda' => round($covered, 2),
-                'effect_on_net' => round($covered - $depreciation - $interest, 2),
+                'fx' => round($fx, 2),
+                'gain' => round($gain, 2),
+                'rou' => round((float) ($closing['rou'] ?? 0), 2),
+                'liability' => round((float) ($closing['liability'] ?? 0), 2),
+                'current' => round((float) ($closing['current'] ?? 0), 2),
+                'long_term' => round((float) ($closing['long_term'] ?? 0), 2),
+                'maturity' => array_map(fn ($value) => round((float) $value, 2), (array) ($closing['maturity'] ?? [])),
+                'rate' => (float) ($closing['rate'] ?? 1.0),
+                'opening_rou' => round((float) ($roll['opening']['rou'] ?? 0), 2),
+                'opening_liability' => round((float) ($roll['opening']['liability'] ?? 0), 2),
+                'recognised' => round((float) ($closing['recognised'] ?? 0), 2),
+                'rou_derecognised' => round((float) ($closing['rou_derecognised'] ?? 0), 2),
+                'liability_derecognised' => round((float) ($closing['liability_derecognised'] ?? 0), 2),
+                'effect_on_ebitda' => round(abs($expense['total']) + $gain, 2),
+                'effect_on_net' => round(abs($expense['total']) + $gain - $depreciation - $interest - $fx, 2),
             ],
         ];
     }
@@ -1457,6 +1498,157 @@ class PnlReportService
      *
      * @return array<string, mixed>
      */
+    /**
+     * Mișcarea anului pe IFRS 16, în lei, lună de lună.
+     *
+     * Calculul se face în moneda contractelor — aproape toate în euro — și
+     * se trece în lei la urmă, după regula din situațiile financiare:
+     * mișcările la cursul mediu al perioadei, soldurile la cursul de
+     * închidere. Ce rămâne între ele e diferența de curs a datoriei, care e
+     * în valută și se reevaluează; dreptul de utilizare nu se reevaluează,
+     * fiindcă e nemonetar.
+     *
+     * Pentru fiecare lună se ține și soldul de la sfârșitul ei, ca raportul
+     * citit pe nouă luni să arate datoria de la nouă luni, nu pe cea de la
+     * sfârșitul anului.
+     *
+     * @return array<string, mixed>
+     */
+    private function leaseRoll(Company $company, int $year): array
+    {
+        $leases = Lease::query()
+            ->where('company_id', $company->getKey())
+            ->counted()
+            ->get();
+
+        $empty = [
+            'leases' => 0, 'months' => [], 'closing' => [],
+            'opening' => ['rou' => 0.0, 'liability' => 0.0, 'rate' => 1.0],
+        ];
+
+        if ($leases->isEmpty()) {
+            return $empty;
+        }
+
+        $engine = app(Ifrs16Engine::class);
+        $rates = $this->costs->monthlyRates($company, $year);
+        $earlier = $this->costs->monthlyRates($company, $year - 1);
+
+        // Moneda portofoliului: a liniilor, nu a raportului. Dacă sunt mai
+        // multe, fiecare se trece la cursul ei.
+        $currencies = $leases->pluck('currency')->map(fn ($one) => self::currencyKey((string) $one))->unique()->values()->all();
+        $rate = function (string $currency, string $month) use ($rates, $earlier): float {
+            if ($currency === 'RON') {
+                return 1.0;
+            }
+
+            if (isset($rates[$currency][$month])) {
+                return (float) $rates[$currency][$month];
+            }
+
+            // Luna n-are încă niciun curs — e în viitor, sau registrul n-a
+            // ajuns la ea. Se ia ultimul curs știut, nu unu.
+            $known = array_merge($earlier[$currency] ?? [], $rates[$currency] ?? []);
+            ksort($known);
+            $before = array_filter($known, fn (string $key) => $key <= $month, ARRAY_FILTER_USE_KEY);
+
+            return (float) (end($before) ?: (reset($known) ?: 1.0));
+        };
+
+        $opening = sprintf('%04d-12', $year - 1);
+        $months = [];
+        $closing = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+            $key = sprintf('%04d-%02d', $year, $month);
+            $roll = $engine->rollForward(
+                $leases,
+                Carbon::create($year, 1, 1)->startOfDay(),
+                Carbon::create($year, $month, 1)->endOfMonth(),
+            );
+
+            $totals = $roll['totals'];
+            $cell = $totals['months'][$key] ?? ['depreciation' => 0.0, 'interest' => 0.0, 'payment' => 0.0];
+
+            // Mișcările lunii, la cursul lunii; evenimentele, tot acolo.
+            $fx = $rate($currencies[0] ?? 'EUR', $key);
+            $gain = 0.0;
+
+            foreach ($roll['lines'] as $line) {
+                if ($line['event_on'] !== null && str_starts_with((string) $line['event_on'], $key)) {
+                    $gain += $line['gain'] * $rate(self::currencyKey($line['currency']), $key);
+                }
+            }
+
+            // Diferența de curs a datoriei: ce rămâne între soldul în lei de
+            // la sfârșitul lunii și cel de la început plus mișcarea lunii,
+            // trecută la cursul lunii. Datoria e în valută; dreptul de
+            // utilizare nu se reevaluează.
+            $wasRON = $month === 1 ? null : ($closing[$month - 1]['liability'] ?? 0.0);
+            $wasCurrency = $month === 1 ? null : ($closing[$month - 1]['liability_currency'] ?? 0.0);
+
+            $months[$month] = [
+                'depreciation' => round($cell['depreciation'] * $fx, 2),
+                'interest' => round($cell['interest'] * $fx, 2),
+                'payment' => round($cell['payment'] * $fx, 2),
+                'gain' => round($gain, 2),
+                'fx' => 0.0,
+                'rate' => $fx,
+                'was' => ['ron' => $wasRON, 'currency' => $wasCurrency],
+            ];
+
+            $closing[$month] = [
+                'rou' => round($totals['rou_close'] * $fx, 2),
+                'rou_currency' => $totals['rou_close'],
+                'liability' => round($totals['liability_close'] * $fx, 2),
+                'liability_currency' => $totals['liability_close'],
+                'current' => round($totals['current'] * $fx, 2),
+                'long_term' => round($totals['long_term'] * $fx, 2),
+                'maturity' => array_map(fn (float $value) => round($value * $fx, 2), $totals['maturity']),
+                'recognised' => round($totals['recognised'] * $fx, 2),
+                'rou_derecognised' => round($totals['rou_derecognised'] * $fx, 2),
+                'liability_derecognised' => round($totals['liability_derecognised'] * $fx, 2),
+                'rate' => $fx,
+            ];
+
+            $was = $months[$month]['was'];
+            $fromRON = $was['ron'] ?? null;
+            $fromCurrency = $was['currency'] ?? null;
+
+            if ($fromRON !== null && $fromCurrency !== null) {
+                $moved = ($closing[$month]['liability_currency'] - $fromCurrency) * $fx;
+                $months[$month]['fx'] = round($closing[$month]['liability'] - $fromRON - $moved, 2);
+            }
+
+            unset($months[$month]['was']);
+        }
+
+        $openingRate = $rate($currencies[0] ?? 'EUR', $opening);
+        $first = $engine->rollForward($leases, Carbon::create($year, 1, 1), Carbon::create($year, 1, 1)->endOfMonth());
+
+        // Prima lună se măsoară față de soldul de deschidere, în lei la
+        // cursul de la 31 decembrie.
+        if (isset($closing[1], $months[1])) {
+            $openingCurrency = $first['totals']['opening_liability'];
+            $moved = ($closing[1]['liability_currency'] - $openingCurrency) * $months[1]['rate'];
+            $months[1]['fx'] = round($closing[1]['liability'] - $openingCurrency * $openingRate - $moved, 2);
+        }
+
+        return [
+            'leases' => $leases->count(),
+            'currency' => $currencies[0] ?? 'EUR',
+            'months' => $months,
+            'closing' => $closing,
+            'opening' => [
+                'rou' => round($first['totals']['opening_rou'] * $openingRate, 2),
+                'liability' => round($first['totals']['opening_liability'] * $openingRate, 2),
+                'rou_currency' => $first['totals']['opening_rou'],
+                'liability_currency' => $first['totals']['opening_liability'],
+                'rate' => $openingRate,
+            ],
+        ];
+    }
+
     private function leaseSchedule(Company $company, int $year): array
     {
         $leases = Lease::query()
@@ -1500,25 +1692,40 @@ class PnlReportService
         ];
         $found = [];
 
-        foreach ($lines as $line) {
-            if (! in_array($line['saf'], $wanted, true)) {
+        // Chiria se citește din registru, cont cu cont, nu din rândurile
+        // vederii: pe vederea operațională o parte din ea stă în „mutări în
+        // avans”, iar IFRS 16 înlocuiește chiria din contabilitate, așa cum
+        // e ea înregistrată.
+        foreach (($report['lines'] ?? []) as $line) {
+            if (! in_array((string) $line['saf'], $wanted, true)) {
                 continue;
             }
 
-            $found[] = $line['saf'];
-            $expense['total'] += $line['total'];
-            $expense['direct'] += $line['direct'];
+            $seen = false;
 
-            foreach ($line['by_channel'] as $key => $value) {
-                $expense['by_channel'][$key] = ($expense['by_channel'][$key] ?? 0.0) + $value;
+            foreach ($months as $month) {
+                $cell = $line['months'][$month] ?? null;
+
+                if ($cell === null) {
+                    continue;
+                }
+
+                $seen = true;
+                $expense['total'] += (float) $cell['total'];
+                $expense['direct'] += (float) ($cell['direct'] ?? 0);
+                $expense['by_month'][$month] = ($expense['by_month'][$month] ?? 0.0) + (float) $cell['total'];
+
+                foreach (($cell['channel'] ?? []) as $key => $value) {
+                    $expense['by_channel'][$key] = ($expense['by_channel'][$key] ?? 0.0) + (float) $value;
+                }
+
+                foreach (($cell['product'] ?? []) as $key => $value) {
+                    $expense['by_product'][$key] = ($expense['by_product'][$key] ?? 0.0) + (float) $value;
+                }
             }
 
-            foreach ($line['by_product'] as $key => $value) {
-                $expense['by_product'][$key] = ($expense['by_product'][$key] ?? 0.0) + $value;
-            }
-
-            foreach ($line['by_month'] as $month => $value) {
-                $expense['by_month'][$month] = ($expense['by_month'][$month] ?? 0.0) + $value;
+            if ($seen) {
+                $found[] = (string) $line['saf'];
             }
         }
 
@@ -1769,7 +1976,7 @@ class PnlReportService
             // standard. Se face la construcție, nu la fiecare deschidere de
             // pagină: e aritmetică pe câteva zeci de contracte, dar citită
             // dintr-o bază de date.
-            'leases' => $this->leaseSchedule($company, $year),
+            'leases' => $this->leaseRoll($company, $year),
             'groups' => $this->map->groups(),
             'meta' => [
                 'generated_at' => now()->toIso8601String(),

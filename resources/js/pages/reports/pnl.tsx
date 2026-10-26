@@ -106,14 +106,32 @@ type PnlReport = {
     expand: string | null;
     expandable: string[];
     ifrs16: {
+        /** „registru” când vine din contracte, „estimare” când e dedusă. */
+        basis?: string;
+        leases?: number;
+        currency?: string;
         lease_expense: number;
+        payments?: number;
+        /** Chirii scadente după contract, încă nefacturate: datorie, nu cheltuială. */
+        unbilled?: number;
         liability: number;
+        current?: number;
+        long_term?: number;
+        rou?: number;
+        maturity?: Record<string, number>;
         depreciation: number;
         interest: number;
+        fx?: number;
+        gain?: number;
+        opening_rou?: number;
+        opening_liability?: number;
+        recognised?: number;
+        rou_derecognised?: number;
+        liability_derecognised?: number;
         effect_on_ebitda: number;
         effect_on_net: number;
-        term_years: number;
-        discount_rate: number;
+        term_years?: number;
+        discount_rate?: number;
         lines: string[];
     } | null;
     lines: PnlLine[];
@@ -1680,25 +1698,103 @@ function PnlTable({
                 </div>
             )}
 
-            {report.ifrs16 && (
-                <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/40">
-                    <p className="font-medium">
-                        IFRS 16 — estimare, nu retratare
-                    </p>
-                    <p className="mt-1 text-muted-foreground">
-                        Contractele de închiriere nu sunt în OMC, așa că datoria
-                        e dedusă din chiria plătită, pe{' '}
-                        {report.ifrs16.term_years} ani la{' '}
-                        {(report.ifrs16.discount_rate * 100).toFixed(1)}%.
-                        Chiria de {lei(report.ifrs16.lease_expense)} lei iese
-                        din exploatare (EBITDA crește cu ea) și se întoarce ca{' '}
-                        {lei(report.ifrs16.depreciation)} lei amortizare și{' '}
-                        {lei(report.ifrs16.interest)} lei dobândă. Datorie
-                        estimată: {lei(report.ifrs16.liability)} lei. Efect pe
-                        profitul net: {lei(report.ifrs16.effect_on_net)} lei.
-                    </p>
-                </div>
-            )}
+            {report.ifrs16 &&
+                (report.ifrs16.basis === 'registru' ? (
+                    <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-900 dark:bg-sky-950/40">
+                        <p className="font-medium">
+                            IFRS 16 — din registrul de închirieri (
+                            {report.ifrs16.leases} linii de contract)
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                            Chiria de {lei(report.ifrs16.lease_expense)} lei
+                            iese din exploatare și se întoarce ca{' '}
+                            {lei(report.ifrs16.depreciation)} lei amortizare,{' '}
+                            {lei(report.ifrs16.interest)} lei dobândă
+                            {Math.abs(report.ifrs16.fx ?? 0) > 0.5 && (
+                                <>
+                                    {' '}
+                                    și {lei(report.ifrs16.fx ?? 0)} lei
+                                    diferențe de curs pe datoria în{' '}
+                                    {report.ifrs16.currency ?? 'EUR'}
+                                </>
+                            )}
+                            {Math.abs(report.ifrs16.gain ?? 0) > 0.5 && (
+                                <>
+                                    ; din spațiile închise{' '}
+                                    {(report.ifrs16.gain ?? 0) >= 0
+                                        ? 'a rămas un câștig de '
+                                        : 'a rămas o pierdere de '}
+                                    {lei(Math.abs(report.ifrs16.gain ?? 0))} lei
+                                </>
+                            )}
+                            . Efect pe EBITDA:{' '}
+                            {lei(report.ifrs16.effect_on_ebitda)} lei; pe
+                            profitul net: {lei(report.ifrs16.effect_on_net)}{' '}
+                            lei.
+                        </p>
+                        <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                            <span>
+                                Drept de utilizare:{' '}
+                                <strong className="text-foreground">
+                                    {lei(report.ifrs16.rou ?? 0)} lei
+                                </strong>
+                            </span>
+                            <span>
+                                Datorie de leasing:{' '}
+                                <strong className="text-foreground">
+                                    {lei(report.ifrs16.liability)} lei
+                                </strong>{' '}
+                                ({lei(report.ifrs16.current ?? 0)} sub un an,{' '}
+                                {lei(report.ifrs16.long_term ?? 0)} termen lung)
+                            </span>
+                            <span>
+                                Plăți după contracte:{' '}
+                                <strong className="text-foreground">
+                                    {lei(report.ifrs16.payments ?? 0)} lei
+                                </strong>
+                                {Math.abs(report.ifrs16.unbilled ?? 0) >
+                                    0.5 && (
+                                    <>
+                                        , din care{' '}
+                                        {lei(report.ifrs16.unbilled ?? 0)}{' '}
+                                        nefacturate (datorie, nu cheltuială)
+                                    </>
+                                )}
+                            </span>
+                            {report.ifrs16.maturity && (
+                                <span>
+                                    Scadențe neactualizate:{' '}
+                                    {lei(report.ifrs16.maturity['<1y'] ?? 0)}{' '}
+                                    sub 1 an ·{' '}
+                                    {lei(report.ifrs16.maturity['1-5y'] ?? 0)}{' '}
+                                    1-5 ani ·{' '}
+                                    {lei(report.ifrs16.maturity['>5y'] ?? 0)}{' '}
+                                    peste 5 ani
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                        <p className="font-medium">
+                            IFRS 16 — estimare, nu retratare
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                            Nu sunt contracte scrise în registru, așa că datoria
+                            e dedusă din chiria plătită, pe{' '}
+                            {report.ifrs16.term_years} ani la{' '}
+                            {((report.ifrs16.discount_rate ?? 0) * 100).toFixed(
+                                1,
+                            )}
+                            %. Chiria de {lei(report.ifrs16.lease_expense)} lei
+                            iese din exploatare și se întoarce ca{' '}
+                            {lei(report.ifrs16.depreciation)} lei amortizare și{' '}
+                            {lei(report.ifrs16.interest)} lei dobândă. Efect pe
+                            profitul net: {lei(report.ifrs16.effect_on_net)}{' '}
+                            lei.
+                        </p>
+                    </div>
+                ))}
 
             <Card>
                 <CardContent className="p-0">

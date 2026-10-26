@@ -1,0 +1,6757 @@
+{
+ "source": "Calcul IFRS 16 CHR 2026 - corectat cu rata de actualizare si IAS 8 la 30.09.2026",
+ "opening_on": "2025-12-31",
+ "as_of": "2026-09-30",
+ "fx": {
+  "2025-12-31": 5.0985,
+  "2026-06-30": 5.2438,
+  "2026-09-30": 5.2785,
+  "avg_h1": 5.1406,
+  "avg_q3": 5.2498,
+  "avg_9m": 5.177
+ },
+ "opening_ron": {
+  "rou_gross": 56084540.74,
+  "rou_depreciation": 17094277.97,
+  "liability_reported": 40107505.45,
+  "retained": 1117242.68
+ },
+ "lines": [
+  {
+   "no": 7,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES",
+   "start": "2022-10-01",
+   "end": "2027-09-08",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0289,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 7,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1396.739816,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 11,
+   "name": "Cluj VivoPolus Transilvania3",
+   "start": "2023-09-01",
+   "end": "2026-08-31",
+   "payment": 1845.0,
+   "currency": "EUR",
+   "rate": 0.0653,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 11,
+   "note": null,
+   "opening_rou": 13371.312417,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1671.414052,
+   "opening_liability": 14405.023696,
+   "category": null
+  },
+  {
+   "no": 12,
+   "name": "ClujIulius Mall Cluj",
+   "start": "2021-04-01",
+   "end": "2026-08-31",
+   "payment": 646.0,
+   "currency": "EUR",
+   "rate": 0.0273,
+   "months": 65,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 180,
+   "group": 12,
+   "note": null,
+   "opening_rou": 4798.986318,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 599.87329,
+   "opening_liability": 5115.491318,
+   "category": null
+  },
+  {
+   "no": 14,
+   "name": "Constanta Stradal Pufleni",
+   "start": "2022-10-01",
+   "end": "2027-09-28",
+   "payment": 1250.0,
+   "currency": "EUR",
+   "rate": 0.0382,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 14,
+   "note": null,
+   "opening_rou": 23860.941373,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1136.235303,
+   "opening_liability": 25352.824033,
+   "category": null
+  },
+  {
+   "no": 15,
+   "name": "Constanta StradalAlexe Gheorghe",
+   "start": "2022-10-01",
+   "end": "2027-09-28",
+   "payment": 1250.0,
+   "currency": "EUR",
+   "rate": 0.0382,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 15,
+   "note": null,
+   "opening_rou": 23860.941373,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1136.235303,
+   "opening_liability": 25352.824033,
+   "category": null
+  },
+  {
+   "no": 16,
+   "name": "CraiovaTop Lex Management & Consulting SRL",
+   "start": "2022-12-01",
+   "end": "2027-11-17",
+   "payment": 950.0,
+   "currency": "EUR",
+   "rate": 0.0454,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 16,
+   "note": null,
+   "opening_rou": 19514.629729,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 848.462162,
+   "opening_liability": 20888.53157,
+   "category": null
+  },
+  {
+   "no": 17,
+   "name": "DevaAtcom",
+   "start": "2021-01-01",
+   "end": "2026-08-30",
+   "payment": 500.0,
+   "currency": "EUR",
+   "rate": 0.0243,
+   "months": 68,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 178,
+   "group": 17,
+   "note": null,
+   "opening_rou": 3733.292916,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 466.661615,
+   "opening_liability": 3963.794674,
+   "category": null
+  },
+  {
+   "no": 24,
+   "name": "Liberty CenterRosequeens Properties10",
+   "start": "2026-01-01",
+   "end": "2026-12-31",
+   "payment": 830.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 12,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 24,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 26,
+   "name": "OradeaMarcus",
+   "start": "2022-05-01",
+   "end": "2027-04-20",
+   "payment": 700.0,
+   "currency": "EUR",
+   "rate": 0.0264,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 26,
+   "note": null,
+   "opening_rou": 10481.497712,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 655.093607,
+   "opening_liability": 10993.29597,
+   "category": null
+  },
+  {
+   "no": 27,
+   "name": "OrhideeaVICTORIA INVEST ROMANIA SRL",
+   "start": "2022-11-01",
+   "end": "2027-10-04",
+   "payment": 2385.0,
+   "currency": "EUR",
+   "rate": 0.0501,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 27,
+   "note": null,
+   "opening_rou": 44311.664894,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2110.079281,
+   "opening_liability": 47856.66399,
+   "category": null
+  },
+  {
+   "no": 29,
+   "name": "Sediu centralSPC GAMMA PROPERTY DEVELOPMENT COMPANY SRL",
+   "start": "2021-01-01",
+   "end": "2026-02-28",
+   "payment": 10299.246154,
+   "currency": "EUR",
+   "rate": 0.0243,
+   "months": 62,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 29,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 9669.754302,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 31,
+   "name": "Stefan cel MareVasile Radu",
+   "start": "2022-10-01",
+   "end": "2027-09-14",
+   "payment": 2000.0,
+   "currency": "EUR",
+   "rate": 0.0289,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 31,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1862.319754,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 34,
+   "name": "Timisoara MallIulius Mall Timisoara",
+   "start": "2021-01-01",
+   "end": "2027-10-31",
+   "payment": 805.0,
+   "currency": "EUR",
+   "rate": 0.0243,
+   "months": 82,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 34,
+   "note": null,
+   "opening_rou": 16302.574303,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 741.026105,
+   "opening_liability": 17304.175928,
+   "category": null
+  },
+  {
+   "no": 38,
+   "name": "AradIoanovici Emil/Milos/Titian2",
+   "start": "2024-07-01",
+   "end": "2029-06-30",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0652,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 38,
+   "note": null,
+   "opening_rou": 53638.428587,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1277.105443,
+   "opening_liability": 56192.887029,
+   "category": null
+  },
+  {
+   "no": 40,
+   "name": "BacauTurcu Sorinel3",
+   "start": "2025-01-01",
+   "end": "2029-01-01",
+   "payment": 900.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 48,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 40,
+   "note": null,
+   "opening_rou": 29316.261463,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 814.340596,
+   "opening_liability": 30033.630123,
+   "category": null
+  },
+  {
+   "no": 41,
+   "name": "Baia Mare Value CenterPK Black2",
+   "start": "2023-12-01",
+   "end": "2028-12-05",
+   "payment": 2295.0,
+   "currency": "EUR",
+   "rate": 0.0676,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 41,
+   "note": null,
+   "opening_rou": 67997.7135,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1942.791814,
+   "opening_liability": 72716.935983,
+   "category": null
+  },
+  {
+   "no": 43,
+   "name": "BaneasaBaneasa Developments3",
+   "start": "2025-07-31",
+   "end": "2030-07-31",
+   "payment": 3100.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 186,
+   "group": 43,
+   "note": null,
+   "opening_rou": 170500.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 3100.0,
+   "opening_liability": 167400.0,
+   "category": null
+  },
+  {
+   "no": 44,
+   "name": "BrailaCrisuCristian",
+   "start": "2023-02-01",
+   "end": "2028-01-31",
+   "payment": 600.0,
+   "currency": "EUR",
+   "rate": 0.0596,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 44,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 517.753576,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 46,
+   "name": "Afi Brasov2",
+   "start": "2023-01-01",
+   "end": "2029-12-31",
+   "payment": 3400.0,
+   "currency": "EUR",
+   "rate": 0.056,
+   "months": 84,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 46,
+   "note": null,
+   "opening_rou": 134756.35374,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2807.424036,
+   "opening_liability": 145909.744632,
+   "category": null
+  },
+  {
+   "no": 47,
+   "name": "BuzauAurora Mall Buzau2",
+   "start": "2024-08-08",
+   "end": "2029-08-08",
+   "payment": 1928.0,
+   "currency": "EUR",
+   "rate": 0.0458,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 47,
+   "note": null,
+   "opening_rou": 73970.897624,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1720.253433,
+   "opening_liability": 76324.471468,
+   "category": null
+  },
+  {
+   "no": 48,
+   "name": "Craiova Ex TUI",
+   "start": "2023-06-01",
+   "end": "2028-12-31",
+   "payment": 900.0,
+   "currency": "EUR",
+   "rate": 0.0609,
+   "months": 67,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 48,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 761.33123,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 49,
+   "name": "OradeaNistorescu EX TUI",
+   "start": "2025-02-01",
+   "end": "2027-03-15",
+   "payment": 450.0,
+   "currency": "EUR",
+   "rate": 0.0487,
+   "months": 25,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 49,
+   "note": null,
+   "opening_rou": 5979.425665,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 427.101833,
+   "opening_liability": 6112.323653,
+   "category": null
+  },
+  {
+   "no": 50,
+   "name": "Suceava Ex TUI",
+   "start": "2025-02-01",
+   "end": "2028-10-31",
+   "payment": 1400.0,
+   "currency": "EUR",
+   "rate": 0.0487,
+   "months": 45,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 194,
+   "group": 50,
+   "note": null,
+   "opening_rou": 43426.200903,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1277.241203,
+   "opening_liability": 44378.048533,
+   "category": null
+  },
+  {
+   "no": 51,
+   "name": "Targu Mures Ex TUI",
+   "start": "2023-02-01",
+   "end": "2028-01-31",
+   "payment": 2000.0,
+   "currency": "RON",
+   "rate": 0.1124,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2026-07-10",
+   "successor": null,
+   "group": 51,
+   "note": null,
+   "opening_rou": 7704.523606,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 308.180944,
+   "opening_liability": 9098.512282,
+   "category": null
+  },
+  {
+   "no": 52,
+   "name": "Sibiu SHOPPING EX TUI",
+   "start": "2025-02-01",
+   "end": "2027-03-01",
+   "payment": 1280.0,
+   "currency": "EUR",
+   "rate": 0.0487,
+   "months": 25,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 52,
+   "note": null,
+   "opening_rou": 17008.144113,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1214.867437,
+   "opening_liability": 17386.165058,
+   "category": null
+  },
+  {
+   "no": 53,
+   "name": "Timisoara Iulius EX TUI",
+   "start": "2025-02-01",
+   "end": "2027-05-01",
+   "payment": 1267.0,
+   "currency": "EUR",
+   "rate": 0.0487,
+   "months": 27,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 53,
+   "note": null,
+   "opening_rou": 19164.05634,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1197.753521,
+   "opening_liability": 19589.405415,
+   "category": null
+  },
+  {
+   "no": 54,
+   "name": "TargovisteMetex",
+   "start": "2023-03-01",
+   "end": "2028-03-01",
+   "payment": 537.0,
+   "currency": "EUR",
+   "rate": 0.0567,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 54,
+   "note": null,
+   "opening_rou": 12132.601818,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 466.638531,
+   "opening_liability": 13109.366232,
+   "category": null
+  },
+  {
+   "no": 55,
+   "name": "Militari Shopping Center",
+   "start": "2025-01-01",
+   "end": "2029-12-01",
+   "payment": 3479.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 55,
+   "note": null,
+   "opening_rou": 144733.891573,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 3079.444502,
+   "opening_liability": 148247.499765,
+   "category": null
+  },
+  {
+   "no": 56,
+   "name": "Obor",
+   "start": "2023-08-01",
+   "end": "2026-07-31",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.066,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 56,
+   "note": null,
+   "opening_rou": 9502.233039,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1357.461863,
+   "opening_liability": 10272.759719,
+   "category": null
+  },
+  {
+   "no": 57,
+   "name": "Primaverii",
+   "start": "2023-07-01",
+   "end": "2026-06-30",
+   "payment": 1700.0,
+   "currency": "EUR",
+   "rate": 0.065,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 57,
+   "note": null,
+   "opening_rou": 9244.455178,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1540.74253,
+   "opening_liability": 10009.384518,
+   "category": null
+  },
+  {
+   "no": 58,
+   "name": "Ramnicu Valcea",
+   "start": "2025-01-01",
+   "end": "2028-01-01",
+   "payment": 783.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 58,
+   "note": null,
+   "opening_rou": 17419.505471,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 725.812728,
+   "opening_liability": 17849.444481,
+   "category": null
+  },
+  {
+   "no": 59,
+   "name": "Slatina",
+   "start": "2023-05-02",
+   "end": "2028-05-02",
+   "payment": 700.0,
+   "currency": "EUR",
+   "rate": 0.0616,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 59,
+   "note": null,
+   "opening_rou": 16832.165598,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 601.148771,
+   "opening_liability": 18213.112342,
+   "category": null
+  },
+  {
+   "no": 60,
+   "name": "Vulcan",
+   "start": "2024-07-01",
+   "end": "2029-07-01",
+   "payment": 3095.0,
+   "currency": "EUR",
+   "rate": 0.0652,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 60,
+   "note": null,
+   "opening_rou": 110673.95765,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2635.09423,
+   "opening_liability": 115944.656903,
+   "category": null
+  },
+  {
+   "no": 61,
+   "name": "Iasi Moldova Mall",
+   "start": "2024-12-01",
+   "end": "2029-12-01",
+   "payment": 3320.0,
+   "currency": "EUR",
+   "rate": 0.0528,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 61,
+   "note": null,
+   "opening_rou": 136878.758834,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2912.314018,
+   "opening_liability": 140684.066173,
+   "category": null
+  },
+  {
+   "no": 62,
+   "name": "ParkLake",
+   "start": "2024-12-01",
+   "end": "2029-12-01",
+   "payment": 2728.0,
+   "currency": "EUR",
+   "rate": 0.0528,
+   "months": 60,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 179,
+   "group": 62,
+   "note": null,
+   "opening_rou": 112471.462078,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2393.009831,
+   "opening_liability": 115598.232686,
+   "category": null
+  },
+  {
+   "no": 63,
+   "name": "Alba Iulia Central",
+   "start": "2024-04-01",
+   "end": "2044-12-31",
+   "payment": 26007.0,
+   "currency": "EUR",
+   "rate": 0.0694,
+   "months": 249,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 202,
+   "group": 63,
+   "note": null,
+   "opening_rou": 3138044.408698,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 13763.35267,
+   "opening_liability": 3289349.302691,
+   "category": null
+  },
+  {
+   "no": 64,
+   "name": "Iasi MallIulius Group2",
+   "start": "2023-04-01",
+   "end": "2028-03-31",
+   "payment": 2967.0,
+   "currency": "EUR",
+   "rate": 0.0607,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 64,
+   "note": null,
+   "opening_rou": 68945.245122,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2553.527597,
+   "opening_liability": 74703.141767,
+   "category": null
+  },
+  {
+   "no": 66,
+   "name": "FocsaniMustea",
+   "start": "2023-05-01",
+   "end": "2028-04-14",
+   "payment": 1200.0,
+   "currency": "EUR",
+   "rate": 0.06,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 66,
+   "note": null,
+   "opening_rou": 27998.096766,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1036.966547,
+   "opening_liability": 30237.633363,
+   "category": null
+  },
+  {
+   "no": 67,
+   "name": "Galati Central",
+   "start": "2023-05-01",
+   "end": "2028-05-01",
+   "payment": 750.0,
+   "currency": "EUR",
+   "rate": 0.0616,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2026-04-23",
+   "successor": null,
+   "group": 67,
+   "note": null,
+   "opening_rou": 18034.463141,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 644.087969,
+   "opening_liability": 19514.048938,
+   "category": null
+  },
+  {
+   "no": 68,
+   "name": "Galati Stradal",
+   "start": "2023-05-01",
+   "end": "2028-05-01",
+   "payment": 1350.0,
+   "currency": "EUR",
+   "rate": 0.0616,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 68,
+   "note": null,
+   "opening_rou": 32462.033654,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1159.358345,
+   "opening_liability": 35125.288089,
+   "category": null
+  },
+  {
+   "no": 69,
+   "name": "Piatra Neamt Vlase",
+   "start": "2023-01-01",
+   "end": "2027-11-29",
+   "payment": 800.0,
+   "currency": "EUR",
+   "rate": 0.0571,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 69,
+   "note": null,
+   "opening_rou": 16009.856774,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 696.080729,
+   "opening_liability": 17389.764649,
+   "category": null
+  },
+  {
+   "no": 70,
+   "name": "PitestiDaiandra Business2",
+   "start": "2023-04-01",
+   "end": "2028-03-28",
+   "payment": 1000.0,
+   "currency": "EUR",
+   "rate": 0.0607,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 70,
+   "note": null,
+   "opening_rou": 23237.359327,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 860.642938,
+   "opening_liability": 25178.005314,
+   "category": null
+  },
+  {
+   "no": 71,
+   "name": "Plaza MallBucuresti Mall Developments2",
+   "start": "2023-01-01",
+   "end": "2026-09-30",
+   "payment": 2057.0,
+   "currency": "EUR",
+   "rate": 0.0571,
+   "months": 45,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 71,
+   "note": null,
+   "opening_rou": 16629.708467,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1847.745385,
+   "opening_liability": 18080.121236,
+   "category": null
+  },
+  {
+   "no": 72,
+   "name": "PloiestiSanex Magazin Universal2",
+   "start": "2023-01-01",
+   "end": "2028-09-12",
+   "payment": 4500.0,
+   "currency": "RON",
+   "rate": 0.1004,
+   "months": 68,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 72,
+   "note": null,
+   "opening_rou": 22127.879956,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 691.496249,
+   "opening_liability": 25717.146537,
+   "category": null
+  },
+  {
+   "no": 73,
+   "name": "SibiuNRE Sibiu2",
+   "start": "2024-04-22",
+   "end": "2029-04-22",
+   "payment": 2371.0,
+   "currency": "EUR",
+   "rate": 0.0694,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 73,
+   "note": null,
+   "opening_rou": 79941.053293,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1998.526332,
+   "opening_liability": 82569.899775,
+   "category": null
+  },
+  {
+   "no": 74,
+   "name": "Sun PlazaSocietate de Dezvoltare Sudului2",
+   "start": "2024-05-05",
+   "end": "2029-06-01",
+   "payment": 3210.0,
+   "currency": "EUR",
+   "rate": 0.071,
+   "months": 61,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 74,
+   "note": null,
+   "opening_rou": 110206.419558,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2687.961453,
+   "opening_liability": 116558.583785,
+   "category": null
+  },
+  {
+   "no": 75,
+   "name": "Targu Mures Shopping City",
+   "start": "2023-01-01",
+   "end": "2027-05-01",
+   "payment": 1817.0,
+   "currency": "EUR",
+   "rate": 0.0571,
+   "months": 52,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 75,
+   "note": null,
+   "opening_rou": 25700.627025,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1606.289189,
+   "opening_liability": 27928.984448,
+   "category": null
+  },
+  {
+   "no": 76,
+   "name": "Targu Mures",
+   "start": "2023-01-01",
+   "end": "2027-03-01",
+   "payment": 1817.0,
+   "currency": "EUR",
+   "rate": 0.0571,
+   "months": 50,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 76,
+   "note": null,
+   "opening_rou": 22590.730991,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1613.623642,
+   "opening_liability": 24552.761753,
+   "category": null
+  },
+  {
+   "no": 77,
+   "name": "TimisoaraBega Turism2",
+   "start": "2025-01-01",
+   "end": "2030-12-31",
+   "payment": 1452.25,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 72,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 77,
+   "note": null,
+   "opening_rou": 75166.8446,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1252.780743,
+   "opening_liability": 76974.439233,
+   "category": null
+  },
+  {
+   "no": 84,
+   "name": "B 369 CHR Chirie Auto - CHR TECHNOLOGY - 1210/26.08.2024",
+   "start": "2024-08-26",
+   "end": "2026-08-26",
+   "payment": 2500.0,
+   "currency": "RON",
+   "rate": 0.0992,
+   "months": 24,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 84,
+   "note": null,
+   "opening_rou": 3653.131787,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 456.641473,
+   "opening_liability": 3555.414682,
+   "category": null
+  },
+  {
+   "no": 85,
+   "name": "B 370 CHR Chirie Auto - CHR TECHNOLOGY - 1194 bis/01.06.2024",
+   "start": "2024-06-01",
+   "end": "2026-06-01",
+   "payment": 2500.0,
+   "currency": "RON",
+   "rate": 0.0892,
+   "months": 24,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 85,
+   "note": null,
+   "opening_rou": 2306.213759,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 461.242752,
+   "opening_liability": 2609.279836,
+   "category": null
+  },
+  {
+   "no": 98,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES2",
+   "start": "2027-09-09",
+   "end": "2032-08-09",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 59,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 98,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 99,
+   "name": "Cluj NapocaEpiscopia Unitariana5",
+   "start": "2025-01-01",
+   "end": "2026-12-31",
+   "payment": 1300.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 24,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 99,
+   "note": null,
+   "opening_rou": 14817.546504,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1234.795542,
+   "opening_liability": 15186.401533,
+   "category": null
+  },
+  {
+   "no": 100,
+   "name": "Cluj VivoPolus Transilvania4",
+   "start": "2026-09-01",
+   "end": "2029-08-31",
+   "payment": 0.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 100,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 101,
+   "name": "ClujIulius Mall Cluj2",
+   "start": "2026-09-01",
+   "end": "2031-08-31",
+   "payment": 646.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 60,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 101,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 102,
+   "name": "Constanta Ex TUI2",
+   "start": "2026-01-01",
+   "end": "2026-11-30",
+   "payment": 800.0,
+   "currency": "EUR",
+   "rate": 0.0438,
+   "months": 11,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 102,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 103,
+   "name": "Constanta Stradal Pufleni2",
+   "start": "2027-09-29",
+   "end": "2032-09-28",
+   "payment": 1250.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 103,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 104,
+   "name": "Constanta StradalAlexe Gheorghe2",
+   "start": "2027-09-29",
+   "end": "2032-09-28",
+   "payment": 1250.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 104,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 105,
+   "name": "CraiovaTop Lex Management & Consulting SRL2",
+   "start": "2027-11-18",
+   "end": "2032-11-17",
+   "payment": 950.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 105,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 106,
+   "name": "DevaAtcom2",
+   "start": "2026-08-31",
+   "end": "2031-08-30",
+   "payment": 500.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 60,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 106,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 107,
+   "name": "Iasi Calance George4",
+   "start": "2026-01-01",
+   "end": "2026-12-31",
+   "payment": 3000.0,
+   "currency": "RON",
+   "rate": 0.0984,
+   "months": 12,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 107,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 108,
+   "name": "Mega MallMega Mall Developments2",
+   "start": "2025-05-14",
+   "end": "2030-05-13",
+   "payment": 2947.058824,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 188,
+   "group": 108,
+   "note": null,
+   "opening_rou": 153247.058824,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2947.058824,
+   "opening_liability": 153247.058824,
+   "category": null
+  },
+  {
+   "no": 109,
+   "name": "Obor2",
+   "start": "2026-08-01",
+   "end": "2029-07-31",
+   "payment": 1635.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 109,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 54389.814941,
+   "monthly_depreciation": 1510.828193,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 110,
+   "name": "OradeaMarcus2",
+   "start": "2027-04-21",
+   "end": "2032-04-20",
+   "payment": 700.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 110,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 111,
+   "name": "OradeaNistorescu EX TUI2",
+   "start": "2027-03-16",
+   "end": "2029-04-14",
+   "payment": 450.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 25,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 111,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 112,
+   "name": "OrhideeaVICTORIA INVEST ROMANIA SRL2",
+   "start": "2027-10-05",
+   "end": "2032-09-03",
+   "payment": 2385.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 112,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 113,
+   "name": "Piatra Neamt Vlase2",
+   "start": "2027-11-30",
+   "end": "2032-10-30",
+   "payment": 800.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 113,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 114,
+   "name": "Plaza MallBucuresti Mall Developments3",
+   "start": "2026-10-01",
+   "end": "2030-06-30",
+   "payment": 0.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 45,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 114,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 115,
+   "name": "Primaverii2",
+   "start": "2026-07-01",
+   "end": "2029-06-30",
+   "payment": 1700.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 115,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 56552.101162,
+   "monthly_depreciation": 1570.891699,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 116,
+   "name": "Sibiu SHOPPING EX TUI2",
+   "start": "2027-03-02",
+   "end": "2029-03-31",
+   "payment": 1280.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 25,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 116,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 117,
+   "name": "Targu Mures2",
+   "start": "2027-03-02",
+   "end": "2031-05-01",
+   "payment": 1817.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 50,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 117,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 118,
+   "name": "Targu Mures Shopping City2",
+   "start": "2027-05-02",
+   "end": "2031-08-31",
+   "payment": 1817.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 52,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 118,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 119,
+   "name": "Targu MuresERP Targu Mures2",
+   "start": "2023-11-15",
+   "end": "2028-11-14",
+   "payment": 719.8875,
+   "currency": "EUR",
+   "rate": 0.0651,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 119,
+   "note": null,
+   "opening_rou": 20844.092816,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 613.061553,
+   "opening_liability": 22296.452645,
+   "category": null
+  },
+  {
+   "no": 120,
+   "name": "Timisoara Iulius EX TUI2",
+   "start": "2027-05-02",
+   "end": "2029-08-01",
+   "payment": 1267.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 27,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 120,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 121,
+   "name": "Timisoara MallIulius Mall Timisoara2",
+   "start": "2027-11-01",
+   "end": "2032-10-31",
+   "payment": 805.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 121,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 122,
+   "name": "Timisoara Shopping CityNEPI SEVEN BUSINESS MANAGEMENT SRL2",
+   "start": "2023-10-01",
+   "end": "2028-09-30",
+   "payment": 1350.0,
+   "currency": "EUR",
+   "rate": 0.0691,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 122,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1138.7352,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 123,
+   "name": "TitanTitan Shopping Center Srl3",
+   "start": "2025-09-02",
+   "end": "2029-05-02",
+   "payment": 8909.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 44,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 189,
+   "group": 123,
+   "note": null,
+   "opening_rou": 356360.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 8909.0,
+   "opening_liability": 356360.0,
+   "category": null
+  },
+  {
+   "no": 124,
+   "name": "BotosaniMall",
+   "start": "2025-01-01",
+   "end": "2027-07-01",
+   "payment": 797.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 30,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 124,
+   "note": null,
+   "opening_rou": 13460.986122,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 747.832562,
+   "opening_liability": 13794.647338,
+   "category": null
+  },
+  {
+   "no": 125,
+   "name": "Afi Brasov3 - corectie chirie si perioada",
+   "start": "2025-01-01",
+   "end": "2029-12-31",
+   "payment": -3400.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 125,
+   "note": null,
+   "opening_rou": -144169.719204,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -3003.535817,
+   "opening_liability": -147667.094775,
+   "category": null
+  },
+  {
+   "no": 126,
+   "name": "Afi Brasov4 - repunere act la chiria si perioada cf doc semnat",
+   "start": "2025-01-01",
+   "end": "2028-10-20",
+   "payment": 4065.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 46,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 126,
+   "note": null,
+   "opening_rou": 125558.666517,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 3692.901956,
+   "opening_liability": 128635.50969,
+   "category": null
+  },
+  {
+   "no": 127,
+   "name": "Afi Brasov5 - majorare chirie",
+   "start": "2025-10-21",
+   "end": "2028-10-20",
+   "payment": 200.0,
+   "currency": "EUR",
+   "rate": 0.0428,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 127,
+   "note": null,
+   "opening_rou": 6370.898721,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 187.379374,
+   "opening_liability": 6215.951203,
+   "category": null
+  },
+  {
+   "no": 128,
+   "name": "ClujIulius Mall Cluj3 - corectie estimare",
+   "start": "2025-01-01",
+   "end": "2031-08-31",
+   "payment": -646.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 80,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 180,
+   "group": 128,
+   "note": null,
+   "opening_rou": -37303.073409,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -548.574609,
+   "opening_liability": -38194.889044,
+   "category": null
+  },
+  {
+   "no": 129,
+   "name": "ClujIulius Mall Cluj4 - corectie estimare",
+   "start": "2025-01-01",
+   "end": "2031-08-31",
+   "payment": 4500.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 80,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 180,
+   "group": 129,
+   "note": null,
+   "opening_rou": 259851.130558,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 3821.340155,
+   "opening_liability": 266063.46857,
+   "category": null
+  },
+  {
+   "no": 130,
+   "name": "Cluj NapocaEpiscopia Unitariana6 - corectie act",
+   "start": "2025-01-01",
+   "end": "2026-12-31",
+   "payment": -1300.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 24,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 130,
+   "note": null,
+   "opening_rou": -14817.546504,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -1234.795542,
+   "opening_liability": -15186.401533,
+   "category": null
+  },
+  {
+   "no": 131,
+   "name": "Cluj NapocaEpiscopia Unitariana7 - prelungire",
+   "start": "2025-01-01",
+   "end": "2027-12-31",
+   "payment": 1400.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 131,
+   "note": null,
+   "opening_rou": 31145.986794,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1297.74945,
+   "opening_liability": 31914.715547,
+   "category": null
+  },
+  {
+   "no": 132,
+   "name": "Cluj NapocaEpiscopia Unitariana8 - majorare incepand cu 2026",
+   "start": "2026-01-01",
+   "end": "2027-12-31",
+   "payment": 50.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 24,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 132,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 1148.349834,
+   "monthly_depreciation": 47.84791,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 133,
+   "name": "Cluj NapocaEpiscopia Unitariana9 - majorare incepand cu 2027",
+   "start": "2027-01-01",
+   "end": "2027-12-31",
+   "payment": 50.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 12,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 133,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 134,
+   "name": "CraiovaElectro Putere Parc2",
+   "start": "2025-01-01",
+   "end": "2028-03-31",
+   "payment": 1920.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 39,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 134,
+   "note": null,
+   "opening_rou": 47763.330148,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1769.012228,
+   "opening_liability": 48939.673251,
+   "category": null
+  },
+  {
+   "no": 135,
+   "name": "Galati Central2- majorare chirie",
+   "start": "2025-06-05",
+   "end": "2028-05-01",
+   "payment": 75.0,
+   "currency": "EUR",
+   "rate": 0.0443,
+   "months": 35,
+   "event": "derecognise",
+   "event_on": "2026-04-23",
+   "successor": null,
+   "group": 135,
+   "note": null,
+   "opening_rou": 1966.591998,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 70.235429,
+   "opening_liability": 1991.622619,
+   "category": null
+  },
+  {
+   "no": 136,
+   "name": "Ramnicu Valcea3 - corectie",
+   "start": "2025-01-01",
+   "end": "2028-01-01",
+   "payment": -783.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 136,
+   "note": null,
+   "opening_rou": -17419.505471,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -725.812728,
+   "opening_liability": -17849.444481,
+   "category": null
+  },
+  {
+   "no": 138,
+   "name": "Ramnicu Valcea Shopping City",
+   "start": "2025-09-01",
+   "end": "2030-06-30",
+   "payment": 2842.0,
+   "currency": "EUR",
+   "rate": 0.0447,
+   "months": 58,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 138,
+   "note": null,
+   "opening_rou": 137791.970618,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2551.70316,
+   "opening_liability": 138784.640622,
+   "category": null
+  },
+  {
+   "no": 139,
+   "name": "Sun PlazaSocietate de Dezvoltare Sudului3",
+   "start": "2025-06-01",
+   "end": "2029-06-01",
+   "payment": -3210.0,
+   "currency": "EUR",
+   "rate": 0.0443,
+   "months": 48,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 139,
+   "note": null,
+   "opening_rou": -120405.63286,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -2936.722753,
+   "opening_liability": -121925.603129,
+   "category": null
+  },
+  {
+   "no": 140,
+   "name": "Sun PlazaSocietate de Dezvoltare Sudului4",
+   "start": "2025-06-01",
+   "end": "2030-06-01",
+   "payment": 2246.0,
+   "currency": "EUR",
+   "rate": 0.0478,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 140,
+   "note": null,
+   "opening_rou": 105695.386804,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1994.252581,
+   "opening_liability": 107120.544803,
+   "category": null
+  },
+  {
+   "no": 141,
+   "name": "Timisoara Shopping City",
+   "start": "2025-01-01",
+   "end": "2030-12-31",
+   "payment": 3470.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 72,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 192,
+   "group": 141,
+   "note": null,
+   "opening_rou": 179603.340171,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2993.389003,
+   "opening_liability": 183922.399131,
+   "category": null
+  },
+  {
+   "no": 142,
+   "name": "Timisoara Shopping City2-majorare chirie",
+   "start": "2025-12-01",
+   "end": "2030-12-31",
+   "payment": 180.0,
+   "currency": "EUR",
+   "rate": 0.0403,
+   "months": 61,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 192,
+   "group": 142,
+   "note": null,
+   "opening_rou": 9750.84471,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 162.514078,
+   "opening_liability": 9766.651152,
+   "category": null
+  },
+  {
+   "no": 143,
+   "name": "Doraly",
+   "start": "2025-09-15",
+   "end": "2026-10-31",
+   "payment": 1113.17,
+   "currency": "EUR",
+   "rate": 0.0447,
+   "months": 14,
+   "event": "remeasure",
+   "event_on": "2026-07-31",
+   "successor": 211,
+   "group": 143,
+   "note": null,
+   "opening_rou": 10826.789988,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1082.678999,
+   "opening_liability": 10906.996688,
+   "category": null
+  },
+  {
+   "no": 144,
+   "name": "Travel Plaza Bacau",
+   "start": "2025-10-15",
+   "end": "2026-03-31",
+   "payment": 613.04,
+   "currency": "EUR",
+   "rate": 0.0451,
+   "months": 5,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 144,
+   "note": null,
+   "opening_rou": 1212.376272,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 606.188136,
+   "opening_liability": 1219.202449,
+   "category": null
+  },
+  {
+   "no": 145,
+   "name": "Magheru",
+   "start": "2025-09-30",
+   "end": "2030-12-12",
+   "payment": 5200.0,
+   "currency": "EUR",
+   "rate": 0.0447,
+   "months": 62,
+   "event": "remeasure",
+   "event_on": "2026-05-31",
+   "successor": 207,
+   "group": 145,
+   "note": null,
+   "opening_rou": 273496.596077,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 4635.535527,
+   "opening_liability": 270792.988364,
+   "category": null
+  },
+  {
+   "no": 146,
+   "name": "ClujIulius Mall Cluj5",
+   "start": "2025-09-01",
+   "end": "2031-08-31",
+   "payment": 347.0,
+   "currency": "EUR",
+   "rate": 0.0447,
+   "months": 72,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 180,
+   "group": 146,
+   "note": null,
+   "opening_rou": 20663.130164,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 303.869561,
+   "opening_liability": 20810.650951,
+   "category": null
+  },
+  {
+   "no": 147,
+   "name": "Braila Necmar",
+   "start": "2025-10-01",
+   "end": "2028-08-31",
+   "payment": 600.0,
+   "currency": "EUR",
+   "rate": 0.0428,
+   "months": 35,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 147,
+   "note": null,
+   "opening_rou": 18019.795148,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 563.118598,
+   "opening_liability": 18114.364286,
+   "category": null
+  },
+  {
+   "no": 148,
+   "name": "Cluj VivoPolus Transilvania5",
+   "start": "2025-01-01",
+   "end": "2026-08-31",
+   "payment": 1070.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 20,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 148,
+   "note": null,
+   "opening_rou": 8197.379161,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1024.672395,
+   "opening_liability": 8402.01612,
+   "category": null
+  },
+  {
+   "no": 150,
+   "name": "OrhideeaVICTORIA INVEST ROMANIA SRL3",
+   "start": "2025-01-01",
+   "end": "2027-10-04",
+   "payment": 830.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 33,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 150,
+   "note": null,
+   "opening_rou": 16255.450844,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 774.069088,
+   "opening_liability": 16657.519173,
+   "category": null
+  },
+  {
+   "no": 151,
+   "name": "Timisoara MallIulius Mall Timisoara3",
+   "start": "2025-01-01",
+   "end": "2027-10-31",
+   "payment": 1845.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 34,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 151,
+   "note": null,
+   "opening_rou": 37778.129935,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1717.187724,
+   "opening_liability": 38711.881976,
+   "category": null
+  },
+  {
+   "no": 152,
+   "name": "TitanTitan Shopping Center Srl4",
+   "start": "2025-01-01",
+   "end": "2025-09-01",
+   "payment": -7609.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 8,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 152,
+   "note": null,
+   "opening_rou": 29874.271337,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -7468.567834,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 153,
+   "name": "BuzauAurora Mall Buzau3",
+   "start": "2025-01-01",
+   "end": "2029-08-08",
+   "payment": -1.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 55,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 153,
+   "note": null,
+   "opening_rou": -38.366205,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -0.892237,
+   "opening_liability": -39.300296,
+   "category": null
+  },
+  {
+   "no": 154,
+   "name": "Sibiu SHOPPING EX TUI3",
+   "start": "2025-02-01",
+   "end": "2027-03-01",
+   "payment": 481.0,
+   "currency": "EUR",
+   "rate": 0.0487,
+   "months": 25,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 154,
+   "note": null,
+   "opening_rou": 6391.341655,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 456.524404,
+   "opening_liability": 6533.394838,
+   "category": null
+  },
+  {
+   "no": 155,
+   "name": "SibiuNRE Sibiu3",
+   "start": "2025-01-01",
+   "end": "2029-04-22",
+   "payment": 370.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 52,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 155,
+   "note": null,
+   "opening_rou": 13284.507302,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 332.112683,
+   "opening_liability": 13608.643249,
+   "category": null
+  },
+  {
+   "no": 156,
+   "name": "Targu Mures Shopping City3",
+   "start": "2025-01-01",
+   "end": "2027-05-01",
+   "payment": 434.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 28,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 156,
+   "note": null,
+   "opening_rou": 6542.169938,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 408.885621,
+   "opening_liability": 6704.563324,
+   "category": null
+  },
+  {
+   "no": 157,
+   "name": "TimisoaraBega Turism4",
+   "start": "2025-01-01",
+   "end": "2030-12-31",
+   "payment": 947.75,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 72,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 157,
+   "note": null,
+   "opening_rou": 49054.485777,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 817.574763,
+   "opening_liability": 50234.136535,
+   "category": null
+  },
+  {
+   "no": 158,
+   "name": "Mega MallMega Mall Developments4",
+   "start": "2025-05-14",
+   "end": "2030-05-13",
+   "payment": 2392.941176,
+   "currency": "EUR",
+   "rate": 0.0536,
+   "months": 60,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 188,
+   "group": 158,
+   "note": null,
+   "opening_rou": 108941.791524,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 2095.034452,
+   "opening_liability": 110819.177806,
+   "category": null
+  },
+  {
+   "no": 159,
+   "name": "Timisoara MallIulius Mall Timisoara4",
+   "start": "2027-11-01",
+   "end": "2032-10-31",
+   "payment": 1845.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 159,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 160,
+   "name": "TitanTitan Shopping Center Srl5",
+   "start": "2025-09-02",
+   "end": "2029-05-02",
+   "payment": -7509.0,
+   "currency": "EUR",
+   "rate": 0.0447,
+   "months": 44,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 189,
+   "group": 160,
+   "note": null,
+   "opening_rou": -276563.178918,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -6914.079473,
+   "opening_liability": -278573.514375,
+   "category": null
+  },
+  {
+   "no": 161,
+   "name": "Alba Iulia Central2",
+   "start": "2025-10-01",
+   "end": "2044-12-31",
+   "payment": 8000.0,
+   "currency": "EUR",
+   "rate": 0.0428,
+   "months": 231,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 202,
+   "group": 161,
+   "note": null,
+   "opening_rou": 1241177.071171,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 5443.759084,
+   "opening_liability": 1246926.033748,
+   "category": null
+  },
+  {
+   "no": 162,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES3",
+   "start": "2025-01-01",
+   "end": "2032-08-09",
+   "payment": 164.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 91,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 177,
+   "group": 162,
+   "note": null,
+   "opening_rou": 10768.295017,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 136.307532,
+   "opening_liability": 11023.658881,
+   "category": null
+  },
+  {
+   "no": 163,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES4",
+   "start": "2025-10-01",
+   "end": "2032-08-09",
+   "payment": 57.0,
+   "currency": "EUR",
+   "rate": 0.0428,
+   "months": 82,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 177,
+   "group": 163,
+   "note": null,
+   "opening_rou": 3898.293236,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 49.345484,
+   "opening_liability": 3918.169396,
+   "category": null
+  },
+  {
+   "no": 164,
+   "name": "TargovisteMetex2 (ctr nou acelasi spatiu, reducere chirie)",
+   "start": "2025-01-01",
+   "end": "2028-03-01",
+   "payment": -87.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 38,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 164,
+   "note": null,
+   "opening_rou": -2088.330933,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -80.320421,
+   "opening_liability": -2139.800377,
+   "category": null
+  },
+  {
+   "no": 165,
+   "name": "Targu Mures3",
+   "start": "2025-01-01",
+   "end": "2027-03-01",
+   "payment": -1817.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 26,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 165,
+   "note": null,
+   "opening_rou": -24063.767454,
+   "pv_2026": 0.0,
+   "monthly_depreciation": -1718.840532,
+   "opening_liability": -24661.940707,
+   "category": null
+  },
+  {
+   "no": 166,
+   "name": "Targu Mures4",
+   "start": "2027-03-02",
+   "end": "2031-05-01",
+   "payment": -1817.0,
+   "currency": "EUR",
+   "rate": 0.0,
+   "months": 50,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 166,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": null
+  },
+  {
+   "no": 167,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES5 - corectie pus in rap precedente ca exit",
+   "start": "2025-01-01",
+   "end": "2032-08-09",
+   "payment": 1506.0,
+   "currency": "EUR",
+   "rate": 0.0499,
+   "months": 91,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 177,
+   "group": 167,
+   "note": null,
+   "opening_rou": 98884.465217,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 1251.702091,
+   "opening_liability": 101229.452898,
+   "category": null
+  },
+  {
+   "no": 168,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES6 - corectie pus in rap precedente ca exit",
+   "start": "2025-10-01",
+   "end": "2032-08-09",
+   "payment": 177.0,
+   "currency": "EUR",
+   "rate": 0.0428,
+   "months": 82,
+   "event": "remeasure",
+   "event_on": "2025-12-31",
+   "successor": 177,
+   "group": 168,
+   "note": null,
+   "opening_rou": 12105.226365,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 153.230713,
+   "opening_liability": 12166.947071,
+   "category": null
+  },
+  {
+   "no": 169,
+   "name": "Cluj VivoPolus Transilvania8 - AA 2/06.08.2026 (prelungire 31.08.2031)",
+   "start": "2026-09-01",
+   "end": "2031-08-31",
+   "payment": 3284.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 169,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 174996.944574,
+   "monthly_depreciation": 3020.619891,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 170,
+   "name": "Cluj VivoPolus Transilvania6 - treapta 65 EUR/mp (+205 EUR, 60 luni)",
+   "start": "2026-09-01",
+   "end": "2031-08-31",
+   "payment": 205.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 169,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 10923.9871,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 171,
+   "name": "Cluj VivoPolus Transilvania7 - treapta, anulare primele 24 luni (-205 EUR)",
+   "start": "2026-09-01",
+   "end": "2028-08-31",
+   "payment": -205.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 24,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 169,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -4683.738202,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 172,
+   "name": "Plaza MallBucuresti Mall Developments4 - AA 19.06.2026 (prelungire 30.09.2031)",
+   "start": "2026-10-01",
+   "end": "2031-09-30",
+   "payment": 2363.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 60,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 172,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 173,
+   "name": "Sun PlazaSocietate de Dezvoltare Sudului5 - anulare rest linia 140 (durata gresita)",
+   "start": "2026-01-01",
+   "end": "2030-06-01",
+   "payment": -2246.0,
+   "currency": "EUR",
+   "rate": 0.0478,
+   "months": 53,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 173,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -107120.544803,
+   "monthly_depreciation": -2021.142355,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 174,
+   "name": "Sun PlazaSocietate de Dezvoltare Sudului6 - AA 1/25.06.2024, rest durata la 05.06.2029",
+   "start": "2026-01-01",
+   "end": "2029-06-05",
+   "payment": 2320.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 41,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 174,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 88375.975739,
+   "monthly_depreciation": 2155.511603,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 175,
+   "name": "Satu MareBrendli Arnold Otto (cesiune AC United)",
+   "start": "2026-05-01",
+   "end": "2028-10-31",
+   "payment": 1100.0,
+   "currency": "EUR",
+   "rate": 0.048,
+   "months": 30,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 175,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 31038.491797,
+   "monthly_depreciation": 1034.616393,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 176,
+   "name": "Brasov KogalniceanuRoita Daniela",
+   "start": "2026-07-01",
+   "end": "2030-12-31",
+   "payment": 1000.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 54,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 176,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 48054.927196,
+   "monthly_depreciation": 889.906059,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 177,
+   "name": "BrasovSC DEARBORN SRL/HAVEN PROPERTIES - corectie 2026",
+   "start": "2026-01-01",
+   "end": "2032-08-09",
+   "payment": 1715.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 79,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 177,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 118450.824975,
+   "monthly_depreciation": 1465.428817,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 178,
+   "name": "DevaAtcom3 - AA6 600 EUR",
+   "start": "2026-01-01",
+   "end": "2032-01-07",
+   "payment": 600.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 72,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 178,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 38205.646008,
+   "monthly_depreciation": 527.432559,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 179,
+   "name": "ParkLake2 - durata reala 31.03.2027",
+   "start": "2026-01-01",
+   "end": "2027-03-31",
+   "payment": 3000.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 15,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 179,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 43747.303873,
+   "monthly_depreciation": 2708.035551,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 180,
+   "name": "ClujIulius Mall Cluj6 - AA3 P309+P62 (de baza)",
+   "start": "2026-01-01",
+   "end": "2031-04-30",
+   "payment": 3860.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 64,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 221384.600321,
+   "monthly_depreciation": 3471.001478,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 181,
+   "name": "ClujIulius Mall Cluj7 - ian-apr 2026 (-210)",
+   "start": "2026-01-01",
+   "end": "2026-04-30",
+   "payment": -210.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 4,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -832.821951,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 182,
+   "name": "ClujIulius Mall Cluj8 - treapta 05.2028 (+176)",
+   "start": "2026-01-01",
+   "end": "2031-04-30",
+   "payment": 176.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 64,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 10094.220118,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 183,
+   "name": "ClujIulius Mall Cluj9 - treapta 05.2028 anulare pana la 04.2028 (-176)",
+   "start": "2026-01-01",
+   "end": "2028-04-30",
+   "payment": -176.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 28,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -4690.3154,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 184,
+   "name": "ClujIulius Mall Cluj10 - treapta 05.2030 (+201)",
+   "start": "2026-01-01",
+   "end": "2031-04-30",
+   "payment": 201.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 64,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 11528.058203,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 185,
+   "name": "ClujIulius Mall Cluj11 - treapta 05.2030 anulare pana la 04.2030 (-201)",
+   "start": "2026-01-01",
+   "end": "2030-04-30",
+   "payment": -201.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 52,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 180,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -9555.098529,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 186,
+   "name": "BaneasaBaneasa Developments4 - AA 03.12.2025 (31.07.2027)",
+   "start": "2026-01-01",
+   "end": "2027-07-31",
+   "payment": 3118.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 19,
+   "event": "remeasure",
+   "event_on": "2026-08-31",
+   "successor": 187,
+   "group": 186,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 57190.166829,
+   "monthly_depreciation": 3173.166675,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 187,
+   "name": "BaneasaBaneasa Developments5 - AA 07.09.2026 (31.01.2028)",
+   "start": "2026-09-01",
+   "end": "2028-01-31",
+   "payment": 3118.0,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 17,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 187,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 50994.292872,
+   "monthly_depreciation": 5052.889782,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 188,
+   "name": "Mega MallMega Mall Bucuresti5 - ctr. nou 14.05.2025 indexat",
+   "start": "2026-01-01",
+   "end": "2030-05-13",
+   "payment": 5495.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 52,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 188,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 260496.084263,
+   "monthly_depreciation": 4973.4365,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 189,
+   "name": "TitanTitan Shopping Center6 - AA3 pana la 11.06.2026",
+   "start": "2026-01-01",
+   "end": "2026-06-11",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0438,
+   "months": 5,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 189,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 7418.569359,
+   "monthly_depreciation": 1885.780963,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 190,
+   "name": "TitanTitan Shopping Center7 - AA4 + rectificator 22.06.2026",
+   "start": "2026-06-12",
+   "end": "2027-06-11",
+   "payment": 1590.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 12,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 190,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 18596.03067,
+   "monthly_depreciation": 1534.875718,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 191,
+   "name": "TitanTitan Shopping Center8 - prima treapta (-30)",
+   "start": "2026-06-12",
+   "end": "2026-12-11",
+   "payment": -30.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 6,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 190,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -177.52206,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 192,
+   "name": "Timisoara Shopping City3 - AA1 pana la 16.12.2030",
+   "start": "2026-01-01",
+   "end": "2030-12-16",
+   "payment": 3334.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 59,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 192,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 177189.370926,
+   "monthly_depreciation": 2918.313524,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 193,
+   "name": "Timisoara Shopping City4 - ian-apr 2026 inainte de indexare (-170)",
+   "start": "2026-01-01",
+   "end": "2026-04-30",
+   "payment": -170.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 4,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 192,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -674.007584,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 194,
+   "name": "Suceava Ex TUI2 - subinchiriere MML-CHR pana la 31.07.2026",
+   "start": "2026-01-01",
+   "end": "2026-07-31",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0438,
+   "months": 7,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 194,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 10348.36344,
+   "monthly_depreciation": 1342.359401,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 195,
+   "name": "Suceava Ex TUI3 - neutilizat",
+   "start": "2026-01-01",
+   "end": "2026-07-31",
+   "payment": 0.0,
+   "currency": "EUR",
+   "rate": 0.0438,
+   "months": 7,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 194,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 196,
+   "name": "SibiuNRE Sibiu4 - indexare 05.2026 (+150)",
+   "start": "2026-05-01",
+   "end": "2029-04-22",
+   "payment": 150.0,
+   "currency": "EUR",
+   "rate": 0.0694,
+   "months": 36,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 196,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 4862.288432,
+   "monthly_depreciation": 135.063568,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 197,
+   "name": "BuzauAurora Mall Buzau4 - indexare 04.2026 (+153)",
+   "start": "2026-04-01",
+   "end": "2029-08-08",
+   "payment": 153.0,
+   "currency": "EUR",
+   "rate": 0.0458,
+   "months": 40,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 197,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 5665.731467,
+   "monthly_depreciation": 141.643287,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 198,
+   "name": "TargovisteMetex3 - diferenta facturata (+72)",
+   "start": "2026-03-01",
+   "end": "2028-03-01",
+   "payment": 72.0,
+   "currency": "EUR",
+   "rate": 0.0567,
+   "months": 24,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 198,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 1629.98951,
+   "monthly_depreciation": 67.91623,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 199,
+   "name": "Iasi Moldova Mall2 - indexare HICP 01.01.2026 (+253)",
+   "start": "2026-01-01",
+   "end": "2029-12-01",
+   "payment": 253.0,
+   "currency": "EUR",
+   "rate": 0.0528,
+   "months": 47,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 199,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 10720.803838,
+   "monthly_depreciation": 228.102209,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 200,
+   "name": "Vulcan2 - indexare HICP 01.01.2026 (+111)",
+   "start": "2026-01-01",
+   "end": "2029-07-01",
+   "payment": 111.0,
+   "currency": "EUR",
+   "rate": 0.0652,
+   "months": 42,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 200,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 4158.27364,
+   "monthly_depreciation": 99.006515,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 201,
+   "name": "Vulcan3 - ajustare servicii 05.2026 (+134)",
+   "start": "2026-05-01",
+   "end": "2029-07-01",
+   "payment": 134.0,
+   "currency": "EUR",
+   "rate": 0.0652,
+   "months": 38,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 201,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 4589.505161,
+   "monthly_depreciation": 120.776452,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 202,
+   "name": "Alba Iulia Central3 - ctr. 321/05.01.2026",
+   "start": "2026-01-01",
+   "end": "2035-12-31",
+   "payment": 36285.5,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 120,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 202,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 3562147.157161,
+   "monthly_depreciation": 28083.61091,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 203,
+   "name": "Alba Iulia Central4 - luna gratuita oct. 2026 (pas 1)",
+   "start": "2026-01-01",
+   "end": "2026-10-31",
+   "payment": -36285.5,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 10,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 202,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -356079.966615,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 204,
+   "name": "Alba Iulia Central5 - luna gratuita oct. 2026 (pas 2)",
+   "start": "2026-01-01",
+   "end": "2026-09-30",
+   "payment": 36285.5,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 9,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 202,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 321019.975166,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "remeasurement"
+  },
+  {
+   "no": 205,
+   "name": "Alba Iulia Central6 - AA1 02.06.2026 (pana la 01.01.2037)",
+   "start": "2026-06-01",
+   "end": "2036-12-31",
+   "payment": 36285.5,
+   "currency": "EUR",
+   "rate": 0.0467,
+   "months": 127,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 205,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 206,
+   "name": "Alba Iulia Central7 - comodat iun.-dec. 2026",
+   "start": "2026-06-01",
+   "end": "2026-12-31",
+   "payment": -36285.5,
+   "currency": "EUR",
+   "rate": 0.0467,
+   "months": 7,
+   "event": "cancelled",
+   "event_on": "2025-12-31",
+   "successor": null,
+   "group": 205,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 0.0,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 207,
+   "name": "Magheru2 - AA1 02.06.2026",
+   "start": "2026-06-01",
+   "end": "2030-12-12",
+   "payment": 5200.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 54,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 207,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 252259.329266,
+   "monthly_depreciation": 4019.821753,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 208,
+   "name": "Magheru3 - comodat iun.-dec. 2026",
+   "start": "2026-06-01",
+   "end": "2026-12-31",
+   "payment": -5200.0,
+   "currency": "EUR",
+   "rate": 0.0477,
+   "months": 7,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 207,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -35828.073722,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 209,
+   "name": "Bucuresti 13 Septembrie - Memento Air 2026",
+   "start": "2026-01-01",
+   "end": "2030-12-31",
+   "payment": 1500.0,
+   "currency": "EUR",
+   "rate": 0.0413,
+   "months": 60,
+   "event": "derecognise",
+   "event_on": "2026-03-31",
+   "successor": null,
+   "group": 209,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 81189.717475,
+   "monthly_depreciation": 1353.161958,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 210,
+   "name": "Constanta Ex TUI3 - AA4 31.12.2025 (Alexe Ecaterina)",
+   "start": "2026-01-01",
+   "end": "2027-12-31",
+   "payment": 1200.0,
+   "currency": "EUR",
+   "rate": 0.0426,
+   "months": 24,
+   "event": "derecognise",
+   "event_on": "2026-03-31",
+   "successor": null,
+   "group": 210,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 27560.396014,
+   "monthly_depreciation": 1148.349834,
+   "opening_liability": 0.0,
+   "category": "new"
+  },
+  {
+   "no": 211,
+   "name": "Doraly2 - optiune de iesire 31.10.2026 neexercitata",
+   "start": "2026-08-01",
+   "end": "2028-10-31",
+   "payment": 1603.08,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 27,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 211,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 40763.827763,
+   "monthly_depreciation": 1379.460901,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 212,
+   "name": "Doraly3 - treapta aug.-oct. 2026 (-222,65)",
+   "start": "2026-08-01",
+   "end": "2026-10-31",
+   "payment": -222.65,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 3,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 211,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -662.202639,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 213,
+   "name": "Doraly4 - treapta pana la 31.10.2027 (-267,18)",
+   "start": "2026-08-01",
+   "end": "2027-10-31",
+   "payment": -267.18,
+   "currency": "EUR",
+   "rate": 0.052,
+   "months": 15,
+   "event": null,
+   "event_on": null,
+   "successor": null,
+   "group": 211,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": -3872.112546,
+   "monthly_depreciation": 0.0,
+   "opening_liability": 0.0,
+   "category": "extension"
+  },
+  {
+   "no": 214,
+   "name": "Iasi Calance George / Onica Ana - ctr. 01.01.2026",
+   "start": "2026-01-01",
+   "end": "2026-12-31",
+   "payment": 7000.0,
+   "currency": "RON",
+   "rate": 0.0984,
+   "months": 12,
+   "event": "derecognise",
+   "event_on": "2026-04-23",
+   "successor": null,
+   "group": 214,
+   "note": null,
+   "opening_rou": 0.0,
+   "pv_2026": 16107.247098,
+   "monthly_depreciation": 1342.270592,
+   "opening_liability": 0.0,
+   "category": "new"
+  }
+ ],
+ "rates": [
+  {
+   "currency": "EUR",
+   "month": "2019-01",
+   "bucket": "<1y",
+   "rate": 2.22
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-01",
+   "bucket": "1-5y",
+   "rate": 2.53
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-01",
+   "bucket": ">5y",
+   "rate": 2.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-02",
+   "bucket": "<1y",
+   "rate": 2.4
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-02",
+   "bucket": "1-5y",
+   "rate": 3.01
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-02",
+   "bucket": ">5y",
+   "rate": 3.25
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-03",
+   "bucket": "<1y",
+   "rate": 2.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-03",
+   "bucket": "1-5y",
+   "rate": 2.48
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-03",
+   "bucket": ">5y",
+   "rate": 3.49
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-04",
+   "bucket": "<1y",
+   "rate": 2.48
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-04",
+   "bucket": "1-5y",
+   "rate": 2.83
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-04",
+   "bucket": ">5y",
+   "rate": 3.07
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-05",
+   "bucket": "<1y",
+   "rate": 2.48
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-05",
+   "bucket": "1-5y",
+   "rate": 2.45
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-05",
+   "bucket": ">5y",
+   "rate": 2.57
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-06",
+   "bucket": "<1y",
+   "rate": 1.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-06",
+   "bucket": "1-5y",
+   "rate": 2.89
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-06",
+   "bucket": ">5y",
+   "rate": 2.27
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-07",
+   "bucket": "<1y",
+   "rate": 2.09
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-07",
+   "bucket": "1-5y",
+   "rate": 2.34
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-07",
+   "bucket": ">5y",
+   "rate": 3.15
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-08",
+   "bucket": "<1y",
+   "rate": 1.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-08",
+   "bucket": "1-5y",
+   "rate": 2.79
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-08",
+   "bucket": ">5y",
+   "rate": 2.7
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-09",
+   "bucket": "<1y",
+   "rate": 3.13
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-09",
+   "bucket": "1-5y",
+   "rate": 2.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-09",
+   "bucket": ">5y",
+   "rate": 2.42
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-10",
+   "bucket": "<1y",
+   "rate": 2.53
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-10",
+   "bucket": "1-5y",
+   "rate": 3.28
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-10",
+   "bucket": ">5y",
+   "rate": 2.68
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-11",
+   "bucket": "<1y",
+   "rate": 2.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-11",
+   "bucket": "1-5y",
+   "rate": 2.76
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-11",
+   "bucket": ">5y",
+   "rate": 2.93
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-12",
+   "bucket": "<1y",
+   "rate": 3.33
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-12",
+   "bucket": "1-5y",
+   "rate": 3.04
+  },
+  {
+   "currency": "EUR",
+   "month": "2019-12",
+   "bucket": ">5y",
+   "rate": 2.29
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-01",
+   "bucket": "<1y",
+   "rate": 2.38
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-01",
+   "bucket": "1-5y",
+   "rate": 2.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-01",
+   "bucket": ">5y",
+   "rate": 2.53
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-02",
+   "bucket": "<1y",
+   "rate": 2.33
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-02",
+   "bucket": "1-5y",
+   "rate": 2.93
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-02",
+   "bucket": ">5y",
+   "rate": 2.67
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-03",
+   "bucket": "<1y",
+   "rate": 2.52
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-03",
+   "bucket": "1-5y",
+   "rate": 2.46
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-03",
+   "bucket": ">5y",
+   "rate": 3.06
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-04",
+   "bucket": "<1y",
+   "rate": 2.06
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-04",
+   "bucket": "1-5y",
+   "rate": 2.95
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-04",
+   "bucket": ">5y",
+   "rate": 3.02
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-05",
+   "bucket": "<1y",
+   "rate": 2.55
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-05",
+   "bucket": "1-5y",
+   "rate": 2.83
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-05",
+   "bucket": ">5y",
+   "rate": 2.9
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-06",
+   "bucket": "<1y",
+   "rate": 2.64
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-06",
+   "bucket": "1-5y",
+   "rate": 3.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-06",
+   "bucket": ">5y",
+   "rate": 2.66
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-07",
+   "bucket": "<1y",
+   "rate": 2.56
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-07",
+   "bucket": "1-5y",
+   "rate": 3.4
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-07",
+   "bucket": ">5y",
+   "rate": 3.07
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-08",
+   "bucket": "<1y",
+   "rate": 2.7
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-08",
+   "bucket": "1-5y",
+   "rate": 1.64
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-08",
+   "bucket": ">5y",
+   "rate": 3.29
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-09",
+   "bucket": "<1y",
+   "rate": 2.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-09",
+   "bucket": "1-5y",
+   "rate": 3.16
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-09",
+   "bucket": ">5y",
+   "rate": 3.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-10",
+   "bucket": "<1y",
+   "rate": 1.64
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-10",
+   "bucket": "1-5y",
+   "rate": 1.92
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-10",
+   "bucket": ">5y",
+   "rate": 2.38
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-11",
+   "bucket": "<1y",
+   "rate": 2.81
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-11",
+   "bucket": "1-5y",
+   "rate": 3.24
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-11",
+   "bucket": ">5y",
+   "rate": 2.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-12",
+   "bucket": "<1y",
+   "rate": 2.36
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-12",
+   "bucket": "1-5y",
+   "rate": 3.85
+  },
+  {
+   "currency": "EUR",
+   "month": "2020-12",
+   "bucket": ">5y",
+   "rate": 2.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-01",
+   "bucket": "<1y",
+   "rate": 2.33
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-01",
+   "bucket": "1-5y",
+   "rate": 3.17
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-01",
+   "bucket": ">5y",
+   "rate": 2.43
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-02",
+   "bucket": "<1y",
+   "rate": 2.51
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-02",
+   "bucket": "1-5y",
+   "rate": 1.75
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-02",
+   "bucket": ">5y",
+   "rate": 2.83
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-03",
+   "bucket": "<1y",
+   "rate": 2.19
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-03",
+   "bucket": "1-5y",
+   "rate": 2.39
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-03",
+   "bucket": ">5y",
+   "rate": 1.53
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-04",
+   "bucket": "<1y",
+   "rate": 1.92
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-04",
+   "bucket": "1-5y",
+   "rate": 2.64
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-04",
+   "bucket": ">5y",
+   "rate": 2.73
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-05",
+   "bucket": "<1y",
+   "rate": 2.44
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-05",
+   "bucket": "1-5y",
+   "rate": 2.49
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-05",
+   "bucket": ">5y",
+   "rate": 2.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-06",
+   "bucket": "<1y",
+   "rate": 2.11
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-06",
+   "bucket": "1-5y",
+   "rate": 2.41
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-06",
+   "bucket": ">5y",
+   "rate": 2.02
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-07",
+   "bucket": "<1y",
+   "rate": 2.3
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-07",
+   "bucket": "1-5y",
+   "rate": 2.73
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-07",
+   "bucket": ">5y",
+   "rate": 2.41
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-08",
+   "bucket": "<1y",
+   "rate": 2.19
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-08",
+   "bucket": "1-5y",
+   "rate": 2.98
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-08",
+   "bucket": ">5y",
+   "rate": 2.15
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-09",
+   "bucket": "<1y",
+   "rate": 2.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-09",
+   "bucket": "1-5y",
+   "rate": 2.65
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-09",
+   "bucket": ">5y",
+   "rate": 2.25
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-10",
+   "bucket": "<1y",
+   "rate": 2.0
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-10",
+   "bucket": "1-5y",
+   "rate": 2.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-10",
+   "bucket": ">5y",
+   "rate": 2.21
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-11",
+   "bucket": "<1y",
+   "rate": 2.43
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-11",
+   "bucket": "1-5y",
+   "rate": 2.31
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-11",
+   "bucket": ">5y",
+   "rate": 2.97
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-12",
+   "bucket": "<1y",
+   "rate": 1.97
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-12",
+   "bucket": "1-5y",
+   "rate": 3.21
+  },
+  {
+   "currency": "EUR",
+   "month": "2021-12",
+   "bucket": ">5y",
+   "rate": 2.48
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-01",
+   "bucket": "<1y",
+   "rate": 2.24
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-01",
+   "bucket": "1-5y",
+   "rate": 2.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-01",
+   "bucket": ">5y",
+   "rate": 2.69
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-02",
+   "bucket": "<1y",
+   "rate": 2.43
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-02",
+   "bucket": "1-5y",
+   "rate": 2.18
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-02",
+   "bucket": ">5y",
+   "rate": 2.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-03",
+   "bucket": "<1y",
+   "rate": 2.21
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-03",
+   "bucket": "1-5y",
+   "rate": 2.29
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-03",
+   "bucket": ">5y",
+   "rate": 2.71
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-04",
+   "bucket": "<1y",
+   "rate": 1.88
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-04",
+   "bucket": "1-5y",
+   "rate": 2.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-04",
+   "bucket": ">5y",
+   "rate": 2.77
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-05",
+   "bucket": "<1y",
+   "rate": 2.09
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-05",
+   "bucket": "1-5y",
+   "rate": 2.95
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-05",
+   "bucket": ">5y",
+   "rate": 2.64
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-06",
+   "bucket": "<1y",
+   "rate": 2.08
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-06",
+   "bucket": "1-5y",
+   "rate": 1.12
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-06",
+   "bucket": ">5y",
+   "rate": 1.75
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-07",
+   "bucket": "<1y",
+   "rate": 2.08
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-07",
+   "bucket": "1-5y",
+   "rate": 2.87
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-07",
+   "bucket": ">5y",
+   "rate": 2.92
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-08",
+   "bucket": "<1y",
+   "rate": 2.39
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-08",
+   "bucket": "1-5y",
+   "rate": 3.46
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-08",
+   "bucket": ">5y",
+   "rate": 2.93
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-09",
+   "bucket": "<1y",
+   "rate": 3.12
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-09",
+   "bucket": "1-5y",
+   "rate": 3.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-09",
+   "bucket": ">5y",
+   "rate": 3.49
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-10",
+   "bucket": "<1y",
+   "rate": 3.51
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-10",
+   "bucket": "1-5y",
+   "rate": 2.89
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-10",
+   "bucket": ">5y",
+   "rate": 3.82
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-11",
+   "bucket": "<1y",
+   "rate": 3.13
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-11",
+   "bucket": "1-5y",
+   "rate": 5.01
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-11",
+   "bucket": ">5y",
+   "rate": 4.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-12",
+   "bucket": "<1y",
+   "rate": 4.25
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-12",
+   "bucket": "1-5y",
+   "rate": 4.76
+  },
+  {
+   "currency": "EUR",
+   "month": "2022-12",
+   "bucket": ">5y",
+   "rate": 4.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-01",
+   "bucket": "<1y",
+   "rate": 4.86
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-01",
+   "bucket": "1-5y",
+   "rate": 5.71
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-01",
+   "bucket": ">5y",
+   "rate": 5.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-02",
+   "bucket": "<1y",
+   "rate": 5.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-02",
+   "bucket": "1-5y",
+   "rate": 6.44
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-02",
+   "bucket": ">5y",
+   "rate": 5.96
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-03",
+   "bucket": "<1y",
+   "rate": 5.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-03",
+   "bucket": "1-5y",
+   "rate": 5.56
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-03",
+   "bucket": ">5y",
+   "rate": 5.67
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-04",
+   "bucket": "<1y",
+   "rate": 5.68
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-04",
+   "bucket": "1-5y",
+   "rate": 5.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-04",
+   "bucket": ">5y",
+   "rate": 6.07
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-05",
+   "bucket": "<1y",
+   "rate": 5.75
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-05",
+   "bucket": "1-5y",
+   "rate": 6.0
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-05",
+   "bucket": ">5y",
+   "rate": 6.16
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-06",
+   "bucket": "<1y",
+   "rate": 5.65
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-06",
+   "bucket": "1-5y",
+   "rate": 6.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-06",
+   "bucket": ">5y",
+   "rate": 6.09
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-07",
+   "bucket": "<1y",
+   "rate": 6.01
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-07",
+   "bucket": "1-5y",
+   "rate": 6.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-07",
+   "bucket": ">5y",
+   "rate": 6.99
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-08",
+   "bucket": "<1y",
+   "rate": 6.1
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-08",
+   "bucket": "1-5y",
+   "rate": 6.6
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-08",
+   "bucket": ">5y",
+   "rate": 6.32
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-09",
+   "bucket": "<1y",
+   "rate": 6.32
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-09",
+   "bucket": "1-5y",
+   "rate": 6.53
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-09",
+   "bucket": ">5y",
+   "rate": 5.81
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-10",
+   "bucket": "<1y",
+   "rate": 6.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-10",
+   "bucket": "1-5y",
+   "rate": 6.91
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-10",
+   "bucket": ">5y",
+   "rate": 6.91
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-11",
+   "bucket": "<1y",
+   "rate": 6.49
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-11",
+   "bucket": "1-5y",
+   "rate": 6.51
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-11",
+   "bucket": ">5y",
+   "rate": 6.51
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-12",
+   "bucket": "<1y",
+   "rate": 6.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-12",
+   "bucket": "1-5y",
+   "rate": 6.76
+  },
+  {
+   "currency": "EUR",
+   "month": "2023-12",
+   "bucket": ">5y",
+   "rate": 6.76
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-01",
+   "bucket": "<1y",
+   "rate": 6.25
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-01",
+   "bucket": "1-5y",
+   "rate": 6.46
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-01",
+   "bucket": ">5y",
+   "rate": 7.27
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-02",
+   "bucket": "<1y",
+   "rate": 6.29
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-02",
+   "bucket": "1-5y",
+   "rate": 7.15
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-02",
+   "bucket": ">5y",
+   "rate": 7.15
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-03",
+   "bucket": "<1y",
+   "rate": 6.42
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-03",
+   "bucket": "1-5y",
+   "rate": 6.42
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-03",
+   "bucket": ">5y",
+   "rate": 6.42
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-04",
+   "bucket": "<1y",
+   "rate": 6.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-04",
+   "bucket": "1-5y",
+   "rate": 6.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-04",
+   "bucket": ">5y",
+   "rate": 6.94
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-05",
+   "bucket": "<1y",
+   "rate": 6.09
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-05",
+   "bucket": "1-5y",
+   "rate": 7.1
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-05",
+   "bucket": ">5y",
+   "rate": 7.1
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-06",
+   "bucket": "<1y",
+   "rate": 6.08
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-06",
+   "bucket": "1-5y",
+   "rate": 6.05
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-06",
+   "bucket": ">5y",
+   "rate": 7.1
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-07",
+   "bucket": "<1y",
+   "rate": 5.96
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-07",
+   "bucket": "1-5y",
+   "rate": 5.81
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-07",
+   "bucket": ">5y",
+   "rate": 6.52
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-08",
+   "bucket": "<1y",
+   "rate": 5.92
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-08",
+   "bucket": "1-5y",
+   "rate": 5.75
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-08",
+   "bucket": ">5y",
+   "rate": 4.58
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-09",
+   "bucket": "<1y",
+   "rate": 5.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-09",
+   "bucket": "1-5y",
+   "rate": 6.59
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-09",
+   "bucket": ">5y",
+   "rate": 6.68
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-10",
+   "bucket": "<1y",
+   "rate": 5.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-10",
+   "bucket": "1-5y",
+   "rate": 5.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-10",
+   "bucket": ">5y",
+   "rate": 5.58
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-11",
+   "bucket": "<1y",
+   "rate": 5.35
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-11",
+   "bucket": "1-5y",
+   "rate": 5.35
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-11",
+   "bucket": ">5y",
+   "rate": 6.67
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-12",
+   "bucket": "<1y",
+   "rate": 5.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-12",
+   "bucket": "1-5y",
+   "rate": 5.37
+  },
+  {
+   "currency": "EUR",
+   "month": "2024-12",
+   "bucket": ">5y",
+   "rate": 5.28
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-01",
+   "bucket": "<1y",
+   "rate": 4.99
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-01",
+   "bucket": "1-5y",
+   "rate": 4.99
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-01",
+   "bucket": ">5y",
+   "rate": 4.99
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-02",
+   "bucket": "<1y",
+   "rate": 4.87
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-02",
+   "bucket": "1-5y",
+   "rate": 4.87
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-02",
+   "bucket": ">5y",
+   "rate": 4.87
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-03",
+   "bucket": "<1y",
+   "rate": 4.69
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-03",
+   "bucket": "1-5y",
+   "rate": 4.22
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-03",
+   "bucket": ">5y",
+   "rate": 5.22
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-04",
+   "bucket": "<1y",
+   "rate": 4.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-04",
+   "bucket": "1-5y",
+   "rate": 4.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-04",
+   "bucket": ">5y",
+   "rate": 4.54
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-05",
+   "bucket": "<1y",
+   "rate": 4.52
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-05",
+   "bucket": "1-5y",
+   "rate": 5.36
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-05",
+   "bucket": ">5y",
+   "rate": 5.36
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-06",
+   "bucket": "<1y",
+   "rate": 4.43
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-06",
+   "bucket": "1-5y",
+   "rate": 4.43
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-06",
+   "bucket": ">5y",
+   "rate": 4.78
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-07",
+   "bucket": "<1y",
+   "rate": 4.27
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-07",
+   "bucket": "1-5y",
+   "rate": 4.11
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-07",
+   "bucket": ">5y",
+   "rate": 4.11
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-08",
+   "bucket": "<1y",
+   "rate": 4.41
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-08",
+   "bucket": "1-5y",
+   "rate": 5.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-08",
+   "bucket": ">5y",
+   "rate": 5.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-09",
+   "bucket": "<1y",
+   "rate": 4.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-09",
+   "bucket": "1-5y",
+   "rate": 4.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-09",
+   "bucket": ">5y",
+   "rate": 4.47
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-10",
+   "bucket": "<1y",
+   "rate": 4.51
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-10",
+   "bucket": "1-5y",
+   "rate": 4.28
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-10",
+   "bucket": ">5y",
+   "rate": 4.28
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-11",
+   "bucket": "<1y",
+   "rate": 4.35
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-11",
+   "bucket": "1-5y",
+   "rate": 4.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-11",
+   "bucket": ">5y",
+   "rate": 4.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-12",
+   "bucket": "<1y",
+   "rate": 4.35
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-12",
+   "bucket": "1-5y",
+   "rate": 4.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2025-12",
+   "bucket": ">5y",
+   "rate": 4.03
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-01",
+   "bucket": "<1y",
+   "rate": 4.38
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-01",
+   "bucket": "1-5y",
+   "rate": 4.26
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-01",
+   "bucket": ">5y",
+   "rate": 4.13
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-02",
+   "bucket": "<1y",
+   "rate": 3.97
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-02",
+   "bucket": "1-5y",
+   "rate": 4.5
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-02",
+   "bucket": ">5y",
+   "rate": 4.76
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-03",
+   "bucket": "<1y",
+   "rate": 3.79
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-03",
+   "bucket": "1-5y",
+   "rate": 4.89
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-03",
+   "bucket": ">5y",
+   "rate": 4.48
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-04",
+   "bucket": "<1y",
+   "rate": 4.17
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-04",
+   "bucket": "1-5y",
+   "rate": 4.84
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-04",
+   "bucket": ">5y",
+   "rate": 5.01
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-05",
+   "bucket": "<1y",
+   "rate": 4.24
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-05",
+   "bucket": "1-5y",
+   "rate": 4.8
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-05",
+   "bucket": ">5y",
+   "rate": 4.73
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-06",
+   "bucket": "<1y",
+   "rate": 4.29
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-06",
+   "bucket": "1-5y",
+   "rate": 4.77
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-06",
+   "bucket": ">5y",
+   "rate": 4.67
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-07",
+   "bucket": "<1y",
+   "rate": 4.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-07",
+   "bucket": "1-5y",
+   "rate": 5.2
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-07",
+   "bucket": ">5y",
+   "rate": 4.77
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-08",
+   "bucket": "<1y",
+   "rate": 4.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-08",
+   "bucket": "1-5y",
+   "rate": 5.2
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-08",
+   "bucket": ">5y",
+   "rate": 4.77
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-09",
+   "bucket": "<1y",
+   "rate": 4.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-09",
+   "bucket": "1-5y",
+   "rate": 5.2
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-09",
+   "bucket": ">5y",
+   "rate": 4.77
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-10",
+   "bucket": "<1y",
+   "rate": 4.14
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-10",
+   "bucket": "1-5y",
+   "rate": 5.2
+  },
+  {
+   "currency": "EUR",
+   "month": "2026-10",
+   "bucket": ">5y",
+   "rate": 4.77
+  },
+  {
+   "currency": "RON",
+   "month": "2019-01",
+   "bucket": "<1y",
+   "rate": 5.6
+  },
+  {
+   "currency": "RON",
+   "month": "2019-01",
+   "bucket": "1-5y",
+   "rate": 6.29
+  },
+  {
+   "currency": "RON",
+   "month": "2019-01",
+   "bucket": ">5y",
+   "rate": 5.46
+  },
+  {
+   "currency": "RON",
+   "month": "2019-02",
+   "bucket": "<1y",
+   "rate": 5.86
+  },
+  {
+   "currency": "RON",
+   "month": "2019-02",
+   "bucket": "1-5y",
+   "rate": 7.04
+  },
+  {
+   "currency": "RON",
+   "month": "2019-02",
+   "bucket": ">5y",
+   "rate": 5.85
+  },
+  {
+   "currency": "RON",
+   "month": "2019-03",
+   "bucket": "<1y",
+   "rate": 5.83
+  },
+  {
+   "currency": "RON",
+   "month": "2019-03",
+   "bucket": "1-5y",
+   "rate": 6.87
+  },
+  {
+   "currency": "RON",
+   "month": "2019-03",
+   "bucket": ">5y",
+   "rate": 6.22
+  },
+  {
+   "currency": "RON",
+   "month": "2019-04",
+   "bucket": "<1y",
+   "rate": 5.34
+  },
+  {
+   "currency": "RON",
+   "month": "2019-04",
+   "bucket": "1-5y",
+   "rate": 7.12
+  },
+  {
+   "currency": "RON",
+   "month": "2019-04",
+   "bucket": ">5y",
+   "rate": 6.12
+  },
+  {
+   "currency": "RON",
+   "month": "2019-05",
+   "bucket": "<1y",
+   "rate": 5.97
+  },
+  {
+   "currency": "RON",
+   "month": "2019-05",
+   "bucket": "1-5y",
+   "rate": 7.07
+  },
+  {
+   "currency": "RON",
+   "month": "2019-05",
+   "bucket": ">5y",
+   "rate": 6.12
+  },
+  {
+   "currency": "RON",
+   "month": "2019-06",
+   "bucket": "<1y",
+   "rate": 5.78
+  },
+  {
+   "currency": "RON",
+   "month": "2019-06",
+   "bucket": "1-5y",
+   "rate": 6.46
+  },
+  {
+   "currency": "RON",
+   "month": "2019-06",
+   "bucket": ">5y",
+   "rate": 6.17
+  },
+  {
+   "currency": "RON",
+   "month": "2019-07",
+   "bucket": "<1y",
+   "rate": 5.58
+  },
+  {
+   "currency": "RON",
+   "month": "2019-07",
+   "bucket": "1-5y",
+   "rate": 6.06
+  },
+  {
+   "currency": "RON",
+   "month": "2019-07",
+   "bucket": ">5y",
+   "rate": 5.71
+  },
+  {
+   "currency": "RON",
+   "month": "2019-08",
+   "bucket": "<1y",
+   "rate": 5.21
+  },
+  {
+   "currency": "RON",
+   "month": "2019-08",
+   "bucket": "1-5y",
+   "rate": 6.04
+  },
+  {
+   "currency": "RON",
+   "month": "2019-08",
+   "bucket": ">5y",
+   "rate": 5.95
+  },
+  {
+   "currency": "RON",
+   "month": "2019-09",
+   "bucket": "<1y",
+   "rate": 5.58
+  },
+  {
+   "currency": "RON",
+   "month": "2019-09",
+   "bucket": "1-5y",
+   "rate": 6.15
+  },
+  {
+   "currency": "RON",
+   "month": "2019-09",
+   "bucket": ">5y",
+   "rate": 5.79
+  },
+  {
+   "currency": "RON",
+   "month": "2019-10",
+   "bucket": "<1y",
+   "rate": 5.42
+  },
+  {
+   "currency": "RON",
+   "month": "2019-10",
+   "bucket": "1-5y",
+   "rate": 6.3
+  },
+  {
+   "currency": "RON",
+   "month": "2019-10",
+   "bucket": ">5y",
+   "rate": 6.11
+  },
+  {
+   "currency": "RON",
+   "month": "2019-11",
+   "bucket": "<1y",
+   "rate": 5.41
+  },
+  {
+   "currency": "RON",
+   "month": "2019-11",
+   "bucket": "1-5y",
+   "rate": 6.5
+  },
+  {
+   "currency": "RON",
+   "month": "2019-11",
+   "bucket": ">5y",
+   "rate": 6.06
+  },
+  {
+   "currency": "RON",
+   "month": "2019-12",
+   "bucket": "<1y",
+   "rate": 5.44
+  },
+  {
+   "currency": "RON",
+   "month": "2019-12",
+   "bucket": "1-5y",
+   "rate": 6.37
+  },
+  {
+   "currency": "RON",
+   "month": "2019-12",
+   "bucket": ">5y",
+   "rate": 5.6
+  },
+  {
+   "currency": "RON",
+   "month": "2020-01",
+   "bucket": "<1y",
+   "rate": 5.58
+  },
+  {
+   "currency": "RON",
+   "month": "2020-01",
+   "bucket": "1-5y",
+   "rate": 6.19
+  },
+  {
+   "currency": "RON",
+   "month": "2020-01",
+   "bucket": ">5y",
+   "rate": 4.87
+  },
+  {
+   "currency": "RON",
+   "month": "2020-02",
+   "bucket": "<1y",
+   "rate": 5.56
+  },
+  {
+   "currency": "RON",
+   "month": "2020-02",
+   "bucket": "1-5y",
+   "rate": 6.62
+  },
+  {
+   "currency": "RON",
+   "month": "2020-02",
+   "bucket": ">5y",
+   "rate": 5.95
+  },
+  {
+   "currency": "RON",
+   "month": "2020-03",
+   "bucket": "<1y",
+   "rate": 4.97
+  },
+  {
+   "currency": "RON",
+   "month": "2020-03",
+   "bucket": "1-5y",
+   "rate": 6.16
+  },
+  {
+   "currency": "RON",
+   "month": "2020-03",
+   "bucket": ">5y",
+   "rate": 5.78
+  },
+  {
+   "currency": "RON",
+   "month": "2020-04",
+   "bucket": "<1y",
+   "rate": 5.02
+  },
+  {
+   "currency": "RON",
+   "month": "2020-04",
+   "bucket": "1-5y",
+   "rate": 5.62
+  },
+  {
+   "currency": "RON",
+   "month": "2020-04",
+   "bucket": ">5y",
+   "rate": 5.97
+  },
+  {
+   "currency": "RON",
+   "month": "2020-05",
+   "bucket": "<1y",
+   "rate": 4.74
+  },
+  {
+   "currency": "RON",
+   "month": "2020-05",
+   "bucket": "1-5y",
+   "rate": 5.98
+  },
+  {
+   "currency": "RON",
+   "month": "2020-05",
+   "bucket": ">5y",
+   "rate": 5.64
+  },
+  {
+   "currency": "RON",
+   "month": "2020-06",
+   "bucket": "<1y",
+   "rate": 4.46
+  },
+  {
+   "currency": "RON",
+   "month": "2020-06",
+   "bucket": "1-5y",
+   "rate": 5.16
+  },
+  {
+   "currency": "RON",
+   "month": "2020-06",
+   "bucket": ">5y",
+   "rate": 5.46
+  },
+  {
+   "currency": "RON",
+   "month": "2020-07",
+   "bucket": "<1y",
+   "rate": 4.23
+  },
+  {
+   "currency": "RON",
+   "month": "2020-07",
+   "bucket": "1-5y",
+   "rate": 4.56
+  },
+  {
+   "currency": "RON",
+   "month": "2020-07",
+   "bucket": ">5y",
+   "rate": 5.0
+  },
+  {
+   "currency": "RON",
+   "month": "2020-08",
+   "bucket": "<1y",
+   "rate": 4.35
+  },
+  {
+   "currency": "RON",
+   "month": "2020-08",
+   "bucket": "1-5y",
+   "rate": 5.16
+  },
+  {
+   "currency": "RON",
+   "month": "2020-08",
+   "bucket": ">5y",
+   "rate": 4.76
+  },
+  {
+   "currency": "RON",
+   "month": "2020-09",
+   "bucket": "<1y",
+   "rate": 3.99
+  },
+  {
+   "currency": "RON",
+   "month": "2020-09",
+   "bucket": "1-5y",
+   "rate": 4.96
+  },
+  {
+   "currency": "RON",
+   "month": "2020-09",
+   "bucket": ">5y",
+   "rate": 4.2
+  },
+  {
+   "currency": "RON",
+   "month": "2020-10",
+   "bucket": "<1y",
+   "rate": 4.29
+  },
+  {
+   "currency": "RON",
+   "month": "2020-10",
+   "bucket": "1-5y",
+   "rate": 5.14
+  },
+  {
+   "currency": "RON",
+   "month": "2020-10",
+   "bucket": ">5y",
+   "rate": 4.16
+  },
+  {
+   "currency": "RON",
+   "month": "2020-11",
+   "bucket": "<1y",
+   "rate": 4.01
+  },
+  {
+   "currency": "RON",
+   "month": "2020-11",
+   "bucket": "1-5y",
+   "rate": 5.35
+  },
+  {
+   "currency": "RON",
+   "month": "2020-11",
+   "bucket": ">5y",
+   "rate": 4.65
+  },
+  {
+   "currency": "RON",
+   "month": "2020-12",
+   "bucket": "<1y",
+   "rate": 3.96
+  },
+  {
+   "currency": "RON",
+   "month": "2020-12",
+   "bucket": "1-5y",
+   "rate": 4.73
+  },
+  {
+   "currency": "RON",
+   "month": "2020-12",
+   "bucket": ">5y",
+   "rate": 5.05
+  },
+  {
+   "currency": "RON",
+   "month": "2021-01",
+   "bucket": "<1y",
+   "rate": 4.1
+  },
+  {
+   "currency": "RON",
+   "month": "2021-01",
+   "bucket": "1-5y",
+   "rate": 4.93
+  },
+  {
+   "currency": "RON",
+   "month": "2021-01",
+   "bucket": ">5y",
+   "rate": 4.5
+  },
+  {
+   "currency": "RON",
+   "month": "2021-02",
+   "bucket": "<1y",
+   "rate": 3.83
+  },
+  {
+   "currency": "RON",
+   "month": "2021-02",
+   "bucket": "1-5y",
+   "rate": 4.72
+  },
+  {
+   "currency": "RON",
+   "month": "2021-02",
+   "bucket": ">5y",
+   "rate": 4.3
+  },
+  {
+   "currency": "RON",
+   "month": "2021-03",
+   "bucket": "<1y",
+   "rate": 4.05
+  },
+  {
+   "currency": "RON",
+   "month": "2021-03",
+   "bucket": "1-5y",
+   "rate": 4.84
+  },
+  {
+   "currency": "RON",
+   "month": "2021-03",
+   "bucket": ">5y",
+   "rate": 3.88
+  },
+  {
+   "currency": "RON",
+   "month": "2021-04",
+   "bucket": "<1y",
+   "rate": 2.98
+  },
+  {
+   "currency": "RON",
+   "month": "2021-04",
+   "bucket": "1-5y",
+   "rate": 4.57
+  },
+  {
+   "currency": "RON",
+   "month": "2021-04",
+   "bucket": ">5y",
+   "rate": 5.19
+  },
+  {
+   "currency": "RON",
+   "month": "2021-05",
+   "bucket": "<1y",
+   "rate": 3.63
+  },
+  {
+   "currency": "RON",
+   "month": "2021-05",
+   "bucket": "1-5y",
+   "rate": 4.67
+  },
+  {
+   "currency": "RON",
+   "month": "2021-05",
+   "bucket": ">5y",
+   "rate": 3.79
+  },
+  {
+   "currency": "RON",
+   "month": "2021-06",
+   "bucket": "<1y",
+   "rate": 3.75
+  },
+  {
+   "currency": "RON",
+   "month": "2021-06",
+   "bucket": "1-5y",
+   "rate": 4.73
+  },
+  {
+   "currency": "RON",
+   "month": "2021-06",
+   "bucket": ">5y",
+   "rate": 3.91
+  },
+  {
+   "currency": "RON",
+   "month": "2021-07",
+   "bucket": "<1y",
+   "rate": 3.41
+  },
+  {
+   "currency": "RON",
+   "month": "2021-07",
+   "bucket": "1-5y",
+   "rate": 4.6
+  },
+  {
+   "currency": "RON",
+   "month": "2021-07",
+   "bucket": ">5y",
+   "rate": 4.01
+  },
+  {
+   "currency": "RON",
+   "month": "2021-08",
+   "bucket": "<1y",
+   "rate": 3.55
+  },
+  {
+   "currency": "RON",
+   "month": "2021-08",
+   "bucket": "1-5y",
+   "rate": 4.66
+  },
+  {
+   "currency": "RON",
+   "month": "2021-08",
+   "bucket": ">5y",
+   "rate": 3.5
+  },
+  {
+   "currency": "RON",
+   "month": "2021-09",
+   "bucket": "<1y",
+   "rate": 3.66
+  },
+  {
+   "currency": "RON",
+   "month": "2021-09",
+   "bucket": "1-5y",
+   "rate": 4.89
+  },
+  {
+   "currency": "RON",
+   "month": "2021-09",
+   "bucket": ">5y",
+   "rate": 3.4
+  },
+  {
+   "currency": "RON",
+   "month": "2021-10",
+   "bucket": "<1y",
+   "rate": 3.86
+  },
+  {
+   "currency": "RON",
+   "month": "2021-10",
+   "bucket": "1-5y",
+   "rate": 5.39
+  },
+  {
+   "currency": "RON",
+   "month": "2021-10",
+   "bucket": ">5y",
+   "rate": 3.29
+  },
+  {
+   "currency": "RON",
+   "month": "2021-11",
+   "bucket": "<1y",
+   "rate": 4.17
+  },
+  {
+   "currency": "RON",
+   "month": "2021-11",
+   "bucket": "1-5y",
+   "rate": 5.18
+  },
+  {
+   "currency": "RON",
+   "month": "2021-11",
+   "bucket": ">5y",
+   "rate": 4.43
+  },
+  {
+   "currency": "RON",
+   "month": "2021-12",
+   "bucket": "<1y",
+   "rate": 4.02
+  },
+  {
+   "currency": "RON",
+   "month": "2021-12",
+   "bucket": "1-5y",
+   "rate": 5.19
+  },
+  {
+   "currency": "RON",
+   "month": "2021-12",
+   "bucket": ">5y",
+   "rate": 4.62
+  },
+  {
+   "currency": "RON",
+   "month": "2022-01",
+   "bucket": "<1y",
+   "rate": 4.8
+  },
+  {
+   "currency": "RON",
+   "month": "2022-01",
+   "bucket": "1-5y",
+   "rate": 5.83
+  },
+  {
+   "currency": "RON",
+   "month": "2022-01",
+   "bucket": ">5y",
+   "rate": 5.18
+  },
+  {
+   "currency": "RON",
+   "month": "2022-02",
+   "bucket": "<1y",
+   "rate": 4.78
+  },
+  {
+   "currency": "RON",
+   "month": "2022-02",
+   "bucket": "1-5y",
+   "rate": 6.3
+  },
+  {
+   "currency": "RON",
+   "month": "2022-02",
+   "bucket": ">5y",
+   "rate": 5.89
+  },
+  {
+   "currency": "RON",
+   "month": "2022-03",
+   "bucket": "<1y",
+   "rate": 5.58
+  },
+  {
+   "currency": "RON",
+   "month": "2022-03",
+   "bucket": "1-5y",
+   "rate": 6.23
+  },
+  {
+   "currency": "RON",
+   "month": "2022-03",
+   "bucket": ">5y",
+   "rate": 6.06
+  },
+  {
+   "currency": "RON",
+   "month": "2022-04",
+   "bucket": "<1y",
+   "rate": 6.41
+  },
+  {
+   "currency": "RON",
+   "month": "2022-04",
+   "bucket": "1-5y",
+   "rate": 7.04
+  },
+  {
+   "currency": "RON",
+   "month": "2022-04",
+   "bucket": ">5y",
+   "rate": 6.37
+  },
+  {
+   "currency": "RON",
+   "month": "2022-05",
+   "bucket": "<1y",
+   "rate": 6.76
+  },
+  {
+   "currency": "RON",
+   "month": "2022-05",
+   "bucket": "1-5y",
+   "rate": 7.69
+  },
+  {
+   "currency": "RON",
+   "month": "2022-05",
+   "bucket": ">5y",
+   "rate": 7.58
+  },
+  {
+   "currency": "RON",
+   "month": "2022-06",
+   "bucket": "<1y",
+   "rate": 7.35
+  },
+  {
+   "currency": "RON",
+   "month": "2022-06",
+   "bucket": "1-5y",
+   "rate": 8.15
+  },
+  {
+   "currency": "RON",
+   "month": "2022-06",
+   "bucket": ">5y",
+   "rate": 7.7
+  },
+  {
+   "currency": "RON",
+   "month": "2022-07",
+   "bucket": "<1y",
+   "rate": 8.31
+  },
+  {
+   "currency": "RON",
+   "month": "2022-07",
+   "bucket": "1-5y",
+   "rate": 9.37
+  },
+  {
+   "currency": "RON",
+   "month": "2022-07",
+   "bucket": ">5y",
+   "rate": 8.72
+  },
+  {
+   "currency": "RON",
+   "month": "2022-08",
+   "bucket": "<1y",
+   "rate": 9.01
+  },
+  {
+   "currency": "RON",
+   "month": "2022-08",
+   "bucket": "1-5y",
+   "rate": 10.48
+  },
+  {
+   "currency": "RON",
+   "month": "2022-08",
+   "bucket": ">5y",
+   "rate": 9.7
+  },
+  {
+   "currency": "RON",
+   "month": "2022-09",
+   "bucket": "<1y",
+   "rate": 9.17
+  },
+  {
+   "currency": "RON",
+   "month": "2022-09",
+   "bucket": "1-5y",
+   "rate": 10.76
+  },
+  {
+   "currency": "RON",
+   "month": "2022-09",
+   "bucket": ">5y",
+   "rate": 10.29
+  },
+  {
+   "currency": "RON",
+   "month": "2022-10",
+   "bucket": "<1y",
+   "rate": 9.41
+  },
+  {
+   "currency": "RON",
+   "month": "2022-10",
+   "bucket": "1-5y",
+   "rate": 11.45
+  },
+  {
+   "currency": "RON",
+   "month": "2022-10",
+   "bucket": ">5y",
+   "rate": 11.06
+  },
+  {
+   "currency": "RON",
+   "month": "2022-11",
+   "bucket": "<1y",
+   "rate": 9.32
+  },
+  {
+   "currency": "RON",
+   "month": "2022-11",
+   "bucket": "1-5y",
+   "rate": 11.21
+  },
+  {
+   "currency": "RON",
+   "month": "2022-11",
+   "bucket": ">5y",
+   "rate": 10.86
+  },
+  {
+   "currency": "RON",
+   "month": "2022-12",
+   "bucket": "<1y",
+   "rate": 9.04
+  },
+  {
+   "currency": "RON",
+   "month": "2022-12",
+   "bucket": "1-5y",
+   "rate": 10.74
+  },
+  {
+   "currency": "RON",
+   "month": "2022-12",
+   "bucket": ">5y",
+   "rate": 10.77
+  },
+  {
+   "currency": "RON",
+   "month": "2023-01",
+   "bucket": "<1y",
+   "rate": 9.9
+  },
+  {
+   "currency": "RON",
+   "month": "2023-01",
+   "bucket": "1-5y",
+   "rate": 10.98
+  },
+  {
+   "currency": "RON",
+   "month": "2023-01",
+   "bucket": ">5y",
+   "rate": 10.04
+  },
+  {
+   "currency": "RON",
+   "month": "2023-02",
+   "bucket": "<1y",
+   "rate": 9.74
+  },
+  {
+   "currency": "RON",
+   "month": "2023-02",
+   "bucket": "1-5y",
+   "rate": 12.97
+  },
+  {
+   "currency": "RON",
+   "month": "2023-02",
+   "bucket": ">5y",
+   "rate": 11.24
+  },
+  {
+   "currency": "RON",
+   "month": "2023-03",
+   "bucket": "<1y",
+   "rate": 9.78
+  },
+  {
+   "currency": "RON",
+   "month": "2023-03",
+   "bucket": "1-5y",
+   "rate": 12.37
+  },
+  {
+   "currency": "RON",
+   "month": "2023-03",
+   "bucket": ">5y",
+   "rate": 10.8
+  },
+  {
+   "currency": "RON",
+   "month": "2023-04",
+   "bucket": "<1y",
+   "rate": 9.22
+  },
+  {
+   "currency": "RON",
+   "month": "2023-04",
+   "bucket": "1-5y",
+   "rate": 11.21
+  },
+  {
+   "currency": "RON",
+   "month": "2023-04",
+   "bucket": ">5y",
+   "rate": 11.21
+  },
+  {
+   "currency": "RON",
+   "month": "2023-05",
+   "bucket": "<1y",
+   "rate": 9.34
+  },
+  {
+   "currency": "RON",
+   "month": "2023-05",
+   "bucket": "1-5y",
+   "rate": 10.49
+  },
+  {
+   "currency": "RON",
+   "month": "2023-05",
+   "bucket": ">5y",
+   "rate": 10.21
+  },
+  {
+   "currency": "RON",
+   "month": "2023-06",
+   "bucket": "<1y",
+   "rate": 9.34
+  },
+  {
+   "currency": "RON",
+   "month": "2023-06",
+   "bucket": "1-5y",
+   "rate": 10.24
+  },
+  {
+   "currency": "RON",
+   "month": "2023-06",
+   "bucket": ">5y",
+   "rate": 10.24
+  },
+  {
+   "currency": "RON",
+   "month": "2023-07",
+   "bucket": "<1y",
+   "rate": 9.13
+  },
+  {
+   "currency": "RON",
+   "month": "2023-07",
+   "bucket": "1-5y",
+   "rate": 9.87
+  },
+  {
+   "currency": "RON",
+   "month": "2023-07",
+   "bucket": ">5y",
+   "rate": 9.87
+  },
+  {
+   "currency": "RON",
+   "month": "2023-08",
+   "bucket": "<1y",
+   "rate": 9.11
+  },
+  {
+   "currency": "RON",
+   "month": "2023-08",
+   "bucket": "1-5y",
+   "rate": 10.11
+  },
+  {
+   "currency": "RON",
+   "month": "2023-08",
+   "bucket": ">5y",
+   "rate": 10.11
+  },
+  {
+   "currency": "RON",
+   "month": "2023-09",
+   "bucket": "<1y",
+   "rate": 9.04
+  },
+  {
+   "currency": "RON",
+   "month": "2023-09",
+   "bucket": "1-5y",
+   "rate": 10.42
+  },
+  {
+   "currency": "RON",
+   "month": "2023-09",
+   "bucket": ">5y",
+   "rate": 10.42
+  },
+  {
+   "currency": "RON",
+   "month": "2023-10",
+   "bucket": "<1y",
+   "rate": 8.9
+  },
+  {
+   "currency": "RON",
+   "month": "2023-10",
+   "bucket": "1-5y",
+   "rate": 10.49
+  },
+  {
+   "currency": "RON",
+   "month": "2023-10",
+   "bucket": ">5y",
+   "rate": 10.49
+  },
+  {
+   "currency": "RON",
+   "month": "2023-11",
+   "bucket": "<1y",
+   "rate": 8.86
+  },
+  {
+   "currency": "RON",
+   "month": "2023-11",
+   "bucket": "1-5y",
+   "rate": 10.41
+  },
+  {
+   "currency": "RON",
+   "month": "2023-11",
+   "bucket": ">5y",
+   "rate": 10.41
+  },
+  {
+   "currency": "RON",
+   "month": "2023-12",
+   "bucket": "<1y",
+   "rate": 8.85
+  },
+  {
+   "currency": "RON",
+   "month": "2023-12",
+   "bucket": "1-5y",
+   "rate": 10.38
+  },
+  {
+   "currency": "RON",
+   "month": "2023-12",
+   "bucket": ">5y",
+   "rate": 10.38
+  },
+  {
+   "currency": "RON",
+   "month": "2024-01",
+   "bucket": "<1y",
+   "rate": 8.82
+  },
+  {
+   "currency": "RON",
+   "month": "2024-01",
+   "bucket": "1-5y",
+   "rate": 10.25
+  },
+  {
+   "currency": "RON",
+   "month": "2024-01",
+   "bucket": ">5y",
+   "rate": 10.25
+  },
+  {
+   "currency": "RON",
+   "month": "2024-02",
+   "bucket": "<1y",
+   "rate": 8.85
+  },
+  {
+   "currency": "RON",
+   "month": "2024-02",
+   "bucket": "1-5y",
+   "rate": 11.27
+  },
+  {
+   "currency": "RON",
+   "month": "2024-02",
+   "bucket": ">5y",
+   "rate": 11.27
+  },
+  {
+   "currency": "RON",
+   "month": "2024-03",
+   "bucket": "<1y",
+   "rate": 8.95
+  },
+  {
+   "currency": "RON",
+   "month": "2024-03",
+   "bucket": "1-5y",
+   "rate": 10.15
+  },
+  {
+   "currency": "RON",
+   "month": "2024-03",
+   "bucket": ">5y",
+   "rate": 9.77
+  },
+  {
+   "currency": "RON",
+   "month": "2024-04",
+   "bucket": "<1y",
+   "rate": 8.77
+  },
+  {
+   "currency": "RON",
+   "month": "2024-04",
+   "bucket": "1-5y",
+   "rate": 9.21
+  },
+  {
+   "currency": "RON",
+   "month": "2024-04",
+   "bucket": ">5y",
+   "rate": 9.88
+  },
+  {
+   "currency": "RON",
+   "month": "2024-05",
+   "bucket": "<1y",
+   "rate": 8.45
+  },
+  {
+   "currency": "RON",
+   "month": "2024-05",
+   "bucket": "1-5y",
+   "rate": 8.95
+  },
+  {
+   "currency": "RON",
+   "month": "2024-05",
+   "bucket": ">5y",
+   "rate": 9.42
+  },
+  {
+   "currency": "RON",
+   "month": "2024-06",
+   "bucket": "<1y",
+   "rate": 8.45
+  },
+  {
+   "currency": "RON",
+   "month": "2024-06",
+   "bucket": "1-5y",
+   "rate": 8.92
+  },
+  {
+   "currency": "RON",
+   "month": "2024-06",
+   "bucket": ">5y",
+   "rate": 8.92
+  },
+  {
+   "currency": "RON",
+   "month": "2024-07",
+   "bucket": "<1y",
+   "rate": 8.33
+  },
+  {
+   "currency": "RON",
+   "month": "2024-07",
+   "bucket": "1-5y",
+   "rate": 9.35
+  },
+  {
+   "currency": "RON",
+   "month": "2024-07",
+   "bucket": ">5y",
+   "rate": 9.35
+  },
+  {
+   "currency": "RON",
+   "month": "2024-08",
+   "bucket": "<1y",
+   "rate": 8.01
+  },
+  {
+   "currency": "RON",
+   "month": "2024-08",
+   "bucket": "1-5y",
+   "rate": 9.92
+  },
+  {
+   "currency": "RON",
+   "month": "2024-08",
+   "bucket": ">5y",
+   "rate": 9.92
+  },
+  {
+   "currency": "RON",
+   "month": "2024-09",
+   "bucket": "<1y",
+   "rate": 8.57
+  },
+  {
+   "currency": "RON",
+   "month": "2024-09",
+   "bucket": "1-5y",
+   "rate": 9.68
+  },
+  {
+   "currency": "RON",
+   "month": "2024-09",
+   "bucket": ">5y",
+   "rate": 9.41
+  },
+  {
+   "currency": "RON",
+   "month": "2024-10",
+   "bucket": "<1y",
+   "rate": 8.3
+  },
+  {
+   "currency": "RON",
+   "month": "2024-10",
+   "bucket": "1-5y",
+   "rate": 9.74
+  },
+  {
+   "currency": "RON",
+   "month": "2024-10",
+   "bucket": ">5y",
+   "rate": 9.38
+  },
+  {
+   "currency": "RON",
+   "month": "2024-11",
+   "bucket": "<1y",
+   "rate": 8.36
+  },
+  {
+   "currency": "RON",
+   "month": "2024-11",
+   "bucket": "1-5y",
+   "rate": 9.73
+  },
+  {
+   "currency": "RON",
+   "month": "2024-11",
+   "bucket": ">5y",
+   "rate": 9.42
+  },
+  {
+   "currency": "RON",
+   "month": "2024-12",
+   "bucket": "<1y",
+   "rate": 8.43
+  },
+  {
+   "currency": "RON",
+   "month": "2024-12",
+   "bucket": "1-5y",
+   "rate": 9.12
+  },
+  {
+   "currency": "RON",
+   "month": "2024-12",
+   "bucket": ">5y",
+   "rate": 9.44
+  },
+  {
+   "currency": "RON",
+   "month": "2025-01",
+   "bucket": "<1y",
+   "rate": 8.7
+  },
+  {
+   "currency": "RON",
+   "month": "2025-01",
+   "bucket": "1-5y",
+   "rate": 10.94
+  },
+  {
+   "currency": "RON",
+   "month": "2025-01",
+   "bucket": ">5y",
+   "rate": 10.03
+  },
+  {
+   "currency": "RON",
+   "month": "2025-02",
+   "bucket": "<1y",
+   "rate": 8.9
+  },
+  {
+   "currency": "RON",
+   "month": "2025-02",
+   "bucket": "1-5y",
+   "rate": 11.34
+  },
+  {
+   "currency": "RON",
+   "month": "2025-02",
+   "bucket": ">5y",
+   "rate": 9.75
+  },
+  {
+   "currency": "RON",
+   "month": "2025-03",
+   "bucket": "<1y",
+   "rate": 8.89
+  },
+  {
+   "currency": "RON",
+   "month": "2025-03",
+   "bucket": "1-5y",
+   "rate": 11.03
+  },
+  {
+   "currency": "RON",
+   "month": "2025-03",
+   "bucket": ">5y",
+   "rate": 9.28
+  },
+  {
+   "currency": "RON",
+   "month": "2025-04",
+   "bucket": "<1y",
+   "rate": 8.73
+  },
+  {
+   "currency": "RON",
+   "month": "2025-04",
+   "bucket": "1-5y",
+   "rate": 10.18
+  },
+  {
+   "currency": "RON",
+   "month": "2025-04",
+   "bucket": ">5y",
+   "rate": 9.59
+  },
+  {
+   "currency": "RON",
+   "month": "2025-05",
+   "bucket": "<1y",
+   "rate": 9.11
+  },
+  {
+   "currency": "RON",
+   "month": "2025-05",
+   "bucket": "1-5y",
+   "rate": 11.62
+  },
+  {
+   "currency": "RON",
+   "month": "2025-05",
+   "bucket": ">5y",
+   "rate": 9.72
+  },
+  {
+   "currency": "RON",
+   "month": "2025-06",
+   "bucket": "<1y",
+   "rate": 9.22
+  },
+  {
+   "currency": "RON",
+   "month": "2025-06",
+   "bucket": "1-5y",
+   "rate": 11.27
+  },
+  {
+   "currency": "RON",
+   "month": "2025-06",
+   "bucket": ">5y",
+   "rate": 10.02
+  },
+  {
+   "currency": "RON",
+   "month": "2025-07",
+   "bucket": "<1y",
+   "rate": 9.69
+  },
+  {
+   "currency": "RON",
+   "month": "2025-07",
+   "bucket": "1-5y",
+   "rate": 12.4
+  },
+  {
+   "currency": "RON",
+   "month": "2025-07",
+   "bucket": ">5y",
+   "rate": 10.66
+  },
+  {
+   "currency": "RON",
+   "month": "2025-08",
+   "bucket": "<1y",
+   "rate": 9.54
+  },
+  {
+   "currency": "RON",
+   "month": "2025-08",
+   "bucket": "1-5y",
+   "rate": 12.71
+  },
+  {
+   "currency": "RON",
+   "month": "2025-08",
+   "bucket": ">5y",
+   "rate": 10.71
+  },
+  {
+   "currency": "RON",
+   "month": "2025-09",
+   "bucket": "<1y",
+   "rate": 9.62
+  },
+  {
+   "currency": "RON",
+   "month": "2025-09",
+   "bucket": "1-5y",
+   "rate": 12.91
+  },
+  {
+   "currency": "RON",
+   "month": "2025-09",
+   "bucket": ">5y",
+   "rate": 10.01
+  },
+  {
+   "currency": "RON",
+   "month": "2025-10",
+   "bucket": "<1y",
+   "rate": 9.2
+  },
+  {
+   "currency": "RON",
+   "month": "2025-10",
+   "bucket": "1-5y",
+   "rate": 12.89
+  },
+  {
+   "currency": "RON",
+   "month": "2025-10",
+   "bucket": ">5y",
+   "rate": 9.24
+  },
+  {
+   "currency": "RON",
+   "month": "2025-11",
+   "bucket": "<1y",
+   "rate": 9.04
+  },
+  {
+   "currency": "RON",
+   "month": "2025-11",
+   "bucket": "1-5y",
+   "rate": 14.51
+  },
+  {
+   "currency": "RON",
+   "month": "2025-11",
+   "bucket": ">5y",
+   "rate": 9.57
+  },
+  {
+   "currency": "RON",
+   "month": "2025-12",
+   "bucket": "<1y",
+   "rate": 9.04
+  },
+  {
+   "currency": "RON",
+   "month": "2025-12",
+   "bucket": "1-5y",
+   "rate": 14.51
+  },
+  {
+   "currency": "RON",
+   "month": "2025-12",
+   "bucket": ">5y",
+   "rate": 9.57
+  },
+  {
+   "currency": "RON",
+   "month": "2026-01",
+   "bucket": "<1y",
+   "rate": 7.85
+  },
+  {
+   "currency": "RON",
+   "month": "2026-01",
+   "bucket": "1-5y",
+   "rate": 9.84
+  },
+  {
+   "currency": "RON",
+   "month": "2026-01",
+   "bucket": ">5y",
+   "rate": 9.23
+  },
+  {
+   "currency": "RON",
+   "month": "2026-02",
+   "bucket": "<1y",
+   "rate": 8.1
+  },
+  {
+   "currency": "RON",
+   "month": "2026-02",
+   "bucket": "1-5y",
+   "rate": 10.28
+  },
+  {
+   "currency": "RON",
+   "month": "2026-02",
+   "bucket": ">5y",
+   "rate": 8.86
+  },
+  {
+   "currency": "RON",
+   "month": "2026-03",
+   "bucket": "<1y",
+   "rate": 7.96
+  },
+  {
+   "currency": "RON",
+   "month": "2026-03",
+   "bucket": "1-5y",
+   "rate": 9.77
+  },
+  {
+   "currency": "RON",
+   "month": "2026-03",
+   "bucket": ">5y",
+   "rate": 8.97
+  },
+  {
+   "currency": "RON",
+   "month": "2026-04",
+   "bucket": "<1y",
+   "rate": 7.92
+  },
+  {
+   "currency": "RON",
+   "month": "2026-04",
+   "bucket": "1-5y",
+   "rate": 9.52
+  },
+  {
+   "currency": "RON",
+   "month": "2026-04",
+   "bucket": ">5y",
+   "rate": 8.84
+  },
+  {
+   "currency": "RON",
+   "month": "2026-05",
+   "bucket": "<1y",
+   "rate": 7.91
+  },
+  {
+   "currency": "RON",
+   "month": "2026-05",
+   "bucket": "1-5y",
+   "rate": 9.52
+  },
+  {
+   "currency": "RON",
+   "month": "2026-05",
+   "bucket": ">5y",
+   "rate": 8.98
+  },
+  {
+   "currency": "RON",
+   "month": "2026-06",
+   "bucket": "<1y",
+   "rate": 7.7
+  },
+  {
+   "currency": "RON",
+   "month": "2026-06",
+   "bucket": "1-5y",
+   "rate": 9.56
+  },
+  {
+   "currency": "RON",
+   "month": "2026-06",
+   "bucket": ">5y",
+   "rate": 8.72
+  },
+  {
+   "currency": "RON",
+   "month": "2026-07",
+   "bucket": "<1y",
+   "rate": 7.66
+  },
+  {
+   "currency": "RON",
+   "month": "2026-07",
+   "bucket": "1-5y",
+   "rate": 8.81
+  },
+  {
+   "currency": "RON",
+   "month": "2026-07",
+   "bucket": ">5y",
+   "rate": 8.74
+  },
+  {
+   "currency": "RON",
+   "month": "2026-08",
+   "bucket": "<1y",
+   "rate": 7.66
+  },
+  {
+   "currency": "RON",
+   "month": "2026-08",
+   "bucket": "1-5y",
+   "rate": 8.81
+  },
+  {
+   "currency": "RON",
+   "month": "2026-08",
+   "bucket": ">5y",
+   "rate": 8.74
+  },
+  {
+   "currency": "RON",
+   "month": "2026-09",
+   "bucket": "<1y",
+   "rate": 7.66
+  },
+  {
+   "currency": "RON",
+   "month": "2026-09",
+   "bucket": "1-5y",
+   "rate": 8.81
+  },
+  {
+   "currency": "RON",
+   "month": "2026-09",
+   "bucket": ">5y",
+   "rate": 8.74
+  },
+  {
+   "currency": "RON",
+   "month": "2026-10",
+   "bucket": "<1y",
+   "rate": 7.66
+  },
+  {
+   "currency": "RON",
+   "month": "2026-10",
+   "bucket": "1-5y",
+   "rate": 8.81
+  },
+  {
+   "currency": "RON",
+   "month": "2026-10",
+   "bucket": ">5y",
+   "rate": 8.74
+  }
+ ],
+ "control": {
+  "opening_rou": 7831371.22720055,
+  "opening_liability": 8063128.63426993,
+  "pv_new": 5299621.962140331,
+  "rou_adjust": -134371.50509456496,
+  "rou_new": 5165250.4570457665,
+  "depreciation_h1": 704491.9904480088,
+  "depreciation_q3": 347015.894421943,
+  "rou_derecognised": 232125.04171705103,
+  "rou_transferred": 5903913.2134060785,
+  "rou_close_h1": 5737803.818645354,
+  "rou_close": 5809075.544253239,
+  "liability_new": 274582.8903450843,
+  "interest_h1": 53759.737017734675,
+  "payments_h1": 430946.5874985301,
+  "interest_q3": 22273.71678626901,
+  "payments_q3": 197818.86374941582,
+  "liability_derecognised": 128041.5686420973,
+  "liability_transferred": 6038284.718500642,
+  "liability_close_h1": 1512151.6610963882,
+  "liability_close": 1618653.2400283318,
+  "current": 429323.04519818944,
+  "long_term": 1189330.1948301424,
+  "derecognition_gain": -104083.47307495376,
+  "maturity": {
+   "<1y": 786150.6749979648,
+   "1-5y": 1626095.1187481345,
+   ">5y": 96385.0
+  }
+ }
+}

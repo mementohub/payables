@@ -192,10 +192,26 @@ return [
     */
 
     'ifrs16' => [
+        /*
+         * Conturile de chirie pe care le înlocuiește standardul: spațiile
+         * închiriate pe termen lung — agenții, sedii — cu tot cu marketingul
+         * și spațiile comune facturate de proprietar, fiindcă fac parte din
+         * aceeași chirie. Ce rămâne în cheltuieli sunt închirierile de
+         * valoare mică și cele pe termen scurt (imprimante, purificator,
+         * servere, mașini), scutite de standard.
+         */
         'lines' => [
             '4000',  // Chirie principala (Chirie sedii)
+            '4010',  // Marketing (Chirie sedii)
             '4020',  // Spatii comune (Chirie sedii)
-            '12000', // Chirii Auto (Inchirieri)
+        ],
+
+        /** Închirierile scutite: rămân cheltuială, se arată ca atare. */
+        'exempt_lines' => [
+            '12000', // Chirii Auto (Inchirieri) - termen scurt
+            '12200', // Chirii imprimante - valoare mica
+            '12300', // Chirii purificator - valoare mica
+            '12400', // Chirii servere - valoare mica
         ],
         'term_years' => (float) env('PNL_IFRS16_TERM_YEARS', 5),
         'discount_rate' => (float) env('PNL_IFRS16_DISCOUNT_RATE', 0.08),
