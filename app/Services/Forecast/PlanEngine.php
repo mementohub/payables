@@ -6,8 +6,9 @@ use App\Models\ForecastHistory;
 use App\Models\Lease;
 use App\Models\Plan;
 use App\Models\PlanLine;
-use App\Services\Reports\Ifrs16Schedule;
+use App\Services\Reports\Ifrs16Engine;
 use App\Services\Reports\PnlReportService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -66,7 +67,7 @@ class PlanEngine
 
         // Chiriile retratate ca în raport: ies din exploatare și se întorc ca
         // amortizare și dobândă, după contractele din registru.
-        $leases = $basis === PnlReportService::BASIS_IFRS16 ? $this->leases($plan) : null;
+        $leases = $basis === PnlReportService::BASIS_IFRS16 ? $this->leases($plan, $lines) : null;
 
         $months = [];
         $buckets = [];
@@ -1149,7 +1150,7 @@ class PlanEngine
      *
      * @return array<string, mixed>|null
      */
-    private function leases(Plan $plan): ?array
+    private function leases(Plan $plan, Collection $lines): ?array
     {
         $leases = Lease::query()->where('company_id', $plan->company_id)->counted()->get();
 
@@ -1157,18 +1158,54 @@ class PlanEngine
             return null;
         }
 
-        $schedule = app(Ifrs16Schedule::class)->forYear($leases, (int) $plan->year);
-        $rent = [];
+        // Aceeași rostogolire ca pe P&L, dusă pe anul plănuit: ce contracte
+        // se duc mai departe, ce se termină, ce se plătește. Cursul rămâne
+        // cel de la sfârșitul anului de bază — un plan nu ghicește cursul,
+        // deci nu are nici diferențe de curs.
+        $roll = app(Ifrs16Engine::class)->rollForward(
+            $leases,
+            Carbon::create((int) $plan->year, 1, 1),
+            Carbon::create((int) $plan->year, 12, 31),
+        );
+
+        $report = $this->pnl->cached($plan->company, (int) $plan->base_year);
+        $rate = 1.0;
+
+        foreach ((array) ($report['leases']['months'] ?? []) as $cell) {
+            $rate = (float) ($cell['rate'] ?? $rate);
+        }
+
+        // Chiria care iese din exploatare e cea din planul însuși — liniile
+        // de chirie ale raportului — nu plățile din contracte: altfel ar
+        // ieși din cheltuieli altceva decât e scris în ele.
+        $rentLines = array_map('strval', (array) config('pnl.ifrs16.lines', []));
+        $rent = array_fill_keys(range(1, 12), 0.0);
+
+        foreach ($lines as $line) {
+            if ($line->kind === PlanLine::OPEX && in_array((string) $line->key, $rentLines, true)) {
+                $rent[(int) $line->month] += (float) $line->amount;
+            }
+
+            // Și chiria agențiilor, care stă pe magazinele rețelei: e
+            // chiria acelorași spații, scoasă din linia de cheltuieli ca
+            // să se bugeteze acolo unde o știe cineva. Pe IFRS 16 iese și
+            // ea, altfel ar fi numărată și ca plată, și ca amortizare.
+            if ($line->kind === PlanLine::RETAIL) {
+                $rent[(int) $line->month] += (float) $line->rent;
+            }
+        }
+
         $below = [];
         $depreciation = [];
         $interest = [];
 
         foreach (range(1, 12) as $month) {
-            $cell = $schedule['months'][$month] ?? ['payment' => 0.0, 'depreciation' => 0.0, 'interest' => 0.0];
-            $rent[$month] = round((float) $cell['payment'], 2);
-            $depreciation[$month] = round((float) $cell['depreciation'], 2);
-            $interest[$month] = round((float) $cell['interest'], 2);
+            $key = sprintf('%04d-%02d', (int) $plan->year, $month);
+            $cell = $roll['totals']['months'][$key] ?? ['depreciation' => 0.0, 'interest' => 0.0];
+            $depreciation[$month] = round((float) $cell['depreciation'] * $rate, 2);
+            $interest[$month] = round((float) $cell['interest'] * $rate, 2);
             $below[$month] = round($depreciation[$month] + $interest[$month], 2);
+            $rent[$month] = round($rent[$month], 2);
         }
 
         return [
@@ -1177,10 +1214,15 @@ class PlanEngine
             'depreciation' => $depreciation,
             'interest' => $interest,
             'summary' => [
-                'leases' => (int) $schedule['leases'],
+                'leases' => (int) $roll['totals']['lines'],
                 'rent' => round(array_sum($rent), 2),
                 'depreciation' => round(array_sum($depreciation), 2),
                 'interest' => round(array_sum($interest), 2),
+                'payments' => round((float) $roll['totals']['payments'] * $rate, 2),
+                'liability' => round((float) $roll['totals']['liability_close'] * $rate, 2),
+                'rou' => round((float) $roll['totals']['rou_close'] * $rate, 2),
+                'rate' => $rate,
+                'currency' => (string) ($leases->first()?->currency ?? 'EUR'),
             ],
             'months' => range(1, 12),
         ];

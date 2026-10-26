@@ -160,7 +160,7 @@ class ForecastController extends Controller
             // Trei ani în urmă, pe fiecare rând: altfel gradul de ocupare și
             // banii pe pasager s-ar hotărî dintr-un singur an, care poate să
             // fi fost bun sau prost din întâmplare.
-            'history' => $plan ? $this->history($plan) : [],
+            'history' => $plan ? $this->history($plan, $basis) : [],
             'historyYears' => $plan ? $this->historyYears($plan) : [],
             'years' => range((int) now()->year + 1, (int) now()->year - 2),
             // Lunile pe care anul de bază nu le-a trăit încă și cifrele pe
@@ -175,9 +175,10 @@ class ForecastController extends Controller
      *
      * @return array<string, array<int, array<string, mixed>>>
      */
-    private function costHistory(Plan $plan): array
+    private function costHistory(Plan $plan, string $basis = PnlReportService::BASIS_RAS): array
     {
         $out = [];
+        $rentLines = array_map('strval', (array) config('pnl.ifrs16.lines', []));
 
         foreach ($this->historyYears($plan) as $year) {
             $report = $this->pnl->cached($plan->company, $year);
@@ -186,14 +187,40 @@ class ForecastController extends Controller
                 continue;
             }
 
+            // Pe baza IFRS 16, istoricul se citește ca în P&L: chiria
+            // spațiilor nu mai e cheltuială de exploatare, iar amortizarea
+            // și cheltuiala financiară poartă dreptul de utilizare și
+            // dobânda din registrul de închirieri.
+            $ifrs = $basis === PnlReportService::BASIS_IFRS16 ? ($report['leases']['months'] ?? []) : [];
+
             $buckets = [];
 
             foreach (($report['lines'] ?? []) as $line) {
+                if ($ifrs !== [] && in_array((string) $line['saf'], $rentLines, true)) {
+                    continue;
+                }
+
                 $buckets[PlanLine::OPEX.'|'.$line['saf']] = $line['months'] ?? [];
             }
 
             foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
-                $buckets[PlanLine::BELOW.'|'.$bucket] = $report['below'][$bucket]['months'] ?? [];
+                $months = $report['below'][$bucket]['months'] ?? [];
+
+                foreach ($ifrs as $month => $cell) {
+                    $add = match ($bucket) {
+                        'amortizare' => (float) ($cell['depreciation'] ?? 0),
+                        'financiar' => (float) ($cell['interest'] ?? 0) + (float) ($cell['fx'] ?? 0),
+                        default => 0.0,
+                    };
+
+                    if (abs($add) < 0.005) {
+                        continue;
+                    }
+
+                    $months[(int) $month]['total'] = (float) ($months[(int) $month]['total'] ?? 0) + $add;
+                }
+
+                $buckets[PlanLine::BELOW.'|'.$bucket] = $months;
             }
 
             foreach ($buckets as $key => $months) {
@@ -247,7 +274,7 @@ class ForecastController extends Controller
      *
      * @return array<string, array<int, array<string, float>>>
      */
-    private function history(Plan $plan): array
+    private function history(Plan $plan, string $basis = PnlReportService::BASIS_RAS): array
     {
         $rows = ForecastHistory::query()
             ->where('company_id', $plan->company_id)
@@ -258,7 +285,7 @@ class ForecastController extends Controller
         // rapoartele construite ale anilor dinainte, linie cu linie. Fără
         // ele, coloanele 2024–2026 de pe fila „Cheltuieli” ar fi goale, iar
         // omul n-ar avea pe ce judeca o creștere.
-        $out = $this->costHistory($plan);
+        $out = $this->costHistory($plan, $basis);
 
         // Amestecul de canale al fiecărui an: din el iese cât s-a vândut
         // atunci prin agenții partenere. Fără reperul ăsta, omul scrie

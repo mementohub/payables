@@ -270,11 +270,14 @@ test('on IFRS 16 the planned rent leaves the costs and comes back as depreciatio
     $plan = planFor($this->company);
     app(PlanBuilder::class)->seed($plan);
 
-    // O chirie planificată, pe linia de chirii a raportului.
-    PlanLine::query()->create([
-        'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '4000', 'label' => 'Chirii · Chirie principala',
-        'month' => 1, 'amount' => 10_000, 'manual' => true,
-    ]);
+    // Chiria planificată, pe linia de chirii a raportului: tot anul, ca
+    // într-un plan adevărat — contractul de mai jos se plătește tot anul.
+    foreach (range(1, 12) as $month) {
+        PlanLine::query()->create([
+            'plan_id' => $plan->id, 'kind' => 'opex', 'key' => '4000', 'label' => 'Chirii · Chirie principala',
+            'month' => $month, 'amount' => 10_000, 'manual' => true,
+        ]);
+    }
 
     // Și contractul din care se naște retratarea.
     Lease::query()->create([
