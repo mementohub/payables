@@ -473,6 +473,22 @@ export default function Forecast({
     const [tab, setTab] = useState<
         'plan' | 'curent' | 'configurare' | 'variante' | 'sectiuni'
     >(boss ? 'plan' : 'configurare');
+    // Rândurile pe care le poate atinge omul care se uită: conducerea toate,
+    // ceilalți numai pe-ale departamentului lor.
+    const ale = <T extends { section: string }>(rows: T[]) =>
+        rows.filter((one) => boss || mine.includes(one.section));
+
+    const foi = output
+        ? {
+              categorii: ale(
+                  output.categories.filter((r) => r.kind === 'category'),
+              ),
+              charter: ale(output.charter),
+              opex: ale([...output.opex, ...output.below]),
+              retail: ale(output.retail),
+          }
+        : { categorii: [], charter: [], opex: [], retail: [] };
+
     // Câte bucăți de buget au fost trimise spre consolidare.
     const strânse = sections.filter((one) => one.status !== 'draft').length;
 
@@ -1208,6 +1224,27 @@ export default function Forecast({
                             </p>
                         )}
 
+                        {/* Fila deschisă trebuie să fie una a lui: dacă n-are
+                            categorii, se trece pe curse, și așa mai departe. */}
+                        {tab === 'configurare' &&
+                            foi[sheet].length === 0 &&
+                            (() => {
+                                const prima = (
+                                    [
+                                        'categorii',
+                                        'charter',
+                                        'opex',
+                                        'retail',
+                                    ] as const
+                                ).find((one) => foi[one].length > 0);
+
+                                if (prima !== undefined && prima !== sheet) {
+                                    setSheet(prima);
+                                }
+
+                                return null;
+                            })()}
+
                         {tab === 'configurare' && (
                             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                                 <strong className="text-foreground">
@@ -1478,29 +1515,33 @@ export default function Forecast({
                                 }
                             >
                                 <TabsList>
-                                    <TabsTrigger value="categorii">
-                                        Categorii de produs (
-                                        {
-                                            output.categories.filter(
-                                                (r) => r.kind === 'category',
-                                            ).length
-                                        }
-                                        )
-                                    </TabsTrigger>
-                                    <TabsTrigger value="charter">
-                                        Charter · curse ({output.charter.length}
-                                        )
-                                    </TabsTrigger>
-                                    <TabsTrigger value="opex">
-                                        Cheltuieli și sub EBITDA (
-                                        {output.opex.length +
-                                            output.below.length}
-                                        )
-                                    </TabsTrigger>
-                                    <TabsTrigger value="retail">
-                                        Rețeaua de agenții (
-                                        {output.retail.length})
-                                    </TabsTrigger>
+                                    {/* Fiecare filă arată câte rânduri are
+                                        omul în ea; cele în care n-are nimic
+                                        nu se mai deschid degeaba. */}
+                                    {foi.categorii.length > 0 && (
+                                        <TabsTrigger value="categorii">
+                                            Categorii de produs (
+                                            {foi.categorii.length})
+                                        </TabsTrigger>
+                                    )}
+                                    {foi.charter.length > 0 && (
+                                        <TabsTrigger value="charter">
+                                            Charter · curse (
+                                            {foi.charter.length})
+                                        </TabsTrigger>
+                                    )}
+                                    {foi.opex.length > 0 && (
+                                        <TabsTrigger value="opex">
+                                            Cheltuieli și sub EBITDA (
+                                            {foi.opex.length})
+                                        </TabsTrigger>
+                                    )}
+                                    {foi.retail.length > 0 && (
+                                        <TabsTrigger value="retail">
+                                            Rețeaua de agenții (
+                                            {foi.retail.length})
+                                        </TabsTrigger>
+                                    )}
                                 </TabsList>
                             </Tabs>
                         )}
@@ -2002,9 +2043,7 @@ export default function Forecast({
 
                         {tab === 'configurare' && sheet === 'retail' && (
                             <RetailTable
-                                shops={output.retail.filter(
-                                    (one) => boss || mine.includes(one.section),
-                                )}
+                                shops={foi.retail}
                                 planId={plan.id}
                                 planYear={plan.year}
                             />
@@ -2012,18 +2051,13 @@ export default function Forecast({
 
                         {tab === 'configurare' && sheet !== 'retail' && (
                             <DriverTable
-                                rows={(sheet === 'categorii'
-                                    ? output.categories.filter(
-                                          (r) => r.kind === 'category',
-                                      )
-                                    : sheet === 'charter'
-                                      ? output.charter
-                                      : [...output.opex, ...output.below]
-                                ).filter(
-                                    // Conducerea vede tot; ceilalți, numai
-                                    // bucata lor.
-                                    (r) => boss || mine.includes(r.section),
-                                )}
+                                rows={
+                                    sheet === 'categorii'
+                                        ? foi.categorii
+                                        : sheet === 'charter'
+                                          ? foi.charter
+                                          : foi.opex
+                                }
                                 kind={sheet}
                                 history={history}
                                 openMonths={openMonths}
