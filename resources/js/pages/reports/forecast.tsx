@@ -14,6 +14,7 @@ import {
 import { Fragment, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -394,6 +395,37 @@ type Props = {
 };
 
 /** Numele pârghiilor, pentru lista schimbărilor nesalvate. */
+/**
+ * Ce se poate pune pe mai multe rânduri deodată.
+ *
+ * Aceleași pârghii ca pe rând, dar scrise peste toate cele alese: „pune
+ * ocuparea la 85% pe cele șapte curse de vară”, dintr-o mișcare.
+ */
+const BULK: Record<
+    string,
+    { field: string; label: string; scale?: number; growth?: boolean }[]
+> = {
+    charter: [
+        { field: 'load', label: 'Ocupare (%)', scale: 0.01 },
+        { field: 'unit_net', label: 'Venit / pax (lei)' },
+        { field: 'unit_margin', label: 'Marjă / pax (lei)' },
+        { field: 'unit_cost', label: 'Cost / loc (lei)' },
+        { field: 'b2b', label: 'B2B (% din venit)', scale: 0.01 },
+        { field: 'capacity', label: 'Creștere locuri (%)', growth: true },
+    ],
+    categorii: [
+        { field: 'volume', label: 'Volum / lună (nr.)' },
+        { field: 'unit_net', label: 'Venit / unitate (lei)' },
+        { field: 'unit_margin', label: 'Marjă / unitate (lei)' },
+        { field: 'b2b', label: 'B2B (% din venit)', scale: 0.01 },
+        { field: 'volume', label: 'Creștere volum (%)', growth: true },
+    ],
+    opex: [
+        { field: 'amount', label: 'Sumă / lună (lei)' },
+        { field: 'amount', label: 'Creștere (%)', growth: true },
+    ],
+};
+
 const FIELDS: Record<string, string> = {
     volume: 'pasageri',
     capacity: 'locuri',
@@ -2586,6 +2618,7 @@ export default function Forecast({
 
                         {tab === 'configurare' && sheet !== 'retail' && (
                             <DriverTable
+                                key={sheet}
                                 rows={foi[sheet]?.rows ?? []}
                                 kind={
                                     categorie
@@ -2706,1143 +2739,1350 @@ function DriverTable({
     const rowChanged = (row: Row, field: string) =>
         rowEdits[`${row.kind}|${row.key}|${field}`] !== undefined;
 
+    // Rândurile alese pentru o mișcare în masă, și ce li se pune.
+    const [alese, setAlese] = useState<Set<string>>(new Set());
+    const [bulk, setBulk] = useState({ which: 0, value: 0 });
+    const pârghii = BULK[kind] ?? [];
+    const pârghia = pârghii[bulk.which] ?? pârghii[0];
+    const alesele = rows.filter((one) => alese.has(one.key));
+
     return (
-        <Card>
-            <CardContent className="overflow-x-auto p-0">
-                <Table className="text-xs">
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-56">
-                                {isCharter
-                                    ? 'Cursă'
-                                    : isOpex
-                                      ? 'Linie de cheltuială'
-                                      : 'Categorie'}
-                            </TableHead>
-                            {historyYears.map((year) => (
-                                <TableHead
-                                    key={year}
-                                    className="border-l text-right text-muted-foreground"
-                                    title={
-                                        isOpex
-                                            ? `Cât s-a cheltuit pe linia asta în ${year}, în lei.`
-                                            : `${year}: volumul (pax sau servicii) și, sub el, venitul și marja pe unitate, în lei.`
-                                    }
-                                >
-                                    {year}
-                                    <span className="block text-[10px] font-normal opacity-70">
-                                        {isOpex
-                                            ? 'lei'
-                                            : isCharter
-                                              ? 'pax / ocupare · lei/pax'
-                                              : 'volum · lei/unit.'}
+        <div className="space-y-2">
+            {alesele.length > 0 && (
+                <div className="flex flex-wrap items-end gap-3 rounded-md border border-amber-300 bg-amber-50/70 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                    <span className="text-xs font-medium">
+                        {alesele.length}{' '}
+                        {isCharter
+                            ? alesele.length === 1
+                                ? 'cursă aleasă'
+                                : 'curse alese'
+                            : alesele.length === 1
+                              ? 'rând ales'
+                              : 'rânduri alese'}
+                    </span>
+
+                    <div className="grid gap-1.5">
+                        <Label className="text-[10px] text-muted-foreground">
+                            Ce se pune
+                        </Label>
+                        <Select
+                            value={String(bulk.which)}
+                            onValueChange={(v) =>
+                                setBulk({ ...bulk, which: Number(v) })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-56 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {pârghii.map((one, i) => (
+                                    <SelectItem
+                                        key={one.label}
+                                        value={String(i)}
+                                    >
+                                        {one.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="grid gap-1.5">
+                        <Label className="text-[10px] text-muted-foreground">
+                            Cât
+                        </Label>
+                        <Input
+                            type="number"
+                            className="h-8 w-32 text-xs"
+                            value={bulk.value}
+                            onChange={(e) =>
+                                setBulk({
+                                    ...bulk,
+                                    value: Number(e.target.value),
+                                })
+                            }
+                        />
+                    </div>
+
+                    <Button
+                        size="sm"
+                        onClick={() => {
+                            if (pârghia === undefined) {
+                                return;
+                            }
+
+                            for (const row of alesele) {
+                                onApply(
+                                    row,
+                                    pârghia.field,
+                                    pârghia.growth
+                                        ? null
+                                        : bulk.value * (pârghia.scale ?? 1),
+                                    pârghia.growth ? bulk.value : null,
+                                );
+                            }
+
+                            setAlese(new Set());
+                        }}
+                    >
+                        Pune pe cele alese
+                    </Button>
+
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        onClick={() =>
+                            confirm(
+                                `Scoți ${alesele.length} rânduri din planul ${planYear}? Se pot pune înapoi de sub tabel.`,
+                            ) &&
+                            router.delete(`/reports/forecast/${planId}/rows`, {
+                                data: {
+                                    kind: alesele[0].kind,
+                                    keys: alesele.map((one) => one.key),
+                                },
+                                preserveScroll: true,
+                                onSuccess: () => setAlese(new Set()),
+                            })
+                        }
+                    >
+                        <Trash2 className="size-3" />
+                        Scoate din plan
+                    </Button>
+
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setAlese(new Set())}
+                    >
+                        Renunță
+                    </Button>
+
+                    <span className="text-[11px] text-muted-foreground">
+                        Ce se pune intră în schimbările nesalvate, ca orice
+                        cifră scrisă cu mâna: se vede în bara de sus și pleacă
+                        la „Salvează”.
+                    </span>
+                </div>
+            )}
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            {/* Antetul se citește aldin, iar prima coloană stă
+                            pe loc când tabelul pleacă în lături: altfel, la
+                            coloana a zecea, nu mai știi pe ce cursă ești. */}
+                            <TableRow className="[&>th]:font-semibold">
+                                <TableHead className="sticky left-0 z-30 w-56 border-r bg-card">
+                                    <span className="flex items-center gap-2">
+                                        <Checkbox
+                                            checked={
+                                                rows.length > 0 &&
+                                                alese.size === rows.length
+                                            }
+                                            onCheckedChange={() =>
+                                                setAlese(
+                                                    alese.size === rows.length
+                                                        ? new Set()
+                                                        : new Set(
+                                                              rows.map(
+                                                                  (one) =>
+                                                                      one.key,
+                                                              ),
+                                                          ),
+                                                )
+                                            }
+                                            aria-label="Alege tot"
+                                        />
+                                        {isCharter
+                                            ? 'Cursă'
+                                            : isOpex
+                                              ? 'Linie de cheltuială'
+                                              : 'Categorie'}
                                     </span>
                                 </TableHead>
-                            ))}
-                            {isCharter && (
-                                <>
-                                    <TableHead className="text-right">
-                                        Locuri (nr.)
-                                    </TableHead>
+                                {historyYears.map((year) => (
                                     <TableHead
-                                        className="text-right"
-                                        title="Gradul de ocupare: câte locuri din avion se vând."
+                                        key={year}
+                                        className="border-l text-right text-muted-foreground"
+                                        title={
+                                            isOpex
+                                                ? `Cât s-a cheltuit pe linia asta în ${year}, în lei.`
+                                                : `${year}: volumul (pax sau servicii) și, sub el, venitul și marja pe unitate, în lei.`
+                                        }
                                     >
-                                        G.D.O. (%)
+                                        {year}
+                                        <span className="block text-[10px] font-normal opacity-70">
+                                            {isOpex
+                                                ? 'lei'
+                                                : isCharter
+                                                  ? 'pax / ocupare · lei/pax'
+                                                  : 'volum · lei/unit.'}
+                                        </span>
                                     </TableHead>
-                                </>
-                            )}
-                            {isCharter && (
-                                <>
-                                    <TableHead
-                                        className="text-right"
-                                        title="Gradul de ocupare de la care cursa își acoperă avionul."
-                                    >
-                                        Prag (%)
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Loc. goale (nr.)
-                                    </TableHead>
-                                </>
-                            )}
-                            {!isOpex && (
-                                <>
-                                    <TableHead className="text-right">
-                                        Pax / servicii (nr.)
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Venit / unitate (lei)
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Marjă / unitate (lei)
-                                    </TableHead>
-                                </>
-                            )}
-                            <TableHead className="text-right">
-                                {isOpex
-                                    ? 'Cheltuială an (lei)'
-                                    : 'Venit an (lei)'}
-                            </TableHead>
-                            {!isOpex && (
-                                <TableHead className="text-right">
-                                    Marjă an (lei)
-                                </TableHead>
-                            )}
-                            {!isOpex && (
-                                <>
-                                    <TableHead
-                                        className="text-right"
-                                        title="Cât din venitul rândului se vinde prin agenții partenere. Restul se vinde direct — site, agențiile noastre, franciză, call center — împărțit pe canale ca în anul de bază."
-                                    >
-                                        B2B (% din venit)
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Venit B2B (lei)
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                        Venit B2C (lei)
-                                    </TableHead>
-                                </>
-                            )}
-                            <TableHead
-                                className="w-32 text-right"
-                                title="Crește tot rândul, pe toate lunile, cu procentul scris."
-                            >
-                                Creștere (%)
-                            </TableHead>
-                            <TableHead className="w-20" />
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {rows.map((row) => (
-                            <>
-                                <TableRow
-                                    key={row.key}
-                                    className={cn(
-                                        row.manual &&
-                                            'bg-amber-50/60 dark:bg-amber-950/20',
-                                        Object.values(rowEdits).some(
-                                            (r) =>
-                                                `${row.kind}|${row.key}` ===
-                                                `${r.kind}|${r.key}`,
-                                        ) && 'ring-1 ring-amber-400',
-                                    )}
-                                >
-                                    <TableCell>
-                                        <button
-                                            type="button"
-                                            onClick={() => onToggle(row.key)}
-                                            className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                                ))}
+                                {isCharter && (
+                                    <>
+                                        <TableHead className="text-right">
+                                            Locuri (nr.)
+                                        </TableHead>
+                                        <TableHead
+                                            className="text-right"
+                                            title="Gradul de ocupare: câte locuri din avion se vând."
                                         >
-                                            {open.has(row.key) ? (
-                                                <ChevronDown className="size-3" />
-                                            ) : (
-                                                <ChevronRight className="size-3 opacity-50" />
-                                            )}
-                                            {row.label}
-                                            <span className="text-[10px] font-normal opacity-60">
-                                                {open.has(row.key)
-                                                    ? 'strânge lunile'
-                                                    : 'vezi lunile'}
-                                            </span>
-                                        </button>
-                                        {row.manual && (
-                                            <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-500">
-                                                scris de mână
-                                            </span>
+                                            G.D.O. (%)
+                                        </TableHead>
+                                    </>
+                                )}
+                                {isCharter && (
+                                    <>
+                                        <TableHead
+                                            className="text-right"
+                                            title="Gradul de ocupare de la care cursa își acoperă avionul."
+                                        >
+                                            Prag (%)
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Loc. goale (nr.)
+                                        </TableHead>
+                                    </>
+                                )}
+                                {!isOpex && (
+                                    <>
+                                        <TableHead className="text-right">
+                                            Pax / servicii (nr.)
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Venit / unitate (lei)
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Marjă / unitate (lei)
+                                        </TableHead>
+                                    </>
+                                )}
+                                <TableHead className="text-right">
+                                    {isOpex
+                                        ? 'Cheltuială an (lei)'
+                                        : 'Venit an (lei)'}
+                                </TableHead>
+                                {!isOpex && (
+                                    <TableHead className="text-right">
+                                        Marjă an (lei)
+                                    </TableHead>
+                                )}
+                                {!isOpex && (
+                                    <>
+                                        <TableHead
+                                            className="text-right"
+                                            title="Cât din venitul rândului se vinde prin agenții partenere. Restul se vinde direct — site, agențiile noastre, franciză, call center — împărțit pe canale ca în anul de bază."
+                                        >
+                                            B2B (% din venit)
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Venit B2B (lei)
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Venit B2C (lei)
+                                        </TableHead>
+                                    </>
+                                )}
+                                <TableHead
+                                    className="w-32 text-right"
+                                    title="Crește tot rândul, pe toate lunile, cu procentul scris."
+                                >
+                                    Creștere (%)
+                                </TableHead>
+                                <TableHead className="w-20" />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {rows.map((row) => (
+                                <>
+                                    <TableRow
+                                        key={row.key}
+                                        className={cn(
+                                            row.manual &&
+                                                'bg-amber-50/60 dark:bg-amber-950/20',
+                                            Object.values(rowEdits).some(
+                                                (r) =>
+                                                    `${row.kind}|${row.key}` ===
+                                                    `${r.kind}|${r.key}`,
+                                            ) && 'ring-1 ring-amber-400',
                                         )}
-                                    </TableCell>
+                                    >
+                                        <TableCell
+                                            className={cn(
+                                                'sticky left-0 z-20 border-r font-semibold',
+                                                row.manual
+                                                    ? 'bg-amber-50 dark:bg-amber-950'
+                                                    : 'bg-card',
+                                            )}
+                                        >
+                                            <Checkbox
+                                                className="mr-2 align-middle"
+                                                checked={alese.has(row.key)}
+                                                onCheckedChange={() =>
+                                                    setAlese((prev) => {
+                                                        const next = new Set(
+                                                            prev,
+                                                        );
 
-                                    {historyYears.map((year) => {
-                                        const past =
-                                            history[`${row.kind}|${row.key}`]?.[
-                                                year
-                                            ];
+                                                        if (
+                                                            !next.delete(
+                                                                row.key,
+                                                            )
+                                                        ) {
+                                                            next.add(row.key);
+                                                        }
 
-                                        if (!past) {
+                                                        return next;
+                                                    })
+                                                }
+                                                aria-label={`Alege ${row.label}`}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    onToggle(row.key)
+                                                }
+                                                className="inline-flex items-center gap-1 font-semibold hover:text-foreground"
+                                            >
+                                                {open.has(row.key) ? (
+                                                    <ChevronDown className="size-3" />
+                                                ) : (
+                                                    <ChevronRight className="size-3 opacity-50" />
+                                                )}
+                                                {row.label}
+                                                <span className="text-[10px] font-normal opacity-60">
+                                                    {open.has(row.key)
+                                                        ? 'strânge lunile'
+                                                        : 'vezi lunile'}
+                                                </span>
+                                            </button>
+                                            {row.manual && (
+                                                <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-500">
+                                                    scris de mână
+                                                </span>
+                                            )}
+                                        </TableCell>
+
+                                        {historyYears.map((year) => {
+                                            const past =
+                                                history[
+                                                    `${row.kind}|${row.key}`
+                                                ]?.[year];
+
+                                            if (!past) {
+                                                return (
+                                                    <TableCell
+                                                        key={year}
+                                                        className="border-l text-right text-muted-foreground"
+                                                    >
+                                                        –
+                                                    </TableCell>
+                                                );
+                                            }
+
                                             return (
                                                 <TableCell
                                                     key={year}
-                                                    className="border-l text-right text-muted-foreground"
+                                                    className="border-l text-right text-[11px] text-muted-foreground tabular-nums"
+                                                    title={
+                                                        past.estimated
+                                                            ? `${year}: ${lei(past.net)} lei, din care ${past.estimated} luni estimate — anul n-a venit încă până la capăt.`
+                                                            : `${year}: ${lei(past.net)} lei venit, ${lei(past.margin)} marjă`
+                                                    }
                                                 >
-                                                    –
-                                                </TableCell>
-                                            );
-                                        }
-
-                                        return (
-                                            <TableCell
-                                                key={year}
-                                                className="border-l text-right text-[11px] text-muted-foreground tabular-nums"
-                                                title={
-                                                    past.estimated
-                                                        ? `${year}: ${lei(past.net)} lei, din care ${past.estimated} luni estimate — anul n-a venit încă până la capăt.`
-                                                        : `${year}: ${lei(past.net)} lei venit, ${lei(past.margin)} marjă`
-                                                }
-                                            >
-                                                {isOpex ? (
-                                                    <>
-                                                        {lei(past.net)}
-                                                        {past.estimated ? (
-                                                            <span className="ml-1 text-[10px] opacity-70">
-                                                                (
-                                                                {past.estimated}{' '}
-                                                                est.)
-                                                            </span>
-                                                        ) : null}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div>
-                                                            {lei(past.volume)}
-                                                            {isCharter &&
-                                                                past.capacity >
-                                                                    0 && (
-                                                                    <span className="ml-1">
-                                                                        /{' '}
-                                                                        {(
-                                                                            (past.sold /
-                                                                                past.capacity) *
-                                                                            100
-                                                                        ).toFixed(
-                                                                            0,
-                                                                        )}
-                                                                        %
-                                                                    </span>
+                                                    {isOpex ? (
+                                                        <>
+                                                            {lei(past.net)}
+                                                            {past.estimated ? (
+                                                                <span className="ml-1 text-[10px] opacity-70">
+                                                                    (
+                                                                    {
+                                                                        past.estimated
+                                                                    }{' '}
+                                                                    est.)
+                                                                </span>
+                                                            ) : null}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div>
+                                                                {lei(
+                                                                    past.volume,
                                                                 )}
-                                                        </div>
-                                                        <div>
-                                                            {past.volume > 0
-                                                                ? lei(
-                                                                      past.net /
-                                                                          past.volume,
-                                                                  )
-                                                                : '–'}{' '}
-                                                            /{' '}
-                                                            {past.volume > 0
-                                                                ? lei(
-                                                                      past.margin /
-                                                                          past.volume,
-                                                                  )
-                                                                : '–'}
-                                                        </div>
-                                                        {/* Cât s-a vândut
+                                                                {isCharter &&
+                                                                    past.capacity >
+                                                                        0 && (
+                                                                        <span className="ml-1">
+                                                                            /{' '}
+                                                                            {(
+                                                                                (past.sold /
+                                                                                    past.capacity) *
+                                                                                100
+                                                                            ).toFixed(
+                                                                                0,
+                                                                            )}
+                                                                            %
+                                                                        </span>
+                                                                    )}
+                                                            </div>
+                                                            <div>
+                                                                {past.volume > 0
+                                                                    ? lei(
+                                                                          past.net /
+                                                                              past.volume,
+                                                                      )
+                                                                    : '–'}{' '}
+                                                                /{' '}
+                                                                {past.volume > 0
+                                                                    ? lei(
+                                                                          past.margin /
+                                                                              past.volume,
+                                                                      )
+                                                                    : '–'}
+                                                            </div>
+                                                            {/* Cât s-a vândut
                                                             atunci prin agenții
                                                             partenere: reperul
                                                             de lângă pârghia
                                                             de azi. */}
-                                                        {past.b2b !==
-                                                            undefined && (
-                                                            <div className="opacity-70">
-                                                                B2B{' '}
-                                                                {lei(
-                                                                    past.b2b *
-                                                                        100,
-                                                                    1,
-                                                                )}
-                                                                %
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </TableCell>
-                                        );
-                                    })}
-
-                                    {isCharter && (
-                                        <>
-                                            <TableCell className="text-right tabular-nums">
-                                                {lei(row.seats)}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <RowInput
-                                                    value={
-                                                        rowValue(
-                                                            row,
-                                                            'load',
-                                                            row.seats > 0
-                                                                ? row.pax /
-                                                                      row.seats
-                                                                : 0,
-                                                        ) * 100
-                                                    }
-                                                    pending={rowChanged(
-                                                        row,
-                                                        'load',
+                                                            {past.b2b !==
+                                                                undefined && (
+                                                                <div className="opacity-70">
+                                                                    B2B{' '}
+                                                                    {lei(
+                                                                        past.b2b *
+                                                                            100,
+                                                                        1,
+                                                                    )}
+                                                                    %
+                                                                </div>
+                                                            )}
+                                                        </>
                                                     )}
-                                                    suffix="%"
-                                                    onCommit={(v) =>
-                                                        onApply(
-                                                            row,
-                                                            'load',
-                                                            v / 100,
-                                                            null,
-                                                        )
-                                                    }
-                                                />
-                                            </TableCell>
-                                        </>
-                                    )}
+                                                </TableCell>
+                                            );
+                                        })}
 
-                                    {isCharter && (
-                                        <>
-                                            <TableCell
-                                                className="text-right tabular-nums"
-                                                title={`Costul zborului: ${lei(row.unit_cost)} lei pe loc. De la gradul ăsta de ocupare cursa își acoperă avionul.`}
-                                            >
-                                                {row.break_even !== null ? (
-                                                    <span
-                                                        className={
-                                                            row.seats > 0 &&
-                                                            row.pax /
-                                                                row.seats <
-                                                                row.break_even
-                                                                ? 'font-semibold text-red-600 dark:text-red-400'
-                                                                : ''
+                                        {isCharter && (
+                                            <>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {lei(row.seats)}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <RowInput
+                                                        value={
+                                                            rowValue(
+                                                                row,
+                                                                'load',
+                                                                row.seats > 0
+                                                                    ? row.pax /
+                                                                          row.seats
+                                                                    : 0,
+                                                            ) * 100
                                                         }
-                                                    >
-                                                        {(
-                                                            row.break_even * 100
-                                                        ).toFixed(0)}
-                                                        %
-                                                    </span>
-                                                ) : (
-                                                    '–'
-                                                )}
-                                            </TableCell>
-                                            <TableCell
-                                                className="text-right text-[11px] tabular-nums"
-                                                title="Locurile rămase nevândute și cât costă: avionul se plătește întreg."
-                                            >
-                                                <div>
-                                                    {lei(row.empty_seats)}
-                                                </div>
-                                                <div className="text-muted-foreground">
-                                                    {lei(row.empty_cost)} lei
-                                                </div>
-                                            </TableCell>
-                                        </>
-                                    )}
+                                                        pending={rowChanged(
+                                                            row,
+                                                            'load',
+                                                        )}
+                                                        suffix="%"
+                                                        onCommit={(v) =>
+                                                            onApply(
+                                                                row,
+                                                                'load',
+                                                                v / 100,
+                                                                null,
+                                                            )
+                                                        }
+                                                    />
+                                                </TableCell>
+                                            </>
+                                        )}
 
-                                    {!isOpex && (
-                                        <>
-                                            <TableCell className="text-right tabular-nums">
-                                                {lei(row.pax)}
-                                                {row.unit === 'serviciu' && (
-                                                    <span className="ml-1 text-[10px] text-muted-foreground">
-                                                        servicii
-                                                    </span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <RowInput
-                                                    value={rowValue(
-                                                        row,
-                                                        'unit_net',
-                                                        row.pax > 0
-                                                            ? row.net / row.pax
-                                                            : 0,
+                                        {isCharter && (
+                                            <>
+                                                <TableCell
+                                                    className="text-right tabular-nums"
+                                                    title={`Costul zborului: ${lei(row.unit_cost)} lei pe loc. De la gradul ăsta de ocupare cursa își acoperă avionul.`}
+                                                >
+                                                    {row.break_even !== null ? (
+                                                        <span
+                                                            className={
+                                                                row.seats > 0 &&
+                                                                row.pax /
+                                                                    row.seats <
+                                                                    row.break_even
+                                                                    ? 'font-semibold text-red-600 dark:text-red-400'
+                                                                    : ''
+                                                            }
+                                                        >
+                                                            {(
+                                                                row.break_even *
+                                                                100
+                                                            ).toFixed(0)}
+                                                            %
+                                                        </span>
+                                                    ) : (
+                                                        '–'
                                                     )}
-                                                    pending={rowChanged(
-                                                        row,
-                                                        'unit_net',
+                                                </TableCell>
+                                                <TableCell
+                                                    className="text-right text-[11px] tabular-nums"
+                                                    title="Locurile rămase nevândute și cât costă: avionul se plătește întreg."
+                                                >
+                                                    <div>
+                                                        {lei(row.empty_seats)}
+                                                    </div>
+                                                    <div className="text-muted-foreground">
+                                                        {lei(row.empty_cost)}{' '}
+                                                        lei
+                                                    </div>
+                                                </TableCell>
+                                            </>
+                                        )}
+
+                                        {!isOpex && (
+                                            <>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {lei(row.pax)}
+                                                    {row.unit ===
+                                                        'serviciu' && (
+                                                        <span className="ml-1 text-[10px] text-muted-foreground">
+                                                            servicii
+                                                        </span>
                                                     )}
-                                                    onCommit={(v) =>
-                                                        onApply(
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <RowInput
+                                                        value={rowValue(
                                                             row,
                                                             'unit_net',
-                                                            v,
-                                                            null,
-                                                        )
-                                                    }
-                                                />
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <RowInput
-                                                    value={rowValue(
-                                                        row,
-                                                        'unit_margin',
-                                                        row.pax > 0
-                                                            ? row.margin /
-                                                                  row.pax
-                                                            : 0,
-                                                    )}
-                                                    pending={rowChanged(
-                                                        row,
-                                                        'unit_margin',
-                                                    )}
-                                                    onCommit={(v) =>
-                                                        onApply(
+                                                            row.pax > 0
+                                                                ? row.net /
+                                                                      row.pax
+                                                                : 0,
+                                                        )}
+                                                        pending={rowChanged(
+                                                            row,
+                                                            'unit_net',
+                                                        )}
+                                                        onCommit={(v) =>
+                                                            onApply(
+                                                                row,
+                                                                'unit_net',
+                                                                v,
+                                                                null,
+                                                            )
+                                                        }
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <RowInput
+                                                        value={rowValue(
                                                             row,
                                                             'unit_margin',
-                                                            v,
-                                                            null,
-                                                        )
-                                                    }
-                                                />
-                                            </TableCell>
-                                        </>
-                                    )}
+                                                            row.pax > 0
+                                                                ? row.margin /
+                                                                      row.pax
+                                                                : 0,
+                                                        )}
+                                                        pending={rowChanged(
+                                                            row,
+                                                            'unit_margin',
+                                                        )}
+                                                        onCommit={(v) =>
+                                                            onApply(
+                                                                row,
+                                                                'unit_margin',
+                                                                v,
+                                                                null,
+                                                            )
+                                                        }
+                                                    />
+                                                </TableCell>
+                                            </>
+                                        )}
 
-                                    <TableCell className="text-right font-semibold tabular-nums">
-                                        {lei(isOpex ? row.amount : row.net)}
-                                    </TableCell>
-                                    {!isOpex && (
-                                        <TableCell className="text-right tabular-nums">
-                                            {lei(row.margin)}
+                                        <TableCell className="text-right font-semibold tabular-nums">
+                                            {lei(isOpex ? row.amount : row.net)}
                                         </TableCell>
-                                    )}
-                                    {!isOpex && (
-                                        <>
-                                            <TableCell className="text-right">
-                                                <RowInput
-                                                    value={
-                                                        rowValue(
-                                                            row,
-                                                            'b2b',
-                                                            row.b2b ?? 0,
-                                                        ) * 100
-                                                    }
-                                                    suffix="%"
-                                                    pending={
-                                                        rowEdits[
-                                                            `${row.kind}|${row.key}|b2b`
-                                                        ] !== undefined
-                                                    }
-                                                    onCommit={(v) =>
-                                                        onApply(
-                                                            row,
-                                                            'b2b',
-                                                            Math.min(
-                                                                1,
-                                                                Math.max(
-                                                                    0,
-                                                                    v / 100,
+                                        {!isOpex && (
+                                            <TableCell className="text-right tabular-nums">
+                                                {lei(row.margin)}
+                                            </TableCell>
+                                        )}
+                                        {!isOpex && (
+                                            <>
+                                                <TableCell className="text-right">
+                                                    <RowInput
+                                                        value={
+                                                            rowValue(
+                                                                row,
+                                                                'b2b',
+                                                                row.b2b ?? 0,
+                                                            ) * 100
+                                                        }
+                                                        suffix="%"
+                                                        pending={
+                                                            rowEdits[
+                                                                `${row.kind}|${row.key}|b2b`
+                                                            ] !== undefined
+                                                        }
+                                                        onCommit={(v) =>
+                                                            onApply(
+                                                                row,
+                                                                'b2b',
+                                                                Math.min(
+                                                                    1,
+                                                                    Math.max(
+                                                                        0,
+                                                                        v / 100,
+                                                                    ),
                                                                 ),
-                                                            ),
-                                                            null,
-                                                        )
-                                                    }
-                                                />
-                                            </TableCell>
-                                            <TableCell className="text-right tabular-nums">
-                                                {lei(row.net_b2b)}
-                                            </TableCell>
-                                            <TableCell className="text-right tabular-nums">
-                                                {lei(row.net_b2c)}
-                                                {row.net_other > 0 && (
-                                                    <span
-                                                        className="ml-1 text-[10px] text-muted-foreground"
-                                                        title="Corporate și alte canale: nu sunt nici B2B, nici B2C."
-                                                    >
-                                                        +{mii(row.net_other)}k
-                                                        alte
-                                                    </span>
-                                                )}
-                                            </TableCell>
-                                        </>
-                                    )}
+                                                                null,
+                                                            )
+                                                        }
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {lei(row.net_b2b)}
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {lei(row.net_b2c)}
+                                                    {row.net_other > 0 && (
+                                                        <span
+                                                            className="ml-1 text-[10px] text-muted-foreground"
+                                                            title="Corporate și alte canale: nu sunt nici B2B, nici B2C."
+                                                        >
+                                                            +
+                                                            {mii(row.net_other)}
+                                                            k alte
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+                                            </>
+                                        )}
 
-                                    <TableCell className="text-right">
-                                        <RowInput
-                                            value={
-                                                rowEdits[
-                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
-                                                ]?.growth ?? 0
-                                            }
-                                            pending={
-                                                rowEdits[
-                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
-                                                ]?.growth !== undefined &&
-                                                rowEdits[
-                                                    `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
-                                                ]?.growth !== null
-                                            }
-                                            suffix="%"
-                                            placeholder="+/–"
-                                            onCommit={(v) =>
-                                                onApply(
-                                                    row,
-                                                    isOpex
-                                                        ? 'amount'
+                                        <TableCell className="text-right">
+                                            <RowInput
+                                                value={
+                                                    rowEdits[
+                                                        `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                    ]?.growth ?? 0
+                                                }
+                                                pending={
+                                                    rowEdits[
+                                                        `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                    ]?.growth !== undefined &&
+                                                    rowEdits[
+                                                        `${row.kind}|${row.key}|${isOpex ? 'amount' : isCharter ? 'capacity' : 'volume'}`
+                                                    ]?.growth !== null
+                                                }
+                                                suffix="%"
+                                                placeholder="+/–"
+                                                onCommit={(v) =>
+                                                    onApply(
+                                                        row,
+                                                        isOpex
+                                                            ? 'amount'
+                                                            : isCharter
+                                                              ? 'capacity'
+                                                              : 'volume',
+                                                        null,
+                                                        v,
+                                                    )
+                                                }
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-right whitespace-nowrap">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                title="Înapoi la cifrele din istoric"
+                                                onClick={() => onReset(row)}
+                                            >
+                                                <RotateCcw className="size-3" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                title={
+                                                    isCharter
+                                                        ? 'Scoate cursa din plan: nu o mai zburăm anul viitor.'
+                                                        : 'Scoate rândul din plan.'
+                                                }
+                                                onClick={() => onRemove(row)}
+                                            >
+                                                <Trash2 className="size-3" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+
+                                    {open.has(row.key) && (
+                                        <TableRow
+                                            key={row.key + '-luni'}
+                                            className="bg-muted/20"
+                                        >
+                                            <TableCell
+                                                colSpan={
+                                                    (isOpex
+                                                        ? 5
                                                         : isCharter
-                                                          ? 'capacity'
-                                                          : 'volume',
-                                                    null,
-                                                    v,
-                                                )
-                                            }
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-right whitespace-nowrap">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            title="Înapoi la cifrele din istoric"
-                                            onClick={() => onReset(row)}
-                                        >
-                                            <RotateCcw className="size-3" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            title={
-                                                isCharter
-                                                    ? 'Scoate cursa din plan: nu o mai zburăm anul viitor.'
-                                                    : 'Scoate rândul din plan.'
-                                            }
-                                            onClick={() => onRemove(row)}
-                                        >
-                                            <Trash2 className="size-3" />
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
+                                                          ? 11
+                                                          : 7) +
+                                                    historyYears.length
+                                                }
+                                                className="p-3"
+                                            >
+                                                <div className="mb-2 text-[11px] text-muted-foreground">
+                                                    Lunile planului{' '}
+                                                    <strong className="text-foreground">
+                                                        {planYear}
+                                                    </strong>
+                                                    : scrie în căsuțe ce vrei să
+                                                    se întâmple. Sub fiecare
+                                                    lună stă ce a fost în
+                                                    aceeași lună din{' '}
+                                                    {historyYears.join(', ')},
+                                                    ca reper.
+                                                </div>
+                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                                    {MONTHS.map((name, i) => {
+                                                        const cell =
+                                                            row.months[i + 1];
 
-                                {open.has(row.key) && (
-                                    <TableRow
-                                        key={row.key + '-luni'}
-                                        className="bg-muted/20"
-                                    >
-                                        <TableCell
-                                            colSpan={
-                                                (isOpex
-                                                    ? 5
-                                                    : isCharter
-                                                      ? 11
-                                                      : 7) + historyYears.length
-                                            }
-                                            className="p-3"
-                                        >
-                                            <div className="mb-2 text-[11px] text-muted-foreground">
-                                                Lunile planului{' '}
-                                                <strong className="text-foreground">
-                                                    {planYear}
-                                                </strong>
-                                                : scrie în căsuțe ce vrei să se
-                                                întâmple. Sub fiecare lună stă
-                                                ce a fost în aceeași lună din{' '}
-                                                {historyYears.join(', ')}, ca
-                                                reper.
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                                {MONTHS.map((name, i) => {
-                                                    const cell =
-                                                        row.months[i + 1];
+                                                        if (!cell) {
+                                                            // Luna n-a existat în
+                                                            // istoric, dar poate
+                                                            // că la anul o vrem:
+                                                            // se adaugă aici.
+                                                            const any =
+                                                                Object.values(
+                                                                    row.months,
+                                                                )[0];
 
-                                                    if (!cell) {
-                                                        // Luna n-a existat în
-                                                        // istoric, dar poate
-                                                        // că la anul o vrem:
-                                                        // se adaugă aici.
-                                                        const any =
-                                                            Object.values(
-                                                                row.months,
-                                                            )[0];
+                                                            return (
+                                                                <div
+                                                                    key={name}
+                                                                    className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground"
+                                                                >
+                                                                    <span>
+                                                                        {name}{' '}
+                                                                        {
+                                                                            planYear
+                                                                        }{' '}
+                                                                        · n-a
+                                                                        fost
+                                                                        niciodată
+                                                                    </span>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 text-[11px]"
+                                                                        onClick={() =>
+                                                                            router.post(
+                                                                                `/reports/forecast/${planId}/rows`,
+                                                                                {
+                                                                                    kind: row.kind,
+                                                                                    key: row.key,
+                                                                                    label: row.label,
+                                                                                    unit: row.unit,
+                                                                                    months: [
+                                                                                        i +
+                                                                                            1,
+                                                                                    ],
+                                                                                    capacity:
+                                                                                        any?.capacity ??
+                                                                                        null,
+                                                                                    load:
+                                                                                        any?.load ??
+                                                                                        null,
+                                                                                    volume:
+                                                                                        any?.volume ??
+                                                                                        null,
+                                                                                    amount: isOpex
+                                                                                        ? (any?.amount ??
+                                                                                          null)
+                                                                                        : null,
+                                                                                    unit_net:
+                                                                                        any?.unit_net ??
+                                                                                        null,
+                                                                                    unit_margin:
+                                                                                        any?.unit_margin ??
+                                                                                        null,
+                                                                                    unit_cost:
+                                                                                        any?.unit_cost ??
+                                                                                        null,
+                                                                                    note: `Lună adăugată cu mâna: ${row.key} n-a avut ${name} în istoric.`,
+                                                                                },
+                                                                                {
+                                                                                    preserveScroll: true,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <Plus className="size-3" />
+                                                                        Adaugă
+                                                                        luna
+                                                                    </Button>
+                                                                </div>
+                                                            );
+                                                        }
 
                                                         return (
                                                             <div
                                                                 key={name}
-                                                                className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground"
-                                                            >
-                                                                <span>
-                                                                    {name}{' '}
-                                                                    {planYear} ·
-                                                                    n-a fost
-                                                                    niciodată
-                                                                </span>
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    className="h-7 text-[11px]"
-                                                                    onClick={() =>
-                                                                        router.post(
-                                                                            `/reports/forecast/${planId}/rows`,
-                                                                            {
-                                                                                kind: row.kind,
-                                                                                key: row.key,
-                                                                                label: row.label,
-                                                                                unit: row.unit,
-                                                                                months: [
-                                                                                    i +
-                                                                                        1,
-                                                                                ],
-                                                                                capacity:
-                                                                                    any?.capacity ??
-                                                                                    null,
-                                                                                load:
-                                                                                    any?.load ??
-                                                                                    null,
-                                                                                volume:
-                                                                                    any?.volume ??
-                                                                                    null,
-                                                                                amount: isOpex
-                                                                                    ? (any?.amount ??
-                                                                                      null)
-                                                                                    : null,
-                                                                                unit_net:
-                                                                                    any?.unit_net ??
-                                                                                    null,
-                                                                                unit_margin:
-                                                                                    any?.unit_margin ??
-                                                                                    null,
-                                                                                unit_cost:
-                                                                                    any?.unit_cost ??
-                                                                                    null,
-                                                                                note: `Lună adăugată cu mâna: ${row.key} n-a avut ${name} în istoric.`,
-                                                                            },
-                                                                            {
-                                                                                preserveScroll: true,
-                                                                            },
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <Plus className="size-3" />
-                                                                    Adaugă luna
-                                                                </Button>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    return (
-                                                        <div
-                                                            key={name}
-                                                            className={cn(
-                                                                'rounded-md border bg-background p-2',
-                                                                Object.values(
-                                                                    cells,
-                                                                ).some(
-                                                                    (c) =>
-                                                                        c.id ===
-                                                                        cell.id,
-                                                                ) &&
-                                                                    'border-amber-400 bg-amber-50/60 dark:bg-amber-950/20',
-                                                            )}
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-medium">
-                                                                    {name}{' '}
-                                                                    {planYear}
-                                                                </span>
-                                                                {cell.note && (
-                                                                    <span
-                                                                        className="text-[10px] text-amber-600"
-                                                                        title={
-                                                                            cell.note
-                                                                        }
-                                                                    >
-                                                                        estimat
-                                                                    </span>
+                                                                className={cn(
+                                                                    'rounded-md border bg-background p-2',
+                                                                    Object.values(
+                                                                        cells,
+                                                                    ).some(
+                                                                        (c) =>
+                                                                            c.id ===
+                                                                            cell.id,
+                                                                    ) &&
+                                                                        'border-amber-400 bg-amber-50/60 dark:bg-amber-950/20',
                                                                 )}
-                                                            </div>
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium">
+                                                                        {name}{' '}
+                                                                        {
+                                                                            planYear
+                                                                        }
+                                                                    </span>
+                                                                    {cell.note && (
+                                                                        <span
+                                                                            className="text-[10px] text-amber-600"
+                                                                            title={
+                                                                                cell.note
+                                                                            }
+                                                                        >
+                                                                            estimat
+                                                                        </span>
+                                                                    )}
+                                                                </div>
 
-                                                            <div className="mt-1 grid grid-cols-3 gap-1">
-                                                                <label className="text-[10px] text-muted-foreground">
-                                                                    {isOpex
-                                                                        ? 'cheltuială (lei)'
-                                                                        : isCharter
-                                                                          ? 'locuri (nr.)'
-                                                                          : row.unit ===
-                                                                              'serviciu'
-                                                                            ? 'servicii (nr.)'
-                                                                            : 'pasageri (nr.)'}
-                                                                    <RowInput
-                                                                        value={cellValue(
-                                                                            cell,
-                                                                            isOpex
-                                                                                ? 'amount'
-                                                                                : isCharter
-                                                                                  ? 'capacity'
-                                                                                  : 'volume',
-                                                                            isOpex
-                                                                                ? cell.amount
-                                                                                : isCharter
-                                                                                  ? cell.capacity
-                                                                                  : cell.volume,
-                                                                        )}
-                                                                        pending={cellChanged(
-                                                                            cell,
-                                                                            isOpex
-                                                                                ? 'amount'
-                                                                                : isCharter
-                                                                                  ? 'capacity'
-                                                                                  : 'volume',
-                                                                        )}
-                                                                        onCommit={(
-                                                                            v,
-                                                                        ) =>
-                                                                            onEditCell(
+                                                                <div className="mt-1 grid grid-cols-3 gap-1">
+                                                                    <label className="text-[10px] text-muted-foreground">
+                                                                        {isOpex
+                                                                            ? 'cheltuială (lei)'
+                                                                            : isCharter
+                                                                              ? 'locuri (nr.)'
+                                                                              : row.unit ===
+                                                                                  'serviciu'
+                                                                                ? 'servicii (nr.)'
+                                                                                : 'pasageri (nr.)'}
+                                                                        <RowInput
+                                                                            value={cellValue(
                                                                                 cell,
                                                                                 isOpex
                                                                                     ? 'amount'
                                                                                     : isCharter
                                                                                       ? 'capacity'
                                                                                       : 'volume',
+                                                                                isOpex
+                                                                                    ? cell.amount
+                                                                                    : isCharter
+                                                                                      ? cell.capacity
+                                                                                      : cell.volume,
+                                                                            )}
+                                                                            pending={cellChanged(
+                                                                                cell,
+                                                                                isOpex
+                                                                                    ? 'amount'
+                                                                                    : isCharter
+                                                                                      ? 'capacity'
+                                                                                      : 'volume',
+                                                                            )}
+                                                                            onCommit={(
                                                                                 v,
-                                                                                row,
-                                                                                name,
-                                                                            )
-                                                                        }
-                                                                    />
-                                                                </label>
-
-                                                                {!isOpex && (
-                                                                    <>
-                                                                        <label className="text-[10px] text-muted-foreground">
-                                                                            {isCharter
-                                                                                ? 'ocupare (%)'
-                                                                                : 'venit/unit. (lei)'}
-                                                                            <RowInput
-                                                                                value={
-                                                                                    isCharter
-                                                                                        ? cellValue(
-                                                                                              cell,
-                                                                                              'load',
-                                                                                              cell.load,
-                                                                                          ) *
-                                                                                          100
-                                                                                        : cellValue(
-                                                                                              cell,
-                                                                                              'unit_net',
-                                                                                              cell.unit_net,
-                                                                                          )
-                                                                                }
-                                                                                pending={cellChanged(
+                                                                            ) =>
+                                                                                onEditCell(
                                                                                     cell,
-                                                                                    isCharter
-                                                                                        ? 'load'
-                                                                                        : 'unit_net',
-                                                                                )}
-                                                                                onCommit={(
+                                                                                    isOpex
+                                                                                        ? 'amount'
+                                                                                        : isCharter
+                                                                                          ? 'capacity'
+                                                                                          : 'volume',
                                                                                     v,
-                                                                                ) =>
-                                                                                    onEditCell(
+                                                                                    row,
+                                                                                    name,
+                                                                                )
+                                                                            }
+                                                                        />
+                                                                    </label>
+
+                                                                    {!isOpex && (
+                                                                        <>
+                                                                            <label className="text-[10px] text-muted-foreground">
+                                                                                {isCharter
+                                                                                    ? 'ocupare (%)'
+                                                                                    : 'venit/unit. (lei)'}
+                                                                                <RowInput
+                                                                                    value={
+                                                                                        isCharter
+                                                                                            ? cellValue(
+                                                                                                  cell,
+                                                                                                  'load',
+                                                                                                  cell.load,
+                                                                                              ) *
+                                                                                              100
+                                                                                            : cellValue(
+                                                                                                  cell,
+                                                                                                  'unit_net',
+                                                                                                  cell.unit_net,
+                                                                                              )
+                                                                                    }
+                                                                                    pending={cellChanged(
                                                                                         cell,
                                                                                         isCharter
                                                                                             ? 'load'
                                                                                             : 'unit_net',
-                                                                                        isCharter
-                                                                                            ? v /
-                                                                                                  100
-                                                                                            : v,
-                                                                                        row,
-                                                                                        name,
-                                                                                    )
-                                                                                }
-                                                                            />
-                                                                        </label>
-                                                                        <label className="text-[10px] text-muted-foreground">
-                                                                            {isCharter
-                                                                                ? 'venit/pax (lei)'
-                                                                                : 'marjă/unit. (lei)'}
-                                                                            <RowInput
-                                                                                value={cellValue(
-                                                                                    cell,
-                                                                                    isCharter
-                                                                                        ? 'unit_net'
-                                                                                        : 'unit_margin',
-                                                                                    isCharter
-                                                                                        ? cell.unit_net
-                                                                                        : cell.unit_margin,
-                                                                                )}
-                                                                                pending={cellChanged(
-                                                                                    cell,
-                                                                                    isCharter
-                                                                                        ? 'unit_net'
-                                                                                        : 'unit_margin',
-                                                                                )}
-                                                                                onCommit={(
-                                                                                    v,
-                                                                                ) =>
-                                                                                    onEditCell(
-                                                                                        cell,
-                                                                                        isCharter
-                                                                                            ? 'unit_net'
-                                                                                            : 'unit_margin',
-                                                                                        v,
-                                                                                        row,
-                                                                                        name,
-                                                                                    )
-                                                                                }
-                                                                            />
-                                                                        </label>
-                                                                        <label className="text-[10px] text-muted-foreground">
-                                                                            B2B
-                                                                            (%
-                                                                            din
-                                                                            venit)
-                                                                            <RowInput
-                                                                                value={
-                                                                                    cellValue(
-                                                                                        cell,
-                                                                                        'b2b',
-                                                                                        cell.b2b ??
-                                                                                            0,
-                                                                                    ) *
-                                                                                    100
-                                                                                }
-                                                                                pending={cellChanged(
-                                                                                    cell,
-                                                                                    'b2b',
-                                                                                )}
-                                                                                onCommit={(
-                                                                                    v,
-                                                                                ) =>
-                                                                                    onEditCell(
-                                                                                        cell,
-                                                                                        'b2b',
-                                                                                        Math.min(
-                                                                                            1,
-                                                                                            Math.max(
-                                                                                                0,
-                                                                                                v /
-                                                                                                    100,
-                                                                                            ),
-                                                                                        ),
-                                                                                        row,
-                                                                                        name,
-                                                                                    )
-                                                                                }
-                                                                            />
-                                                                        </label>
-                                                                    </>
-                                                                )}
-                                                            </div>
-
-                                                            {!isOpex && (
-                                                                <div className="mt-1 text-[11px] tabular-nums">
-                                                                    <span className="text-foreground">
-                                                                        {isCharter
-                                                                            ? `${lei(cell.volume)} pax · `
-                                                                            : ''}
-                                                                        venit{' '}
-                                                                        {lei(
-                                                                            cell.amount,
-                                                                        )}
-                                                                    </span>
-                                                                    <span className="text-muted-foreground">
-                                                                        {' '}
-                                                                        · marjă{' '}
-                                                                        {lei(
-                                                                            cell.margin,
-                                                                        )}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-
-                                                            <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
-                                                                {historyYears.map(
-                                                                    (year) => {
-                                                                        const was =
-                                                                            history[
-                                                                                `${row.kind}|${row.key}`
-                                                                            ]?.[
-                                                                                year
-                                                                            ]
-                                                                                ?.months?.[
-                                                                                i +
-                                                                                    1
-                                                                            ];
-
-                                                                        return (
-                                                                            <div
-                                                                                key={
-                                                                                    year
-                                                                                }
-                                                                            >
-                                                                                {
-                                                                                    year
-                                                                                }
-
-                                                                                :{' '}
-                                                                                {was
-                                                                                    ? reper(
-                                                                                          was,
-                                                                                          isOpex,
-                                                                                          isCharter,
-                                                                                          row.unit,
-                                                                                      )
-                                                                                    : '–'}
-                                                                            </div>
-                                                                        );
-                                                                    },
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            {openMonths.length > 0 && (
-                                                <div className="mt-4 border-t pt-3">
-                                                    <div className="mb-2 flex items-center justify-between gap-3">
-                                                        <div className="text-[11px] text-muted-foreground">
-                                                            Ultimele luni din{' '}
-                                                            <strong className="text-foreground">
-                                                                {baseYear}
-                                                            </strong>{' '}
-                                                            n-au venit încă:
-                                                            planul lui{' '}
-                                                            {planYear} pornește
-                                                            din ele, așa că se
-                                                            pot scrie aici.
-                                                            Nescrise, se
-                                                            socotesc singure din{' '}
-                                                            {baseYear - 1},
-                                                            crescut cu cât a
-                                                            crescut anul.
-                                                        </div>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="shrink-0 text-[11px]"
-                                                            onClick={() =>
-                                                                router.put(
-                                                                    `/reports/forecast/${planId}/base/reset`,
-                                                                    {
-                                                                        kind: row.kind,
-                                                                        key: row.key,
-                                                                    },
-                                                                    {
-                                                                        preserveScroll: true,
-                                                                    },
-                                                                )
-                                                            }
-                                                        >
-                                                            <RotateCcw className="size-3" />
-                                                            Înapoi la socoteala
-                                                            aplicației
-                                                        </Button>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                                        {openMonths.map(
-                                                            (month) => {
-                                                                const base =
-                                                                    baseMonths[
-                                                                        `${row.kind}|${row.key}|${month}`
-                                                                    ];
-                                                                const write = (
-                                                                    field: string,
-                                                                    value: number,
-                                                                ) =>
-                                                                    router.put(
-                                                                        `/reports/forecast/${planId}/base`,
-                                                                        {
-                                                                            kind: row.kind,
-                                                                            key: row.key,
-                                                                            label: row.label,
-                                                                            unit: row.unit,
-                                                                            month,
-                                                                            volume:
-                                                                                base?.volume ??
-                                                                                null,
-                                                                            capacity:
-                                                                                base?.capacity ??
-                                                                                null,
-                                                                            load:
-                                                                                base?.load ??
-                                                                                null,
-                                                                            unit_net:
-                                                                                base?.unit_net ??
-                                                                                null,
-                                                                            unit_margin:
-                                                                                base?.unit_margin ??
-                                                                                null,
-                                                                            amount:
-                                                                                base?.amount ??
-                                                                                null,
-                                                                            [field]:
-                                                                                value,
-                                                                        },
-                                                                        {
-                                                                            preserveScroll: true,
-                                                                        },
-                                                                    );
-
-                                                                return (
-                                                                    <div
-                                                                        key={
-                                                                            month
-                                                                        }
-                                                                        className={cn(
-                                                                            'rounded-md border border-dashed p-2',
-                                                                            base?.source ===
-                                                                                'hand' &&
-                                                                                'border-solid border-sky-400 bg-sky-50/60 dark:bg-sky-950/20',
-                                                                        )}
-                                                                    >
-                                                                        <div className="flex items-center justify-between">
-                                                                            <span className="text-xs font-medium">
-                                                                                {
-                                                                                    MONTHS[
-                                                                                        month -
-                                                                                            1
-                                                                                    ]
-                                                                                }{' '}
-                                                                                {
-                                                                                    baseYear
-                                                                                }
-                                                                            </span>
-                                                                            <span className="text-[10px] text-muted-foreground">
-                                                                                {base?.source ===
-                                                                                'hand'
-                                                                                    ? 'scris de mână'
-                                                                                    : 'socotit'}
-                                                                            </span>
-                                                                        </div>
-
-                                                                        <div className="mt-1 grid grid-cols-3 gap-1">
-                                                                            <label className="text-[10px] text-muted-foreground">
-                                                                                {isOpex
-                                                                                    ? 'cheltuială (lei)'
-                                                                                    : isCharter
-                                                                                      ? 'locuri (nr.)'
-                                                                                      : row.unit ===
-                                                                                          'serviciu'
-                                                                                        ? 'servicii (nr.)'
-                                                                                        : 'pasageri (nr.)'}
-                                                                                <RowInput
-                                                                                    value={
-                                                                                        (isOpex
-                                                                                            ? base?.amount
-                                                                                            : isCharter
-                                                                                              ? base?.capacity
-                                                                                              : base?.volume) ??
-                                                                                        0
-                                                                                    }
+                                                                                    )}
                                                                                     onCommit={(
                                                                                         v,
                                                                                     ) =>
-                                                                                        write(
-                                                                                            isOpex
-                                                                                                ? 'amount'
-                                                                                                : isCharter
-                                                                                                  ? 'capacity'
-                                                                                                  : 'volume',
-                                                                                            v,
+                                                                                        onEditCell(
+                                                                                            cell,
+                                                                                            isCharter
+                                                                                                ? 'load'
+                                                                                                : 'unit_net',
+                                                                                            isCharter
+                                                                                                ? v /
+                                                                                                      100
+                                                                                                : v,
+                                                                                            row,
+                                                                                            name,
                                                                                         )
                                                                                     }
                                                                                 />
                                                                             </label>
-                                                                            {!isOpex && (
-                                                                                <>
-                                                                                    <label className="text-[10px] text-muted-foreground">
-                                                                                        {isCharter
-                                                                                            ? 'ocupare (%)'
-                                                                                            : 'venit/unit. (lei)'}
-                                                                                        <RowInput
-                                                                                            value={
-                                                                                                isCharter
-                                                                                                    ? (base?.load ??
-                                                                                                          0) *
-                                                                                                      100
-                                                                                                    : (base?.unit_net ??
-                                                                                                      0)
-                                                                                            }
-                                                                                            onCommit={(
-                                                                                                v,
-                                                                                            ) =>
-                                                                                                write(
-                                                                                                    isCharter
-                                                                                                        ? 'load'
-                                                                                                        : 'unit_net',
-                                                                                                    isCharter
-                                                                                                        ? v /
-                                                                                                              100
-                                                                                                        : v,
-                                                                                                )
-                                                                                            }
-                                                                                        />
-                                                                                    </label>
-                                                                                    <label className="text-[10px] text-muted-foreground">
-                                                                                        {isCharter
-                                                                                            ? 'venit/pax (lei)'
-                                                                                            : 'marjă/unit. (lei)'}
-                                                                                        <RowInput
-                                                                                            value={
-                                                                                                (isCharter
-                                                                                                    ? base?.unit_net
-                                                                                                    : base?.unit_margin) ??
-                                                                                                0
-                                                                                            }
-                                                                                            onCommit={(
-                                                                                                v,
-                                                                                            ) =>
-                                                                                                write(
-                                                                                                    isCharter
-                                                                                                        ? 'unit_net'
-                                                                                                        : 'unit_margin',
-                                                                                                    v,
-                                                                                                )
-                                                                                            }
-                                                                                        />
-                                                                                    </label>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-
-                                                                        <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
-                                                                            {historyYears
-                                                                                .filter(
-                                                                                    (
-                                                                                        year,
+                                                                            <label className="text-[10px] text-muted-foreground">
+                                                                                {isCharter
+                                                                                    ? 'venit/pax (lei)'
+                                                                                    : 'marjă/unit. (lei)'}
+                                                                                <RowInput
+                                                                                    value={cellValue(
+                                                                                        cell,
+                                                                                        isCharter
+                                                                                            ? 'unit_net'
+                                                                                            : 'unit_margin',
+                                                                                        isCharter
+                                                                                            ? cell.unit_net
+                                                                                            : cell.unit_margin,
+                                                                                    )}
+                                                                                    pending={cellChanged(
+                                                                                        cell,
+                                                                                        isCharter
+                                                                                            ? 'unit_net'
+                                                                                            : 'unit_margin',
+                                                                                    )}
+                                                                                    onCommit={(
+                                                                                        v,
                                                                                     ) =>
-                                                                                        year <
-                                                                                        baseYear,
-                                                                                )
-                                                                                .map(
-                                                                                    (
-                                                                                        year,
-                                                                                    ) => {
-                                                                                        const was =
-                                                                                            history[
-                                                                                                `${row.kind}|${row.key}`
-                                                                                            ]?.[
-                                                                                                year
-                                                                                            ]
-                                                                                                ?.months?.[
-                                                                                                month
-                                                                                            ];
+                                                                                        onEditCell(
+                                                                                            cell,
+                                                                                            isCharter
+                                                                                                ? 'unit_net'
+                                                                                                : 'unit_margin',
+                                                                                            v,
+                                                                                            row,
+                                                                                            name,
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </label>
+                                                                            <label className="text-[10px] text-muted-foreground">
+                                                                                B2B
+                                                                                (%
+                                                                                din
+                                                                                venit)
+                                                                                <RowInput
+                                                                                    value={
+                                                                                        cellValue(
+                                                                                            cell,
+                                                                                            'b2b',
+                                                                                            cell.b2b ??
+                                                                                                0,
+                                                                                        ) *
+                                                                                        100
+                                                                                    }
+                                                                                    pending={cellChanged(
+                                                                                        cell,
+                                                                                        'b2b',
+                                                                                    )}
+                                                                                    onCommit={(
+                                                                                        v,
+                                                                                    ) =>
+                                                                                        onEditCell(
+                                                                                            cell,
+                                                                                            'b2b',
+                                                                                            Math.min(
+                                                                                                1,
+                                                                                                Math.max(
+                                                                                                    0,
+                                                                                                    v /
+                                                                                                        100,
+                                                                                                ),
+                                                                                            ),
+                                                                                            row,
+                                                                                            name,
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </label>
+                                                                        </>
+                                                                    )}
+                                                                </div>
 
-                                                                                        return (
-                                                                                            <div
-                                                                                                key={
-                                                                                                    year
-                                                                                                }
-                                                                                            >
-                                                                                                {
-                                                                                                    year
-                                                                                                }
-
-                                                                                                :{' '}
-                                                                                                {was
-                                                                                                    ? reper(
-                                                                                                          was,
-                                                                                                          isOpex,
-                                                                                                          isCharter,
-                                                                                                          row.unit,
-                                                                                                      )
-                                                                                                    : '–'}
-                                                                                            </div>
-                                                                                        );
-                                                                                    },
-                                                                                )}
-                                                                        </div>
+                                                                {!isOpex && (
+                                                                    <div className="mt-1 text-[11px] tabular-nums">
+                                                                        <span className="text-foreground">
+                                                                            {isCharter
+                                                                                ? `${lei(cell.volume)} pax · `
+                                                                                : ''}
+                                                                            venit{' '}
+                                                                            {lei(
+                                                                                cell.amount,
+                                                                            )}
+                                                                        </span>
+                                                                        <span className="text-muted-foreground">
+                                                                            {' '}
+                                                                            ·
+                                                                            marjă{' '}
+                                                                            {lei(
+                                                                                cell.margin,
+                                                                            )}
+                                                                        </span>
                                                                     </div>
-                                                                );
-                                                            },
-                                                        )}
-                                                    </div>
+                                                                )}
+
+                                                                <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
+                                                                    {historyYears.map(
+                                                                        (
+                                                                            year,
+                                                                        ) => {
+                                                                            const was =
+                                                                                history[
+                                                                                    `${row.kind}|${row.key}`
+                                                                                ]?.[
+                                                                                    year
+                                                                                ]
+                                                                                    ?.months?.[
+                                                                                    i +
+                                                                                        1
+                                                                                ];
+
+                                                                            return (
+                                                                                <div
+                                                                                    key={
+                                                                                        year
+                                                                                    }
+                                                                                >
+                                                                                    {
+                                                                                        year
+                                                                                    }
+
+                                                                                    :{' '}
+                                                                                    {was
+                                                                                        ? reper(
+                                                                                              was,
+                                                                                              isOpex,
+                                                                                              isCharter,
+                                                                                              row.unit,
+                                                                                          )
+                                                                                        : '–'}
+                                                                                </div>
+                                                                            );
+                                                                        },
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
+
+                                                {openMonths.length > 0 && (
+                                                    <div className="mt-4 border-t pt-3">
+                                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                                            <div className="text-[11px] text-muted-foreground">
+                                                                Ultimele luni
+                                                                din{' '}
+                                                                <strong className="text-foreground">
+                                                                    {baseYear}
+                                                                </strong>{' '}
+                                                                n-au venit încă:
+                                                                planul lui{' '}
+                                                                {planYear}{' '}
+                                                                pornește din
+                                                                ele, așa că se
+                                                                pot scrie aici.
+                                                                Nescrise, se
+                                                                socotesc singure
+                                                                din{' '}
+                                                                {baseYear - 1},
+                                                                crescut cu cât a
+                                                                crescut anul.
+                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="shrink-0 text-[11px]"
+                                                                onClick={() =>
+                                                                    router.put(
+                                                                        `/reports/forecast/${planId}/base/reset`,
+                                                                        {
+                                                                            kind: row.kind,
+                                                                            key: row.key,
+                                                                        },
+                                                                        {
+                                                                            preserveScroll: true,
+                                                                        },
+                                                                    )
+                                                                }
+                                                            >
+                                                                <RotateCcw className="size-3" />
+                                                                Înapoi la
+                                                                socoteala
+                                                                aplicației
+                                                            </Button>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                                            {openMonths.map(
+                                                                (month) => {
+                                                                    const base =
+                                                                        baseMonths[
+                                                                            `${row.kind}|${row.key}|${month}`
+                                                                        ];
+                                                                    const write =
+                                                                        (
+                                                                            field: string,
+                                                                            value: number,
+                                                                        ) =>
+                                                                            router.put(
+                                                                                `/reports/forecast/${planId}/base`,
+                                                                                {
+                                                                                    kind: row.kind,
+                                                                                    key: row.key,
+                                                                                    label: row.label,
+                                                                                    unit: row.unit,
+                                                                                    month,
+                                                                                    volume:
+                                                                                        base?.volume ??
+                                                                                        null,
+                                                                                    capacity:
+                                                                                        base?.capacity ??
+                                                                                        null,
+                                                                                    load:
+                                                                                        base?.load ??
+                                                                                        null,
+                                                                                    unit_net:
+                                                                                        base?.unit_net ??
+                                                                                        null,
+                                                                                    unit_margin:
+                                                                                        base?.unit_margin ??
+                                                                                        null,
+                                                                                    amount:
+                                                                                        base?.amount ??
+                                                                                        null,
+                                                                                    [field]:
+                                                                                        value,
+                                                                                },
+                                                                                {
+                                                                                    preserveScroll: true,
+                                                                                },
+                                                                            );
+
+                                                                    return (
+                                                                        <div
+                                                                            key={
+                                                                                month
+                                                                            }
+                                                                            className={cn(
+                                                                                'rounded-md border border-dashed p-2',
+                                                                                base?.source ===
+                                                                                    'hand' &&
+                                                                                    'border-solid border-sky-400 bg-sky-50/60 dark:bg-sky-950/20',
+                                                                            )}
+                                                                        >
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className="text-xs font-medium">
+                                                                                    {
+                                                                                        MONTHS[
+                                                                                            month -
+                                                                                                1
+                                                                                        ]
+                                                                                    }{' '}
+                                                                                    {
+                                                                                        baseYear
+                                                                                    }
+                                                                                </span>
+                                                                                <span className="text-[10px] text-muted-foreground">
+                                                                                    {base?.source ===
+                                                                                    'hand'
+                                                                                        ? 'scris de mână'
+                                                                                        : 'socotit'}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            <div className="mt-1 grid grid-cols-3 gap-1">
+                                                                                <label className="text-[10px] text-muted-foreground">
+                                                                                    {isOpex
+                                                                                        ? 'cheltuială (lei)'
+                                                                                        : isCharter
+                                                                                          ? 'locuri (nr.)'
+                                                                                          : row.unit ===
+                                                                                              'serviciu'
+                                                                                            ? 'servicii (nr.)'
+                                                                                            : 'pasageri (nr.)'}
+                                                                                    <RowInput
+                                                                                        value={
+                                                                                            (isOpex
+                                                                                                ? base?.amount
+                                                                                                : isCharter
+                                                                                                  ? base?.capacity
+                                                                                                  : base?.volume) ??
+                                                                                            0
+                                                                                        }
+                                                                                        onCommit={(
+                                                                                            v,
+                                                                                        ) =>
+                                                                                            write(
+                                                                                                isOpex
+                                                                                                    ? 'amount'
+                                                                                                    : isCharter
+                                                                                                      ? 'capacity'
+                                                                                                      : 'volume',
+                                                                                                v,
+                                                                                            )
+                                                                                        }
+                                                                                    />
+                                                                                </label>
+                                                                                {!isOpex && (
+                                                                                    <>
+                                                                                        <label className="text-[10px] text-muted-foreground">
+                                                                                            {isCharter
+                                                                                                ? 'ocupare (%)'
+                                                                                                : 'venit/unit. (lei)'}
+                                                                                            <RowInput
+                                                                                                value={
+                                                                                                    isCharter
+                                                                                                        ? (base?.load ??
+                                                                                                              0) *
+                                                                                                          100
+                                                                                                        : (base?.unit_net ??
+                                                                                                          0)
+                                                                                                }
+                                                                                                onCommit={(
+                                                                                                    v,
+                                                                                                ) =>
+                                                                                                    write(
+                                                                                                        isCharter
+                                                                                                            ? 'load'
+                                                                                                            : 'unit_net',
+                                                                                                        isCharter
+                                                                                                            ? v /
+                                                                                                                  100
+                                                                                                            : v,
+                                                                                                    )
+                                                                                                }
+                                                                                            />
+                                                                                        </label>
+                                                                                        <label className="text-[10px] text-muted-foreground">
+                                                                                            {isCharter
+                                                                                                ? 'venit/pax (lei)'
+                                                                                                : 'marjă/unit. (lei)'}
+                                                                                            <RowInput
+                                                                                                value={
+                                                                                                    (isCharter
+                                                                                                        ? base?.unit_net
+                                                                                                        : base?.unit_margin) ??
+                                                                                                    0
+                                                                                                }
+                                                                                                onCommit={(
+                                                                                                    v,
+                                                                                                ) =>
+                                                                                                    write(
+                                                                                                        isCharter
+                                                                                                            ? 'unit_net'
+                                                                                                            : 'unit_margin',
+                                                                                                        v,
+                                                                                                    )
+                                                                                                }
+                                                                                            />
+                                                                                        </label>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+
+                                                                            <div className="mt-1 border-t pt-1 text-[11px] text-muted-foreground tabular-nums">
+                                                                                {historyYears
+                                                                                    .filter(
+                                                                                        (
+                                                                                            year,
+                                                                                        ) =>
+                                                                                            year <
+                                                                                            baseYear,
+                                                                                    )
+                                                                                    .map(
+                                                                                        (
+                                                                                            year,
+                                                                                        ) => {
+                                                                                            const was =
+                                                                                                history[
+                                                                                                    `${row.kind}|${row.key}`
+                                                                                                ]?.[
+                                                                                                    year
+                                                                                                ]
+                                                                                                    ?.months?.[
+                                                                                                    month
+                                                                                                ];
+
+                                                                                            return (
+                                                                                                <div
+                                                                                                    key={
+                                                                                                        year
+                                                                                                    }
+                                                                                                >
+                                                                                                    {
+                                                                                                        year
+                                                                                                    }
+
+                                                                                                    :{' '}
+                                                                                                    {was
+                                                                                                        ? reper(
+                                                                                                              was,
+                                                                                                              isOpex,
+                                                                                                              isCharter,
+                                                                                                              row.unit,
+                                                                                                          )
+                                                                                                        : '–'}
+                                                                                                </div>
+                                                                                            );
+                                                                                        },
+                                                                                    )}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                },
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
     );
 }
 
@@ -4227,8 +4467,10 @@ function RetailTable({
                 <CardContent className="overflow-x-auto p-0">
                     <Table className="text-xs">
                         <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-56">Agenția</TableHead>
+                            <TableRow className="[&>th]:font-semibold">
+                                <TableHead className="sticky left-0 z-30 w-56 border-r bg-card">
+                                    Agenția
+                                </TableHead>
                                 <TableHead className="text-right">
                                     Vânzări {planYear} (lei)
                                 </TableHead>
@@ -4262,7 +4504,14 @@ function RetailTable({
                                             'bg-amber-50/60 dark:bg-amber-950/20',
                                     )}
                                 >
-                                    <TableCell className="font-medium">
+                                    <TableCell
+                                        className={cn(
+                                            'sticky left-0 z-20 border-r font-semibold',
+                                            one.manual
+                                                ? 'bg-amber-50 dark:bg-amber-950'
+                                                : 'bg-card',
+                                        )}
+                                    >
                                         {one.label}
                                         {one.fte === 0 && (
                                             <span className="ml-2 text-[10px] text-muted-foreground">
@@ -5043,8 +5292,8 @@ function PlanStatement({
                 <CardContent className="overflow-x-auto p-0">
                     <Table className="text-xs">
                         <TableHeader>
-                            <TableRow>
-                                <TableHead className="sticky left-0 z-10 w-64 bg-card">
+                            <TableRow className="[&>th]:font-semibold">
+                                <TableHead className="sticky left-0 z-10 w-64 border-r bg-card">
                                     Linie
                                 </TableHead>
                                 {history.map((one) => (

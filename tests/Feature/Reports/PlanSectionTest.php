@@ -462,3 +462,28 @@ test('the corporate lines from Tina are held by the product that sells them', fu
         'kind' => PlanLine::CATEGORY, 'key' => 'Tina · Ticketing', 'field' => 'volume', 'value' => 30,
     ])->assertRedirect();
 });
+
+test('several routes leave the plan in one move', function () {
+    foreach (['OTP→AYT', 'OTP→HRG', 'CLJ→AYT'] as $key) {
+        PlanLine::query()->create([
+            'plan_id' => $this->plan->id, 'kind' => PlanLine::CHARTER, 'key' => $key, 'label' => $key,
+            'month' => 7, 'capacity' => 180, 'load' => 0.8, 'unit_net' => 3_000,
+        ]);
+    }
+
+    $sef = personOf('Charters');
+
+    $this->actingAs($sef)->delete('/reports/forecast/'.$this->plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'keys' => ['OTP→AYT', 'CLJ→AYT'],
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('kind', PlanLine::CHARTER)->pluck('key')->all())->toBe(['OTP→HRG'])
+        ->and($this->plan->fresh()->removed)->toContain('charter|OTP→AYT', 'charter|CLJ→AYT');
+
+    // Și nu i le scoate altcineva.
+    $this->actingAs(personOf('Marketing'))->delete('/reports/forecast/'.$this->plan->id.'/rows', [
+        'kind' => PlanLine::CHARTER, 'keys' => ['OTP→HRG'],
+    ])->assertForbidden();
+
+    expect(PlanLine::query()->where('kind', PlanLine::CHARTER)->count())->toBe(1);
+});

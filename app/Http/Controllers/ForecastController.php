@@ -919,25 +919,38 @@ class ForecastController extends Controller
     {
         $validated = $request->validate([
             'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
-            'key' => ['required', 'string', 'max:255'],
+            'key' => ['nullable', 'string', 'max:255'],
+            // Mai multe deodată: zece curse pe care nu le mai zburăm se
+            // scot dintr-o mișcare, nu una câte una.
+            'keys' => ['nullable', 'array'],
+            'keys.*' => ['string', 'max:255'],
         ]);
 
-        $this->allow($request, $plan, $validated['kind'], $validated['key']);
+        $keys = array_values(array_unique(array_filter([
+            ...(array) ($validated['keys'] ?? []),
+            $validated['key'] ?? null,
+        ])));
 
-        DB::transaction(function () use ($plan, $validated) {
-            $plan->lines()->where('kind', $validated['kind'])->where('key', $validated['key'])->delete();
+        abort_if($keys === [], 422, 'Nu s-a spus ce rând iese din plan.');
+
+        foreach ($keys as $key) {
+            $this->allow($request, $plan, $validated['kind'], $key);
+        }
+
+        DB::transaction(function () use ($plan, $validated, $keys) {
+            $plan->lines()->where('kind', $validated['kind'])->whereIn('key', $keys)->delete();
 
             $plan->update([
                 'removed' => array_values(array_unique([
                     ...(array) ($plan->removed ?? []),
-                    $validated['kind'].'|'.$validated['key'],
+                    ...array_map(fn (string $key) => $validated['kind'].'|'.$key, $keys),
                 ])),
             ]);
         });
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => sprintf(
-            '„%s” a ieșit din plan. Se poate pune înapoi de sub tabel.', $validated['key'],
-        )]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => count($keys) === 1
+            ? sprintf('„%s” a ieșit din plan. Se poate pune înapoi de sub tabel.', $keys[0])
+            : sprintf('%d rânduri au ieșit din plan. Se pot pune înapoi de sub tabel.', count($keys))]);
 
         return back();
     }
