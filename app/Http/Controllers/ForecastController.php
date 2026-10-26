@@ -395,7 +395,7 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
-            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'value' => ['nullable', 'numeric'],
             'growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -430,12 +430,12 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'cells' => ['array'],
             'cells.*.id' => ['required', 'integer'],
-            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'cells.*.value' => ['required', 'numeric'],
             'rows' => ['array'],
             'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'rows.*.key' => ['required', 'string', 'max:255'],
-            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'rows.*.value' => ['nullable', 'numeric'],
             'rows.*.growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -763,6 +763,8 @@ class ForecastController extends Controller
             'volume' => ['nullable', 'numeric', 'min:0'],
             'capacity' => ['nullable', 'numeric', 'min:0'],
             'load' => ['nullable', 'numeric', 'between:0,1.5'],
+            // Cât se vinde prin agenții partenere, ca parte din unu.
+            'b2b' => ['nullable', 'numeric', 'between:0,1'],
             'unit_net' => ['nullable', 'numeric'],
             'unit_margin' => ['nullable', 'numeric'],
             'unit_cost' => ['nullable', 'numeric'],
@@ -815,6 +817,7 @@ class ForecastController extends Controller
                     'volume' => $validated['volume'] ?? null,
                     'capacity' => $validated['capacity'] ?? null,
                     'load' => $validated['load'] ?? null,
+                    'b2b' => $validated['b2b'] ?? null,
                     'unit_net' => $validated['unit_net'] ?? null,
                     'unit_margin' => $validated['unit_margin'] ?? null,
                     'unit_cost' => $validated['unit_cost'] ?? null,

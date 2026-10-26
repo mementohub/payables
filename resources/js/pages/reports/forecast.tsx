@@ -83,6 +83,12 @@ type Row = {
     key: string;
     section: string;
     kind: 'category' | 'charter' | 'opex' | 'below';
+    /** Cât din venit trece prin agenții partenere: pârghia B2B / B2C. */
+    b2b: number | null;
+    net_b2b: number;
+    net_b2c: number;
+    /** Corporate și restul: nici B2B, nici B2C. */
+    net_other: number;
     /** Pe ce se numără: pasageri (turism) sau servicii facturate (Tina). */
     unit: 'pax' | 'serviciu';
     label: string;
@@ -387,6 +393,8 @@ const FIELDS: Record<string, string> = {
     volume: 'pasageri',
     capacity: 'locuri',
     load: 'ocupare',
+    b2b: 'parte B2B',
+    rent: 'chirie',
     unit_net: 'venit / unitate',
     unit_margin: 'marjă / unitate',
     unit_cost: 'cost / loc',
@@ -557,6 +565,7 @@ export default function Forecast({
         volume: 0,
         unit_net: 0,
         unit_margin: 0,
+        b2b: 0,
         months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     });
 
@@ -1201,7 +1210,10 @@ export default function Forecast({
                                         {edit.growth !== null &&
                                         edit.growth !== undefined
                                             ? `${edit.growth > 0 ? '+' : ''}${lei(edit.growth, 1)}%`
-                                            : lei(edit.value ?? 0)}
+                                            : edit.field === 'b2b' ||
+                                                edit.field === 'load'
+                                              ? `${lei((edit.value ?? 0) * 100, 1)}%`
+                                              : lei(edit.value ?? 0)}
                                     </span>
                                     <button
                                         type="button"
@@ -1319,9 +1331,18 @@ export default function Forecast({
                                 la data plecării, fiindcă așa se cumpără
                                 avionul. Tina se numără pe{' '}
                                 <em>servicii facturate</em>, la data facturii.
-                                Toate sumele sunt în <strong>lei</strong> — ce
-                                s-a vândut în altă monedă e adus la lei cu
-                                cursul zilei — volumele sunt{' '}
+                                Fiecare categorie se împarte și în{' '}
+                                <strong>B2B</strong> — ce se vinde prin agenții
+                                partenere, revânzători — și <strong>B2C</strong>
+                                , ce se vinde direct: site, agențiile noastre,
+                                franciza și call center-ul. Partea B2B se scrie
+                                pe rând, iar restul se împarte pe canalele
+                                directe în aceeași proporție ca în anul de bază.
+                                Corporate-ul din Tina nu e nici una, nici alta:
+                                se arată deoparte. Toate sumele sunt în{' '}
+                                <strong>lei</strong> — ce s-a vândut în altă
+                                monedă e adus la lei cu cursul zilei — volumele
+                                sunt{' '}
                                 <strong>
                                     număr de pasageri, servicii sau locuri
                                 </strong>
@@ -2304,6 +2325,27 @@ export default function Forecast({
 
                                                 <div className="grid gap-1.5">
                                                     <Label>
+                                                        Cât se vinde prin
+                                                        agenții partenere (% din
+                                                        venit)
+                                                    </Label>
+                                                    <Input
+                                                        type="number"
+                                                        value={cat.b2b}
+                                                        onChange={(e) =>
+                                                            setCat({
+                                                                ...cat,
+                                                                b2b: Number(
+                                                                    e.target
+                                                                        .value,
+                                                                ),
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-1.5">
+                                                    <Label>
                                                         Lunile în care se vinde
                                                     </Label>
                                                     <div className="flex flex-wrap gap-1">
@@ -2373,6 +2415,14 @@ export default function Forecast({
                                                                     cat.unit_net,
                                                                 unit_margin:
                                                                     cat.unit_margin,
+                                                                b2b:
+                                                                    Math.min(
+                                                                        100,
+                                                                        Math.max(
+                                                                            0,
+                                                                            cat.b2b,
+                                                                        ),
+                                                                    ) / 100,
                                                             },
                                                             {
                                                                 preserveScroll: true,
@@ -2724,6 +2774,22 @@ function DriverTable({
                                     Marjă an (lei)
                                 </TableHead>
                             )}
+                            {!isOpex && (
+                                <>
+                                    <TableHead
+                                        className="text-right"
+                                        title="Cât din venitul rândului se vinde prin agenții partenere. Restul se vinde direct — site, agențiile noastre, franciză, call center — împărțit pe canale ca în anul de bază."
+                                    >
+                                        B2B (% din venit)
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                        Venit B2B (lei)
+                                    </TableHead>
+                                    <TableHead className="text-right">
+                                        Venit B2C (lei)
+                                    </TableHead>
+                                </>
+                            )}
                             <TableHead
                                 className="w-32 text-right"
                                 title="Crește tot rândul, pe toate lunile, cu procentul scris."
@@ -2994,6 +3060,50 @@ function DriverTable({
                                         <TableCell className="text-right tabular-nums">
                                             {lei(row.margin)}
                                         </TableCell>
+                                    )}
+                                    {!isOpex && (
+                                        <>
+                                            <TableCell className="text-right">
+                                                <RowInput
+                                                    value={(row.b2b ?? 0) * 100}
+                                                    suffix="%"
+                                                    pending={
+                                                        rowEdits[
+                                                            `${row.kind}|${row.key}|b2b`
+                                                        ] !== undefined
+                                                    }
+                                                    onCommit={(v) =>
+                                                        onApply(
+                                                            row,
+                                                            'b2b',
+                                                            Math.min(
+                                                                1,
+                                                                Math.max(
+                                                                    0,
+                                                                    v / 100,
+                                                                ),
+                                                            ),
+                                                            null,
+                                                        )
+                                                    }
+                                                />
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                                {lei(row.net_b2b)}
+                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                                {lei(row.net_b2c)}
+                                                {row.net_other > 0 && (
+                                                    <span
+                                                        className="ml-1 text-[10px] text-muted-foreground"
+                                                        title="Corporate și alte canale: nu sunt nici B2B, nici B2C."
+                                                    >
+                                                        +{mii(row.net_other)}k
+                                                        alte
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        </>
                                     )}
 
                                     <TableCell className="text-right">

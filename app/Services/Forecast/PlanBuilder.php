@@ -100,6 +100,7 @@ class PlanBuilder
         $rows = [];
         $base = $this->complete($plan, PlanLine::CATEGORY);
         $pace = $this->trend($plan, PlanLine::CATEGORY);
+        $b2b = $this->b2bShare($plan);
 
         foreach ($base as $row) {
             if ($row->key === self::CHARTER_CATEGORY) {
@@ -128,11 +129,51 @@ class PlanBuilder
                 'volume' => round($volume * ($byHand ? 1 : $step['volume']), 2),
                 'unit_net' => round($net / $volume * ($byHand ? 1 : $step['net']), 2),
                 'unit_margin' => round($margin / $volume * ($byHand ? 1 : $step['margin']), 2),
+                // Cât s-a vândut prin agenții partenere în anul de bază:
+                // de aici pornește împărțirea B2B / B2C a anului plănuit.
+                'b2b' => $b2b[$row->key] ?? null,
                 'note' => $this->origin($plan, $row, $step),
             ];
         }
 
         return $this->write($plan, PlanLine::CATEGORY, $rows, $keepManual);
+    }
+
+    /**
+     * Cât din fiecare categorie s-a vândut prin agenții partenere.
+     *
+     * Amestecul de canale al anului de bază spune cât a trecut prin
+     * revânzători; restul s-a vândut direct. De aici pornește planul, iar
+     * omul care ține categoria o poate muta într-o parte sau în alta.
+     *
+     * @return array<string, float>
+     */
+    private function b2bShare(Plan $plan): array
+    {
+        $channels = (array) config('pnl.segments.b2b.channels', ['b2b']);
+
+        $rows = ForecastHistory::query()
+            ->where('company_id', $plan->company_id)
+            ->where('year', $plan->base_year)
+            ->where('kind', 'mix')
+            ->get(['key', 'channel', 'net'])
+            ->groupBy('key');
+
+        $out = [];
+
+        foreach ($rows as $key => $group) {
+            $all = (float) $group->sum('net');
+
+            if ($all <= 0) {
+                continue;
+            }
+
+            $theirs = (float) $group->whereIn('channel', $channels)->sum('net');
+
+            $out[(string) $key] = round($theirs / $all, 4);
+        }
+
+        return $out;
     }
 
     /**
@@ -334,6 +375,10 @@ class PlanBuilder
         // aceluiași dosar ar intra de două ori.
         $cut = $this->charterShare($plan, $base);
 
+        // Cursele poartă împărțirea categoriei Charter: și un loc de avion
+        // se vinde ori printr-o agenție parteneră, ori direct.
+        $b2b = $this->b2bShare($plan)[self::CHARTER_CATEGORY] ?? null;
+
         $rows = [];
 
         foreach (($contracted ? $planned : $base) as $row) {
@@ -367,6 +412,7 @@ class PlanBuilder
                 // Costul rămâne al locului întreg: avionul se plătește cu
                 // tot cu pasagerii care se citesc la alte categorii.
                 'unit_cost' => $pax > 0 ? round((float) $theirs->sum('cost') / $pax, 2) : $money['cost'],
+                'b2b' => $b2b,
                 'note' => $this->charterNote($plan, $contracted, $hand, $loads[$row->key] ?? null, $pace, $cut['net']),
             ];
         }

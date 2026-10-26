@@ -46,6 +46,7 @@ class PlanLine extends Model
             'volume' => 'float',
             'capacity' => 'float',
             'load' => 'float',
+            'b2b' => 'float',
             'unit_net' => 'float',
             'unit_margin' => 'float',
             'unit_cost' => 'float',

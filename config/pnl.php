@@ -322,6 +322,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | B2B și B2C
+    |--------------------------------------------------------------------------
+    |
+    | Fiecare categorie de produs se vinde în două lumi: prin revânzători —
+    | agențiile partenere — și direct către om, pe site, în agențiile
+    | noastre, prin franciză sau la call center. Restul canalelor (corporate,
+    | altele) nu sunt nici una, nici alta: se arată separat, nu se înghesuie
+    | într-o găleată în care nu încap.
+    |
+    */
+    'segments' => [
+        'b2b' => [
+            'label' => 'B2B (agenții partenere)',
+            'channels' => ['b2b'],
+        ],
+        'b2c' => [
+            'label' => 'B2C (site, agenții proprii, franciză, call center)',
+            'channels' => ['retail', 'site', 'cc', 'franciza'],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Impozitul pe profit al planului
     |--------------------------------------------------------------------------
     |

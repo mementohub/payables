@@ -129,7 +129,7 @@ class PlanEngine
 
                     $this->pour($axes['product'], $key, $to, $net, $margin, $line->unit === PlanLine::SERVICE ? 0 : $line->pax() * $share, $line->unit === PlanLine::SERVICE ? $line->pax() * $share : 0);
 
-                    foreach ($mix[$key] ?? ['—' => 1.0] as $channel => $cut) {
+                    foreach ($this->cut($mix[$key] ?? [], $line->b2b) as $channel => $cut) {
                         $this->pour($axes['channel'], (string) $channel, $to, $net * $cut, $margin * $cut, 0, 0);
                     }
                 }
@@ -212,8 +212,8 @@ class PlanEngine
                 $this->columns($axes['channel']),
             ),
             'leases' => $leases === null ? null : $leases['summary'],
-            'categories' => $this->byKey($lines->whereIn('kind', [PlanLine::CATEGORY, PlanLine::CHARTER])),
-            'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER)),
+            'categories' => $this->byKey($lines->whereIn('kind', [PlanLine::CATEGORY, PlanLine::CHARTER]), $mix),
+            'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER), $mix),
             'opex' => $this->byKey($lines->where('kind', PlanLine::OPEX)),
             // Magazinele, cu oamenii și bonusurile lor.
             'retail' => $shops['rows'],
@@ -279,6 +279,93 @@ class PlanEngine
         }
 
         return $out;
+    }
+
+    /**
+     * Pe ce canale se împarte venitul unei linii.
+     *
+     * Amestecul vine din anul de bază, dar partea vândută prin agenții
+     * partenere e o hotărâre a anului care vine: dacă omul a scris-o, ea se
+     * ia ca atare, iar restul se împarte pe canalele directe în aceeași
+     * proporție ca în istoric. O categorie care n-a avut niciun canal direct
+     * își duce restul într-o coloană fără nume — mai bine nescris decât
+     * inventat.
+     *
+     * @param  array<string, float>  $mix
+     * @return array<string, float>
+     */
+    /**
+     * Venitul unui rând, împărțit în cele două lumi.
+     *
+     * @param  Collection<int, PlanLine>  $group
+     * @param  array<string, float>  $mix
+     * @return array{b2b: float|null, net_b2b: float, net_b2c: float, net_other: float}
+     */
+    private function split(Collection $group, array $mix): array
+    {
+        $segments = (array) config('pnl.segments', []);
+        $out = ['net_b2b' => 0.0, 'net_b2c' => 0.0, 'net_other' => 0.0];
+        $net = 0.0;
+        $theirs = 0.0;
+
+        foreach ($group as $line) {
+            if (! in_array($line->kind, [PlanLine::CATEGORY, PlanLine::CHARTER], true)) {
+                continue;
+            }
+
+            $money = $line->net();
+            $net += $money;
+
+            foreach ($this->cut($mix, $line->b2b) as $channel => $share) {
+                $where = 'net_other';
+
+                foreach ($segments as $name => $block) {
+                    if (in_array((string) $channel, (array) ($block['channels'] ?? []), true)) {
+                        $where = 'net_'.$name;
+
+                        break;
+                    }
+                }
+
+                $out[$where] += $money * $share;
+
+                if ($where === 'net_b2b') {
+                    $theirs += $money * $share;
+                }
+            }
+        }
+
+        return [
+            // Partea prin agenții partenere, așa cum iese din plan.
+            'b2b' => $net > 0 ? round($theirs / $net, 4) : null,
+            'net_b2b' => round($out['net_b2b'], 2),
+            'net_b2c' => round($out['net_b2c'], 2),
+            'net_other' => round($out['net_other'], 2),
+        ];
+    }
+
+    private function cut(array $mix, ?float $b2b): array
+    {
+        if ($b2b === null) {
+            return $mix === [] ? ['—' => 1.0] : $mix;
+        }
+
+        $b2b = max(0.0, min(1.0, $b2b));
+        $keys = (array) config('pnl.segments.b2b.channels', ['b2b']);
+        $rest = array_filter($mix, fn (string $channel) => ! in_array($channel, $keys, true), ARRAY_FILTER_USE_KEY);
+        $all = array_sum($rest);
+
+        $out = $b2b > 0 ? [$keys[0] => $b2b] : [];
+
+        if ($all > 0) {
+            foreach ($rest as $channel => $share) {
+                $out[$channel] = $share / $all * (1 - $b2b);
+            }
+        } elseif ($b2b < 1) {
+            $out['—'] = 1 - $b2b;
+        }
+
+        return $out === [] ? ['—' => 1.0] : $out;
     }
 
     /**
@@ -1418,13 +1505,14 @@ class PlanEngine
      * Rândurile strânse pe cheie, cu lunile sub ele.
      *
      * @param  Collection<int, PlanLine>  $lines
+     * @param  array<string, array<string, float>>  $mix  amestecul de canale al anului de bază
      * @return list<array<string, mixed>>
      */
-    private function byKey(Collection $lines): array
+    private function byKey(Collection $lines, array $mix = []): array
     {
         return $lines
             ->groupBy('key')
-            ->map(function (Collection $group, string $key) {
+            ->map(function (Collection $group, string $key) use ($mix) {
                 $first = $group->first();
                 $months = [];
 
@@ -1474,6 +1562,11 @@ class PlanEngine
                         : null,
                     'amount' => round((float) $group->sum('amount'), 2),
                     'manual' => $group->contains('manual', true),
+                    // Cele două lumi în care se vinde categoria: prin
+                    // agenții partenere și direct. Ce nu intră în niciuna —
+                    // corporate, altele — se arată deoparte, nu se
+                    // înghesuie unde nu-i e locul.
+                    ...$this->split($group, $mix[$first->kind === PlanLine::CHARTER ? PlanBuilder::CHARTER_CATEGORY : $key] ?? []),
                 ];
             })
             ->sortByDesc(fn (array $row) => abs($row['kind'] === PlanLine::OPEX || $row['kind'] === PlanLine::BELOW ? $row['amount'] : $row['net']))

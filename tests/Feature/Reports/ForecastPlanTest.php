@@ -924,3 +924,57 @@ test('a month a route has never flown can still be added to the plan', function 
         ->and($lines->firstWhere('month', 11)->capacity)->toEqual(189.0)
         ->and($lines->firstWhere('month', 11)->manual)->toBeTrue();
 });
+
+test('a category is split between partner agencies and direct selling', function () {
+    $company = Company::factory()->create();
+
+    foreach ([
+        ['kind' => 'category', 'key' => 'Croaziere', 'month' => 7, 'volume' => 100, 'net' => 500_000, 'margin' => 50_000],
+    ] as $row) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'unit' => 'pax', ...$row,
+        ]);
+    }
+
+    // Amestecul anului de bază: un sfert prin agenții partenere, restul
+    // direct — jumătate în agențiile noastre, un sfert pe site.
+    foreach ([['b2b', 125_000], ['retail', 250_000], ['site', 125_000]] as [$channel, $net]) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'kind' => 'mix', 'key' => 'Croaziere',
+            'channel' => $channel, 'month' => 7, 'unit' => 'pax', 'volume' => 0, 'net' => $net, 'margin' => 0,
+        ]);
+    }
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    app(PlanBuilder::class)->seed($plan);
+
+    expect(PlanLine::query()->where('plan_id', $plan->id)->where('key', 'Croaziere')->first()->b2b)
+        ->toEqual(0.25);
+
+    $out = app(PlanEngine::class)->compute($plan, 'ytd12', 'ras', 'operational');
+    $row = collect($out['categories'])->firstWhere('key', 'Croaziere');
+
+    expect($row['b2b'])->toEqual(0.25)
+        ->and($row['net_b2b'])->toEqual(round($row['net'] * 0.25, 2))
+        ->and($row['net_b2c'])->toEqual(round($row['net'] * 0.75, 2))
+        ->and($row['net_other'])->toEqual(0.0);
+
+    // Omul care ține categoria mută jumătate din venit pe agenții partenere:
+    // restul se împarte pe canalele directe ca în anul de bază — două treimi
+    // în agențiile noastre, o treime pe site.
+    PlanLine::query()->where('plan_id', $plan->id)->where('key', 'Croaziere')->update(['b2b' => 0.5]);
+
+    $out = app(PlanEngine::class)->compute($plan->fresh(), 'ytd12', 'ras', 'operational');
+    $row = collect($out['categories'])->firstWhere('key', 'Croaziere');
+    $channels = collect($out['channels'])->keyBy('channel');
+
+    expect($row['net_b2b'])->toEqual(round($row['net'] * 0.5, 2))
+        ->and($row['net_b2c'])->toEqual(round($row['net'] * 0.5, 2))
+        ->and($channels['b2b']['net'])->toEqual(round($row['net'] * 0.5, 2))
+        ->and($channels['retail']['net'])->toEqual(round($row['net'] * 0.5 * (2 / 3), 2))
+        ->and($channels['site']['net'])->toEqual(round($row['net'] * 0.5 * (1 / 3), 2));
+});
