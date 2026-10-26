@@ -115,6 +115,17 @@ class User extends Authenticatable
             ...array_column((array) config('pnl.plan_owners.costs', []), 'department'),
         ];
 
+        // Șeful de departament — coroana din fila Departamente — intră la
+        // bugetul lui; echipa, numai dacă se deschide din configurație.
+        $head = Department::query()
+            ->where('head_user_id', $this->getKey())
+            ->whereIn('name', $owners)
+            ->exists();
+
+        if ($head || ! (bool) config('pnl.plan_owners.members', false)) {
+            return $head;
+        }
+
         return $this->departments()->whereIn('name', $owners)->exists();
     }
 

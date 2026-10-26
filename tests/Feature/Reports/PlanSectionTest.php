@@ -40,13 +40,21 @@ function planWithSections(Company $company): Plan
     return $plan;
 }
 
+/**
+ * Șeful departamentului — coroana din fila Departamente. El ține bucata de
+ * buget, nu oricine e trecut în departament.
+ */
 function personOf(string $department): User
 {
     $user = User::factory()->withRoles('operational')->create();
-    $user->departments()->attach(Department::query()->firstOrCreate(
+
+    $one = Department::query()->firstOrCreate(
         ['name' => $department],
         ['group' => Department::GROUP_PRODUCT, 'is_active' => true],
-    ));
+    );
+
+    $one->update(['head_user_id' => $user->getKey()]);
+    $user->departments()->attach($one);
 
     return $user;
 }
@@ -162,6 +170,20 @@ test('someone with no piece of the budget does not get through the door', functi
 
     // Dar cel care ține o bucată, da — chiar dacă nu e din conducere.
     $this->actingAs(personOf('Charters'))->get('/reports/forecast')->assertOk();
+});
+
+test('the piece belongs to the head of the department, not to everyone in it', function () {
+    $sef = personOf('Senior Voyage');
+
+    // Un om din echipă, fără coroană: vede departamentul pe dinăuntru, dar
+    // bugetul îl scrie șeful.
+    $om = User::factory()->withRoles('operational')->create();
+    $om->departments()->attach(Department::query()->where('name', 'Senior Voyage')->firstOrFail());
+
+    expect(app(PlanSections::class)->mine($sef, $this->plan))->toContain('category:Senior Voyage')
+        ->and(app(PlanSections::class)->mine($om, $this->plan))->toBe([]);
+
+    $this->actingAs($om)->get('/reports/forecast')->assertForbidden();
 });
 
 test('a shop costs its people plus the bonus on what it sells', function () {

@@ -478,16 +478,49 @@ export default function Forecast({
     const ale = <T extends { section: string }>(rows: T[]) =>
         rows.filter((one) => boss || mine.includes(one.section));
 
-    const foi = output
-        ? {
-              categorii: ale(
-                  output.categories.filter((r) => r.kind === 'category'),
-              ),
-              charter: ale(output.charter),
-              opex: ale([...output.opex, ...output.below]),
-              retail: ale(output.retail),
-          }
-        : { categorii: [], charter: [], opex: [], retail: [] };
+    // Fiecare categorie de produs își are fila ei — Cazare, Senior Voyage,
+    // Circuite — fiindcă omul care o ține deschide categoria lui, nu un
+    // tabel cu toate categoriile casei.
+    const foi: Record<string, { label: string; rows: Row[] }> = {};
+
+    for (const row of output
+        ? ale(output.categories.filter((one) => one.kind === 'category'))
+        : []) {
+        foi[row.section] = foi[row.section] ?? {
+            label: row.section.replace('category:', ''),
+            rows: [],
+        };
+
+        foi[row.section].rows.push(row);
+    }
+
+    const categorii = Object.keys(foi).sort((a, b) => a.localeCompare(b));
+
+    if (output) {
+        const charter = ale(output.charter);
+        const opex = ale([...output.opex, ...output.below]);
+
+        if (charter.length > 0) {
+            foi.charter = { label: 'Charter · curse', rows: charter };
+        }
+
+        if (opex.length > 0) {
+            foi.opex = { label: 'Cheltuieli și sub EBITDA', rows: opex };
+        }
+    }
+
+    // Agențiile au alt tabel decât restul: oameni, salariu mediu și bonus,
+    // nu pasageri și bani pe pasager.
+    const shops = output ? ale(output.retail) : [];
+
+    // Ordinea filelor: categoriile pe alfabet, pe urmă cursele, agențiile și
+    // la coadă cheltuielile.
+    const file = [
+        ...categorii,
+        ...(foi.charter ? ['charter'] : []),
+        ...(shops.length > 0 ? ['retail'] : []),
+        ...(foi.opex ? ['opex'] : []),
+    ];
 
     // Câte bucăți de buget au fost trimise spre consolidare. Conducerea le
     // vede pe toate; ceilalți, numai pe ale lor — altfel fila de predare ar
@@ -519,9 +552,13 @@ export default function Forecast({
     const periodMatch = /^(ytd|mtd)(\d{1,2})$/.exec(filters.period);
     const periodMode = periodMatch?.[1] === 'mtd' ? 'mtd' : 'ytd';
     const periodMonth = periodMatch ? Number(periodMatch[2]) : 12;
-    const [sheet, setSheet] = useState<
-        'categorii' | 'charter' | 'opex' | 'retail'
-    >('categorii');
+    // Fila deschisă din Configurare: o categorie de produs („category:Cazare”),
+    // cursele, cheltuielile sau rețeaua de agenții.
+    const [sheet, setSheet] = useState<string>('charter');
+    // Fila deschisă e o categorie de produs („category:Cazare”) sau una din
+    // cele trei file de casă: cursele, agențiile, cheltuielile.
+    const categorie = sheet.startsWith('category:');
+    const numele = categorie ? sheet.replace('category:', '') : '';
     const [open, setOpen] = useState<Set<string>>(new Set());
     // Ce s-a scris și încă nu s-a salvat: celule (o lună) și rânduri (tot
     // anul). Se trimit o dată, la „Salvează”.
@@ -1230,20 +1267,10 @@ export default function Forecast({
                         {/* Fila deschisă trebuie să fie una a lui: dacă n-are
                             categorii, se trece pe curse, și așa mai departe. */}
                         {tab === 'configurare' &&
-                            foi[sheet].length === 0 &&
+                            file.length > 0 &&
+                            !file.includes(sheet) &&
                             (() => {
-                                const prima = (
-                                    [
-                                        'categorii',
-                                        'charter',
-                                        'opex',
-                                        'retail',
-                                    ] as const
-                                ).find((one) => foi[one].length > 0);
-
-                                if (prima !== undefined && prima !== sheet) {
-                                    setSheet(prima);
-                                }
+                                setSheet(file[0]);
 
                                 return null;
                             })()}
@@ -1513,40 +1540,24 @@ export default function Forecast({
                         )}
 
                         {tab === 'configurare' && (
-                            <Tabs
-                                value={sheet}
-                                onValueChange={(v) =>
-                                    setSheet(v as typeof sheet)
-                                }
-                            >
-                                <TabsList>
-                                    {/* Fiecare filă arată câte rânduri are
-                                        omul în ea; cele în care n-are nimic
-                                        nu se mai deschid degeaba. */}
-                                    {foi.categorii.length > 0 && (
-                                        <TabsTrigger value="categorii">
-                                            Categorii de produs (
-                                            {foi.categorii.length})
+                            <Tabs value={sheet} onValueChange={setSheet}>
+                                <TabsList className="flex-wrap">
+                                    {/* Câte o filă de fiecare categorie de
+                                        produs, pe urmă cursele, agențiile și
+                                        cheltuielile. Cine n-are decât o
+                                        categorie vede o singură filă. */}
+                                    {file.map((one) => (
+                                        <TabsTrigger key={one} value={one}>
+                                            {one === 'retail'
+                                                ? 'Rețeaua de agenții'
+                                                : foi[one].label}{' '}
+                                            (
+                                            {one === 'retail'
+                                                ? shops.length
+                                                : foi[one].rows.length}
+                                            )
                                         </TabsTrigger>
-                                    )}
-                                    {foi.charter.length > 0 && (
-                                        <TabsTrigger value="charter">
-                                            Charter · curse (
-                                            {foi.charter.length})
-                                        </TabsTrigger>
-                                    )}
-                                    {foi.opex.length > 0 && (
-                                        <TabsTrigger value="opex">
-                                            Cheltuieli și sub EBITDA (
-                                            {foi.opex.length})
-                                        </TabsTrigger>
-                                    )}
-                                    {foi.retail.length > 0 && (
-                                        <TabsTrigger value="retail">
-                                            Rețeaua de agenții (
-                                            {foi.retail.length})
-                                        </TabsTrigger>
-                                    )}
+                                    ))}
                                 </TabsList>
                             </Tabs>
                         )}
@@ -1555,7 +1566,7 @@ export default function Forecast({
                             <p className="text-xs text-muted-foreground">
                                 {sheet === 'charter'
                                     ? 'Cursele se citesc pe luna plecării: locurile sunt cele contractate în eTrip pentru anul plănuit, iar ocuparea și banii pe pasager vin de pe aceeași cursă din anul de bază. Volumul lor nu urmează niciun trend — un loc contractat e o faptă, nu o presupunere.'
-                                    : sheet === 'categorii'
+                                    : categorie
                                       ? 'Categoriile se citesc pe luna rezervării, ca vederea operațională din P&L: pasagerii sunt cei care au cumpărat în luna aia, oricând ar plăti sau ar pleca. Tina se numără pe servicii facturate, la data facturii.'
                                       : 'Cheltuielile se citesc pe luna din registru, ca în raport: acolo unde a căzut documentul, nu unde s-a consumat serviciul.'}{' '}
                                 Pe fila Plan, tot ce nu stă pe baza aleasă sus e
@@ -1572,8 +1583,8 @@ export default function Forecast({
                                             <Plus className="size-4" />
                                             {sheet === 'charter'
                                                 ? 'Cursă nouă'
-                                                : sheet === 'categorii'
-                                                  ? 'Categorie nouă'
+                                                : categorie
+                                                  ? 'Sub-linie nouă'
                                                   : sheet === 'retail'
                                                     ? 'Agenție nouă'
                                                     : 'Linie nouă'}
@@ -1584,8 +1595,8 @@ export default function Forecast({
                                             <DialogTitle>
                                                 {sheet === 'charter'
                                                     ? 'Cursă nouă în plan'
-                                                    : sheet === 'categorii'
-                                                      ? 'Categorie nouă în plan'
+                                                    : categorie
+                                                      ? `Sub-linie nouă la ${numele}`
                                                       : sheet === 'retail'
                                                         ? 'Agenție nouă în plan'
                                                         : 'Linie nouă de cheltuială'}
@@ -1593,9 +1604,11 @@ export default function Forecast({
                                             <DialogDescription>
                                                 {sheet === 'charter'
                                                     ? 'O cursă pe care o zburăm abia anul viitor nu are istoric: locurile, ocuparea și banii pe pasager se scriu aici. Alege lunile în care zboară.'
-                                                    : sheet === 'retail'
-                                                      ? 'O agenție care se deschide anul viitor n-are vânzări în istoric: scrie-i vânzarea așteptată pe lună, oamenii și bonusul. Alege lunile în care e deschisă.'
-                                                      : 'Un rând care nu vine din istoric: se scrie de mână și nu se mai calcă la împrospătare.'}
+                                                    : categorie
+                                                      ? 'O destinație sau un program nou, care n-are istoric: pasagerii și banii pe pasager se scriu aici. Rândul rămâne la categoria asta și intră în cifra ei.'
+                                                      : sheet === 'retail'
+                                                        ? 'O agenție care se deschide anul viitor n-are vânzări în istoric: scrie-i vânzarea așteptată pe lună, oamenii și bonusul. Alege lunile în care e deschisă.'
+                                                        : 'Un rând care nu vine din istoric: se scrie de mână și nu se mai calcă la împrospătare.'}
                                             </DialogDescription>
                                         </DialogHeader>
                                         <div className="grid gap-3">
@@ -1603,9 +1616,11 @@ export default function Forecast({
                                                 <Label>
                                                     {sheet === 'charter'
                                                         ? 'Cursa (ex. OTP→AYT)'
-                                                        : sheet === 'retail'
-                                                          ? 'Agenția (ex. Oradea Lotus)'
-                                                          : 'Numele rândului'}
+                                                        : categorie
+                                                          ? `Sub-linia (ex. Grecia) — intră sub „${numele}”`
+                                                          : sheet === 'retail'
+                                                            ? 'Agenția (ex. Oradea Lotus)'
+                                                            : 'Numele rândului'}
                                                 </Label>
                                                 <Input
                                                     value={row.key}
@@ -1756,7 +1771,7 @@ export default function Forecast({
                                                             />
                                                         </div>
                                                     </>
-                                                ) : sheet === 'categorii' ? (
+                                                ) : categorie ? (
                                                     <div className="grid gap-1.5">
                                                         <Label>
                                                             Volum / lună (nr.)
@@ -1936,15 +1951,21 @@ export default function Forecast({
                                                                 sheet ===
                                                                 'charter'
                                                                     ? 'charter'
-                                                                    : sheet ===
-                                                                        'categorii'
+                                                                    : categorie
                                                                       ? 'category'
                                                                       : sheet ===
                                                                           'retail'
                                                                         ? 'retail'
                                                                         : 'opex',
-                                                            key: row.key,
-                                                            label: row.key,
+                                                            // Pe fila unei categorii, rândul
+                                                            // nou e o sub-linie a ei: așa
+                                                            // rămâne la același stăpân.
+                                                            key: categorie
+                                                                ? `${numele} · ${row.key}`
+                                                                : row.key,
+                                                            label: categorie
+                                                                ? `${numele} · ${row.key}`
+                                                                : row.key,
                                                             months: row.months,
                                                             capacity:
                                                                 sheet ===
@@ -1960,8 +1981,7 @@ export default function Forecast({
                                                                       100
                                                                     : null,
                                                             volume:
-                                                                sheet ===
-                                                                    'categorii' ||
+                                                                categorie ||
                                                                 sheet ===
                                                                     'retail'
                                                                     ? row.volume
@@ -2048,7 +2068,7 @@ export default function Forecast({
 
                         {tab === 'configurare' && sheet === 'retail' && (
                             <RetailTable
-                                shops={foi.retail}
+                                shops={shops}
                                 planId={plan.id}
                                 planYear={plan.year}
                             />
@@ -2056,14 +2076,12 @@ export default function Forecast({
 
                         {tab === 'configurare' && sheet !== 'retail' && (
                             <DriverTable
-                                rows={
-                                    sheet === 'categorii'
-                                        ? foi.categorii
-                                        : sheet === 'charter'
-                                          ? foi.charter
-                                          : foi.opex
+                                rows={foi[sheet]?.rows ?? []}
+                                kind={
+                                    categorie
+                                        ? 'categorii'
+                                        : (sheet as 'charter' | 'opex')
                                 }
-                                kind={sheet}
                                 history={history}
                                 openMonths={openMonths}
                                 baseMonths={baseMonths}

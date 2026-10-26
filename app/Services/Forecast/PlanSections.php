@@ -113,7 +113,21 @@ class PlanSections
      */
     public function mine(User $user, Plan $plan): array
     {
-        $his = $user->departments()->pluck('name')->map(fn ($name) => (string) $name)->all();
+        // Bucata e a șefului de departament — coroana din fila Departamente.
+        // El răspunde de cifrele lui în fața conducerii; dacă se vrea și
+        // echipa, se deschide din configurație.
+        $his = Department::query()
+            ->where('head_user_id', $user->getKey())
+            ->pluck('name')
+            ->map(fn ($name) => (string) $name)
+            ->all();
+
+        if ((bool) config('pnl.plan_owners.members', false)) {
+            $his = array_values(array_unique([
+                ...$his,
+                ...$user->departments()->pluck('name')->map(fn ($name) => (string) $name)->all(),
+            ]));
+        }
         $out = [];
 
         foreach ($this->keys($plan) as $section) {
@@ -165,6 +179,11 @@ class PlanSections
 
         $lines = $plan->lines()->get();
         $people = $this->people();
+        $heads = Department::query()
+            ->with('head:id,name')
+            ->get()
+            ->mapWithKeys(fn (Department $department) => [$department->name => $department->head?->name])
+            ->all();
 
         $out = [];
 
@@ -178,6 +197,7 @@ class PlanSections
                 'label' => $this->label($key),
                 'kind' => str_starts_with($key, 'category:') ? 'category' : 'cost',
                 'department' => $department,
+                'head' => $department === null ? null : ($heads[$department] ?? null),
                 'people' => $department === null ? [] : ($people[$department] ?? []),
                 'status' => $section?->status ?? PlanSection::DRAFT,
                 'submitted_by' => $section?->submittedBy?->name,
