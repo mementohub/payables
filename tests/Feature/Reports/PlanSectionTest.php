@@ -8,6 +8,7 @@ use App\Models\PlanLine;
 use App\Models\PlanSection;
 use App\Models\User;
 use App\Services\Forecast\PlanBuilder;
+use App\Services\Forecast\PlanEngine;
 use App\Services\Forecast\PlanSections;
 
 /**
@@ -161,4 +162,45 @@ test('someone with no piece of the budget does not get through the door', functi
 
     // Dar cel care ține o bucată, da — chiar dacă nu e din conducere.
     $this->actingAs(personOf('Charters'))->get('/reports/forecast')->assertOk();
+});
+
+test('a shop costs its people plus the bonus on what it sells', function () {
+    $plan = $this->plan;
+
+    // Agenția Plaza, cu oamenii și bonusul ei.
+    $line = PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'label' => 'Plaza',
+        'month' => 7, 'volume' => 4, 'unit_cost' => 6_500, 'load' => 0.02,
+        'unit_net' => 1_000_000, 'amount' => 50_000, 'manual' => true,
+    ]);
+
+    // Patru oameni × 6.500 + 2% din 1.000.000 de lei vânduți.
+    expect($line->shop(1_000_000))->toEqual(46_000.0)
+        // Fără oameni scriși, rămâne cifra purtată din istoric.
+        ->and((new PlanLine(['kind' => PlanLine::RETAIL, 'volume' => 0, 'amount' => 50_000]))->shop(1_000_000))
+        ->toEqual(50_000.0);
+
+    $out = app(PlanEngine::class)->compute($plan->fresh());
+    $shop = collect($out['retail'])->firstWhere('key', 'Plaza');
+
+    expect($shop)->not->toBeNull()
+        ->and($shop['section'])->toBe('cost:retail')
+        ->and($shop['fte'])->toEqual(4.0);
+});
+
+test('the retail network is written by the retail people, nobody else', function () {
+    PlanLine::query()->create([
+        'plan_id' => $this->plan->id, 'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'label' => 'Plaza',
+        'month' => 7, 'volume' => 0, 'unit_cost' => 6_500, 'load' => 0.01, 'amount' => 10_000,
+    ]);
+
+    $this->actingAs(personOf('Agenții retail'))->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'volume', 'value' => 5,
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('kind', PlanLine::RETAIL)->sole()->volume)->toEqual(5.0);
+
+    $this->actingAs(personOf('Senior Voyage'))->put('/reports/forecast/'.$this->plan->id.'/row', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'volume', 'value' => 99,
+    ])->assertForbidden();
 });

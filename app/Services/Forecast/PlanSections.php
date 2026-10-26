@@ -42,6 +42,10 @@ class PlanSections
             return self::FALLBACK;
         }
 
+        if ($kind === PlanLine::RETAIL) {
+            return 'cost:retail';
+        }
+
         $costs = (array) config('pnl.plan_owners.costs', []);
 
         foreach ($costs as $name => $block) {

@@ -359,9 +359,9 @@ class ForecastController extends Controller
     public function updateRow(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
-            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'amount'])],
+            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
             'value' => ['nullable', 'numeric'],
             'growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -399,7 +399,7 @@ class ForecastController extends Controller
             'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
             'cells.*.value' => ['required', 'numeric'],
             'rows' => ['array'],
-            'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'rows.*.key' => ['required', 'string', 'max:255'],
             'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'unit_net', 'unit_margin', 'unit_cost', 'amount'])],
             'rows.*.value' => ['nullable', 'numeric'],
@@ -697,7 +697,7 @@ class ForecastController extends Controller
     public function storeRow(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
             'label' => ['nullable', 'string', 'max:255'],
             'unit' => ['nullable', Rule::in([PlanLine::PAX, PlanLine::SERVICE])],
@@ -782,7 +782,7 @@ class ForecastController extends Controller
     public function destroyRow(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
         ]);
 
@@ -810,7 +810,7 @@ class ForecastController extends Controller
     public function restoreRow(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
         ]);
 
@@ -842,7 +842,7 @@ class ForecastController extends Controller
     public function updateBase(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
             'label' => ['nullable', 'string', 'max:255'],
             'unit' => ['nullable', Rule::in([PlanLine::PAX, PlanLine::SERVICE])],
@@ -885,7 +885,7 @@ class ForecastController extends Controller
     public function resetBase(Request $request, Plan $plan): RedirectResponse
     {
         $validated = $request->validate([
-            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW])],
+            'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
             'month' => ['nullable', 'integer', 'between:1,12'],
         ]);

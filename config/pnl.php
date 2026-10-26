@@ -406,8 +406,16 @@ return [
                 'label' => 'Rețeaua de agenții',
                 'department' => 'Agenții retail',
                 // Salariile și bonusurile agențiilor: se bugetează pe
-                // magazin, din oameni și din vânzări.
+                // magazin, din oameni și din vânzări. Din liniile astea se
+                // ia partea repartizată pe canalul retail — restul rămâne
+                // la administrativ, cu oamenii din centrală.
                 'lines' => ['20200', '20000'],
+                'channel' => 'retail',
+                // Cât costă un om pe lună, cu tot cu contribuții, până când
+                // rețeaua scrie altceva pe magazinul ei.
+                'cost_per_fte' => env('PNL_RETAIL_COST_PER_FTE', 6500),
+                // Bonusul variabil, ca procent din vânzările magazinului.
+                'bonus' => env('PNL_RETAIL_BONUS', 0.01),
             ],
             'marketing' => [
                 'label' => 'Marketing',

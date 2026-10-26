@@ -23,6 +23,15 @@ class PlanLine extends Model
     /** Amortizare, rezultat financiar, impozit. */
     public const BELOW = 'below';
 
+    /**
+     * Un magazin din rețeaua de agenții.
+     *
+     * Costul lui nu se poartă dintr-o linie de cheltuială, ci se face din
+     * oameni și din vânzări: câți lucrează acolo, cât costă unul pe lună și
+     * ce bonus se plătește din ce vinde magazinul.
+     */
+    public const RETAIL = 'retail';
+
     /** Turismul se numără pe pasageri. */
     public const PAX = 'pax';
 
@@ -48,6 +57,27 @@ class PlanLine extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
+    }
+
+    /**
+     * Cât costă magazinul într-o lună: oamenii plus bonusul din vânzări.
+     *
+     * Cât timp rețeaua n-a scris câți oameni are acolo, rămâne cifra din
+     * istoric — altfel planul ar porni cu zero salarii în agenții.
+     *
+     * @param  float  $sales  vânzările planificate ale magazinului în luna aia
+     */
+    public function shop(float $sales = 0): float
+    {
+        if ($this->kind !== self::RETAIL) {
+            return (float) $this->amount;
+        }
+
+        if ((float) $this->volume <= 0) {
+            return (float) $this->amount;
+        }
+
+        return round((float) $this->volume * (float) $this->unit_cost + (float) $this->load * $sales, 2);
     }
 
     /** Pasagerii lunii: la charter ies din locuri × grad de ocupare. */

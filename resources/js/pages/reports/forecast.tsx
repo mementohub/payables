@@ -176,6 +176,18 @@ type Output = {
     }[];
     categories: Row[];
     charter: Row[];
+    retail: {
+        key: string;
+        section: string;
+        label: string;
+        fte: number;
+        cost_per_fte: number;
+        bonus: number;
+        sales: number;
+        amount: number;
+        manual: boolean;
+        weight: number | null;
+    }[];
     opex: Row[];
     below: Row[];
     risk: {
@@ -488,9 +500,9 @@ export default function Forecast({
     const periodMatch = /^(ytd|mtd)(\d{1,2})$/.exec(filters.period);
     const periodMode = periodMatch?.[1] === 'mtd' ? 'mtd' : 'ytd';
     const periodMonth = periodMatch ? Number(periodMatch[2]) : 12;
-    const [sheet, setSheet] = useState<'categorii' | 'charter' | 'opex'>(
-        'categorii',
-    );
+    const [sheet, setSheet] = useState<
+        'categorii' | 'charter' | 'opex' | 'retail'
+    >('categorii');
     const [open, setOpen] = useState<Set<string>>(new Set());
     // Ce s-a scris și încă nu s-a salvat: celule (o lună) și rânduri (tot
     // anul). Se trimit o dată, la „Salvează”.
@@ -1485,6 +1497,10 @@ export default function Forecast({
                                             output.below.length}
                                         )
                                     </TabsTrigger>
+                                    <TabsTrigger value="retail">
+                                        Rețeaua de agenții (
+                                        {output.retail.length})
+                                    </TabsTrigger>
                                 </TabsList>
                             </Tabs>
                         )}
@@ -1863,7 +1879,17 @@ export default function Forecast({
                             </div>
                         )}
 
-                        {tab === 'configurare' && (
+                        {tab === 'configurare' && sheet === 'retail' && (
+                            <RetailTable
+                                shops={output.retail.filter(
+                                    (one) => boss || mine.includes(one.section),
+                                )}
+                                planId={plan.id}
+                                planYear={plan.year}
+                            />
+                        )}
+
+                        {tab === 'configurare' && sheet !== 'retail' && (
                             <DriverTable
                                 rows={(sheet === 'categorii'
                                     ? output.categories.filter(
@@ -3277,6 +3303,181 @@ function PlanHeader({
                                 : ' — 16% pe profitul impozabil'}
                         </span>
                     </span>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+/**
+ * Rețeaua de agenții, magazin cu magazin.
+ *
+ * Costul unei agenții nu se poartă dintr-o linie de cheltuială: e numărul de
+ * oameni înmulțit cu cât costă unul, plus bonusul din ce vinde magazinul.
+ * Cât timp nu scrie nimeni câți oameni lucrează acolo, rămâne partea lui din
+ * salariile repartizate pe retail în anul de bază — ca planul să nu pornească
+ * cu agenții fără salarii.
+ */
+function RetailTable({
+    shops,
+    planId,
+    planYear,
+}: {
+    shops: Output['retail'];
+    planId: number;
+    planYear: number;
+}) {
+    const apply = (key: string, field: string, value: number) =>
+        router.put(
+            `/reports/forecast/${planId}/row`,
+            { kind: 'retail', key, field, value },
+            { preserveScroll: true, preserveState: true },
+        );
+
+    const oameni = shops.reduce((sum, one) => sum + one.fte, 0);
+    const cost = shops.reduce((sum, one) => sum + one.amount, 0);
+    const sales = shops.reduce((sum, one) => sum + one.sales, 0);
+
+    return (
+        <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+                Costul fiecărei agenții în {planYear} ={' '}
+                <strong>oameni × cost pe om</strong> +{' '}
+                <strong>bonus × vânzările magazinului</strong>. Vânzarea
+                planificată a magazinului se desface din venitul canalului
+                retail, după cât a vândut fiecare în anul de bază. Cât timp
+                numărul de oameni e zero, costul rămâne cel purtat din istoric,
+                iar cifrele scrise aici iau locul părții de salarii repartizate
+                pe retail — nu se adună peste ea.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">
+                            Oameni în rețea
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                            {lei(oameni)}
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                FTE pe lună
+                            </span>
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">
+                            Costul rețelei
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                            {mii(cost)}
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                mii lei
+                            </span>
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">
+                            Cât ține din vânzări
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                            {sales > 0
+                                ? `${((cost / sales) * 100).toFixed(1)}%`
+                                : '–'}
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                din {mii(sales)} mii lei vânduți
+                            </span>
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Card>
+                <CardContent className="overflow-x-auto p-0">
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-56">Agenția</TableHead>
+                                <TableHead className="text-right">
+                                    Vânzări {planYear} (lei)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Oameni (FTE)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Cost / om (lei/lună)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Bonus (% din vânzări)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    Cost an (lei)
+                                </TableHead>
+                                <TableHead className="text-right">
+                                    % din vânzări
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {shops.map((one) => (
+                                <TableRow
+                                    key={one.key}
+                                    className={cn(
+                                        one.manual &&
+                                            'bg-amber-50/60 dark:bg-amber-950/20',
+                                    )}
+                                >
+                                    <TableCell className="font-medium">
+                                        {one.label}
+                                        {one.fte === 0 && (
+                                            <span className="ml-2 text-[10px] text-muted-foreground">
+                                                fără oameni scriși
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums">
+                                        {lei(one.sales)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <RowInput
+                                            value={one.fte}
+                                            onCommit={(v) =>
+                                                apply(one.key, 'volume', v)
+                                            }
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <RowInput
+                                            value={one.cost_per_fte}
+                                            onCommit={(v) =>
+                                                apply(one.key, 'unit_cost', v)
+                                            }
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <RowInput
+                                            value={one.bonus * 100}
+                                            suffix="%"
+                                            onCommit={(v) =>
+                                                apply(one.key, 'load', v / 100)
+                                            }
+                                        />
+                                    </TableCell>
+                                    <TableCell className="text-right font-semibold tabular-nums">
+                                        {lei(one.amount)}
+                                    </TableCell>
+                                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                                        {one.weight !== null
+                                            ? `${one.weight}%`
+                                            : '–'}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
                 </CardContent>
             </Card>
         </div>

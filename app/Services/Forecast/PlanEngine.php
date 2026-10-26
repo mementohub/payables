@@ -143,9 +143,21 @@ class PlanEngine
 
             match ($line->kind) {
                 PlanLine::OPEX => $months[$month]['opex'] += (float) $line->amount,
+                // Magazinele se socotesc la urmă: bonusul lor se naște din
+                // vânzările planificate, care tocmai s-au strâns mai sus.
+                PlanLine::RETAIL => null,
                 PlanLine::BELOW => $buckets[$month][$line->key] = ($buckets[$month][$line->key] ?? 0) + (float) $line->amount,
                 default => null,
             };
+        }
+
+        // Rețeaua de agenții: oameni × cost, plus bonusul din ce vinde
+        // fiecare magazin. Se face acum, fiindcă bonusul are nevoie de
+        // venitul planificat al canalului.
+        $shops = $this->shops($lines, $axes['channel'], $wanted);
+
+        foreach ($shops['months'] as $month => $amount) {
+            $months[$month]['opex'] += $amount;
         }
 
         // Impozitul pe profit nu se poartă din anul trecut: se socotește din
@@ -203,6 +215,8 @@ class PlanEngine
             'categories' => $this->byKey($lines->whereIn('kind', [PlanLine::CATEGORY, PlanLine::CHARTER])),
             'charter' => $this->byKey($lines->where('kind', PlanLine::CHARTER)),
             'opex' => $this->byKey($lines->where('kind', PlanLine::OPEX)),
+            // Magazinele, cu oamenii și bonusurile lor.
+            'retail' => $shops['rows'],
             'below' => $this->belowRows($lines->where('kind', PlanLine::BELOW), $buckets, $wanted),
             // Anii din care se judecă planul, de la cel mai vechi la cel mai
             // nou, cu lunile care le lipsesc spuse pe față.
@@ -468,6 +482,96 @@ class PlanEngine
                 'years_channel' => $channel,
             ];
         }, $rows);
+    }
+
+    /**
+     * Rețeaua de agenții: ce costă, magazin cu magazin.
+     *
+     * Costul unui magazin nu se poartă dintr-o linie de cheltuială: e
+     * numărul de oameni înmulțit cu cât costă unul, plus bonusul din ce
+     * vinde magazinul. Vânzarea lui se ia din venitul planificat al
+     * canalului retail, împărțit după cât a vândut fiecare în anul de bază.
+     *
+     * @param  Collection<int, PlanLine>  $lines
+     * @param  array<string, array<string, mixed>>  $channels
+     * @param  list<int>  $wanted
+     * @return array{months: array<int, float>, rows: list<array<string, mixed>>}
+     */
+    private function shops(Collection $lines, array $channels, array $wanted): array
+    {
+        $shops = $lines->where('kind', PlanLine::RETAIL);
+
+        if ($shops->isEmpty()) {
+            return ['months' => array_fill_keys(range(1, 12), 0.0), 'rows' => []];
+        }
+
+        $channel = (string) config('pnl.plan_owners.costs.retail.channel', 'retail');
+        $planned = $channels[$channel]['months'] ?? [];
+
+        // Cât a vândut fiecare magazin în anul de bază, lună de lună: din
+        // asta se împarte venitul planificat al canalului.
+        $base = [];
+
+        foreach ($shops as $line) {
+            $base[(int) $line->month] = round(($base[(int) $line->month] ?? 0) + (float) $line->unit_net, 2);
+        }
+
+        $months = array_fill_keys(range(1, 12), 0.0);
+        $rows = [];
+
+        foreach ($shops->groupBy('key') as $key => $group) {
+            $cells = [];
+            $cost = 0.0;
+            $sales = 0.0;
+
+            foreach ($group as $line) {
+                $month = (int) $line->month;
+                $share = ($base[$month] ?? 0) > 0 ? (float) $line->unit_net / $base[$month] : 0.0;
+                $mine = round((float) ($planned[$month] ?? 0) * $share, 2);
+                $amount = $line->shop($mine);
+
+                $cells[$month] = [
+                    'id' => $line->id,
+                    'fte' => (float) $line->volume,
+                    'cost_per_fte' => (float) $line->unit_cost,
+                    'bonus' => (float) $line->load,
+                    'sales' => $mine,
+                    'was' => (float) $line->unit_net,
+                    'amount' => $amount,
+                    'manual' => (bool) $line->manual,
+                    'note' => $line->note,
+                ];
+
+                if (in_array($month, $wanted, true)) {
+                    $months[$month] += $amount;
+                    $cost += $amount;
+                    $sales += $mine;
+                }
+            }
+
+            ksort($cells);
+
+            $rows[] = [
+                'key' => (string) $key,
+                'section' => 'cost:retail',
+                'kind' => PlanLine::RETAIL,
+                'unit' => PlanLine::PAX,
+                'label' => (string) $key,
+                'months' => $cells,
+                'fte' => round((float) $group->avg('volume'), 2),
+                'cost_per_fte' => round((float) $group->avg('unit_cost'), 2),
+                'bonus' => round((float) $group->avg('load'), 4),
+                'sales' => round($sales, 2),
+                'amount' => round($cost, 2),
+                'manual' => $group->contains('manual', true),
+                // Cât din vânzările magazinului se duce în costul lui.
+                'weight' => $sales > 0 ? round($cost / $sales * 100, 1) : null,
+            ];
+        }
+
+        usort($rows, fn (array $a, array $b) => $b['sales'] <=> $a['sales']);
+
+        return ['months' => array_map(fn (float $value) => round($value, 2), $months), 'rows' => $rows];
     }
 
     /**
