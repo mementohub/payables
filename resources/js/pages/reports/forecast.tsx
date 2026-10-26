@@ -1528,7 +1528,9 @@ export default function Forecast({
                                                 ? 'Cursă nouă'
                                                 : sheet === 'categorii'
                                                   ? 'Categorie nouă'
-                                                  : 'Linie nouă'}
+                                                  : sheet === 'retail'
+                                                    ? 'Agenție nouă'
+                                                    : 'Linie nouă'}
                                         </Button>
                                     </DialogTrigger>
                                     <DialogContent>
@@ -1538,12 +1540,16 @@ export default function Forecast({
                                                     ? 'Cursă nouă în plan'
                                                     : sheet === 'categorii'
                                                       ? 'Categorie nouă în plan'
-                                                      : 'Linie nouă de cheltuială'}
+                                                      : sheet === 'retail'
+                                                        ? 'Agenție nouă în plan'
+                                                        : 'Linie nouă de cheltuială'}
                                             </DialogTitle>
                                             <DialogDescription>
                                                 {sheet === 'charter'
                                                     ? 'O cursă pe care o zburăm abia anul viitor nu are istoric: locurile, ocuparea și banii pe pasager se scriu aici. Alege lunile în care zboară.'
-                                                    : 'Un rând care nu vine din istoric: se scrie de mână și nu se mai calcă la împrospătare.'}
+                                                    : sheet === 'retail'
+                                                      ? 'O agenție care se deschide anul viitor n-are vânzări în istoric: scrie-i vânzarea așteptată pe lună, oamenii și bonusul. Alege lunile în care e deschisă.'
+                                                      : 'Un rând care nu vine din istoric: se scrie de mână și nu se mai calcă la împrospătare.'}
                                             </DialogDescription>
                                         </DialogHeader>
                                         <div className="grid gap-3">
@@ -1551,7 +1557,9 @@ export default function Forecast({
                                                 <Label>
                                                     {sheet === 'charter'
                                                         ? 'Cursa (ex. OTP→AYT)'
-                                                        : 'Numele rândului'}
+                                                        : sheet === 'retail'
+                                                          ? 'Agenția (ex. Oradea Lotus)'
+                                                          : 'Numele rândului'}
                                                 </Label>
                                                 <Input
                                                     value={row.key}
@@ -1631,6 +1639,77 @@ export default function Forecast({
                                                             />
                                                         </div>
                                                     </>
+                                                ) : sheet === 'retail' ? (
+                                                    <>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Oameni (FTE)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.volume
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        volume: Number(
+                                                                            e
+                                                                                .target
+                                                                                .value,
+                                                                        ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Cost / om
+                                                                (lei/lună)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_cost
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_cost:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="grid gap-1.5">
+                                                            <Label>
+                                                                Vânzări
+                                                                așteptate
+                                                                (lei/lună)
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                value={
+                                                                    row.unit_net
+                                                                }
+                                                                onChange={(e) =>
+                                                                    setRow({
+                                                                        ...row,
+                                                                        unit_net:
+                                                                            Number(
+                                                                                e
+                                                                                    .target
+                                                                                    .value,
+                                                                            ),
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </>
                                                 ) : sheet === 'categorii' ? (
                                                     <div className="grid gap-1.5">
                                                         <Label>
@@ -1671,56 +1750,85 @@ export default function Forecast({
                                                     </div>
                                                 )}
 
-                                                {sheet !== 'opex' && (
-                                                    <>
-                                                        <div className="grid gap-1.5">
-                                                            <Label>
-                                                                Venit / unitate
-                                                                (lei)
-                                                            </Label>
-                                                            <Input
-                                                                type="number"
-                                                                value={
-                                                                    row.unit_net
-                                                                }
-                                                                onChange={(e) =>
-                                                                    setRow({
-                                                                        ...row,
-                                                                        unit_net:
-                                                                            Number(
-                                                                                e
-                                                                                    .target
-                                                                                    .value,
-                                                                            ),
-                                                                    })
-                                                                }
-                                                            />
-                                                        </div>
-                                                        <div className="grid gap-1.5">
-                                                            <Label>
-                                                                Marjă / unitate
-                                                                (lei)
-                                                            </Label>
-                                                            <Input
-                                                                type="number"
-                                                                value={
-                                                                    row.unit_margin
-                                                                }
-                                                                onChange={(e) =>
-                                                                    setRow({
-                                                                        ...row,
-                                                                        unit_margin:
-                                                                            Number(
-                                                                                e
-                                                                                    .target
-                                                                                    .value,
-                                                                            ),
-                                                                    })
-                                                                }
-                                                            />
-                                                        </div>
-                                                    </>
+                                                {sheet === 'retail' && (
+                                                    <div className="grid gap-1.5">
+                                                        <Label>
+                                                            Bonus (% din
+                                                            vânzări)
+                                                        </Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={row.load}
+                                                            onChange={(e) =>
+                                                                setRow({
+                                                                    ...row,
+                                                                    load: Number(
+                                                                        e.target
+                                                                            .value,
+                                                                    ),
+                                                                })
+                                                            }
+                                                        />
+                                                    </div>
                                                 )}
+
+                                                {sheet !== 'opex' &&
+                                                    sheet !== 'retail' && (
+                                                        <>
+                                                            <div className="grid gap-1.5">
+                                                                <Label>
+                                                                    Venit /
+                                                                    unitate
+                                                                    (lei)
+                                                                </Label>
+                                                                <Input
+                                                                    type="number"
+                                                                    value={
+                                                                        row.unit_net
+                                                                    }
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) =>
+                                                                        setRow({
+                                                                            ...row,
+                                                                            unit_net:
+                                                                                Number(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value,
+                                                                                ),
+                                                                        })
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <div className="grid gap-1.5">
+                                                                <Label>
+                                                                    Marjă /
+                                                                    unitate
+                                                                    (lei)
+                                                                </Label>
+                                                                <Input
+                                                                    type="number"
+                                                                    value={
+                                                                        row.unit_margin
+                                                                    }
+                                                                    onChange={(
+                                                                        e,
+                                                                    ) =>
+                                                                        setRow({
+                                                                            ...row,
+                                                                            unit_margin:
+                                                                                Number(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value,
+                                                                                ),
+                                                                        })
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </>
+                                                    )}
                                             </div>
 
                                             <div className="grid gap-1.5">
@@ -1785,7 +1893,10 @@ export default function Forecast({
                                                                     : sheet ===
                                                                         'categorii'
                                                                       ? 'category'
-                                                                      : 'opex',
+                                                                      : sheet ===
+                                                                          'retail'
+                                                                        ? 'retail'
+                                                                        : 'opex',
                                                             key: row.key,
                                                             label: row.key,
                                                             months: row.months,
@@ -1796,19 +1907,27 @@ export default function Forecast({
                                                                     : null,
                                                             load:
                                                                 sheet ===
-                                                                'charter'
+                                                                    'charter' ||
+                                                                sheet ===
+                                                                    'retail'
                                                                     ? row.load /
                                                                       100
                                                                     : null,
                                                             volume:
                                                                 sheet ===
-                                                                'categorii'
+                                                                    'categorii' ||
+                                                                sheet ===
+                                                                    'retail'
                                                                     ? row.volume
                                                                     : null,
                                                             amount:
                                                                 sheet === 'opex'
                                                                     ? row.amount
                                                                     : null,
+                                                            // La o agenție, „venitul pe unitate”
+                                                            // e vânzarea ei așteptată pe lună: din
+                                                            // ea se naște bonusul și tot după ea se
+                                                            // împarte masa salarială.
                                                             unit_net:
                                                                 sheet !== 'opex'
                                                                     ? row.unit_net
@@ -1819,7 +1938,9 @@ export default function Forecast({
                                                                     : null,
                                                             unit_cost:
                                                                 sheet ===
-                                                                'charter'
+                                                                    'charter' ||
+                                                                sheet ===
+                                                                    'retail'
                                                                     ? row.unit_cost
                                                                     : null,
                                                         },
@@ -3419,6 +3540,7 @@ function RetailTable({
                                 <TableHead className="text-right">
                                     % din vânzări
                                 </TableHead>
+                                <TableHead className="w-10" />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -3473,6 +3595,30 @@ function RetailTable({
                                         {one.weight !== null
                                             ? `${one.weight}%`
                                             : '–'}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            title="Scoate agenția din plan: n-o mai ținem deschisă anul viitor."
+                                            onClick={() =>
+                                                confirm(
+                                                    `Scoți agenția „${one.label}” din planul ${planYear}? Se poate pune înapoi de sub tabel.`,
+                                                ) &&
+                                                router.delete(
+                                                    `/reports/forecast/${planId}/rows`,
+                                                    {
+                                                        data: {
+                                                            kind: 'retail',
+                                                            key: one.key,
+                                                        },
+                                                        preserveScroll: true,
+                                                    },
+                                                )
+                                            }
+                                        >
+                                            <Trash2 className="size-3" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
                             ))}

@@ -204,3 +204,42 @@ test('the retail network is written by the retail people, nobody else', function
         'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'field' => 'volume', 'value' => 99,
     ])->assertForbidden();
 });
+
+test('an agency can be dropped from the plan and a new one written in', function () {
+    foreach ([6, 7] as $month) {
+        PlanLine::query()->create([
+            'plan_id' => $this->plan->id, 'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'label' => 'Plaza',
+            'month' => $month, 'volume' => 3, 'unit_cost' => 6_500, 'load' => 0.01,
+            'unit_net' => 1_000_000, 'amount' => 20_000,
+        ]);
+    }
+
+    $retail = personOf('Agenții retail');
+
+    // O agenție pe care n-o mai ținem deschisă.
+    $this->actingAs($retail)->delete('/reports/forecast/'.$this->plan->id.'/rows', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Plaza',
+    ])->assertRedirect();
+
+    expect(PlanLine::query()->where('kind', PlanLine::RETAIL)->count())->toBe(0)
+        ->and($this->plan->fresh()->removed)->toBe(['retail|Plaza']);
+
+    // Și una care se deschide la anul: n-are istoric, se scrie de mână.
+    $this->actingAs($retail)->post('/reports/forecast/'.$this->plan->id.'/rows', [
+        'kind' => PlanLine::RETAIL, 'key' => 'Oradea Lotus', 'label' => 'Oradea Lotus',
+        'months' => [4, 5, 6], 'volume' => 2, 'unit_cost' => 7_000,
+        'load' => 0.015, 'unit_net' => 400_000,
+    ])->assertRedirect();
+
+    $new = PlanLine::query()->where('key', 'Oradea Lotus')->get();
+
+    expect($new)->toHaveCount(3)
+        ->and($new->first()->volume)->toEqual(2.0)
+        // Doi oameni × 7.000 + 1,5% din 400.000 de lei vânduți.
+        ->and($new->first()->shop(400_000))->toEqual(20_000.0);
+
+    // Pornirea din istoric n-o aduce înapoi pe cea scoasă.
+    app(PlanBuilder::class)->seed($this->plan->fresh());
+
+    expect(PlanLine::query()->where('key', 'Plaza')->count())->toBe(0);
+});
