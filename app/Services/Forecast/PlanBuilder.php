@@ -140,6 +140,97 @@ class PlanBuilder
     }
 
     /**
+     * Cheltuielile care urmează venitul: ce procent au fost în anul de bază.
+     *
+     * Comisionul bancar, promovarea pe Google și pe Facebook se măsoară în
+     * venitul direct, promovarea online în vânzarea de pe site. Procentul
+     * iese din lunile trăite ale anului de bază — cheltuiala împărțită la
+     * venitul ei — și de la el pornește planul.
+     *
+     * @param  array<string, mixed>  $report
+     * @return array<string, array{base: string, rate: float}>
+     */
+    private function costDrivers(Plan $plan, array $report): array
+    {
+        $wanted = (array) config('pnl.plan_drivers', []);
+
+        if ($wanted === []) {
+            return [];
+        }
+
+        $open = self::openMonths($plan->base_year);
+        $revenue = [];
+
+        foreach (($report['revenue']['months'] ?? []) as $month => $cell) {
+            if (in_array((int) $month, $open, true)) {
+                continue;
+            }
+
+            foreach (($cell['channel'] ?? []) as $channel => $money) {
+                $revenue[(string) $channel] = ($revenue[(string) $channel] ?? 0.0) + (float) ($money['net'] ?? 0);
+            }
+        }
+
+        $cost = [];
+
+        foreach (($report['lines'] ?? []) as $line) {
+            $saf = (string) $line['saf'];
+
+            if (! isset($wanted[$saf])) {
+                continue;
+            }
+
+            foreach (($line['months'] ?? []) as $month => $cell) {
+                if (in_array((int) $month, $open, true)) {
+                    continue;
+                }
+
+                $cost[$saf] = ($cost[$saf] ?? 0.0) + (float) $cell['total'];
+            }
+        }
+
+        $out = [];
+
+        foreach ($wanted as $saf => $base) {
+            $all = self::revenueOf($revenue, (string) $base);
+
+            if ($all <= 0 || ! isset($cost[(string) $saf])) {
+                continue;
+            }
+
+            $out[(string) $saf] = [
+                'base' => (string) $base,
+                'rate' => round($cost[(string) $saf] / $all, 8),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Venitul unei baze: B2C, site, B2B sau tot.
+     *
+     * @param  array<string, float>  $revenue
+     */
+    public static function revenueOf(array $revenue, string $base): float
+    {
+        $channels = match ($base) {
+            'b2c' => (array) config('pnl.segments.b2c.channels', ['retail', 'site', 'cc', 'franciza']),
+            'b2b' => (array) config('pnl.segments.b2b.channels', ['b2b']),
+            'revenue' => array_keys($revenue),
+            default => [$base],
+        };
+
+        $all = 0.0;
+
+        foreach ($channels as $channel) {
+            $all += (float) ($revenue[(string) $channel] ?? 0);
+        }
+
+        return $all;
+    }
+
+    /**
      * Cât din fiecare categorie s-a vândut prin agenții partenere.
      *
      * Amestecul de canale al anului de bază spune cât a trecut prin
@@ -940,6 +1031,7 @@ class PlanBuilder
 
         $pace = $this->costTrend($plan);
         $open = self::openMonths($plan->base_year);
+        $drivers = $this->costDrivers($plan, $report);
         $hand = $this->handCosts($plan);
         $before = $this->costMonths($plan, $plan->base_year - 1);
         $rows = [];
@@ -982,6 +1074,8 @@ class PlanBuilder
                 $this->rents[$month] = round(($this->rents[$month] ?? 0) + $cell['amount'] * $step['ratio'], 2);
             }
 
+            $driver = $drivers[$saf] ?? null;
+
             foreach ($this->fillYear($months, $hand[PlanLine::OPEX][$saf] ?? [], $open, $before[PlanLine::OPEX][$saf] ?? []) as $month => $cell) {
                 $rows[] = [
                     'kind' => PlanLine::OPEX,
@@ -989,12 +1083,41 @@ class PlanBuilder
                     'label' => $label,
                     'month' => $month,
                     'amount' => round($cell['amount'] * ($cell['source'] === 'hand' ? 1 : $step['ratio']), 2),
-                    'note' => $this->costNote($plan, $cell['source'], $step),
+                    // Liniile care urmează venitul își poartă procentul:
+                    // suma lor se face în plan, din venitul plănuit.
+                    'driver' => $driver === null ? null : PlanLine::PERCENT,
+                    'driver_base' => $driver['base'] ?? null,
+                    'driver_rate' => $driver['rate'] ?? null,
+                    'note' => $driver === null
+                        ? $this->costNote($plan, $cell['source'], $step)
+                        : sprintf(
+                            'Linia urmează venitul: %s%% din venitul %s, cât a fost în %d.',
+                            number_format($driver['rate'] * 100, 3, ',', '.'),
+                            $driver['base'] === 'site' ? 'de pe site' : strtoupper($driver['base']),
+                            $plan->base_year,
+                        ),
                 ];
             }
         }
 
         $written = $this->write($plan, PlanLine::OPEX, $rows, $keepManual);
+
+        // Pârghia liniilor care urmează venitul se pune și peste lunile
+        // scrise cândva de mână: alegerea „linia asta se face din venit” e
+        // structurală, nu o cifră. Cine vrea altceva într-o lună scrie
+        // suma peste ea, și se vede ca abatere.
+        foreach ($drivers as $saf => $driver) {
+            $plan->lines()
+                ->where('kind', PlanLine::OPEX)
+                ->where('key', (string) $saf)
+                ->update([
+                    'driver' => PlanLine::PERCENT,
+                    'driver_base' => $driver['base'],
+                    'driver_rate' => $driver['rate'],
+                    'manual' => false,
+                ]);
+        }
+
         $below = [];
 
         foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {

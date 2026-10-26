@@ -32,6 +32,9 @@ class PlanLine extends Model
      */
     public const RETAIL = 'retail';
 
+    /** Linia urmează venitul: e un procent din el, nu o sumă purtată. */
+    public const PERCENT = 'percent';
+
     /** Turismul se numără pe pasageri. */
     public const PAX = 'pax';
 
@@ -47,6 +50,7 @@ class PlanLine extends Model
             'capacity' => 'float',
             'load' => 'float',
             'b2b' => 'float',
+            'driver_rate' => 'float',
             'unit_net' => 'float',
             'unit_margin' => 'float',
             'unit_cost' => 'float',
@@ -85,6 +89,21 @@ class PlanLine extends Model
         }
 
         return round((float) $this->volume * (float) $this->unit_cost + (float) $this->load * $sales + $rent, 2);
+    }
+
+    /**
+     * Cheltuiala lunii, când linia urmează venitul.
+     *
+     * Procentul e al liniei, venitul e cel plănuit pe baza ei. Ce s-a scris
+     * cu mâna rămâne scris: atunci suma nu se mai calculează.
+     */
+    public function cost(float $revenue): float
+    {
+        if ($this->driver !== self::PERCENT || $this->manual) {
+            return (float) $this->amount;
+        }
+
+        return round((float) $this->driver_rate * $revenue, 2);
     }
 
     /** Pasagerii lunii: la charter ies din locuri × grad de ocupare. */

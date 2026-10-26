@@ -1054,3 +1054,61 @@ test('the partner-agency share can be written month by month', function () {
             $row['months'][7]['amount'] * 0.6 + $row['months'][6]['amount'] * 0.25, 2,
         ));
 });
+
+test('the bank fees and the online promotion follow the revenue, not the calendar', function () {
+    $company = Company::factory()->create();
+
+    // Anul de bază: venit pe canale și cheltuielile care îl urmează.
+    foreach ([6, 7] as $month) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'kind' => 'category', 'key' => 'Croaziere',
+            'month' => $month, 'unit' => 'pax', 'volume' => 100, 'net' => 1_000_000, 'margin' => 100_000,
+        ]);
+
+        foreach ([['retail', 600_000], ['site', 200_000], ['b2b', 200_000]] as [$channel, $net]) {
+            ForecastHistory::query()->create([
+                'company_id' => $company->id, 'year' => 2026, 'kind' => 'mix', 'key' => 'Croaziere',
+                'channel' => $channel, 'month' => $month, 'unit' => 'pax', 'volume' => 0, 'net' => $net, 'margin' => 0,
+            ]);
+        }
+    }
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    // Comisionul bancar: 1% din venitul B2C (16.000 din 1.600.000).
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => PlanLine::OPEX, 'key' => '6000',
+        'label' => 'Comisioane bancare · Cheltuieli bancare', 'month' => 7,
+        'amount' => 0, 'driver' => PlanLine::PERCENT, 'driver_base' => 'b2c', 'driver_rate' => 0.01,
+    ]);
+
+    // Promovarea online: 2% din venitul de pe site.
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => PlanLine::OPEX, 'key' => '16960',
+        'label' => 'Marketing si promovare · Cheltuieli promovare online', 'month' => 7,
+        'amount' => 0, 'driver' => PlanLine::PERCENT, 'driver_base' => 'site', 'driver_rate' => 0.02,
+    ]);
+
+    app(PlanBuilder::class)->seed($plan, keepManual: true);
+
+    $out = app(PlanEngine::class)->compute($plan->fresh(), 'mtd7', 'ras', 'operational');
+    $channels = collect($out['channels'])->keyBy('channel');
+    $opex = collect($out['opex'])->keyBy('key');
+
+    $b2c = $channels['retail']['net'] + $channels['site']['net'];
+
+    expect($b2c)->toBeGreaterThan(0.0)
+        ->and($opex['6000']['amount'])->toEqual(round($b2c * 0.01, 2))
+        ->and($opex['16960']['amount'])->toEqual(round($channels['site']['net'] * 0.02, 2))
+        // Pârghia se vede pe rând, ca să poată fi schimbată.
+        ->and($opex['6000']['driver'])->toBe('percent')
+        ->and($opex['6000']['driver_base'])->toBe('b2c');
+
+    // Și intră în cheltuielile lunii, o singură dată.
+    $wanted = $opex['6000']['amount'] + $opex['16960']['amount'];
+
+    expect(round($out['months'][7]['opex'], 2))->toEqual(round($wanted, 2));
+});

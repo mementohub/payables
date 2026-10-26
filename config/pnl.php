@@ -348,6 +348,28 @@ return [
     | într-o găleată în care nu încap.
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Cheltuielile care urmează venitul
+    |--------------------------------------------------------------------------
+    |
+    | Unele linii nu se plănuiesc pe trend, ci ca procent din venitul care le
+    | naște: comisionul bancar se plătește pe încasările directe, promovarea
+    | pe Google și pe Facebook se cumpără pentru vânzarea către om, iar
+    | promovarea online ține de site. Procentul pornește din istoric — cât a
+    | fost linia din venitul ei în anul de bază — și se poate schimba.
+    |
+    | Baza e una din: „b2c” (site, agenții proprii, franciză, call center),
+    | „site”, „b2b” (agenții partenere) sau „revenue” (tot venitul).
+    |
+    */
+    'plan_drivers' => [
+        '6000' => 'b2c',   // Cheltuieli bancare (Comisioane bancare)
+        '16950' => 'b2c',  // Cheltuieli promovare Google
+        '16940' => 'b2c',  // Cheltuieli promovare Facebook
+        '16960' => 'site', // Cheltuieli promovare online
+    ],
+
     'segments' => [
         'b2b' => [
             'label' => 'B2B (agenții partenere)',

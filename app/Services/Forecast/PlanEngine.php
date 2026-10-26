@@ -142,13 +142,45 @@ class PlanEngine
             }
 
             match ($line->kind) {
-                PlanLine::OPEX => $months[$month]['opex'] += (float) $line->amount,
+                // Liniile care urmează venitul se socotesc după ce se
+                // strânge venitul, mai jos: acum n-ar avea din ce.
+                PlanLine::OPEX => $line->driver === PlanLine::PERCENT && ! $line->manual
+                    ? null
+                    : $months[$month]['opex'] += (float) $line->amount,
                 // Magazinele se socotesc la urmă: bonusul lor se naște din
                 // vânzările planificate, care tocmai s-au strâns mai sus.
                 PlanLine::RETAIL => null,
                 PlanLine::BELOW => $buckets[$month][$line->key] = ($buckets[$month][$line->key] ?? 0) + (float) $line->amount,
                 default => null,
             };
+        }
+
+        // Cheltuielile care urmează venitul: acum se știe cât se vinde și
+        // pe ce canale, deci comisionul bancar și promovarea își pot lua
+        // procentul din venitul lor. Suma se scrie pe linie, ca tot ce
+        // vine după ea — raportul, cardurile lunilor, exportul — s-o vadă
+        // la fel.
+        foreach ($lines as $line) {
+            if ($line->kind !== PlanLine::OPEX || $line->driver !== PlanLine::PERCENT || $line->manual) {
+                continue;
+            }
+
+            $month = (int) $line->month;
+
+            if (! in_array($month, $wanted, true)) {
+                $line->amount = 0.0;
+
+                continue;
+            }
+
+            $revenue = [];
+
+            foreach ($axes['channel'] as $channel => $cell) {
+                $revenue[(string) $channel] = (float) ($cell['months'][$month] ?? 0);
+            }
+
+            $line->amount = $line->cost(PlanBuilder::revenueOf($revenue, (string) $line->driver_base));
+            $months[$month]['opex'] += (float) $line->amount;
         }
 
         // Rețeaua de agenții: oameni × cost, plus bonusul din ce vinde
@@ -1565,6 +1597,7 @@ class PlanEngine
                         'unit_margin' => (float) $line->unit_margin,
                         // Cât din luna asta se vinde prin agenții partenere.
                         'b2b' => $line->b2b ?? $share,
+                        'driver_rate' => $line->driver === PlanLine::PERCENT ? (float) $line->driver_rate : null,
                         'amount' => $line->kind === PlanLine::OPEX || $line->kind === PlanLine::BELOW
                             ? (float) $line->amount
                             : $line->net(),
@@ -1597,6 +1630,12 @@ class PlanEngine
                         : null,
                     'amount' => round((float) $group->sum('amount'), 2),
                     'manual' => $group->contains('manual', true),
+                    // Linia care urmează venitul: procentul ei și baza.
+                    'driver' => $first->driver,
+                    'driver_base' => $first->driver_base,
+                    'driver_rate' => $first->driver === PlanLine::PERCENT
+                        ? round((float) $group->avg('driver_rate'), 8)
+                        : null,
                     // Cele două lumi în care se vinde categoria: prin
                     // agenții partenere și direct. Ce nu intră în niciuna —
                     // corporate, altele — se arată deoparte, nu se

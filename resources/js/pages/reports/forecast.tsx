@@ -77,6 +77,8 @@ type Cell = {
     unit_margin: number;
     /** Cât din luna asta se vinde prin agenții partenere. */
     b2b: number | null;
+    /** Procentul lunii, când linia urmează venitul. */
+    driver_rate: number | null;
     amount: number;
     margin: number;
     manual: boolean;
@@ -88,6 +90,10 @@ type Row = {
     kind: 'category' | 'charter' | 'opex' | 'below';
     /** Cât din venit trece prin agenții partenere: pârghia B2B / B2C. */
     b2b: number | null;
+    /** Cheltuiala care urmează venitul: „percent” și baza din care se ia. */
+    driver: string | null;
+    driver_base: string | null;
+    driver_rate: number | null;
     net_b2b: number;
     net_b2c: number;
     /** Corporate și restul: nici B2B, nici B2C. */
@@ -2966,6 +2972,14 @@ function DriverTable({
                                         ? 'Cheltuială an (lei)'
                                         : 'Venit an (lei)'}
                                 </TableHead>
+                                {isOpex && (
+                                    <TableHead
+                                        className="text-right"
+                                        title="Liniile care urmează venitul: comisionul bancar și promovarea se iau ca procent din venitul lor, nu din trend."
+                                    >
+                                        % din venit
+                                    </TableHead>
+                                )}
                                 {!isOpex && (
                                     <TableHead className="text-right">
                                         Marjă an (lei)
@@ -3309,6 +3323,53 @@ function DriverTable({
                                         <TableCell className="text-right font-semibold tabular-nums">
                                             {lei(isOpex ? row.amount : row.net)}
                                         </TableCell>
+                                        {isOpex && (
+                                            <TableCell className="text-right">
+                                                {row.driver === 'percent' ? (
+                                                    <span className="flex items-center justify-end gap-1">
+                                                        <RowInput
+                                                            value={
+                                                                rowValue(
+                                                                    row,
+                                                                    'driver_rate',
+                                                                    row.driver_rate ??
+                                                                        0,
+                                                                ) * 100
+                                                            }
+                                                            suffix="%"
+                                                            pending={rowChanged(
+                                                                row,
+                                                                'driver_rate',
+                                                            )}
+                                                            onCommit={(v) =>
+                                                                onApply(
+                                                                    row,
+                                                                    'driver_rate',
+                                                                    Math.max(
+                                                                        0,
+                                                                        v / 100,
+                                                                    ),
+                                                                    null,
+                                                                )
+                                                            }
+                                                        />
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            {row.driver_base ===
+                                                            'site'
+                                                                ? 'site'
+                                                                : (
+                                                                      row.driver_base ??
+                                                                      ''
+                                                                  ).toUpperCase()}
+                                                        </span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        trend
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        )}
                                         {!isOpex && (
                                             <TableCell className="text-right tabular-nums">
                                                 {lei(row.margin)}

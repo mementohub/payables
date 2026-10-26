@@ -455,7 +455,7 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'key' => ['required', 'string', 'max:255'],
-            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'driver_rate', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'value' => ['nullable', 'numeric'],
             'growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
@@ -490,12 +490,12 @@ class ForecastController extends Controller
         $validated = $request->validate([
             'cells' => ['array'],
             'cells.*.id' => ['required', 'integer'],
-            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'cells.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'driver_rate', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'cells.*.value' => ['required', 'numeric'],
             'rows' => ['array'],
             'rows.*.kind' => ['required', Rule::in([PlanLine::CATEGORY, PlanLine::CHARTER, PlanLine::OPEX, PlanLine::BELOW, PlanLine::RETAIL])],
             'rows.*.key' => ['required', 'string', 'max:255'],
-            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
+            'rows.*.field' => ['required', Rule::in(['volume', 'capacity', 'load', 'b2b', 'driver_rate', 'unit_net', 'unit_margin', 'unit_cost', 'rent', 'amount'])],
             'rows.*.value' => ['nullable', 'numeric'],
             'rows.*.growth' => ['nullable', 'numeric', 'between:-100,500'],
         ]);
