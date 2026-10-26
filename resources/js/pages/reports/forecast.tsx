@@ -469,6 +469,14 @@ const mii = (value: number) => lei(value / 1000);
  * Reperul unei luni din istoric, scris cu aceleași mărimi ca în căsuțele de
  * deasupra: altfel omul compară pere cu mere.
  */
+/** Numele bazei de venit, așa cum se citește pe card. */
+const BAZE: Record<string, string> = {
+    b2c: 'B2C',
+    b2b: 'B2B',
+    site: 'site',
+    revenue: 'venit',
+};
+
 const reper = (
     was: {
         volume: number;
@@ -480,9 +488,19 @@ const reper = (
     isOpex: boolean,
     isCharter: boolean,
     unit: string,
+    /** Venitul de care ține linia în luna aia, la cheltuielile pe procent. */
+    base?: { net: number; label: string } | null,
 ) => {
     if (isOpex) {
-        return `${lei(was.net)} lei`;
+        // Cheltuiala care urmează venitul se citește și ca procent: altfel
+        // n-ai de unde ști dacă a crescut fiindcă s-a vândut mai mult sau
+        // fiindcă s-a cheltuit mai mult.
+        const share =
+            base && base.net > 0
+                ? ` · ${lei((was.net / base.net) * 100, 3)}% din ${base.label}`
+                : '';
+
+        return `${lei(was.net)} lei${share}`;
     }
 
     const perUnit = was.volume > 0 ? was.net / was.volume : 0;
@@ -2779,6 +2797,28 @@ function DriverTable({
     const rowChanged = (row: Row, field: string) =>
         rowEdits[`${row.kind}|${row.key}|${field}`] !== undefined;
 
+    // Venitul de care ține o cheltuială pe procent, în anul și luna aia:
+    // din el se citește cât a fost linia, în procente, în istoric.
+    const baza = (row: Row, year: number, month?: number) => {
+        if (row.driver !== 'percent' || row.driver_base === null) {
+            return null;
+        }
+
+        const cell = history[`base|${row.driver_base}`]?.[year];
+
+        if (cell === undefined) {
+            return null;
+        }
+
+        return {
+            net:
+                month === undefined
+                    ? cell.net
+                    : (cell.months?.[month]?.net ?? 0),
+            label: BAZE[row.driver_base] ?? row.driver_base,
+        };
+    };
+
     // Rândurile alese pentru o mișcare în masă, și ce li se pune.
     const [alese, setAlese] = useState<Set<string>>(new Set());
     const [bulk, setBulk] = useState({ which: 0, value: 0 });
@@ -3145,6 +3185,29 @@ function DriverTable({
                                                     {isOpex ? (
                                                         <>
                                                             {lei(past.net)}
+                                                            {(() => {
+                                                                const on = baza(
+                                                                    row,
+                                                                    year,
+                                                                );
+
+                                                                return on &&
+                                                                    on.net >
+                                                                        0 ? (
+                                                                    <span className="block opacity-70">
+                                                                        {lei(
+                                                                            (past.net /
+                                                                                on.net) *
+                                                                                100,
+                                                                            3,
+                                                                        )}
+                                                                        % din{' '}
+                                                                        {
+                                                                            on.label
+                                                                        }
+                                                                    </span>
+                                                                ) : null;
+                                                            })()}
                                                             {past.estimated ? (
                                                                 <span className="ml-1 text-[10px] opacity-70">
                                                                     (
@@ -3889,6 +3952,12 @@ function DriverTable({
                                                                                               isOpex,
                                                                                               isCharter,
                                                                                               row.unit,
+                                                                                              baza(
+                                                                                                  row,
+                                                                                                  year,
+                                                                                                  i +
+                                                                                                      1,
+                                                                                              ),
                                                                                           )
                                                                                         : '–'}
                                                                                 </div>
@@ -4154,6 +4223,11 @@ function DriverTable({
                                                                                                               isOpex,
                                                                                                               isCharter,
                                                                                                               row.unit,
+                                                                                                              baza(
+                                                                                                                  row,
+                                                                                                                  year,
+                                                                                                                  month,
+                                                                                                              ),
                                                                                                           )
                                                                                                         : '–'}
                                                                                                 </div>

@@ -1155,3 +1155,41 @@ test('the plan says when the P&L report moved under it', function () {
 
     expect($stale($plan->fresh()))->toBeNull();
 });
+
+test('the history of a revenue-driven cost carries the percentage, month by month', function () {
+    $company = Company::factory()->create();
+    $user = User::factory()->withRoles('top_management')->create();
+
+    ForecastHistory::query()->create([
+        'company_id' => $company->id, 'year' => 2026, 'kind' => 'category', 'key' => 'Croaziere',
+        'month' => 7, 'unit' => 'pax', 'volume' => 10, 'net' => 100_000, 'margin' => 10_000,
+    ]);
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    // Raportul anului de bază: venit pe canale și cheltuiala care îl urmează.
+    Cache::put('pnl_report:v10:'.$company->id.':2026', [
+        'year' => 2026,
+        'meta' => ['generated_at' => now()->toIso8601String()],
+        'revenue' => ['months' => [7 => ['channel' => [
+            'retail' => ['net' => 600_000.0, 'margin' => 0.0, 'bookings' => 0],
+            'site' => ['net' => 400_000.0, 'margin' => 0.0, 'bookings' => 0],
+        ]]]],
+        'lines' => [[
+            'saf' => '6000', 'group' => 'Comisioane bancare', 'label' => 'Cheltuieli bancare',
+            'months' => [7 => ['total' => 5_000.0]],
+        ]],
+        'below' => [],
+    ], 3600);
+
+    $history = (new ReflectionMethod(ForecastController::class, 'history'))
+        ->invoke(app(ForecastController::class), $plan, 'ras');
+
+    // Baza B2C a lunii: 1.000.000, iar comisionul 5.000 — adică 0,5%.
+    expect($history['base|b2c'][2026]['months'][7]['net'])->toEqual(1_000_000.0)
+        ->and($history['base|site'][2026]['months'][7]['net'])->toEqual(400_000.0)
+        ->and($history['opex|6000'][2026]['months'][7]['net'])->toEqual(5_000.0);
+});

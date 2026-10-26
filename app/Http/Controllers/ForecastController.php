@@ -203,6 +203,34 @@ class ForecastController extends Controller
                 $buckets[PlanLine::OPEX.'|'.$line['saf']] = $line['months'] ?? [];
             }
 
+            // Venitul fiecărei baze, lună de lună: din el se citește ce
+            // procent a fost o cheltuială care urmează venitul — comisionul
+            // bancar, promovarea — în anii dinainte.
+            foreach (['b2c', 'site', 'b2b', 'revenue'] as $base) {
+                $cell = ['volume' => 0.0, 'capacity' => 0.0, 'sold' => 0.0, 'net' => 0.0, 'margin' => 0.0, 'months' => []];
+
+                foreach (($report['revenue']['months'] ?? []) as $month => $one) {
+                    $revenue = [];
+
+                    foreach (($one['channel'] ?? []) as $channel => $money) {
+                        $revenue[(string) $channel] = (float) ($money['net'] ?? 0);
+                    }
+
+                    $value = round(PlanBuilder::revenueOf($revenue, $base), 2);
+
+                    if (abs($value) < 0.005) {
+                        continue;
+                    }
+
+                    $cell['months'][(int) $month] = ['volume' => 0.0, 'capacity' => 0.0, 'net' => $value, 'margin' => 0.0];
+                    $cell['net'] = round($cell['net'] + $value, 2);
+                }
+
+                if ($cell['months'] !== []) {
+                    $out['base|'.$base][$year] = $cell;
+                }
+            }
+
             foreach (['amortizare', 'financiar', 'impozit'] as $bucket) {
                 $months = $report['below'][$bucket]['months'] ?? [];
 
