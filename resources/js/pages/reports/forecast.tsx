@@ -3059,8 +3059,17 @@ function DriverTable({
         );
 
     const total = (unde: string) => (
-        <TableRow key={unde} className="bg-muted font-semibold">
-            <TableCell className="sticky left-0 z-20 border-r bg-muted">
+        <TableRow
+            key={unde}
+            className={cn(
+                'bg-muted font-semibold',
+                // Totalul de sus stă lipit chiar sub antet; cel de la coadă
+                // se citește acolo unde se termină lista.
+                unde === 'sus' &&
+                    '[&>td]:sticky [&>td]:top-14 [&>td]:z-20 [&>td]:bg-muted',
+            )}
+        >
+            <TableCell className="sticky left-0 z-30 border-r bg-muted">
                 TOTAL{' '}
                 <span className="font-normal text-muted-foreground">
                     {rows.length}{' '}
@@ -3286,15 +3295,15 @@ function DriverTable({
             )}
 
             <Card>
-                <CardContent className="max-h-[72vh] overflow-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">
                     <Table className="text-xs">
                         {/* Antetul și totalul rămân sus când se coboară prin
                             tabel, iar prima coloană stă pe loc când tabelul
                             pleacă în lături: altfel, la a zecea cursă și a
                             zecea coloană, nu mai știi nici ce rând citești,
                             nici ce cifră. */}
-                        <TableHeader className="sticky top-0 z-30 [&_td]:bg-muted [&_th]:bg-card">
-                            <TableRow className="[&>th]:font-semibold">
+                        <TableHeader className="[&_td]:bg-muted [&_th]:bg-card">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:h-14 [&>th]:font-semibold">
                                 <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     <span className="flex items-center gap-2">
                                         <Checkbox
@@ -4976,10 +4985,10 @@ function RetailTable({
             </div>
 
             <Card>
-                <CardContent className="max-h-[72vh] overflow-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">
                     <Table className="text-xs">
-                        <TableHeader className="sticky top-0 z-30 [&_th]:bg-card">
-                            <TableRow className="[&>th]:font-semibold">
+                        <TableHeader className="[&_th]:bg-card">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold">
                                 <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     Agenția
                                 </TableHead>
@@ -5801,10 +5810,10 @@ function PlanStatement({
             </div>
 
             <Card>
-                <CardContent className="max-h-[72vh] overflow-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">
                     <Table className="text-xs">
-                        <TableHeader className="sticky top-0 z-30 [&_th]:bg-card">
-                            <TableRow className="[&>th]:font-semibold">
+                        <TableHeader className="[&_th]:bg-card">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold">
                                 <TableHead className="sticky left-0 z-40 w-64 border-r bg-card">
                                     Linie
                                 </TableHead>
