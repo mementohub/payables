@@ -3066,7 +3066,7 @@ function DriverTable({
                 // Totalul de sus stă lipit chiar sub antet; cel de la coadă
                 // se citește acolo unde se termină lista.
                 unde === 'sus' &&
-                    '[&>td]:sticky [&>td]:top-14 [&>td]:z-20 [&>td]:bg-muted',
+                    '[&>td]:sticky [&>td]:top-14 [&>td]:z-30 [&>td]:bg-muted [&>td:first-child]:left-0 [&>td:first-child]:z-40',
             )}
         >
             <TableCell className="sticky left-0 z-30 border-r bg-muted">
@@ -3303,7 +3303,7 @@ function DriverTable({
                             zecea coloană, nu mai știi nici ce rând citești,
                             nici ce cifră. */}
                         <TableHeader className="[&_td]:bg-muted [&_th]:bg-card">
-                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:h-14 [&>th]:font-semibold">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:h-14 [&>th]:font-semibold [&>th:first-child]:z-50">
                                 <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     <span className="flex items-center gap-2">
                                         <Checkbox
@@ -4988,7 +4988,7 @@ function RetailTable({
                 <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">
                     <Table className="text-xs">
                         <TableHeader className="[&_th]:bg-card">
-                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold [&>th:first-child]:z-50">
                                 <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     Agenția
                                 </TableHead>
@@ -5813,7 +5813,7 @@ function PlanStatement({
                 <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">
                     <Table className="text-xs">
                         <TableHeader className="[&_th]:bg-card">
-                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold">
+                            <TableRow className="[&>th]:sticky [&>th]:top-0 [&>th]:z-30 [&>th]:font-semibold [&>th:first-child]:z-50">
                                 <TableHead className="sticky left-0 z-40 w-64 border-r bg-card">
                                     Linie
                                 </TableHead>
