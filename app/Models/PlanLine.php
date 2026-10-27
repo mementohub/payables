@@ -92,6 +92,36 @@ class PlanLine extends Model
     }
 
     /**
+     * Aeroportul de plecare și destinația unei curse, din cheie.
+     *
+     * „CLJ→AYT” e Cluj spre Antalya. Cheia poate purta săgeata, o cratimă
+     * sau nimic între coduri; ce nu se poate tăia rămâne necunoscut, nu se
+     * ghicește.
+     *
+     * @return array{hub: string|null, destination: string|null}
+     */
+    public static function route(string $key): array
+    {
+        if (preg_match('/^\s*([A-Z]{3})\s*(?:→|->|-|–|\/|\s)?\s*([A-Z]{3})\s*$/u', $key, $found) === 1) {
+            return ['hub' => $found[1], 'destination' => $found[2]];
+        }
+
+        return ['hub' => null, 'destination' => null];
+    }
+
+    /** Numele unui aeroport, din dicționarul de coduri. */
+    public static function airport(?string $code): ?string
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        $name = config('pnl.airports.'.strtoupper($code));
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
      * Cheltuiala lunii, când linia urmează venitul.
      *
      * Procentul e al liniei, venitul e cel plănuit pe baza ei. Ce s-a scris

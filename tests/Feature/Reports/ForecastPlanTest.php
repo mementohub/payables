@@ -1193,3 +1193,48 @@ test('the history of a revenue-driven cost carries the percentage, month by mont
         ->and($history['base|site'][2026]['months'][7]['net'])->toEqual(400_000.0)
         ->and($history['opex|6000'][2026]['months'][7]['net'])->toEqual(5_000.0);
 });
+
+test('a charter line carries its airport and its destination', function () {
+    expect(PlanLine::route('CLJ→AYT'))->toBe(['hub' => 'CLJ', 'destination' => 'AYT'])
+        ->and(PlanLine::route('OTP-HRG'))->toBe(['hub' => 'OTP', 'destination' => 'HRG'])
+        ->and(PlanLine::route('BAYMIR'))->toBe(['hub' => 'BAY', 'destination' => 'MIR'])
+        // Ce nu se poate tăia rămâne necunoscut, nu se ghicește.
+        ->and(PlanLine::route('Rezervari site'))->toBe(['hub' => null, 'destination' => null])
+        ->and(PlanLine::airport('CLJ'))->toBe('Cluj')
+        ->and(PlanLine::airport('AYT'))->toBe('Antalya')
+        ->and(PlanLine::airport('XXX'))->toBeNull();
+});
+
+test('the planned routes come out of the engine with the airport, the destination and their names', function () {
+    $company = Company::factory()->create();
+
+    foreach ([['CLJ→AYT', 180], ['BAY→AYT', 150], ['CLJ→HRG', 200]] as [$key, $seats]) {
+        ForecastHistory::query()->create([
+            'company_id' => $company->id, 'year' => 2026, 'kind' => 'charter', 'key' => $key,
+            'month' => 7, 'unit' => 'pax', 'volume' => 100, 'capacity' => $seats, 'sold' => 100,
+            'net' => 300_000, 'margin' => 30_000, 'cost' => 200_000,
+        ]);
+    }
+
+    $plan = Plan::query()->create([
+        'company_id' => $company->id, 'year' => 2027, 'name' => 'Buget 2027',
+        'base_year' => 2026, 'status' => Plan::DRAFT,
+    ]);
+
+    app(PlanBuilder::class)->seed($plan);
+
+    $line = PlanLine::query()->where('plan_id', $plan->id)->where('key', 'CLJ→AYT')->first();
+
+    expect($line?->hub)->toBe('CLJ')
+        ->and($line?->destination)->toBe('AYT');
+
+    $out = app(PlanEngine::class)->compute($plan->fresh(), 'ytd12', 'ras', 'operational');
+    $routes = collect($out['charter'])->keyBy('key');
+
+    expect($routes['CLJ→AYT']['hub_label'])->toBe('Cluj')
+        ->and($routes['CLJ→AYT']['destination_label'])->toBe('Antalya')
+        ->and($routes['BAY→AYT']['hub_label'])->toBe('Baia Mare')
+        // Din ele se fac filtrele: două aeroporturi, două destinații.
+        ->and($routes->pluck('hub')->unique()->sort()->values()->all())->toBe(['BAY', 'CLJ'])
+        ->and($routes->pluck('destination')->unique()->sort()->values()->all())->toBe(['AYT', 'HRG']);
+});

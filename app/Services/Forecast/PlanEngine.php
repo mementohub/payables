@@ -1623,6 +1623,10 @@ class PlanEngine
                 $theirs = $mix[$first->kind === PlanLine::CHARTER ? PlanBuilder::CHARTER_CATEGORY : $key] ?? [];
                 $share = $this->b2bOf($theirs);
 
+                $route = $first->kind === PlanLine::CHARTER ? PlanLine::route($key) : ['hub' => null, 'destination' => null];
+                $hub = $first->hub ?? $route['hub'];
+                $destination = $first->destination ?? $route['destination'];
+
                 foreach ($group as $line) {
                     $months[(int) $line->month] = [
                         'id' => $line->id,
@@ -1673,6 +1677,11 @@ class PlanEngine
                     'amount' => round((float) $group->sum('amount'), 2),
                     'manual' => $group->contains('manual', true),
                     // Linia care urmează venitul: procentul ei și baza.
+                    // Cursa își poartă aeroportul și destinația, cu nume.
+                    'hub' => $hub,
+                    'destination' => $destination,
+                    'hub_label' => PlanLine::airport($hub),
+                    'destination_label' => PlanLine::airport($destination),
                     'driver' => $first->driver,
                     'driver_base' => $first->driver_base,
                     'driver_rate' => $first->driver === PlanLine::PERCENT

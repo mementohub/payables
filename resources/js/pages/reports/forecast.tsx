@@ -90,6 +90,11 @@ type Row = {
     kind: 'category' | 'charter' | 'opex' | 'below';
     /** Cât din venit trece prin agenții partenere: pârghia B2B / B2C. */
     b2b: number | null;
+    /** Cursa: aeroportul de plecare și destinația, cu numele lor. */
+    hub: string | null;
+    destination: string | null;
+    hub_label: string | null;
+    destination_label: string | null;
     /** Cheltuiala care urmează venitul: „percent” și baza din care se ia. */
     driver: string | null;
     driver_base: string | null;
@@ -350,6 +355,10 @@ type Props = {
         period: string;
         basis: string;
         mode: string;
+        /** Cursele filtrate: aeroportul de plecare, destinația, sortarea. */
+        hub: string | null;
+        dest: string | null;
+        sort: string | null;
     };
     plans: {
         id: number;
@@ -469,6 +478,37 @@ const mii = (value: number) => lei(value / 1000);
  * Reperul unei luni din istoric, scris cu aceleași mărimi ca în căsuțele de
  * deasupra: altfel omul compară pere cu mere.
  */
+/**
+ * Aeroporturile sau destinațiile din curse, cu numele și numărul lor.
+ *
+ * Codul rămâne lângă nume, iar unul pe care dicționarul nu-l știe se arată
+ * ca atare: mai bine „SUJ” decât un oraș ghicit.
+ */
+const locuri = (rows: Row[], field: 'hub' | 'destination') => {
+    const out: Record<string, { code: string; label: string; count: number }> =
+        {};
+
+    for (const row of rows) {
+        const code = row[field];
+
+        if (code === null || code === '') {
+            continue;
+        }
+
+        out[code] = out[code] ?? {
+            code,
+            label:
+                (field === 'hub' ? row.hub_label : row.destination_label) ??
+                code,
+            count: 0,
+        };
+
+        out[code].count += 1;
+    }
+
+    return Object.values(out).sort((a, b) => a.label.localeCompare(b.label));
+};
+
 /** Numele bazei de venit, așa cum se citește pe card. */
 const BAZE: Record<string, string> = {
     b2c: 'B2C',
@@ -569,6 +609,7 @@ export default function Forecast({
     // Circuite — fiindcă omul care o ține deschide categoria lui, nu un
     // tabel cu toate categoriile casei.
     const foi: Record<string, { label: string; rows: Row[] }> = {};
+    let curse: Row[] = [];
 
     for (const row of output
         ? ale(output.categories.filter((one) => one.kind === 'category'))
@@ -585,6 +626,9 @@ export default function Forecast({
 
     if (output) {
         const charter = ale(output.charter);
+        // Toate cursele, pentru listele de filtre; tabelul primește mai jos
+        // doar pe cele alese.
+        curse = charter;
         const opex = ale([...output.opex, ...output.below]);
 
         if (charter.length > 0) {
@@ -594,6 +638,46 @@ export default function Forecast({
         if (opex.length > 0) {
             foi.opex = { label: 'Cheltuieli și sub EBITDA', rows: opex };
         }
+    }
+
+    // Cursele filtrate: spre ce destinație, din ce aeroport, în ce ordine.
+    // Filtrele doar aleg ce se vede — fiecare cursă se scrie mai departe.
+    if (foi.charter) {
+        const alese = curse.filter(
+            (one) =>
+                (filters.hub === null || one.hub === filters.hub) &&
+                (filters.dest === null || one.destination === filters.dest),
+        );
+
+        const fel = filters.sort ?? 'venit';
+        const sortate = [...alese].sort((a, b) => {
+            if (fel === 'ocupare') {
+                return (
+                    (b.seats > 0 ? b.pax / b.seats : 0) -
+                    (a.seats > 0 ? a.pax / a.seats : 0)
+                );
+            }
+
+            if (fel === 'goale') {
+                return b.empty_seats - a.empty_seats;
+            }
+
+            if (fel === 'destinatie') {
+                return `${a.destination_label ?? a.destination ?? ''}${a.hub ?? ''}`.localeCompare(
+                    `${b.destination_label ?? b.destination ?? ''}${b.hub ?? ''}`,
+                );
+            }
+
+            if (fel === 'aeroport') {
+                return `${a.hub_label ?? a.hub ?? ''}${a.destination ?? ''}`.localeCompare(
+                    `${b.hub_label ?? b.hub ?? ''}${b.destination ?? ''}`,
+                );
+            }
+
+            return b.net - a.net;
+        });
+
+        foi.charter = { label: 'Charter · curse', rows: sortate };
     }
 
     // Agențiile au alt tabel decât restul: oameni, salariu mediu și bonus,
@@ -1731,6 +1815,128 @@ export default function Forecast({
                             </p>
                         )}
 
+                        {/* Cursele se citesc filtrate: spre ce destinație,
+                            din ce aeroport. Tabelul rămâne cel de totdeauna —
+                            fiecare cursă se scrie — iar totalul de sus și de
+                            jos se socotește pe ce e filtrat. */}
+                        {tab === 'configurare' && sheet === 'charter' && (
+                            <div className="flex flex-wrap items-end gap-3">
+                                <div className="grid gap-1.5">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                        Destinația
+                                    </Label>
+                                    <Select
+                                        value={filters.dest ?? 'toate'}
+                                        onValueChange={(v) =>
+                                            go({
+                                                dest: v === 'toate' ? null : v,
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger className="h-8 w-56 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="toate">
+                                                Toate destinațiile (
+                                                {curse.length} curse)
+                                            </SelectItem>
+                                            {locuri(curse, 'destination').map(
+                                                (one) => (
+                                                    <SelectItem
+                                                        key={one.code}
+                                                        value={one.code}
+                                                    >
+                                                        {one.label} · {one.code}{' '}
+                                                        ({one.count})
+                                                    </SelectItem>
+                                                ),
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid gap-1.5">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                        Aeroportul de plecare
+                                    </Label>
+                                    <Select
+                                        value={filters.hub ?? 'toate'}
+                                        onValueChange={(v) =>
+                                            go({
+                                                hub: v === 'toate' ? null : v,
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger className="h-8 w-56 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="toate">
+                                                Toate aeroporturile
+                                            </SelectItem>
+                                            {locuri(curse, 'hub').map((one) => (
+                                                <SelectItem
+                                                    key={one.code}
+                                                    value={one.code}
+                                                >
+                                                    {one.label} · {one.code} (
+                                                    {one.count})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid gap-1.5">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                        Sortare
+                                    </Label>
+                                    <Select
+                                        value={filters.sort ?? 'venit'}
+                                        onValueChange={(v) => go({ sort: v })}
+                                    >
+                                        <SelectTrigger className="h-8 w-48 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="venit">
+                                                Venit an
+                                            </SelectItem>
+                                            <SelectItem value="ocupare">
+                                                Grad de ocupare
+                                            </SelectItem>
+                                            <SelectItem value="goale">
+                                                Locuri goale
+                                            </SelectItem>
+                                            <SelectItem value="destinatie">
+                                                Destinație
+                                            </SelectItem>
+                                            <SelectItem value="aeroport">
+                                                Aeroport
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {(filters.hub !== null ||
+                                    filters.dest !== null) && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8"
+                                        onClick={() =>
+                                            go({ hub: null, dest: null })
+                                        }
+                                    >
+                                        <RotateCcw className="size-3" />
+                                        {foi.charter?.rows.length ?? 0} curse
+                                        din {curse.length} · scoate filtrele
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
                         {tab === 'configurare' && (
                             <div className="flex flex-wrap items-center gap-3">
                                 <Dialog open={adding} onOpenChange={setAdding}>
@@ -2819,6 +3025,139 @@ function DriverTable({
         };
     };
 
+    // Totalul rândurilor de pe ecran: dacă sunt filtrate, al celor filtrate.
+    // Sumele se adună, procentele se ponderează — altfel o cursă de 520 de
+    // locuri ar cântări cât una de 30.000.
+    const sum = (pick: (row: Row) => number) =>
+        rows.reduce((all, one) => all + pick(one), 0);
+
+    const t = {
+        seats: sum((r) => r.seats),
+        pax: sum((r) => r.pax),
+        net: sum((r) => r.net),
+        margin: sum((r) => r.margin),
+        amount: sum((r) => r.amount),
+        empty: sum((r) => r.empty_seats),
+        cost: sum((r) => r.unit_cost * r.seats),
+        b2b: sum((r) => r.net_b2b),
+        b2c: sum((r) => r.net_b2c),
+    };
+
+    const perAn = (year: number) =>
+        rows.reduce(
+            (all, one) => {
+                const was = history[`${one.kind}|${one.key}`]?.[year];
+
+                return was === undefined
+                    ? all
+                    : {
+                          volume: all.volume + was.volume,
+                          net: all.net + was.net,
+                      };
+            },
+            { volume: 0, net: 0 },
+        );
+
+    const total = (unde: string) => (
+        <TableRow key={unde} className="bg-muted/80 font-semibold">
+            <TableCell className="sticky left-0 z-20 border-r bg-muted">
+                TOTAL{' '}
+                <span className="font-normal text-muted-foreground">
+                    {rows.length}{' '}
+                    {isCharter
+                        ? rows.length === 1
+                            ? 'cursă'
+                            : 'curse'
+                        : rows.length === 1
+                          ? 'rând'
+                          : 'rânduri'}
+                </span>
+            </TableCell>
+
+            {historyYears.map((year) => {
+                const was = perAn(year);
+
+                return (
+                    <TableCell
+                        key={year}
+                        className="border-l text-right text-[11px] font-normal text-muted-foreground tabular-nums"
+                    >
+                        {isOpex ? (
+                            lei(was.net)
+                        ) : (
+                            <>
+                                <div>{lei(was.volume)}</div>
+                                <div>{lei(was.net)}</div>
+                            </>
+                        )}
+                    </TableCell>
+                );
+            })}
+
+            {isCharter && (
+                <>
+                    <TableCell className="text-right tabular-nums">
+                        {lei(t.seats)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {t.seats > 0
+                            ? `${lei((t.pax / t.seats) * 100, 1)}%`
+                            : '–'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {t.net > 0 ? `${lei((t.cost / t.net) * 100, 0)}%` : '–'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {lei(t.empty)}
+                    </TableCell>
+                </>
+            )}
+
+            {!isOpex && (
+                <>
+                    <TableCell className="text-right tabular-nums">
+                        {lei(t.pax)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {t.pax > 0 ? lei(t.net / t.pax) : '–'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {t.pax > 0 ? lei(t.margin / t.pax) : '–'}
+                    </TableCell>
+                </>
+            )}
+
+            <TableCell className="text-right tabular-nums">
+                {lei(isOpex ? t.amount : t.net)}
+            </TableCell>
+
+            {isOpex && <TableCell />}
+
+            {!isOpex && (
+                <TableCell className="text-right tabular-nums">
+                    {lei(t.margin)}
+                </TableCell>
+            )}
+
+            {!isOpex && (
+                <>
+                    <TableCell className="text-right tabular-nums">
+                        {t.net > 0 ? `${lei((t.b2b / t.net) * 100, 1)}%` : '–'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {lei(t.b2b)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                        {lei(t.b2c)}
+                    </TableCell>
+                </>
+            )}
+
+            <TableCell />
+            <TableCell />
+        </TableRow>
+    );
+
     // Rândurile alese pentru o mișcare în masă, și ce li se pune.
     const [alese, setAlese] = useState<Set<string>>(new Set());
     const [bulk, setBulk] = useState({ which: 0, value: 0 });
@@ -3085,6 +3424,7 @@ function DriverTable({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
+                            {rows.length > 0 && total('sus')}
                             {rows.map((row) => (
                                 <>
                                     <TableRow
@@ -4247,6 +4587,7 @@ function DriverTable({
                                     )}
                                 </>
                             ))}
+                            {rows.length > 1 && total('jos')}
                         </TableBody>
                     </Table>
                 </CardContent>

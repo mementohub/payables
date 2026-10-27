@@ -363,6 +363,55 @@ return [
     | „site”, „b2b” (agenții partenere) sau „revenue” (tot venitul).
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Aeroporturi
+    |--------------------------------------------------------------------------
+    |
+    | Cursele se numesc după codurile IATA — „CLJ→AYT” — iar omul care
+    | plănuiește citește orașe. Dicționarul de mai jos le dă nume; un cod
+    | care nu e aici se arată ca atare, nu se ghicește.
+    |
+    */
+    'airports' => [
+        // Aeroporturile noastre de plecare.
+        'OTP' => 'București',
+        'CLJ' => 'Cluj',
+        'TSR' => 'Timișoara',
+        'IAS' => 'Iași',
+        'SBZ' => 'Sibiu',
+        'CRA' => 'Craiova',
+        'BAY' => 'Baia Mare',
+        'SCV' => 'Suceava',
+        'OMR' => 'Oradea',
+        'TGM' => 'Târgu Mureș',
+        'GHV' => 'Brașov',
+        'CND' => 'Constanța',
+        'BCM' => 'Bacău',
+        'ARW' => 'Arad',
+        'SUJ' => 'Satu Mare',
+        // Destinațiile.
+        'AYT' => 'Antalya',
+        'BJV' => 'Bodrum',
+        'HRG' => 'Hurghada',
+        'SSH' => 'Sharm el-Sheikh',
+        'HER' => 'Heraklion',
+        'CHQ' => 'Chania',
+        'RHO' => 'Rhodos',
+        'CFU' => 'Corfu',
+        'EFL' => 'Kefalonia',
+        'ZTH' => 'Zakynthos',
+        'MIR' => 'Monastir',
+        'LCA' => 'Larnaca',
+        'PMI' => 'Palma de Mallorca',
+        'LPA' => 'Gran Canaria',
+        'TFS' => 'Tenerife',
+        'ACE' => 'Lanzarote',
+        'FUE' => 'Fuerteventura',
+        'DOH' => 'Doha',
+        'DXB' => 'Dubai',
+    ],
+
     'plan_drivers' => [
         '6000' => 'b2c',   // Cheltuieli bancare (Comisioane bancare)
         '16950' => 'b2c',  // Cheltuieli promovare Google

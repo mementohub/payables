@@ -99,6 +99,11 @@ class ForecastController extends Controller
                 'period' => $period,
                 'basis' => $basis,
                 'mode' => $mode,
+                // Cursele se citesc filtrate: spre ce destinație, din ce
+                // aeroport. Alegerea stă în adresă, ca să se poată trimite.
+                'hub' => $request->string('hub')->toString() ?: null,
+                'dest' => $request->string('dest')->toString() ?: null,
+                'sort' => $request->string('sort')->toString() ?: null,
             ],
             'plans' => $plans->map(fn (Plan $one) => [
                 'id' => $one->id,

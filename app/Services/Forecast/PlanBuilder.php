@@ -492,11 +492,17 @@ class PlanBuilder
             $step = ($hand ? 1.0 : $pace['net']) * $cut['net'];
             $marginStep = ($hand ? 1.0 : $pace['net']) * $cut['margin'];
 
+            $route = PlanLine::route((string) $row->key);
+
             $rows[] = [
                 'kind' => PlanLine::CHARTER,
                 'unit' => PlanLine::PAX,
                 'key' => $row->key,
                 'label' => $row->key,
+                // Aeroportul și destinația stau scrise pe linie: după ele se
+                // filtrează și se adună, nu după felul în care e scrisă cheia.
+                'hub' => $route['hub'],
+                'destination' => $route['destination'],
                 'month' => $row->month,
                 'capacity' => $row->capacity,
                 'load' => round(min(1.0, $load), 4),
