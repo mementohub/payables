@@ -3059,7 +3059,7 @@ function DriverTable({
         );
 
     const total = (unde: string) => (
-        <TableRow key={unde} className="bg-muted/80 font-semibold">
+        <TableRow key={unde} className="bg-muted font-semibold">
             <TableCell className="sticky left-0 z-20 border-r bg-muted">
                 TOTAL{' '}
                 <span className="font-normal text-muted-foreground">
@@ -3295,7 +3295,7 @@ function DriverTable({
                             nici ce cifră. */}
                         <TableHeader className="sticky top-0 z-30 [&_td]:bg-muted [&_th]:bg-card">
                             <TableRow className="[&>th]:font-semibold">
-                                <TableHead className="sticky left-0 z-30 w-56 border-r bg-card">
+                                <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     <span className="flex items-center gap-2">
                                         <Checkbox
                                             checked={
