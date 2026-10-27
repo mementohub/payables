@@ -3286,12 +3286,14 @@ function DriverTable({
             )}
 
             <Card>
-                <CardContent className="overflow-x-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0">
                     <Table className="text-xs">
-                        <TableHeader>
-                            {/* Antetul se citește aldin, iar prima coloană stă
-                            pe loc când tabelul pleacă în lături: altfel, la
-                            coloana a zecea, nu mai știi pe ce cursă ești. */}
+                        {/* Antetul și totalul rămân sus când se coboară prin
+                            tabel, iar prima coloană stă pe loc când tabelul
+                            pleacă în lături: altfel, la a zecea cursă și a
+                            zecea coloană, nu mai știi nici ce rând citești,
+                            nici ce cifră. */}
+                        <TableHeader className="sticky top-0 z-30 [&_td]:bg-muted [&_th]:bg-card">
                             <TableRow className="[&>th]:font-semibold">
                                 <TableHead className="sticky left-0 z-30 w-56 border-r bg-card">
                                     <span className="flex items-center gap-2">
@@ -3422,9 +3424,9 @@ function DriverTable({
                                 </TableHead>
                                 <TableHead className="w-20" />
                             </TableRow>
+                            {rows.length > 0 && total('sus')}
                         </TableHeader>
                         <TableBody>
-                            {rows.length > 0 && total('sus')}
                             {rows.map((row) => (
                                 <>
                                     <TableRow
@@ -4974,11 +4976,11 @@ function RetailTable({
             </div>
 
             <Card>
-                <CardContent className="overflow-x-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0">
                     <Table className="text-xs">
-                        <TableHeader>
+                        <TableHeader className="sticky top-0 z-30 [&_th]:bg-card">
                             <TableRow className="[&>th]:font-semibold">
-                                <TableHead className="sticky left-0 z-30 w-56 border-r bg-card">
+                                <TableHead className="sticky left-0 z-40 w-56 border-r bg-card">
                                     Agenția
                                 </TableHead>
                                 <TableHead className="text-right">
@@ -5799,11 +5801,11 @@ function PlanStatement({
             </div>
 
             <Card>
-                <CardContent className="overflow-x-auto p-0">
+                <CardContent className="max-h-[72vh] overflow-auto p-0">
                     <Table className="text-xs">
-                        <TableHeader>
+                        <TableHeader className="sticky top-0 z-30 [&_th]:bg-card">
                             <TableRow className="[&>th]:font-semibold">
-                                <TableHead className="sticky left-0 z-10 w-64 border-r bg-card">
+                                <TableHead className="sticky left-0 z-40 w-64 border-r bg-card">
                                     Linie
                                 </TableHead>
                                 {history.map((one) => (
