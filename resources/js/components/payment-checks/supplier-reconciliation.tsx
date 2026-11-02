@@ -1,6 +1,9 @@
 import { Link } from '@inertiajs/react';
 import {
+    ChevronDown,
+    ChevronRight,
     CircleCheck,
+    Download,
     ExternalLink,
     FileWarning,
     Info,
@@ -46,6 +49,27 @@ import { primite, show as invoiceShow } from '@/routes/invoices';
 import { show as partnerShow } from '@/routes/partners';
 
 type Grid = 'month' | 'type' | 'future';
+
+/** O linie de factură, cu serviciul din spatele ei. */
+type InvoiceLine = {
+    id: number;
+    description: string | null;
+    amount: number;
+    quantity: number;
+    line_total: number;
+    vat_label: string | null;
+    vat_rate: number | null;
+    vat_amount: number | null;
+    booking: number | null;
+    conf_no: string | null;
+    short_description: string | null;
+    checkin: string | null;
+    checkout: string | null;
+    supplier_status: string | null;
+    supplier_currency: string | null;
+    product_type: string | null;
+    etrip_cost: number | null;
+};
 
 type InvoiceFilter = 'all' | 'open' | 'overdue' | 'correction' | 'draft';
 
@@ -512,6 +536,7 @@ export default function SupplierReconciliationPanel({
                 >
                     <ReconciliationResult
                         result={shown}
+                        request={answer?.request ?? request}
                         grid={grid}
                         onGrid={setGrid}
                         filter={filter}
@@ -526,6 +551,7 @@ export default function SupplierReconciliationPanel({
 
 function ReconciliationResult({
     result,
+    request,
     grid,
     onGrid,
     filter,
@@ -533,6 +559,7 @@ function ReconciliationResult({
     onCheckin,
 }: {
     result: Reconciliation;
+    request: Request | null;
     grid: Grid;
     onGrid: (grid: Grid) => void;
     filter: InvoiceFilter;
@@ -1040,18 +1067,41 @@ function ReconciliationResult({
                                 ` Se afișează cele mai recente ${result.invoices.length}.`}
                         </CardDescription>
                     </div>
-                    {fromOmc && supplier.partner_id && (
-                        <Button asChild size="sm" variant="outline">
-                            <Link
-                                href={primite({
-                                    query: { partner_id: supplier.partner_id },
-                                })}
-                            >
-                                <ExternalLink />
-                                În Facturi primite
-                            </Link>
-                        </Button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                        {request && (
+                            <Button asChild size="sm" variant="outline">
+                                <a
+                                    href={
+                                        PaymentCheckController.exportReconcile({
+                                            query: {
+                                                connection: request.connection,
+                                                supplier: request.supplier,
+                                                from: request.from,
+                                                to: request.to,
+                                            },
+                                        }).url
+                                    }
+                                >
+                                    <Download />
+                                    Descarcă xlsx
+                                </a>
+                            </Button>
+                        )}
+                        {fromOmc && supplier.partner_id && (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={primite({
+                                        query: {
+                                            partner_id: supplier.partner_id,
+                                        },
+                                    })}
+                                >
+                                    <ExternalLink />
+                                    În Facturi primite
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     <ToggleGroup
@@ -1118,6 +1168,7 @@ function ReconciliationResult({
                             <InvoiceRow
                                 key={invoice.id}
                                 invoice={invoice}
+                                request={request}
                                 fromOmc={fromOmc}
                                 termDays={supplier.balance_due_days}
                             />
@@ -1203,115 +1254,330 @@ function EmptyRow({ colSpan }: { colSpan: number }) {
 
 function InvoiceRow({
     invoice,
+    request,
     fromOmc,
     termDays,
 }: {
     invoice: ReconciliationInvoice;
+    request: Request | null;
     fromOmc: boolean;
     termDays: number | null;
 }) {
+    // Liniile se cer când se deschide rândul, nu pentru toate facturile
+    // deodată: o sută de facturi ar însemna o sută de interogări degeaba.
+    const [open, setOpen] = useState(false);
+    const [lines, setLines] = useState<InvoiceLine[] | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const toggle = () => {
+        const next = !open;
+        setOpen(next);
+
+        if (!next || lines !== null || request === null) {
+            return;
+        }
+
+        fetch(
+            PaymentCheckController.invoiceLines({
+                query: {
+                    connection: request.connection,
+                    supplier: request.supplier,
+                    invoice: String(invoice.id),
+                },
+            }).url,
+            { headers: { Accept: 'application/json' } },
+        )
+            .then(async (res) => {
+                const body = (await res.json().catch(() => null)) as {
+                    lines?: InvoiceLine[];
+                    message?: string;
+                } | null;
+
+                if (!res.ok) {
+                    throw new Error(
+                        body?.message ?? 'Factura nu a putut fi citită.',
+                    );
+                }
+
+                setLines(body?.lines ?? []);
+            })
+            .catch((reason: Error) => setError(reason.message));
+    };
+
     return (
-        <tr className={cn(invoice.days_overdue > 0 && 'bg-destructive/5')}>
-            <td className="px-3 py-2">
-                <span className="font-medium">{invoice.number}</span>
-                <span className="mt-0.5 flex flex-wrap gap-1">
-                    {invoice.correction && (
-                        <Badge variant="outline" className="text-xs">
-                            corecție
-                        </Badge>
-                    )}
-                    {!invoice.finalized && (
-                        <Badge
-                            variant="outline"
-                            className="border-amber-500/50 text-xs text-amber-700 dark:text-amber-400"
-                        >
-                            nefinalizată
-                        </Badge>
-                    )}
-                    {invoice.finalized && invoice.good_for_payment && (
-                        <Badge variant="outline" className="text-xs">
-                            bună de plată
-                        </Badge>
-                    )}
-                </span>
-            </td>
-            <td className="px-3 py-2 whitespace-nowrap">{dmy(invoice.date)}</td>
-            <DueCell invoice={invoice} termDays={termDays} />
-            <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
-                {fmt(invoice.amount, 2)}{' '}
-                <span className="text-xs text-muted-foreground">
-                    {invoice.currency}
-                </span>
-            </td>
-            <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
-                {invoice.open === null ? (
-                    <span
-                        className="text-muted-foreground"
-                        title="Factura nu a fost găsită în OMC după număr"
-                    >
-                        ?
-                    </span>
-                ) : invoice.open > 0.01 ? (
-                    <span className="font-semibold">
-                        {fmt(invoice.open, 2)}
-                    </span>
-                ) : (
-                    <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-500">
-                        <CircleCheck className="size-3.5" />
-                        plătită
-                    </span>
-                )}
-            </td>
-            <td className="px-3 py-2 whitespace-nowrap">
-                {invoice.checkin_from ? (
-                    <>
-                        {dmy(invoice.checkin_from)}
-                        {invoice.checkin_to !== invoice.checkin_from &&
-                            ` – ${dmy(invoice.checkin_to)}`}
-                        <span className="block text-xs text-muted-foreground">
-                            {invoice.bookings} dosare · {invoice.lines} linii
-                        </span>
-                    </>
-                ) : (
-                    <span className="text-muted-foreground">
-                        fără servicii legate
-                    </span>
-                )}
-            </td>
-            <td
-                className={cn(
-                    'px-3 py-2 text-right whitespace-nowrap tabular-nums',
-                    invoice.correction && 'text-muted-foreground italic',
-                )}
-            >
-                {invoice.etrip_cost === null ? '–' : fmt(invoice.etrip_cost, 2)}
-            </td>
-            {fromOmc && (
+        <>
+            <tr className={cn(invoice.days_overdue > 0 && 'bg-destructive/5')}>
                 <td className="px-3 py-2">
-                    {invoice.omc ? (
-                        <span className="flex flex-col items-start gap-1">
-                            <a
-                                href={invoiceShow(invoice.omc.id).url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-xs hover:underline"
+                    <button
+                        type="button"
+                        onClick={toggle}
+                        aria-expanded={open}
+                        className="flex items-center gap-1 font-medium hover:underline"
+                        title="Vezi liniile facturii"
+                    >
+                        {open ? (
+                            <ChevronDown className="size-3.5 shrink-0" />
+                        ) : (
+                            <ChevronRight className="size-3.5 shrink-0 opacity-60" />
+                        )}
+                        {invoice.number}
+                    </button>
+                    <span className="hidden">{invoice.number}</span>
+                    <span className="mt-0.5 flex flex-wrap gap-1">
+                        {invoice.correction && (
+                            <Badge variant="outline" className="text-xs">
+                                corecție
+                            </Badge>
+                        )}
+                        {!invoice.finalized && (
+                            <Badge
+                                variant="outline"
+                                className="border-amber-500/50 text-xs text-amber-700 dark:text-amber-400"
                             >
-                                {invoice.omc.nr_doc}
-                                <ExternalLink className="size-3" />
-                            </a>
-                            <WorkflowStatusBadge
-                                status={invoice.omc.approval_status}
-                                className="text-xs"
-                            />
+                                nefinalizată
+                            </Badge>
+                        )}
+                        {invoice.finalized && invoice.good_for_payment && (
+                            <Badge variant="outline" className="text-xs">
+                                bună de plată
+                            </Badge>
+                        )}
+                    </span>
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                    {dmy(invoice.date)}
+                </td>
+                <DueCell invoice={invoice} termDays={termDays} />
+                <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                    {fmt(invoice.amount, 2)}{' '}
+                    <span className="text-xs text-muted-foreground">
+                        {invoice.currency}
+                    </span>
+                </td>
+                <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                    {invoice.open === null ? (
+                        <span
+                            className="text-muted-foreground"
+                            title="Factura nu a fost găsită în OMC după număr"
+                        >
+                            ?
+                        </span>
+                    ) : invoice.open > 0.01 ? (
+                        <span className="font-semibold">
+                            {fmt(invoice.open, 2)}
                         </span>
                     ) : (
-                        <span className="text-xs text-amber-700 dark:text-amber-400">
-                            negăsită
+                        <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-500">
+                            <CircleCheck className="size-3.5" />
+                            plătită
                         </span>
                     )}
                 </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                    {invoice.checkin_from ? (
+                        <>
+                            {dmy(invoice.checkin_from)}
+                            {invoice.checkin_to !== invoice.checkin_from &&
+                                ` – ${dmy(invoice.checkin_to)}`}
+                            <span className="block text-xs text-muted-foreground">
+                                {invoice.bookings} dosare · {invoice.lines}{' '}
+                                linii
+                            </span>
+                        </>
+                    ) : (
+                        <span className="text-muted-foreground">
+                            fără servicii legate
+                        </span>
+                    )}
+                </td>
+                <td
+                    className={cn(
+                        'px-3 py-2 text-right whitespace-nowrap tabular-nums',
+                        invoice.correction && 'text-muted-foreground italic',
+                    )}
+                >
+                    {invoice.etrip_cost === null
+                        ? '–'
+                        : fmt(invoice.etrip_cost, 2)}
+                </td>
+                {fromOmc && (
+                    <td className="px-3 py-2">
+                        {invoice.omc ? (
+                            <span className="flex flex-col items-start gap-1">
+                                <a
+                                    href={invoiceShow(invoice.omc.id).url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs hover:underline"
+                                >
+                                    {invoice.omc.nr_doc}
+                                    <ExternalLink className="size-3" />
+                                </a>
+                                <WorkflowStatusBadge
+                                    status={invoice.omc.approval_status}
+                                    className="text-xs"
+                                />
+                            </span>
+                        ) : (
+                            <span className="text-xs text-amber-700 dark:text-amber-400">
+                                negăsită
+                            </span>
+                        )}
+                    </td>
+                )}
+            </tr>
+
+            {open && (
+                <tr className="bg-muted/30">
+                    <td className="px-3 py-3" colSpan={fromOmc ? 8 : 7}>
+                        {error !== null ? (
+                            <p className="text-sm text-destructive">{error}</p>
+                        ) : lines === null ? (
+                            <p className="text-sm text-muted-foreground">
+                                Se citesc liniile facturii…
+                            </p>
+                        ) : lines.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                Factura n-are linii legate de servicii în eTrip.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto rounded-md border bg-background">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-muted/60 text-left text-[11px] text-muted-foreground uppercase">
+                                        <tr>
+                                            <th className="px-2 py-1.5">
+                                                Dosar
+                                            </th>
+                                            <th className="px-2 py-1.5">
+                                                Serviciu
+                                            </th>
+                                            <th className="px-2 py-1.5">Tip</th>
+                                            <th className="px-2 py-1.5">
+                                                Check-in
+                                            </th>
+                                            <th className="px-2 py-1.5 text-right">
+                                                Cant.
+                                            </th>
+                                            <th className="px-2 py-1.5 text-right">
+                                                Preț
+                                            </th>
+                                            <th className="px-2 py-1.5 text-right">
+                                                Valoare
+                                            </th>
+                                            <th className="px-2 py-1.5 text-right">
+                                                Cost eTrip
+                                            </th>
+                                            <th className="px-2 py-1.5 text-right">
+                                                Diferență
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {lines.map((line) => {
+                                            const diff =
+                                                line.etrip_cost === null
+                                                    ? null
+                                                    : line.line_total -
+                                                      line.etrip_cost;
+
+                                            return (
+                                                <tr key={line.id}>
+                                                    <td className="px-2 py-1.5 whitespace-nowrap">
+                                                        {line.booking ?? '–'}
+                                                        {line.conf_no && (
+                                                            <span className="block text-[11px] text-muted-foreground">
+                                                                {line.conf_no}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        {line.short_description ??
+                                                            line.description ??
+                                                            '–'}
+                                                        {line.supplier_status &&
+                                                            line.supplier_status !==
+                                                                'confirmed' && (
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="ml-2 text-[10px]"
+                                                                >
+                                                                    {
+                                                                        line.supplier_status
+                                                                    }
+                                                                </Badge>
+                                                            )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">
+                                                        {line.product_type ??
+                                                            '–'}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 whitespace-nowrap">
+                                                        {line.checkin
+                                                            ? dmy(line.checkin)
+                                                            : '–'}
+                                                        {line.checkout &&
+                                                            line.checkout !==
+                                                                line.checkin && (
+                                                                <span className="text-muted-foreground">
+                                                                    {' '}
+                                                                    –{' '}
+                                                                    {dmy(
+                                                                        line.checkout,
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-right tabular-nums">
+                                                        {fmt(line.quantity)}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-right tabular-nums">
+                                                        {fmt(line.amount, 2)}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-right font-medium tabular-nums">
+                                                        {fmt(
+                                                            line.line_total,
+                                                            2,
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-right text-muted-foreground tabular-nums">
+                                                        {line.etrip_cost ===
+                                                        null
+                                                            ? '–'
+                                                            : fmt(
+                                                                  line.etrip_cost,
+                                                                  2,
+                                                              )}
+                                                    </td>
+                                                    <td
+                                                        className={cn(
+                                                            'px-2 py-1.5 text-right tabular-nums',
+                                                            diff !== null &&
+                                                                Math.abs(diff) >
+                                                                    0.01 &&
+                                                                'font-semibold text-amber-700 dark:text-amber-400',
+                                                        )}
+                                                    >
+                                                        {diff === null
+                                                            ? '–'
+                                                            : fmt(diff, 2)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                                <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                                    „Cost eTrip” e costul întreg al serviciului
+                                    legat de linie, în moneda furnizorului;
+                                    diferența e față de cât s-a facturat pe
+                                    linia asta.
+                                </p>
+                            </div>
+                        )}
+                    </td>
+                </tr>
             )}
-        </tr>
+        </>
     );
 }
 

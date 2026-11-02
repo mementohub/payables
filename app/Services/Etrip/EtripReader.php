@@ -151,6 +151,72 @@ class EtripReader
         SQL;
 
     /**
+     * One invoice, line by line, with the service each line points to.
+     */
+    private const SUPPLIER_INVOICE_LINES_SQL = <<<'SQL'
+        select ii.id,
+               ii.description,
+               ii.amount::numeric(20,2) as amount,
+               coalesce(ii.quantity, 1)::numeric(20,2) as quantity,
+               (ii.amount * coalesce(ii.quantity, 1))::numeric(20,2) as line_total,
+               ii.vat_label,
+               ii.vat_rate,
+               ii.vat_amount::numeric(20,2) as vat_amount,
+               ii.accounting_code,
+               i.booking,
+               i.conf_no,
+               i.short_description,
+               i.start_date::date as checkin,
+               i.end_date::date as checkout,
+               i.supplier_status,
+               i.supplier_currency,
+               pt.label as product_type,
+               (coalesce((i.cost).gross, 0) + coalesce((i.cost).tax, 0)
+                - coalesce((i.cost).commission, 0))::numeric(20,2) as etrip_cost
+        from financials.supplier_invoice_items ii
+        join financials.supplier_invoices si on si.id = ii.invoice and si.supplier = ?
+        left join bookings.items i on i.id = ii.item
+        left join public.product_types pt on pt.id = i.product_type
+        where ii.invoice = ?
+        order by i.start_date nulls last, i.booking nulls last, ii.id
+        SQL;
+
+    /**
+     * The same lines, for every invoice of the supplier dated in a range.
+     *
+     * One query instead of one per invoice: a supplier with two thousand
+     * invoices would otherwise keep the export running for minutes.
+     */
+    private const SUPPLIER_INVOICE_LINES_RANGE_SQL = <<<'SQL'
+        select ii.invoice,
+               ii.id,
+               ii.description,
+               ii.amount::numeric(20,2) as amount,
+               coalesce(ii.quantity, 1)::numeric(20,2) as quantity,
+               (ii.amount * coalesce(ii.quantity, 1))::numeric(20,2) as line_total,
+               ii.vat_label,
+               ii.vat_rate,
+               ii.vat_amount::numeric(20,2) as vat_amount,
+               ii.accounting_code,
+               i.booking,
+               i.conf_no,
+               i.short_description,
+               i.start_date::date as checkin,
+               i.end_date::date as checkout,
+               i.supplier_status,
+               i.supplier_currency,
+               pt.label as product_type,
+               (coalesce((i.cost).gross, 0) + coalesce((i.cost).tax, 0)
+                - coalesce((i.cost).commission, 0))::numeric(20,2) as etrip_cost
+        from financials.supplier_invoice_items ii
+        join financials.supplier_invoices si on si.id = ii.invoice
+        left join bookings.items i on i.id = ii.item
+        left join public.product_types pt on pt.id = i.product_type
+        where si.supplier = ? and si.date >= ?::date and si.date < ?::date
+        order by si.date desc, si.id desc, i.start_date nulls last, i.booking nulls last, ii.id
+        SQL;
+
+    /**
      * The supplier's services (same perimeter as the check-in check, but
      * keeping services the supplier has not confirmed yet) from the start of
      * the range, done up to the end of it or still to come, against what its
@@ -347,6 +413,47 @@ class EtripReader
         ]);
 
         return array_map(fn ($row) => (array) $row, $rows);
+    }
+
+    /**
+     * What one invoice is made of: its lines and the service each points to.
+     *
+     * The table shows an invoice as one figure; the question that follows is
+     * always the same — which dossiers, which services, which check-in. The
+     * supplier's code travels with the query, so an invoice of another
+     * supplier cannot be read by guessing its id.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function supplierInvoiceLines(string $connection, string $code, int $invoice): array
+    {
+        $rows = $this->connection($connection)->select(self::SUPPLIER_INVOICE_LINES_SQL, [$code, $invoice]);
+
+        return array_map(fn ($row) => (array) $row, $rows);
+    }
+
+    /**
+     * Every line of every invoice the supplier issued in the range, keyed by
+     * invoice: what the export needs, in one query.
+     *
+     * @return array<int, list<array<string, mixed>>>
+     */
+    public function supplierInvoiceLinesFor(string $connection, string $code, Carbon $from, Carbon $to): array
+    {
+        $rows = $this->connection($connection)->select(self::SUPPLIER_INVOICE_LINES_RANGE_SQL, [
+            $code,
+            $from->toDateString(),
+            $to->copy()->addDay()->toDateString(),
+        ]);
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $line = (array) $row;
+            $out[(int) $line['invoice']][] = $line;
+        }
+
+        return $out;
     }
 
     /**

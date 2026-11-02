@@ -167,6 +167,10 @@ Route::middleware('auth')->group(function () {
         // Toate serviciile din verificare, într-o foaie: ecranul duce doar
         // primele șase sute.
         Route::get('payment-checks/export', [PaymentCheckController::class, 'exportCheck'])->name('payment-checks.export');
+        // O factură desfăcută pe linii, la cerere, când se deschide rândul.
+        Route::get('payment-checks/invoice-lines', [PaymentCheckController::class, 'invoiceLines'])->name('payment-checks.invoice-lines');
+        // Toată verificarea „facturi vs. servicii”, într-o foaie de calcul.
+        Route::get('payment-checks/export-reconcile', [PaymentCheckController::class, 'exportReconcile'])->name('payment-checks.export-reconcile');
         // Ce i-am plătit până acum furnizorului, ca suma cerută să se poată
         // judeca, nu doar citi.
         Route::get('payment-checks/payments', [PaymentCheckController::class, 'payments'])->name('payment-checks.payments');

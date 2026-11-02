@@ -128,6 +128,43 @@ class PaymentCheckController extends Controller
     }
 
     /**
+     * O factură desfăcută: liniile ei și serviciul din spatele fiecăreia.
+     *
+     * Tabelul arată factura ca o singură cifră, iar întrebarea care vine
+     * după e mereu aceeași: ce dosare, ce servicii, ce check-in. Se citește
+     * la cerere, când omul deschide rândul, nu pentru toate cele o sută de
+     * facturi deodată.
+     *
+     * @return array<string, mixed>
+     */
+    public function invoiceLines(Request $request, EtripReader $reader, EtripSupplierSyncService $sync): array
+    {
+        $validated = $request->validate([
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
+            'supplier' => ['required', 'string', 'max:50'],
+            'invoice' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $connection = $validated['connection'];
+
+        $supplier = EtripSupplier::query()
+            ->forConnection($connection)
+            ->where('code', $validated['supplier'])
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($connection, $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
+
+        return [
+            'lines' => $this->readingEtrip(fn () => $reader->supplierInvoiceLines(
+                $connection,
+                $supplier->code,
+                (int) $validated['invoice'],
+            )),
+        ];
+    }
+
+    /**
      * Toate serviciile din verificare, într-o foaie de calcul.
      *
      * Ecranul duce primele șase sute de rânduri, cât încap fără să
@@ -275,6 +312,173 @@ class PaymentCheckController extends Controller
 
         return XlsxWorkbook::streamDownload(
             sprintf('check-in-%s-%s-%s.xlsx', Str::slug($supplier->name), $from->format('Ymd'), $to->format('Ymd')),
+            $sheets,
+        );
+    }
+
+    /**
+     * Toată verificarea „facturi vs. servicii”, într-o foaie de calcul.
+     *
+     * Ecranul e făcut pentru citit: spune unde e problema și cât e de mare.
+     * Foaia e făcută pentru lucrat — de trimis furnizorului, de pus lângă
+     * extrasul lui, de bifat linie cu linie — așa că duce tot ce stă în
+     * spatele ecranului, inclusiv liniile fiecărei facturi.
+     */
+    public function exportReconcile(Request $request, SupplierReconciliationService $reconciliation, EtripReader $reader, EtripSupplierSyncService $sync): StreamedResponse
+    {
+        $validated = $request->validate([
+            'connection' => ['required', Rule::in(array_keys((array) config('etrip.connections')))],
+            'supplier' => ['required', 'string', 'max:50'],
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+        ]);
+
+        $connection = $validated['connection'];
+
+        $supplier = EtripSupplier::query()
+            ->forConnection($connection)
+            ->where('code', $validated['supplier'])
+            ->first()
+            ?? $this->readingEtrip(fn () => $sync->remember($connection, $validated['supplier']));
+
+        abort_if($supplier === null, 404, 'Furnizorul nu există în eTrip.');
+
+        $from = Carbon::parse($validated['from'])->startOfDay();
+        $to = Carbon::parse($validated['to'])->startOfDay();
+
+        $result = $this->readingEtrip(fn () => $reconciliation->reconcile($connection, $supplier, $from, $to));
+
+        // Liniile fiecărei facturi, citite una câte una: aceeași desfacere
+        // pe care o vede omul când deschide un rând pe ecran.
+        $byInvoice = $this->readingEtrip(fn () => $reader->supplierInvoiceLinesFor($connection, $supplier->code, $from, $to));
+
+        $lines = function () use ($byInvoice, $result) {
+            foreach ($result['invoices'] as $invoice) {
+                foreach (($byInvoice[(int) $invoice['id']] ?? []) as $line) {
+                    yield [
+                        (string) $invoice['number'],
+                        (string) $invoice['date'],
+                        $line['booking'] !== null ? (int) $line['booking'] : '',
+                        (string) ($line['conf_no'] ?? ''),
+                        (string) ($line['short_description'] ?? $line['description'] ?? ''),
+                        (string) ($line['product_type'] ?? ''),
+                        (string) ($line['checkin'] ?? ''),
+                        (string) ($line['checkout'] ?? ''),
+                        (string) ($line['supplier_status'] ?? ''),
+                        (float) $line['quantity'],
+                        (float) $line['amount'],
+                        (float) $line['line_total'],
+                        (string) ($line['vat_label'] ?? ''),
+                        $line['vat_amount'] !== null ? (float) $line['vat_amount'] : '',
+                        (string) $invoice['currency'],
+                        $line['etrip_cost'] !== null ? (float) $line['etrip_cost'] : '',
+                    ];
+                }
+            }
+        };
+
+        $sheets = [
+            [
+                'name' => 'Sinteză',
+                'headers' => ['Indicator', 'Valoare'],
+                'widths' => [34, 46],
+                'rows' => [
+                    ['Furnizor', $supplier->name],
+                    ['Cod furnizor', $supplier->code],
+                    ['Bază eTrip', (string) config('etrip.connections.'.$connection, $connection)],
+                    ['Perioada', $from->format('d.m.Y').' – '.$to->format('d.m.Y')],
+                    ['Facturi în eTrip', (int) $result['invoices_total']],
+                    ['Plăți citite din', $result['payments_source'] === 'omc' ? 'OMC' : 'eTrip'],
+                    ['Extras la', now()->format('d.m.Y H:i')],
+                    [null, null],
+                    ['Pe monedă', null],
+                    ['Monedă', 'Cost servicii'],
+                    ...array_map(fn (array $kpi) => [
+                        (string) $kpi['currency'], (float) $kpi['cost'],
+                    ], $result['kpis']),
+                ],
+            ],
+            [
+                'name' => 'Facturi',
+                'headers' => ['Factura', 'Data', 'Scadență', 'Sursa scadenței', 'Zile întârziere', 'Monedă', 'Valoare', 'Plătit', 'Rest', 'Finalizată', 'Bună de plată', 'Corecție', 'Check-in de la', 'până la', 'Dosare', 'Linii', 'Cost eTrip servicii'],
+                'widths' => [18, 12, 12, 14, 10, 8, 14, 14, 14, 11, 13, 10, 13, 13, 8, 8, 18],
+                'rows' => array_map(fn (array $invoice) => [
+                    (string) $invoice['number'],
+                    (string) $invoice['date'],
+                    (string) ($invoice['due'] ?? ''),
+                    (string) ($invoice['due_source'] ?? ''),
+                    (int) $invoice['days_overdue'],
+                    (string) $invoice['currency'],
+                    (float) $invoice['amount'],
+                    $invoice['paid'] !== null ? (float) $invoice['paid'] : '',
+                    $invoice['open'] !== null ? (float) $invoice['open'] : '',
+                    $invoice['finalized'] ? 'da' : 'nu',
+                    $invoice['good_for_payment'] ? 'da' : 'nu',
+                    $invoice['correction'] ? 'da' : 'nu',
+                    (string) ($invoice['checkin_from'] ?? ''),
+                    (string) ($invoice['checkin_to'] ?? ''),
+                    (int) $invoice['bookings'],
+                    (int) $invoice['lines'],
+                    $invoice['etrip_cost'] !== null ? (float) $invoice['etrip_cost'] : '',
+                ], $result['invoices']),
+            ],
+            [
+                'name' => 'Linii de factură',
+                'headers' => ['Factura', 'Data facturii', 'Dosar', 'Confirmare', 'Serviciu', 'Tip', 'Check-in', 'Check-out', 'Stare furnizor', 'Cantitate', 'Preț unitar', 'Valoare linie', 'TVA', 'Sumă TVA', 'Monedă', 'Cost eTrip serviciu'],
+                'widths' => [18, 12, 10, 14, 40, 20, 12, 12, 14, 10, 13, 14, 10, 12, 8, 18],
+                'rows' => $lines(),
+            ],
+            [
+                'name' => 'Pe lună de check-in',
+                'headers' => ['Luna', 'Monedă', 'Stare', 'Servicii', 'Cost', 'Facturat', 'Diferență', 'Diferență %', 'Servicii nefacturate', 'Cost nefacturat', 'Alertă'],
+                'widths' => [10, 8, 12, 10, 14, 14, 14, 12, 20, 16, 9],
+                'rows' => array_map(fn (array $month) => [
+                    (string) $month['month'],
+                    (string) $month['currency'],
+                    (string) $month['status'],
+                    (int) $month['services'],
+                    (float) $month['cost'],
+                    (float) $month['billed'],
+                    (float) $month['diff'],
+                    $month['diff_pct'] !== null ? (float) $month['diff_pct'] : '',
+                    (int) $month['unbilled_services'],
+                    (float) $month['unbilled_cost'],
+                    $month['alert'] ? 'da' : 'nu',
+                ], $result['months']),
+            ],
+            [
+                'name' => 'Pe tip de serviciu',
+                'headers' => ['Tip', 'Monedă', 'Servicii', 'Cost', 'Facturat', 'Diferență', 'Facturat % (fereastră)', 'Alertă'],
+                'widths' => [30, 8, 10, 14, 14, 14, 20, 9],
+                'rows' => array_map(fn (array $type) => [
+                    (string) $type['label'],
+                    (string) $type['currency'],
+                    (int) $type['services'],
+                    (float) $type['cost'],
+                    (float) $type['billed'],
+                    (float) $type['diff'],
+                    $type['window_billed_pct'] !== null ? (float) $type['window_billed_pct'] : '',
+                    $type['alert'] ? 'da' : 'nu',
+                ], $result['types']),
+            ],
+            [
+                'name' => 'Plăți',
+                'headers' => ['Monedă', 'Plăți', 'Plătit', 'Alocat pe facturi', 'Diferență', 'Prima', 'Ultima'],
+                'widths' => [8, 9, 14, 18, 14, 12, 12],
+                'rows' => array_map(fn (array $row) => [
+                    (string) $row['currency'],
+                    (int) ($row['payments'] ?? 0),
+                    (float) ($row['paid'] ?? 0),
+                    (float) ($row['allocated'] ?? 0),
+                    (float) ($row['difference'] ?? 0),
+                    (string) ($row['first'] ?? ''),
+                    (string) ($row['last'] ?? ''),
+                ], $result['payments']),
+            ],
+        ];
+
+        return XlsxWorkbook::streamDownload(
+            sprintf('facturi-servicii-%s-%s-%s.xlsx', Str::slug($supplier->name), $from->format('Ymd'), $to->format('Ymd')),
             $sheets,
         );
     }

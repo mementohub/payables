@@ -178,3 +178,90 @@ test('a column that eTrip renamed does not take the page down with it', function
         ->assertJsonPath('supplier.self_billing', false)
         ->assertJsonPath('supplier.created_at', null);
 });
+
+test('an invoice opens into its lines, with the service behind each one', function () {
+    EtripSupplier::factory()->create(['code' => '4272']);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplierInvoiceLines')
+            ->with('etrip_chr', '4272', 991)
+            ->andReturn([[
+                'id' => 1, 'description' => 'Hotel Sea View', 'amount' => 120.0, 'quantity' => 3.0,
+                'line_total' => 360.0, 'vat_label' => 'TVA 9%', 'vat_rate' => 9.0, 'vat_amount' => 32.4,
+                'booking' => 160473, 'conf_no' => 'CNF-12', 'short_description' => 'Sea View, 3 nopți',
+                'checkin' => '2026-07-04', 'checkout' => '2026-07-07', 'supplier_status' => 'confirmed',
+                'supplier_currency' => 'USD', 'product_type' => 'Hotel allotment', 'etrip_cost' => 350.0,
+            ]]);
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/payment-checks/invoice-lines?connection=etrip_chr&supplier=4272&invoice=991')
+        ->assertSuccessful()
+        ->assertJsonPath('lines.0.booking', 160473)
+        ->assertJsonPath('lines.0.line_total', 360)
+        ->assertJsonPath('lines.0.etrip_cost', 350);
+});
+
+test('the whole check goes into a workbook, invoice lines included', function () {
+    EtripSupplier::factory()->create(['code' => '4272', 'name' => 'Planet Tours']);
+
+    mockReconciliationReader(true, [
+        reconciliationInvoice(991, 'Q056 arr 17-8', '2026-08-17', 1000, 0, '2026-08-17'),
+    ]);
+
+    // Liniile vin dintr-o singură citire, nu una pe factură.
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplierProfile')->andReturn(['code' => '4272', 'name' => 'Planet Tours']);
+        $mock->shouldReceive('productTypes')->andReturn([7 => 'Hotel allotment']);
+        $mock->shouldReceive('serviceCoverage')->andReturn([
+            reconciliationCoverage('2026-07', 7, 'USD', 1000, 900),
+        ]);
+        $mock->shouldReceive('supplierInvoices')->andReturn([
+            reconciliationInvoice(991, 'Q056 arr 17-8', '2026-08-17', 1000, 0, '2026-08-17'),
+        ]);
+        $mock->shouldReceive('supplierPayments')->andReturn([]);
+        $mock->shouldReceive('supplierInvoiceLinesFor')->once()->andReturn([
+            991 => [[
+                'id' => 1, 'description' => 'Hotel Sea View', 'amount' => 120.0, 'quantity' => 3.0,
+                'line_total' => 360.0, 'vat_label' => 'TVA 9%', 'vat_rate' => 9.0, 'vat_amount' => 32.4,
+                'booking' => 160473, 'conf_no' => 'CNF-12', 'short_description' => 'Sea View, 3 nopți',
+                'checkin' => '2026-07-04', 'checkout' => '2026-07-07', 'supplier_status' => 'confirmed',
+                'supplier_currency' => 'USD', 'product_type' => 'Hotel allotment', 'etrip_cost' => 350.0,
+            ]],
+        ]);
+    });
+
+    $response = $this->actingAs($this->user)
+        ->get('/payment-checks/export-reconcile?connection=etrip_chr&supplier=4272&from=2026-01-01&to=2026-09-18')
+        ->assertSuccessful();
+
+    $path = tempnam(sys_get_temp_dir(), 'xlsx');
+    file_put_contents($path, $response->streamedContent());
+
+    $zip = new ZipArchive;
+    $zip->open($path);
+    $book = (string) $zip->getFromName('xl/workbook.xml');
+
+    // Textul stă în foi, nu într-un tabel de șiruri: se caută în toate.
+    $sheets = '';
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = (string) $zip->getNameIndex($i);
+
+        if (str_starts_with($name, 'xl/worksheets/')) {
+            $sheets .= (string) $zip->getFromIndex($i);
+        }
+    }
+
+    $zip->close();
+    @unlink($path);
+
+    expect($book)->toContain('Facturi')
+        ->and($book)->toContain('Linii de factură')
+        ->and($book)->toContain('Pe lună de check-in')
+        ->and($book)->toContain('Plăți')
+        // Și liniile chiar sunt scrise, cu dosarul lor.
+        ->and($sheets)->toContain('Sea View, 3 nop')
+        ->and($sheets)->toContain('Q056 arr 17-8')
+        ->and($sheets)->toContain('160473');
+});
