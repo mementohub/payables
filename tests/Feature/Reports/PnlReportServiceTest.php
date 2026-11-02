@@ -346,7 +346,12 @@ test('the built report stays in cache long enough to survive the day', function 
     $this->travel(6)->hours();
     expect($service->cached($this->company, 2026))->not->toBeNull();
 
-    $this->travel(8)->days();
+    // Anii dinainte se refac o dată pe săptămână, pentru istoricul
+    // planificării: raportul trebuie să țină până atunci și peste.
+    $this->travel(20)->days();
+    expect($service->cached($this->company, 2026))->not->toBeNull();
+
+    $this->travel(40)->days();
     expect($service->cached($this->company, 2026))->toBeNull();
 });
 
