@@ -151,3 +151,30 @@ test('a link opens the invoices tab with its period', function () {
             ->where('filters.period_to', '2026-06-30')
         );
 });
+
+test('a column that eTrip renamed does not take the page down with it', function () {
+    $supplier = EtripSupplier::factory()->create([
+        'code' => '609', 'name' => 'Skymax Holidays', 'country' => 'AE', 'currency' => 'EUR',
+    ]);
+
+    // Profilul vine din eTrip ca atare, oricare i-ar fi coloanele: baza lor
+    // se schimbă fără să ne întrebe, iar o coloană redenumită nu mai are
+    // voie să oprească pagina. Aici lipsesc aproape toate.
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('supplierProfile')->andReturn(['code' => '609', 'name' => 'Skymax Holidays']);
+        $mock->shouldReceive('productTypes')->andReturn([]);
+        $mock->shouldReceive('serviceCoverage')->andReturn([]);
+        $mock->shouldReceive('supplierInvoices')->andReturn([]);
+        $mock->shouldReceive('supplierPayments')->andReturn([]);
+    });
+
+    $this->actingAs($this->user)
+        ->getJson('/payment-checks/reconcile?connection=etrip_chr&supplier=609&from=2026-01-01&to=2026-11-02')
+        ->assertSuccessful()
+        ->assertJsonPath('supplier.name', 'Skymax Holidays')
+        // Ce nu vine din eTrip se ia din registrul nostru de furnizori.
+        ->assertJsonPath('supplier.country', 'AE')
+        ->assertJsonPath('supplier.currency', 'EUR')
+        ->assertJsonPath('supplier.self_billing', false)
+        ->assertJsonPath('supplier.created_at', null);
+});

@@ -94,13 +94,18 @@ class EtripReader
     /**
      * How the supplier works with us: payment term, self-billing, extranet
      * access and whether its invoices go to the second OMC base.
+     *
+     * The row comes back whole, as JSON, instead of a hand-written column
+     * list. eTrip's schema moves under us — a column renamed there used to
+     * take the whole page down with an SQL error — and every reader of this
+     * profile already falls back when a key is missing.
      */
     private const SUPPLIER_PROFILE_SQL = <<<'SQL'
-        select s.code, s.name, s.country, s.currency, s.active,
-               s.balance_due::text as balance_due,
-               (extract(epoch from s.balance_due) / 86400)::int as balance_due_days,
-               s.self_billing, s.vat_rate, s.vat_no, s.company_no, s.web_access,
-               s.use_secondary_omc_connection, s.ctime::date as created_at
+        select to_jsonb(s) || jsonb_build_object(
+                   'balance_due', s.balance_due::text,
+                   'balance_due_days', (extract(epoch from s.balance_due) / 86400)::int,
+                   'created_at', s.ctime::date::text
+               ) as profile
         from suppliers.suppliers s
         where s.code = ?
         SQL;
@@ -319,7 +324,13 @@ class EtripReader
     {
         $row = $this->connection($connection)->selectOne(self::SUPPLIER_PROFILE_SQL, [$code]);
 
-        return $row ? (array) $row : null;
+        if ($row === null) {
+            return null;
+        }
+
+        $profile = json_decode((string) ($row->profile ?? ''), true);
+
+        return is_array($profile) ? $profile : null;
     }
 
     /**
