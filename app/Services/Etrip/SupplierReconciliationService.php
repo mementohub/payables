@@ -4,6 +4,7 @@ namespace App\Services\Etrip;
 
 use App\Models\EtripSupplier;
 use App\Models\Invoice;
+use App\Services\Omc\OmcReader;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -33,7 +34,7 @@ class SupplierReconciliationService
 
     private const CORRECTION_PATTERN = '/correct|inv-?diff|-dif\b|\.c$|storn/i';
 
-    public function __construct(private EtripReader $reader) {}
+    public function __construct(private EtripReader $reader, private OmcReader $omc) {}
 
     /**
      * @return array<string, mixed>
@@ -65,10 +66,24 @@ class SupplierReconciliationService
         $secondaryOmc = (bool) ($profile['use_secondary_omc_connection'] ?? false);
 
         // Suppliers booked in the main OMC base are paid there, not in eTrip.
-        $paymentsSource = $secondaryOmc ? 'etrip' : 'omc';
+        // Those booked in the second one — Memento International, the house
+        // that rebills — are paid there, and their invoices are read from
+        // that base, by number.
+        $secondary = $secondaryOmc ? (string) config('omc.secondary_connection', '') : '';
+        $secondary = $secondary !== '' && array_key_exists($secondary, (array) config('database.connections', [])) ? $secondary : '';
+
+        $paymentsSource = match (true) {
+            ! $secondaryOmc => 'omc',
+            $secondary !== '' => 'omc_secondary',
+            default => 'etrip',
+        };
+
+        $mirror = null;
 
         if ($paymentsSource === 'omc') {
             $invoices = $this->withOmcStatus($invoices, $supplier, $from, $to, $today);
+        } elseif ($paymentsSource === 'omc_secondary') {
+            [$invoices, $mirror] = $this->withSecondaryOmcStatus($invoices, $secondary, $from, $to, $today);
         }
 
         $months = $this->months($done, $today);
@@ -88,7 +103,11 @@ class SupplierReconciliationService
             'invoice_totals' => $this->invoiceTotals($invoices),
             'payments_source' => $paymentsSource,
             'payments' => $this->payments($payments, $invoices),
-            'omc' => $secondaryOmc ? null : $this->omc($supplier, $from, $to),
+            'omc' => match ($paymentsSource) {
+                'omc' => $this->omc($supplier, $from, $to),
+                'omc_secondary' => $mirror,
+                default => null,
+            },
             'alerts' => $this->alerts($months, $types, $invoices, $paymentsSource, $supplier),
             'thresholds' => [
                 'month_pct' => self::MONTH_TOLERANCE * 100,
@@ -238,6 +257,84 @@ class SupplierReconciliationService
                 ],
             ];
         });
+    }
+
+    /**
+     * Facturile citite din a doua bază de contabilitate, potrivite pe număr.
+     *
+     * Furnizorul se facturează pe casa care refacturează, nu pe Christian
+     * Tour, așa că factura lui nu e în oglinda noastră: se citește direct
+     * din baza aia. Potrivirea e pe numărul documentului — numele se scrie
+     * altfel de la o bază la alta, numărul nu — iar dintre documentele cu
+     * același număr se ia cel mai apropiat ca dată.
+     *
+     * @param  Collection<int, array<string, mixed>>  $invoices
+     * @return array{0: Collection<int, array<string, mixed>>, 1: array<string, mixed>}
+     */
+    private function withSecondaryOmcStatus(Collection $invoices, string $connection, Carbon $from, Carbon $to, Carbon $today): array
+    {
+        $label = (string) config('omc.connections.'.$connection, $connection);
+        $numbers = $invoices->pluck('number')->filter()->unique()->values()->all();
+
+        $documents = collect($this->omc->on($connection)->documentsByNumber(
+            $numbers,
+            $from->copy()->subDays(90),
+            $to->copy()->addDays(90),
+        ))->groupBy(fn (array $row) => $this->numberKey((string) $row['nr_doc']));
+
+        $partners = collect($documents->flatten(1))->pluck('partener')->filter()->unique()->values()->all();
+
+        $out = $invoices->map(function (array $invoice) use ($documents, $today, $label) {
+            $date = Carbon::parse($invoice['date']);
+            $match = $documents->get($this->numberKey($invoice['number']))
+                ?->sortBy(fn (array $row) => abs(Carbon::parse((string) $row['data_doc'])->diffInDays($date)))
+                ->first();
+
+            if ($match === null) {
+                return [...$invoice, 'paid' => null, 'open' => null, 'days_overdue' => 0, 'due' => null, 'due_source' => null];
+            }
+
+            $open = round(max(0.0, (float) $match['val_mon'] - (float) $match['val_mon_pl'] - (float) $match['val_mon_dimin_negru']), 2);
+            $due = Carbon::parse((string) ($match['data_scadenta'] ?? $match['data_doc']));
+
+            return [
+                ...$invoice,
+                'paid' => round((float) $invoice['amount'] - $open, 2),
+                'open' => $open,
+                'due' => $due->toDateString(),
+                'due_source' => 'omc',
+                'days_overdue' => $open > 0.01 && $due->lt($today) ? (int) $due->diffInDays($today) : 0,
+                'omc' => [
+                    'id' => null,
+                    'nr_doc' => (string) $match['nr_doc'],
+                    'amount' => round((float) $match['val_mon'], 2),
+                    'approval_status' => null,
+                    'partner' => $this->text($match['partener'] ?? null),
+                    'base' => $label,
+                ],
+            ];
+        });
+
+        $totals = $out->filter(fn (array $invoice) => ($invoice['omc'] ?? null) !== null)
+            ->groupBy('currency')
+            ->map(fn (Collection $group, string $currency) => [
+                'currency' => (string) $currency,
+                'invoices' => $group->count(),
+                'amount' => round((float) $group->sum('amount'), 2),
+                'open' => round((float) $group->sum(fn (array $invoice) => (float) ($invoice['open'] ?? 0)), 2),
+            ])
+            ->sortBy('currency')
+            ->values()
+            ->all();
+
+        return [$out, [
+            'partner_id' => null,
+            'connection' => $connection,
+            'label' => $label,
+            'partners' => $partners,
+            'matched' => $out->filter(fn (array $invoice) => ($invoice['omc'] ?? null) !== null)->count(),
+            'totals' => $totals,
+        ]];
     }
 
     private function numberKey(?string $number): string
@@ -497,7 +594,7 @@ class SupplierReconciliationService
 
         if ($paymentsSource === 'omc' && $supplier->partner_id === null) {
             $alerts[] = ['kind' => 'unlinked', 'level' => 'warn', 'count' => 1, 'detail' => 'Furnizorul eTrip nu este legat de un partener OMC, deci plățile facturilor nu se pot citi.'];
-        } elseif ($paymentsSource === 'omc') {
+        } elseif ($paymentsSource === 'omc' || $paymentsSource === 'omc_secondary') {
             $missing = $invoices->whereNull('open');
 
             if ($missing->isNotEmpty()) {

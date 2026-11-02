@@ -5,6 +5,7 @@ use App\Models\Invoice;
 use App\Models\Partner;
 use App\Models\User;
 use App\Services\Etrip\EtripReader;
+use App\Services\Omc\OmcReader;
 use Illuminate\Support\Carbon;
 use Mockery\MockInterface;
 
@@ -53,6 +54,10 @@ function mockReconciliationReader(bool $secondaryOmc, array $invoices, array $pa
 }
 
 test('services are set against the invoice lines per month and per type, with the thresholds of the handover', function () {
+    // Fără o a doua bază configurată, verificarea unui furnizor facturat
+    // acolo rămâne integral pe eTrip.
+    config(['omc.secondary_connection' => '']);
+
     $supplier = EtripSupplier::factory()->create(['code' => '4272']);
     mockReconciliationReader(true, [
         reconciliationInvoice(1, 'Q056 arr 17-8', '2026-08-17', 1000, 0, '2026-08-17'),
@@ -264,4 +269,60 @@ test('the whole check goes into a workbook, invoice lines included', function ()
         ->and($sheets)->toContain('Sea View, 3 nop')
         ->and($sheets)->toContain('Q056 arr 17-8')
         ->and($sheets)->toContain('160473');
+});
+
+test('a supplier billed through the rebilling house is read from that house books', function () {
+    config(['omc.secondary_connection' => 'omc_mem_int']);
+
+    $supplier = EtripSupplier::factory()->create(['code' => '609', 'name' => 'SKYMAX HOLIDAYS']);
+
+    $this->mock(EtripReader::class, function (MockInterface $mock) {
+        // eTrip spune pe fișa furnizorului că se facturează la a doua casă.
+        $mock->shouldReceive('supplierProfile')->andReturn([
+            'code' => '609', 'name' => 'SKYMAX HOLIDAYS', 'balance_due_days' => 70,
+            'use_secondary_omc_connection' => true,
+        ]);
+        $mock->shouldReceive('productTypes')->andReturn([7 => 'Hotel allotment']);
+        $mock->shouldReceive('serviceCoverage')->andReturn([
+            reconciliationCoverage('2026-07', 7, 'USD', 1000, 900),
+        ]);
+        $mock->shouldReceive('supplierInvoices')->andReturn([
+            reconciliationInvoice(1, '103365', '2026-10-26', 24929.9, 0, null),
+            reconciliationInvoice(2, 'fără pereche', '2026-10-24', 100, 0, null),
+        ]);
+        $mock->shouldReceive('supplierPayments')->andReturn([]);
+    });
+
+    $this->mock(OmcReader::class, function (MockInterface $mock) {
+        $mock->shouldReceive('on')->with('omc_mem_int')->andReturnSelf();
+        $mock->shouldReceive('documentsByNumber')->andReturn([[
+            'partener' => 'SKYMAX HOLIDAYS', 'data_doc' => '2026-10-26', 'tip_doc' => 'FactFI',
+            'nr_doc' => '103365', 'moneda' => 'USD', 'val_mon' => 24929.9,
+            'val_mon_pl' => 4929.9, 'val_mon_dimin_negru' => 0, 'data_scadenta' => '2026-11-02',
+        ]]);
+    });
+
+    $response = $this->actingAs($this->user)
+        ->getJson('/payment-checks/reconcile?connection=etrip_chr&supplier=609&from=2026-01-01&to=2026-10-26')
+        ->assertSuccessful()
+        ->assertJsonPath('payments_source', 'omc_secondary')
+        ->assertJsonPath('omc.label', 'OMC Memento International')
+        ->assertJsonPath('omc.matched', 1);
+
+    $invoices = collect($response->json('invoices'))->keyBy('number');
+
+    // Restul de plată și scadența vin din baza casei, nu din termenul eTrip.
+    expect($invoices['103365'])->toMatchArray([
+        'open' => 20000.0,
+        'paid' => 4929.9,
+        'due' => '2026-11-02',
+        'due_source' => 'omc',
+    ])
+        ->and($invoices['103365']['omc'])->toMatchArray([
+            'id' => null,
+            'nr_doc' => '103365',
+            'partner' => 'SKYMAX HOLIDAYS',
+        ])
+        // Factura fără pereche acolo rămâne fără status, nu se inventează.
+        ->and($invoices['fără pereche']['open'])->toBeNull();
 });

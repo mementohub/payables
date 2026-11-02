@@ -114,11 +114,47 @@ class OmcReader
         order by d.partener, d.data_scadenta, d.data_doc
         SQL;
 
+    /**
+     * Documentele cu anumite numere, oricare ar fi furnizorul lor.
+     */
+    private const DOCUMENTS_BY_NUMBER_SQL = <<<'SQL'
+        select d.partener, d.data_doc, d.tip_doc, d.nr_doc, d.moneda, d.val_mon,
+               coalesce(d.val_mon_pl, 0) as val_mon_pl,
+               coalesce(d.val_mon_dimin_negru, 0) as val_mon_dimin_negru,
+               d.data_scadenta
+        from doc d
+        where btrim(d.nr_doc) = any(?)
+          and d.tip_doc in (%s)
+          and d.data_anulare is null
+          and d.data_doc >= ?::date
+          and d.data_doc <= ?::date
+        order by d.data_doc desc
+        SQL;
+
     private bool $prepared = false;
+
+    /** Baza citită acum, când nu e cea obișnuită. */
+    private ?string $connection = null;
 
     public function name(): string
     {
-        return (string) config('omc.connection', 'omc');
+        return $this->connection ?? (string) config('omc.connection', 'omc');
+    }
+
+    /**
+     * Același cititor, pe altă bază.
+     *
+     * Casele care refacturează — Memento Air, Memento International, Memento
+     * Management & Logistics — își țin contabilitatea separat. Când un
+     * furnizor se facturează acolo, tot de acolo i se citesc facturile.
+     */
+    public function on(string $connection): self
+    {
+        $clone = clone $this;
+        $clone->connection = $connection;
+        $clone->prepared = false;
+
+        return $clone;
     }
 
     public function connection(): ConnectionInterface
@@ -213,6 +249,39 @@ class OmcReader
         $rows = $this->connection()->select(
             sprintf(self::SUPPLIER_INVOICES_SQL, $this->docTypes()),
             [$name, $since->toDateString()],
+        );
+
+        return array_map(fn ($row) => (array) $row, $rows);
+    }
+
+    /**
+     * Documentele cu numerele astea, din fereastra de date.
+     *
+     * Potrivirea se face pe număr, nu pe numele furnizorului: numele se
+     * scrie altfel de la o bază la alta, numărul facturii nu. Numele se
+     * întoarce totuși, ca să se vadă pe seama cui stă documentul.
+     *
+     * @param  list<string>  $numbers
+     * @return list<array<string, mixed>>
+     */
+    public function documentsByNumber(array $numbers, Carbon $from, Carbon $to): array
+    {
+        $numbers = array_values(array_filter(array_map(
+            fn ($number) => trim((string) $number),
+            $numbers,
+        ), fn (string $number) => $number !== ''));
+
+        if ($numbers === []) {
+            return [];
+        }
+
+        $rows = $this->connection()->select(
+            sprintf(self::DOCUMENTS_BY_NUMBER_SQL, $this->docTypes()),
+            [
+                '{'.implode(',', array_map(fn (string $number) => '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $number).'"', $numbers)).'}',
+                $from->toDateString(),
+                $to->toDateString(),
+            ],
         );
 
         return array_map(fn ($row) => (array) $row, $rows);

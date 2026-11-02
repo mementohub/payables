@@ -567,7 +567,8 @@ function ReconciliationResult({
     onCheckin: (from: string, to: string) => void;
 }) {
     const { supplier, kpis, thresholds } = result;
-    const fromOmc = result.payments_source === 'omc';
+    const fromOmc = result.payments_source !== 'etrip';
+    const fromSecondOmc = result.payments_source === 'omc_secondary';
     const openUnknown = kpis.reduce((n, kpi) => n + kpi.open_unknown, 0);
 
     const invoices = result.invoices.filter((invoice) => {
@@ -661,14 +662,34 @@ function ReconciliationResult({
                         <Alert>
                             <Info />
                             <AlertTitle>
-                                Facturile acestui furnizor sunt în a doua bază
-                                OMC (memento_bus)
+                                Facturile acestui furnizor stau la casa care
+                                refacturează
+                                {result.omc?.label
+                                    ? ` — ${result.omc.label}`
+                                    : ''}
                             </AlertTitle>
                             <AlertDescription>
-                                Nu apar în OMC Christian Tour și nici în Facturi
-                                primite, deci verificarea se face integral pe
-                                eTrip: facturi, plăți alocate și rest de plată
-                                de mai jos vin din eTrip.
+                                {fromSecondOmc ? (
+                                    <>
+                                        Nu apar în OMC Christian Tour și nici în
+                                        Facturi primite, fiindcă furnizorul se
+                                        facturează pe societatea intermediară.
+                                        Scadența și restul de plată de mai jos
+                                        sunt citite din baza ei, potrivite pe
+                                        numărul facturii
+                                        {typeof result.omc?.matched ===
+                                            'number' &&
+                                            ` (${result.omc.matched} din ${result.invoices_total} facturi eTrip găsite acolo)`}
+                                        ; serviciile și costul rămân din eTrip.
+                                    </>
+                                ) : (
+                                    <>
+                                        Nu apar în OMC Christian Tour și nici în
+                                        Facturi primite, iar baza celei de-a
+                                        doua societăți nu e configurată, deci
+                                        verificarea se face integral pe eTrip.
+                                    </>
+                                )}
                             </AlertDescription>
                         </Alert>
                     )}
@@ -1404,19 +1425,32 @@ function InvoiceRow({
                     <td className="px-3 py-2">
                         {invoice.omc ? (
                             <span className="flex flex-col items-start gap-1">
-                                <a
-                                    href={invoiceShow(invoice.omc.id).url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs hover:underline"
-                                >
-                                    {invoice.omc.nr_doc}
-                                    <ExternalLink className="size-3" />
-                                </a>
-                                <WorkflowStatusBadge
-                                    status={invoice.omc.approval_status}
-                                    className="text-xs"
-                                />
+                                {invoice.omc.id !== null ? (
+                                    <a
+                                        href={invoiceShow(invoice.omc.id).url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs hover:underline"
+                                    >
+                                        {invoice.omc.nr_doc}
+                                        <ExternalLink className="size-3" />
+                                    </a>
+                                ) : (
+                                    <span className="text-xs">
+                                        {invoice.omc.nr_doc}
+                                        {invoice.omc.partner && (
+                                            <span className="block text-[11px] text-muted-foreground">
+                                                {invoice.omc.partner}
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
+                                {invoice.omc.id !== null && (
+                                    <WorkflowStatusBadge
+                                        status={invoice.omc.approval_status}
+                                        className="text-xs"
+                                    />
+                                )}
                             </span>
                         ) : (
                             <span className="text-xs text-amber-700 dark:text-amber-400">
@@ -1632,21 +1666,42 @@ function AlertsCard({ result }: { result: Reconciliation }) {
 }
 
 function PaymentsCard({ result }: { result: Reconciliation }) {
-    if (result.payments_source === 'omc') {
+    if (result.payments_source !== 'etrip') {
+        const secondary = result.payments_source === 'omc_secondary';
         const totals = result.omc?.totals ?? [];
 
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle>În OMC</CardTitle>
+                    <CardTitle>
+                        {secondary
+                            ? `În ${result.omc?.label ?? 'a doua bază OMC'}`
+                            : 'În OMC'}
+                    </CardTitle>
                     <CardDescription>
-                        Furnizorul este plătit din OMC Christian Tour: toate
-                        facturile lui din OMC în aceeași perioadă, inclusiv cele
-                        fără pereche în eTrip.
+                        {secondary ? (
+                            <>
+                                Furnizorul se facturează pe societatea care
+                                refacturează, deci facturile lui se citesc din
+                                contabilitatea ei, potrivite pe numărul
+                                documentului
+                                {result.omc?.partners?.length
+                                    ? ` (pe seama: ${result.omc.partners.slice(0, 3).join(', ')})`
+                                    : ''}
+                                . Sumele de mai jos sunt ale facturilor regăsite
+                                acolo.
+                            </>
+                        ) : (
+                            <>
+                                Furnizorul este plătit din OMC Christian Tour:
+                                toate facturile lui din OMC în aceeași perioadă,
+                                inclusiv cele fără pereche în eTrip.
+                            </>
+                        )}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="text-sm">
-                    {result.omc?.partner_id === null ? (
+                    {!secondary && result.omc?.partner_id === null ? (
                         <p className="text-muted-foreground">
                             Furnizorul eTrip nu este legat de un partener OMC.
                             Leagă-l din pagina furnizorului, secțiunea eTrip, ca

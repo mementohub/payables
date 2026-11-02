@@ -77,6 +77,18 @@ return [
     | db_database matches the connection is used, then the one linked to
     | eTrip Christian Tour, then the only company.
     */
+    /*
+    | A doua bază de contabilitate.
+    |
+    | Unii furnizori nu se facturează pe Christian Tour, ci pe casa care
+    | refacturează — Memento International, un SPV de protecție, intermediar
+    | între furnizorul adevărat și noi. eTrip spune pe fișa furnizorului că
+    | e acolo (`use_secondary_omc_connection`); aici se spune în care bază,
+    | ca verificarea să-i poată citi facturile și plățile, nu doar să
+    | constate că lipsesc din OMC Christian Tour.
+    */
+    'secondary_connection' => env('OMC_SECONDARY_CONNECTION', 'omc_mem_int'),
+
     'company_id' => env('OMC_COMPANY_ID'),
 
     'statement_timeout_ms' => (int) env('OMC_STATEMENT_TIMEOUT_MS', 45000),

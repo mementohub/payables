@@ -224,10 +224,13 @@ export type ReconciliationInvoice = {
     correction: boolean;
     invalid_due: boolean;
     omc: {
-        id: number;
+        /** Null când factura e citită din a doua bază, nu din oglinda noastră. */
+        id: number | null;
         nr_doc: string;
         amount: number;
         approval_status: WorkflowStatus | null;
+        partner?: string | null;
+        base?: string | null;
     } | null;
 };
 
@@ -261,7 +264,8 @@ export type Reconciliation = {
         unknown: number;
         etrip_cost: number;
     }[];
-    payments_source: 'etrip' | 'omc';
+    /** „omc_secondary”: casa care refacturează — Memento International. */
+    payments_source: 'etrip' | 'omc' | 'omc_secondary';
     payments: {
         currency: string;
         payments: number;
@@ -273,6 +277,11 @@ export type Reconciliation = {
     }[];
     omc: {
         partner_id: number | null;
+        /** A doua bază: conexiunea, numele ei și câte facturi s-au potrivit. */
+        connection?: string;
+        label?: string;
+        partners?: string[];
+        matched?: number;
         totals: {
             currency: string;
             invoices: number;
