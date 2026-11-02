@@ -129,6 +129,15 @@ Schedule::command('forecast:history', ['--years' => 3])
     ->withoutOverlapping(120)
     ->runInBackground();
 
+// Anii dinainte se refac o dată pe săptămână: planificarea îi citește ca
+// istoric de cheltuieli, iar un an nerefăcut se vede acolo ca o coloană
+// goală. Nu se schimbă des, deci săptămânal e de-ajuns.
+Schedule::command('pnl:build', ['--back' => 2])
+    ->weeklyOn(0, '03:30')
+    ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))
+    ->withoutOverlapping(240)
+    ->runInBackground();
+
 Schedule::command('pnl:build')
     ->dailyAt('05:15')
     ->timezone((string) config('pnl.timezone', 'Europe/Bucharest'))

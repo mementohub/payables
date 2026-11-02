@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ForecastController;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\ForecastHistory;
@@ -486,4 +487,38 @@ test('several routes leave the plan in one move', function () {
     ])->assertForbidden();
 
     expect(PlanLine::query()->where('kind', PlanLine::CHARTER)->count())->toBe(1);
+});
+
+test('the shops salaries and the salary line do not hold the same money twice', function () {
+    $plan = $this->plan;
+
+    // Linia de salarii, cu partea repartizată pe retail deja scoasă.
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => PlanLine::OPEX, 'key' => '20200',
+        'label' => 'Salarii si Contributii · Cheltuieli salarii angajati',
+        'month' => 7, 'amount' => 900_000,
+    ]);
+
+    // Și magazinele, care poartă partea scoasă.
+    PlanLine::query()->create([
+        'plan_id' => $plan->id, 'kind' => PlanLine::RETAIL, 'key' => 'Plaza', 'label' => 'Plaza',
+        'month' => 7, 'volume' => 2, 'unit_cost' => 6_500, 'load' => 0, 'amount' => 600_000, 'rent' => 4_000,
+    ]);
+
+    $payroll = (new ReflectionMethod(ForecastController::class, 'payroll'))
+        ->invoke(app(ForecastController::class), $plan);
+
+    expect($payroll['wages']['lines'])->toEqual(900_000.0)
+        ->and($payroll['wages']['shops'])->toEqual(600_000.0)
+        ->and($payroll['rent']['shops'])->toEqual(4_000.0);
+
+    // Și linia de salarii din plan chiar are partea retailului scoasă: la
+    // semănat, din ea iese cât s-a repartizat pe canal.
+    $engine = app(PlanEngine::class);
+    $out = $engine->compute($plan->fresh(), 'mtd7', 'ras', 'operational');
+    $opex = collect($out['opex'])->firstWhere('key', '20200');
+
+    expect($opex['amount'])->toEqual(900_000.0)
+        // Magazinele stau pe rândurile lor, nu în linia de cheltuieli.
+        ->and(collect($out['retail'])->sum('amount'))->toBeGreaterThan(0.0);
 });

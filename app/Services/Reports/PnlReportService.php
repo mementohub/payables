@@ -43,7 +43,7 @@ class PnlReportService
      * între timp pagina trebuie să se deschidă instant. O oră de cache ar
      * însemna „se construiește…” de câteva ori pe zi, degeaba.
      */
-    private const CACHE_TTL_SECONDS = 7 * 24 * 3600;
+    private const CACHE_TTL_SECONDS = 30 * 24 * 3600;
 
     /** Venitul și costul vânzărilor din eTrip, la data vânzării. */
     public const MODE_OPERATIONAL = 'operational';

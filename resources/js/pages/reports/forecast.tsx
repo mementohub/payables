@@ -382,6 +382,14 @@ type Props = {
     } | null;
     /** Raportul P&L s-a refăcut după ultima împrospătare a planului. */
     stale: { report: string; plan: string } | null;
+    /** Anii de istoric al căror raport P&L nu e construit. */
+    missing: number[];
+    /** Salariile și chiria, împărțite între rețea și restul cheltuielilor. */
+    payroll: {
+        base_year: number;
+        wages: { shops: number; lines: number; base: number };
+        rent: { shops: number; lines: number; base: number };
+    } | null;
     output: Output | null;
     versions: Version[];
     sections: Section[];
@@ -581,6 +589,8 @@ export default function Forecast({
     plans,
     plan,
     stale,
+    missing,
+    payroll,
     output,
     versions,
     sections,
@@ -1505,6 +1515,23 @@ export default function Forecast({
 
                                 return null;
                             })()}
+
+                        {/* Cheltuielile anilor dinainte vin din rapoartele
+                            P&L ale acelor ani. Dacă un an nu e construit,
+                            coloana lui e goală — și se spune, nu se lasă să
+                            pară că n-a fost nimic. */}
+                        {tab === 'configurare' && missing.length > 0 && (
+                            <p className="rounded-md border border-amber-300 bg-amber-50/70 p-3 text-xs dark:border-amber-900 dark:bg-amber-950/30">
+                                Raportul P&amp;L pe{' '}
+                                <strong>{missing.join(' și ')}</strong> nu e
+                                construit, așa că la cheltuieli{' '}
+                                {missing.length === 1
+                                    ? 'coloana lui e goală'
+                                    : 'coloanele lor sunt goale'}
+                                . Se construiește din fila P&amp;L, alegând
+                                anul, sau noaptea, de la sine.
+                            </p>
+                        )}
 
                         {tab === 'configurare' && (
                             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -2875,6 +2902,7 @@ export default function Forecast({
                         {tab === 'configurare' && sheet === 'retail' && (
                             <RetailTable
                                 shops={shops}
+                                payroll={payroll}
                                 planId={plan.id}
                                 planYear={plan.year}
                             />
@@ -4891,10 +4919,12 @@ function PlanHeader({
  */
 function RetailTable({
     shops,
+    payroll,
     planId,
     planYear,
 }: {
     shops: Output['retail'];
+    payroll: Props['payroll'];
     planId: number;
     planYear: number;
 }) {
@@ -4983,6 +5013,73 @@ function RetailTable({
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Aceiași bani pot fi scriși de două ori: o dată pe magazine,
+                unde se bugetează pe oameni și pe spațiu, și încă o dată pe
+                liniile de cheltuieli, unde vin din contabilitate. Partea
+                rețelei e scoasă din linii la semănat — aici se vede
+                socoteala întreagă, ca să poată fi verificată. */}
+            {payroll !== null && (
+                <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                    <p className="font-medium">
+                        Salariile și chiria nu se numără de două ori
+                    </p>
+                    <div className="mt-1 grid gap-x-6 gap-y-1 text-muted-foreground sm:grid-cols-2">
+                        <span>
+                            <strong className="text-foreground">
+                                Salarii:
+                            </strong>{' '}
+                            {lei(payroll.wages.shops)} lei pe magazine +{' '}
+                            {lei(payroll.wages.lines)} lei rămase pe liniile de
+                            cheltuieli ={' '}
+                            <strong className="text-foreground">
+                                {lei(payroll.wages.shops + payroll.wages.lines)}{' '}
+                                lei
+                            </strong>
+                            {payroll.wages.base > 0 && (
+                                <>
+                                    , față de {lei(payroll.wages.base)} lei în{' '}
+                                    {payroll.base_year} (
+                                    {pct(
+                                        payroll.wages.shops +
+                                            payroll.wages.lines,
+                                        payroll.wages.base,
+                                    ) ?? '–'}
+                                    )
+                                </>
+                            )}
+                            .
+                        </span>
+                        <span>
+                            <strong className="text-foreground">Chirie:</strong>{' '}
+                            {lei(payroll.rent.shops)} lei pe magazine +{' '}
+                            {lei(payroll.rent.lines)} lei rămase pe linia de
+                            chirii ={' '}
+                            <strong className="text-foreground">
+                                {lei(payroll.rent.shops + payroll.rent.lines)}{' '}
+                                lei
+                            </strong>
+                            {payroll.rent.base > 0 && (
+                                <>
+                                    , față de {lei(payroll.rent.base)} lei în{' '}
+                                    {payroll.base_year} (
+                                    {pct(
+                                        payroll.rent.shops + payroll.rent.lines,
+                                        payroll.rent.base,
+                                    ) ?? '–'}
+                                    )
+                                </>
+                            )}
+                            .
+                        </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                        Partea repartizată pe canalul retail e scoasă din
+                        liniile de cheltuieli înainte de a ajunge aici, deci
+                        cele două sume de mai sus nu se suprapun.
+                    </p>
+                </div>
+            )}
 
             <Card>
                 <CardContent className="max-h-[72vh] overflow-auto p-0 [&>div]:overflow-visible">

@@ -8,13 +8,17 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('pnl:build {--company= : Compania; implicit toate} {--year= : Anul; implicit cel curent}')]
+#[Signature('pnl:build {--company= : Compania; implicit toate} {--year= : Anul; implicit cel curent} {--back=0 : Câți ani dinainte se mai construiesc}')]
 #[Description('Construiește contul de profit și pierdere (venit și marjă din eTrip, cheltuieli din registrul OMC) și îl pune în cache. Interogarea trece de un minut, deci nu poate fi făcută într-o cerere web.')]
 class BuildPnlReport extends Command
 {
     public function handle(PnlReportService $service): int
     {
         $year = (int) ($this->option('year') ?: now()->year);
+
+        // Și anii dinainte, dacă se cer: planificarea îi citește ca istoric,
+        // iar un an nerefăcut se vede acolo ca o coloană goală.
+        $years = range($year, $year - max(0, (int) $this->option('back')));
 
         $companies = $this->option('company')
             ? Company::query()->whereKey((int) $this->option('company'))->get()
@@ -29,33 +33,43 @@ class BuildPnlReport extends Command
         $failed = 0;
 
         foreach ($companies as $company) {
-            $this->info(sprintf('Se construiește P&L %d pentru %s…', $year, $company->name));
-
-            $startedAt = microtime(true);
-            $built = $service->report($company, $year, forceRefresh: true);
-            $ms = (int) ((microtime(true) - $startedAt) * 1000);
-
-            if (isset($built['error'])) {
-                $this->error(sprintf('  eșuat în %d ms: %s', $ms, $built['error']));
-                $failed++;
-
-                continue;
+            foreach ($years as $one) {
+                $failed += $this->build($service, $company, $one);
             }
-
-            // Raportul se ține pe lună; rezumatul e anul întreg.
-            $report = $service->view($built, 'year');
-
-            $this->line(sprintf(
-                '  gata în %d ms: venit %s lei, marjă %s lei, cheltuieli %s lei, EBITDA %s lei%s',
-                $ms,
-                number_format($report['revenue']['total']['net'], 0, ',', '.'),
-                number_format($report['revenue']['total']['margin'], 0, ',', '.'),
-                number_format($report['totals']['total'], 0, ',', '.'),
-                number_format($report['revenue']['total']['margin'] - $report['totals']['total'], 0, ',', '.'),
-                $report['meta']['reconciles'] ? '' : ' — ATENȚIE: vederile nu închid pe același total',
-            ));
         }
 
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    /** Un an, pentru o companie. Întoarce 1 dacă a eșuat. */
+    private function build(PnlReportService $service, Company $company, int $year): int
+    {
+
+        $this->info(sprintf('Se construiește P&L %d pentru %s…', $year, $company->name));
+
+        $startedAt = microtime(true);
+        $built = $service->report($company, $year, forceRefresh: true);
+        $ms = (int) ((microtime(true) - $startedAt) * 1000);
+
+        if (isset($built['error'])) {
+            $this->error(sprintf('  eșuat în %d ms: %s', $ms, $built['error']));
+
+            return 1;
+        }
+
+        // Raportul se ține pe lună; rezumatul e anul întreg.
+        $report = $service->view($built, 'year');
+
+        $this->line(sprintf(
+            '  gata în %d ms: venit %s lei, marjă %s lei, cheltuieli %s lei, EBITDA %s lei%s',
+            $ms,
+            number_format($report['revenue']['total']['net'], 0, ',', '.'),
+            number_format($report['revenue']['total']['margin'], 0, ',', '.'),
+            number_format($report['totals']['total'], 0, ',', '.'),
+            number_format($report['revenue']['total']['margin'] - $report['totals']['total'], 0, ',', '.'),
+            $report['meta']['reconciles'] ? '' : ' — ATENȚIE: vederile nu închid pe același total',
+        ));
+
+        return 0;
     }
 }

@@ -130,6 +130,15 @@ class ForecastController extends Controller
             // ultima împrospătare — o corectură, o cheltuială mutată — se
             // spune pe față, ca omul să știe că are cifre vechi sub mână.
             'stale' => $plan ? $this->stale($plan) : null,
+            // Anii de istoric al căror raport P&L nu e construit: coloanele
+            // lor de cheltuieli ar fi goale, iar omul trebuie să știe de ce.
+            'missing' => $plan ? array_values(array_filter(
+                $this->historyYears($plan),
+                fn (int $year) => $this->pnl->cached($plan->company, $year) === null,
+            )) : [],
+            // Salariile și chiria rețelei, de două ori numărate dacă nu e
+            // cineva atent: aici se vede că nu sunt.
+            'payroll' => $plan ? $this->payroll($plan) : null,
             'output' => $output,
             // Variantele salvate ale planului: la ele se întoarce omul când
             // vrea să vadă ce propunea acum două săptămâni.
@@ -409,6 +418,71 @@ class ForecastController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Salariile și chiria, împărțite între rețeaua de agenții și restul.
+     *
+     * Aceiași bani pot fi scriși de două ori fără să-și dea cineva seama:
+     * o dată pe magazinele rețelei, unde se bugetează pe oameni și pe
+     * spațiu, și încă o dată pe liniile de cheltuieli ale raportului, unde
+     * vin din contabilitate. De-aia partea repartizată pe canalul retail se
+     * scoate din linii la semănat — iar aici se arată socoteala întreagă,
+     * ca să se poată verifica dintr-o privire.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function payroll(Plan $plan): ?array
+    {
+        $wages = array_map('strval', (array) config('pnl.plan_owners.costs.retail.lines', []));
+        $rents = array_map('strval', (array) config('pnl.plan_owners.costs.retail.rent_lines', []));
+
+        if ($wages === [] && $rents === []) {
+            return null;
+        }
+
+        $report = $this->pnl->cached($plan->company, $plan->base_year);
+        $overlay = $this->builder->openOverlay($plan);
+
+        // Cât a fost linia întreagă în anul de bază, cu tot cu lunile pe
+        // care anul nu le-a trăit încă.
+        $base = function (array $safs) use ($report, $overlay): float {
+            $all = 0.0;
+
+            foreach (($report['lines'] ?? []) as $line) {
+                if (! in_array((string) $line['saf'], $safs, true)) {
+                    continue;
+                }
+
+                foreach (($line['months'] ?? []) as $cell) {
+                    $all += (float) ($cell['total'] ?? 0);
+                }
+            }
+
+            foreach ($safs as $saf) {
+                foreach (($overlay['lines'][$saf] ?? []) as $amount) {
+                    $all += (float) $amount;
+                }
+            }
+
+            return round($all, 2);
+        };
+
+        $shops = $plan->lines()->where('kind', PlanLine::RETAIL);
+
+        return [
+            'base_year' => (int) $plan->base_year,
+            'wages' => [
+                'shops' => round((float) (clone $shops)->sum('amount'), 2),
+                'lines' => round((float) $plan->lines()->where('kind', PlanLine::OPEX)->whereIn('key', $wages)->sum('amount'), 2),
+                'base' => $base($wages),
+            ],
+            'rent' => [
+                'shops' => round((float) (clone $shops)->sum('rent'), 2),
+                'lines' => round((float) $plan->lines()->where('kind', PlanLine::OPEX)->whereIn('key', $rents)->sum('amount'), 2),
+                'base' => $base($rents),
+            ],
+        ];
     }
 
     /**
