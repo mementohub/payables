@@ -71,6 +71,48 @@ test('a procedure gives up its code, its date and the day it starts applying', f
         ->and($fields['issuer']['value'])->toBe('Director Financiar');
 });
 
+test('the signature block names the issuer, not whoever approves a form inside the text', function () {
+    // Pățania unei proceduri adevărate: în cuprins scrie „formularul din Anexa 1,
+    // aprobat de șeful de departament”, iar la coadă „Aprobat de: Director
+    // Financiar”. Emitentul e cel de la semnătură.
+    $text = <<<'TEXT'
+        PROCEDURA OPERAȚIONALĂ nr. PO-FIN-07
+        din 04.11.2026
+
+        3. Solicitarea deplasării
+        Deplasarea se solicită prin formularul din Anexa 1, aprobat de șeful de departament.
+
+        6. Răspunderi
+        Șeful de departament răspunde de oportunitatea deplasării.
+
+        Aprobat de: Director Financiar
+        Elaborat de: Departamentul Financiar
+        TEXT;
+
+    $fields = app(DocumentFields::class)->extract($text, CompanyDocument::TYPE_PROCEDURE);
+
+    expect($fields['issuer']['value'])->toBe('Director Financiar');
+});
+
+test('with no approval box, the issuer is the last role on the page — the one who signs', function () {
+    $text = <<<'TEXT'
+        DECIZIA nr. 3 din 04.11.2026
+        privind ceva
+
+        Directorul General al societății, având în vedere referatul Directorului Economic,
+        DECIDE:
+
+        Art. 1 — Ceva.
+
+        Administrator,
+        Cristian Pandel
+        TEXT;
+
+    $fields = app(DocumentFields::class)->extract($text, CompanyDocument::TYPE_DECISION);
+
+    expect($fields['issuer']['value'])->toBe('Administrator');
+});
+
 test('reading a file fills the document, without touching what a person wrote', function () {
     Storage::fake(config('documents.disk'));
 

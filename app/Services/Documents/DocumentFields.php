@@ -223,14 +223,39 @@ class DocumentFields
      */
     private function issuer(string $flat): ?array
     {
-        if (preg_match('~(?:emis|emisa|aprobat|aprobata)\s+de\s*:?\s*([a-z][a-z\s\-]{3,60})~u', $flat, $m)) {
-            return $this->field($this->titleCase(trim($m[1])), 0.86, 'tipar: emitent');
+        // Întâi rubrica de la semnătură: „Aprobat de: Director Financiar”.
+        //
+        // Două puncte, fiindcă fără ele tiparul se agață de prima frază din
+        // cuprins care spune „aprobat de șeful de departament” — adică de cine
+        // aprobă o cerere, nu de cine a semnat hârtia.
+        if (preg_match('~(?:emis|emisa|aprobat|aprobata|elaborat|intocmit)\s+de\s*:[ \t]*([a-z][a-z \t\-]{3,60})~u', $flat, $m)) {
+            return $this->field($this->titleCase(trim($m[1])), 0.88, 'tipar: rubrica „aprobat de:”');
         }
 
+        // Apoi funcția celui care semnează. Se ia ultima din document, nu
+        // prima: semnătura stă la coadă, iar funcțiile pomenite pe parcurs
+        // sunt ale celor despre care vorbește hârtia.
+        $found = null;
+
         foreach (self::ROLES as $role) {
-            if (preg_match('~\b(?:in\s+calitate\s+de\s+)?('.preg_quote($role, '~').')\b~u', $flat, $m)) {
-                return $this->field($this->titleCase($m[1]), 0.8, 'tipar: funcție semnatar');
+            if (preg_match_all('~\b(?:in\s+calitate\s+de\s+)?('.preg_quote($role, '~').')\b~u', $flat, $all, PREG_OFFSET_CAPTURE) === 0) {
+                continue;
             }
+
+            $last = end($all[1]);
+
+            if ($found === null || $last[1] > $found[1]) {
+                $found = $last;
+            }
+        }
+
+        if ($found !== null) {
+            return $this->field($this->titleCase($found[0]), 0.8, 'tipar: funcție semnatar');
+        }
+
+        // Abia la urmă, forma fără două puncte: „emis de Administrator”.
+        if (preg_match('~(?:emis|emisa)\s+de[ \t]+([a-z][a-z \t\-]{3,60})~u', $flat, $m)) {
+            return $this->field($this->titleCase(trim($m[1])), 0.74, 'tipar: emitent');
         }
 
         return null;
