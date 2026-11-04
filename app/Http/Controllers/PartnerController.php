@@ -76,7 +76,7 @@ class PartnerController extends Controller
             ? SyncService::FURNIZOR_DOC_TYPES
             : SyncService::CLIENT_DOC_TYPES;
 
-        $invoices = $partner->invoices()
+        $invoiceQuery = $partner->invoices()
             ->whereIn('tip_doc', $tipDocsForRole)
             ->when($invoiceSearch, fn ($q, $term) => $q->whereRaw('lower(nr_doc) like ?', ['%'.mb_strtolower($term).'%']))
             ->when($invoiceTipDoc, fn ($q, $type) => $q->where('tip_doc', $type))
@@ -85,7 +85,26 @@ class PartnerController extends Controller
             ->when(
                 in_array($invoicePayment, Invoice::PAYMENT_STATUSES, true),
                 fn ($q) => $q->whereRaw('('.Invoice::paymentStatusSql().') = ?', [$invoicePayment]),
-            )
+            );
+
+        $invoiceTotals = (clone $invoiceQuery)
+            ->selectRaw('moneda, COUNT(*) as cnt, SUM(val_mon) as net, SUM(val_mon_tva) as tva, SUM(val_mon_paid) as paid, SUM(val_mon_storno) as storno')
+            ->groupBy('moneda')
+            ->orderBy('moneda')
+            ->get()
+            ->map(fn ($row) => [
+                'moneda' => $row->moneda,
+                'count' => (int) $row->cnt,
+                'val_mon' => round((float) $row->net, 2),
+                'val_mon_tva' => round((float) $row->tva, 2),
+                'total' => round((float) $row->net + (float) $row->tva, 2),
+                'val_mon_paid' => round((float) $row->paid + (float) $row->storno, 2),
+                'sold' => round((float) $row->net - (float) $row->paid - (float) $row->storno, 2),
+            ])
+            ->values()
+            ->all();
+
+        $invoices = $invoiceQuery
             ->orderByDesc('data_doc')
             ->paginate(15, pageName: 'invoices')
             ->withQueryString()
@@ -148,6 +167,7 @@ class PartnerController extends Controller
                 ] : null,
             ],
             'invoices' => $invoices,
+            'invoiceTotals' => $invoiceTotals,
             'invoiceFilters' => [
                 'search' => $invoiceSearch ?: null,
                 'tip_doc' => $invoiceTipDoc ?: null,

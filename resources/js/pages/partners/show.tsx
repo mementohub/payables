@@ -33,6 +33,7 @@ import {
     Table,
     TableBody,
     TableCell,
+    TableFooter,
     TableHead,
     TableHeader,
     TableRow,
@@ -60,6 +61,7 @@ function formatAmount(value: number, currency: string | null) {
 export default function PartnerShow({
     partner,
     invoices,
+    invoiceTotals,
     invoiceFilters,
     availableTipDocs,
     role,
@@ -584,6 +586,65 @@ export default function PartnerShow({
                                         </TableRow>
                                     ))}
                                 </TableBody>
+                                {invoiceTotals.length > 0 && (
+                                    <TableFooter>
+                                        {invoiceTotals.map((total) => (
+                                            <TableRow
+                                                key={total.moneda ?? 'fara'}
+                                            >
+                                                <TableCell
+                                                    colSpan={4}
+                                                    className="font-medium"
+                                                >
+                                                    Total
+                                                    {invoiceTotals.length > 1
+                                                        ? ` ${total.moneda ?? '—'}`
+                                                        : ''}
+                                                    <span className="ml-2 font-normal text-muted-foreground">
+                                                        {total.count}{' '}
+                                                        {total.count === 1
+                                                            ? 'factură'
+                                                            : 'facturi'}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {formatAmount(
+                                                        total.val_mon,
+                                                        total.moneda,
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {formatAmount(
+                                                        total.val_mon_tva,
+                                                        total.moneda,
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right font-semibold tabular-nums">
+                                                    {formatAmount(
+                                                        total.total,
+                                                        total.moneda,
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs font-normal text-muted-foreground">
+                                                    {Math.abs(total.sold) <
+                                                    0.01 ? (
+                                                        'achitat integral'
+                                                    ) : (
+                                                        <>
+                                                            rest{' '}
+                                                            <span className="font-semibold text-foreground">
+                                                                {formatAmount(
+                                                                    total.sold,
+                                                                    total.moneda,
+                                                                )}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableFooter>
+                                )}
                             </Table>
                         </div>
 

@@ -154,9 +154,21 @@ export type MonthlyTotal = {
     totals: MonthlyCurrencyTotal[];
 };
 
+/** Totalurile facturilor filtrate, pe monedă — nu doar pagina afișată. */
+export type InvoiceTotal = {
+    moneda: string | null;
+    count: number;
+    val_mon: number;
+    val_mon_tva: number;
+    total: number;
+    val_mon_paid: number;
+    sold: number;
+};
+
 export type ShowProps = {
     partner: PartnerDetail;
     invoices: Paginated<InvoiceRow>;
+    invoiceTotals: InvoiceTotal[];
     invoiceFilters: InvoiceFilters;
     availableTipDocs: string[];
     availableDepartments: AvailableDepartment[];
