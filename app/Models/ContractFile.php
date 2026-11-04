@@ -52,6 +52,12 @@ class ContractFile extends Model
         ];
     }
 
+    /** Discul privat pe care stă fișierul. */
+    public function disk(): string
+    {
+        return (string) config('contracts.disk', 'contracts');
+    }
+
     public function contract(): BelongsTo
     {
         return $this->belongsTo(Contract::class);

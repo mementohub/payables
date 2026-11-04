@@ -2,6 +2,7 @@
 
 namespace App\Services\Contracts;
 
+use App\Models\CompanyDocumentFile;
 use App\Models\ContractFile;
 use DOMDocument;
 use DOMElement;
@@ -29,13 +30,13 @@ class WordPreview
     /** Cât text se arată, ca o fereastră să nu încerce să țină o carte. */
     private const LIMIT = 400000;
 
-    public function supports(ContractFile $file): bool
+    public function supports(ContractFile|CompanyDocumentFile $file): bool
     {
         return in_array($this->kind($file), ['docx', 'doc'], true);
     }
 
     /** Pagina de arătat, sau null dacă nu e un document Word. */
-    public function html(ContractFile $file): ?string
+    public function html(ContractFile|CompanyDocumentFile $file): ?string
     {
         return match ($this->kind($file)) {
             'docx' => $this->fromDocx($file),
@@ -44,7 +45,7 @@ class WordPreview
         };
     }
 
-    private function kind(ContractFile $file): ?string
+    private function kind(ContractFile|CompanyDocumentFile $file): ?string
     {
         $name = mb_strtolower((string) $file->original_name);
 
@@ -59,7 +60,7 @@ class WordPreview
      * Word-ul vechi n-are XML, doar text: se arată ce s-a putut citi din el,
      * pe paragrafe.
      */
-    private function fromText(ContractFile $file): string
+    private function fromText(ContractFile|CompanyDocumentFile $file): string
     {
         $text = trim((string) $file->text);
 
@@ -76,9 +77,9 @@ class WordPreview
         return $this->page($body);
     }
 
-    private function fromDocx(ContractFile $file): string
+    private function fromDocx(ContractFile|CompanyDocumentFile $file): string
     {
-        $path = Storage::disk((string) config('contracts.disk', 'contracts'))->path($file->path);
+        $path = Storage::disk($file->disk())->path($file->path);
         $zip = new ZipArchive;
 
         if (! is_file($path) || $zip->open($path) !== true) {

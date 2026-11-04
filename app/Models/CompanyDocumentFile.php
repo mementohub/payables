@@ -43,6 +43,12 @@ class CompanyDocumentFile extends Model
         ];
     }
 
+    /** Discul privat pe care stă fișierul. */
+    public function disk(): string
+    {
+        return (string) config('documents.disk', 'documents');
+    }
+
     public function document(): BelongsTo
     {
         return $this->belongsTo(CompanyDocument::class, 'company_document_id');
