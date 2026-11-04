@@ -48,30 +48,52 @@ class ContractAsk
      */
     public function ask(Contract $contract, string $question): array
     {
+        // Se caută în contract și în actele lui adiționale: ce s-a schimbat
+        // printr-un act adițional e tot atât de în vigoare ca textul de bază,
+        // iar cine întreabă nu trebuie să știe în care hârtie scrie.
+        $documents = $contract->files
+            ->filter(fn (ContractFile $file) => $file->text !== null)
+            ->sortBy(fn (ContractFile $file) => $file->kind === ContractFile::KIND_CONTRACT ? 0 : 1)
+            ->map(fn (ContractFile $file) => [
+                'title' => $file->title(),
+                'text' => (string) $file->text,
+                // Actul adițional bate contractul: el e cel care a schimbat ceva.
+                'weight' => $file->kind === ContractFile::KIND_CONTRACT ? 1.0 : 1.15,
+            ])
+            ->values()
+            ->all();
+
+        return $this->search($documents, $question);
+    }
+
+    /**
+     * Căutarea propriu-zisă, peste orice teanc de hârtii.
+     *
+     * Contractul e doar unul dintre ele: deciziile și procedurile interne se
+     * caută la fel, iar regulile de aici — rudele cuvintelor, paragrafele,
+     * punctajul — sunt scrise o singură dată.
+     *
+     * @param  list<array{title: string, text: string, weight?: float}>  $documents
+     * @return array{question: string, answers: list<array{text: string, score: float, words: list<string>, document: string}>, searched: bool}
+     */
+    public function search(array $documents, string $question): array
+    {
         $words = $this->words($question);
 
         if ($words === []) {
             return ['question' => $question, 'answers' => [], 'searched' => true];
         }
 
-        // Se caută în contract și în actele lui adiționale: ce s-a schimbat
-        // printr-un act adițional e tot atât de în vigoare ca textul de bază,
-        // iar cine întreabă nu trebuie să știe în care hârtie scrie.
-        $documents = $contract->files
-            ->filter(fn (ContractFile $file) => $file->text !== null)
-            ->sortBy(fn (ContractFile $file) => $file->kind === ContractFile::KIND_CONTRACT ? 0 : 1);
-
-        if ($documents->isEmpty()) {
+        if ($documents === []) {
             return ['question' => $question, 'answers' => [], 'searched' => false];
         }
 
         $scored = [];
 
         foreach ($documents as $document) {
-            // Actul adițional bate contractul: el e cel care a schimbat ceva.
-            $weight = $document->kind === ContractFile::KIND_CONTRACT ? 1.0 : 1.15;
+            $weight = (float) ($document['weight'] ?? 1.0);
 
-            foreach ($this->paragraphs((string) $document->text) as $paragraph) {
+            foreach ($this->paragraphs((string) $document['text']) as $paragraph) {
                 $flat = $this->fold($paragraph);
                 $hits = array_values(array_filter($words, fn (string $word) => str_contains($flat, $word)));
 
@@ -87,7 +109,7 @@ class ContractAsk
                     'text' => $paragraph,
                     'score' => round($score, 3),
                     'words' => $hits,
-                    'document' => $document->title(),
+                    'document' => (string) $document['title'],
                 ];
             }
         }

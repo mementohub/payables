@@ -14,6 +14,8 @@ use App\Http\Controllers\Contracts\ContractController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseStatusController;
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\Documents\CompanyDocumentController;
+use App\Http\Controllers\Documents\DocumentReadController;
 use App\Http\Controllers\DueInvoicesController;
 use App\Http\Controllers\EInvoiceController;
 use App\Http\Controllers\EtripSupplierController;
@@ -46,6 +48,19 @@ Route::get('/', HomeController::class)->name('home');
  */
 Route::get('contracte/{token}', [ContractController::class, 'shared'])->name('contracts.shared');
 Route::get('contracte/{token}/fisier', [ContractController::class, 'sharedFile'])->name('contracts.shared.file');
+
+/*
+ * Decizia sau procedura deschisă din mail, fără cont.
+ *
+ * Procedura pleacă pe adresa de grup a companiei, iar cei mai mulți dintre cei
+ * care o primesc n-au cont aici: pagina se deschide cu legătura, iar la capăt
+ * omul își scrie numele și adresa și apasă „am luat la cunoștință”.
+ */
+Route::get('document/{token}', [DocumentReadController::class, 'read'])->name('documents.read');
+Route::get('document/{token}/fisier', [DocumentReadController::class, 'file'])->name('documents.read.file');
+Route::post('document/{token}/luare-la-cunostinta', [DocumentReadController::class, 'consent'])
+    ->middleware('throttle:20,1')
+    ->name('documents.consent');
 
 Route::middleware('auth')->group(function () {
     // Panoul principal adună facturile companiei, deci e al celor care le țin.
@@ -307,6 +322,32 @@ Route::middleware('auth')->group(function () {
         // Ștergerea cu totul e a administratorului: ruta cere rolul, nu doar ecranul.
         Route::delete('contracts/{contract}', [ContractController::class, 'destroy'])->name('contracts.destroy')->middleware('role:admin');
     });
+
+    /*
+     * Registrul deciziilor și al procedurilor interne: două taburi, același
+     * ecran. Îl citește toată lumea din aplicație — de-aia sunt scrise
+     * hârtiile astea —, dar umblă la el numai cine ține documentele.
+     */
+    Route::prefix('documente')->group(function () {
+        Route::get('{type}', [CompanyDocumentController::class, 'index'])->name('documents.index');
+        Route::get('{type}/{document}', [CompanyDocumentController::class, 'show'])->name('documents.show');
+        Route::get('{type}/{document}/fisiere/{file}', [CompanyDocumentController::class, 'download'])->name('documents.files.download');
+        Route::get('{type}/{document}/fisiere/{file}/previzualizare', [CompanyDocumentController::class, 'preview'])->name('documents.files.preview');
+        Route::post('{type}/{document}/intreaba', [CompanyDocumentController::class, 'ask'])->name('documents.ask');
+
+        // Faptele: numai cine ține documentele.
+        Route::middleware('role:contract_management,top_management')->group(function () {
+            Route::post('{type}', [CompanyDocumentController::class, 'store'])->name('documents.store');
+            Route::put('{type}/{document}', [CompanyDocumentController::class, 'update'])->name('documents.update');
+            Route::post('{type}/{document}/fisiere', [CompanyDocumentController::class, 'addFile'])->name('documents.files.store');
+            Route::post('{type}/{document}/trimite', [CompanyDocumentController::class, 'publish'])->name('documents.publish');
+            Route::get('{type}/{document}/luari-la-cunostinta', [CompanyDocumentController::class, 'consents'])->name('documents.consents');
+            Route::post('{type}/{document}/arhiveaza', [CompanyDocumentController::class, 'archive'])->name('documents.archive');
+            Route::post('{type}/bulk/actiune', [CompanyDocumentController::class, 'bulk'])->name('documents.bulk');
+            // Ștergerea cu totul e a administratorului.
+            Route::delete('{type}/{document}', [CompanyDocumentController::class, 'destroy'])->name('documents.destroy')->middleware('role:admin');
+        });
+    })->whereIn('type', ['decizii', 'proceduri']);
 
     Route::get('departments', [DepartmentController::class, 'index'])->name('departments.index')->middleware('role:admin');
     Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store')->middleware('role:admin');

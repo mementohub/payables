@@ -45,6 +45,20 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Deciziile și procedurile interne: același fel de disc privat ca la
+         * contracte, dar al lor, ca să nu se amestece hârtiile casei cu cele
+         * semnate cu alții. Stă în afara directoarelor de release, ca să
+         * treacă nevătămat peste fiecare deployment.
+         */
+        'documents' => [
+            'driver' => 'local',
+            'root' => env('DOCUMENTS_ROOT', env('HOME', '/home/ploi').'/payables-storage/documents'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),

@@ -10,10 +10,12 @@ import {
     DatabaseZap,
     FileCheck2,
     FileSignature,
+    Gavel,
     FileSearch,
     Landmark,
     LayoutGrid,
     ListChecks,
+    NotebookPen,
     Receipt,
     Route,
     ShieldCheck,
@@ -59,6 +61,7 @@ import { index as forecastIndex } from '@/routes/reports/forecast';
 import { index as leasesIndex } from '@/routes/reports/leases';
 import { index as pnlIndex } from '@/routes/reports/pnl';
 import { index as contractsIndex } from '@/routes/contracts';
+import { index as documentsIndex } from '@/routes/documents';
 import { index as routingIndex } from '@/routes/routing';
 import { index as teamIndex } from '@/routes/team';
 import { index as usersIndex } from '@/routes/users';
@@ -264,6 +267,29 @@ const mainNavItems = (
               },
           ]
         : []),
+    /*
+     * Hârtiile casei: deciziile conducerii și procedurile de lucru.
+     *
+     * Le vede toată lumea — de-aia sunt scrise —, dar umblă la ele numai cine
+     * ține documentele. Procedurile au, pe deasupra, luarea la cunoștință:
+     * cine n-a apăsat încă vede semnul pe rândul ei.
+     */
+    {
+        title: 'Documente interne',
+        icon: NotebookPen,
+        children: [
+            {
+                title: 'Decizii',
+                href: documentsIndex('decizii'),
+                icon: Gavel,
+            },
+            {
+                title: 'Proceduri',
+                href: documentsIndex('proceduri'),
+                icon: ClipboardCheck,
+            },
+        ],
+    },
     // Asistentul răspunde cu cifrele companiei, deci stă sub aceeași regulă
     // ca Rapoartele.
     ...(can.reports

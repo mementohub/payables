@@ -73,6 +73,18 @@ class User extends Authenticatable
     }
 
     /**
+     * Registrul de decizii și proceduri: cine umblă la el.
+     *
+     * Citit, îl vede toată lumea din aplicație — de-aia sunt scrise hârtiile
+     * astea, ca să fie citite. Încărcat, schimbat, trimis spre luare la
+     * cunoștință sau șters: numai cine ține documentele și conducerea.
+     */
+    public function canManageDocuments(): bool
+    {
+        return $this->hasRole(self::ROLE_CONTRACTS) || $this->hasRole(self::ROLE_TOP_MANAGEMENT);
+    }
+
+    /**
      * Cine vede contractele tuturor, nu doar pe ale lui.
      *
      * Omul care ține contracte își vede pe ale lui — cele aduse de el sau date
