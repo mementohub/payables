@@ -95,7 +95,7 @@ class CompanyDocumentController extends Controller
             ],
             'ocr' => $reader->available(),
             'limits' => $this->limits(),
-            'consentGroup' => (string) config('documents.consent.group', ''),
+            'consentGroup' => $type === CompanyDocument::TYPE_PROCEDURE ? $this->group() : '',
         ]);
     }
 
@@ -119,7 +119,9 @@ class CompanyDocumentController extends Controller
             // undeva când întrebi, nu abia după ce ai întrebat.
             'ai' => (bool) config('documents.ai.enabled', false)
                 && (string) config('ai.providers.openai.key', '') !== '',
-            'consentGroup' => (string) config('documents.consent.group', ''),
+            // Numai la proceduri: ecranul completează singur adresa de grup, iar
+            // la decizii câmpul rămâne gol, de scris cu mâna.
+            'consentGroup' => $document->isProcedure() ? $this->group() : '',
             'document' => [
                 ...$this->row($document, $this->consentedByMe($request, $document->type)),
                 'object' => $document->object,
@@ -391,10 +393,15 @@ class CompanyDocumentController extends Controller
             return back();
         }
 
-        $emails = $this->emails($validated['emails'] ?? (string) config('documents.consent.group', ''));
+        // Adresa de grup e a procedurilor, nu a documentelor în general: pe ea
+        // stă toată compania. O decizie internă pleacă numai către adresele
+        // scrise anume, ca să nu ajungă din greșeală la toată lumea.
+        $emails = $this->emails($validated['emails'] ?? ($document->isProcedure() ? $this->group() : ''));
 
         if ($emails->isEmpty()) {
-            Inertia::flash('toast', ['type' => 'error', 'message' => 'Nicio adresă bună de e-mail. Pune adresa de grup a companiei.']);
+            Inertia::flash('toast', ['type' => 'error', 'message' => $document->isProcedure()
+                ? 'Nicio adresă bună de e-mail. Pune adresa de grup a companiei.'
+                : 'Scrie adresele către care pleacă decizia. Adresa de grup a companiei e numai pentru proceduri.']);
 
             return back();
         }
@@ -635,6 +642,16 @@ class CompanyDocumentController extends Controller
 
         $disk->deleteDirectory(trim(trim((string) config('documents.path', ''), '/').'/'.$document->id, '/'));
         $document->delete();
+    }
+
+    /**
+     * Adresele de grup pe care pleacă procedurile spre toată compania.
+     *
+     * Pot fi mai multe, despărțite prin virgulă: fiecare primește mailul ei.
+     */
+    private function group(): string
+    {
+        return (string) config('documents.consent.group', '');
     }
 
     /**

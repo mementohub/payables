@@ -151,6 +151,52 @@ test('a colleague with an account is recognised, and the register knows he has r
             ->where('documents.data.0.consents_count', 1));
 });
 
+test('the company mail group is the procedures address, never the decisions one', function () {
+    $decision = CompanyDocument::query()->create([
+        'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2026-0002', 'title' => 'Decizie internă',
+        'status' => CompanyDocument::STATUS_ACTIVE,
+    ]);
+    CompanyDocumentFile::query()->create([
+        'company_document_id' => $decision->id, 'path' => 'd2.txt', 'original_name' => 'd2.txt', 'hash' => 'h9', 'text' => 'Se decide.',
+    ]);
+
+    // Fără adrese scrise anume, decizia nu pleacă nicăieri: nu cade pe adresa
+    // de grup, pe care stă toată compania.
+    $this->actingAs($this->keeper)
+        ->post("/documente/decizii/{$decision->id}/trimite")
+        ->assertRedirect();
+
+    expect($decision->fresh()->published_at)->toBeNull();
+    Mail::assertNothingSent();
+
+    // Nici ecranul nu i-o propune: câmpul vine gol la decizii, plin la proceduri.
+    $this->actingAs($this->keeper)
+        ->get("/documente/decizii/{$decision->id}")
+        ->assertInertia(fn ($page) => $page->where('consentGroup', ''));
+
+    $this->actingAs($this->keeper)
+        ->get("/documente/proceduri/{$this->procedure->id}")
+        ->assertInertia(fn ($page) => $page->where('consentGroup', 'toata-lumea@christiantour.ro'));
+
+    $this->actingAs($this->keeper)
+        ->get('/documente/decizii')
+        ->assertInertia(fn ($page) => $page->where('consentGroup', ''));
+});
+
+test('a procedure goes to every address of the group, each with its own mail', function () {
+    config(['documents.consent.group' => 'central@christiantour.ro,intern@christiantour.ro']);
+
+    $this->actingAs($this->keeper)
+        ->post("/documente/proceduri/{$this->procedure->id}/trimite")
+        ->assertRedirect();
+
+    Mail::assertSent(DocumentNoticeMail::class, 2);
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->hasTo('central@christiantour.ro'));
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->hasTo('intern@christiantour.ro'));
+
+    expect($this->procedure->fresh()->sent_to)->toBe('central@christiantour.ro, intern@christiantour.ro');
+});
+
 test('a decision is communicated, but nobody is asked to take notice of it', function () {
     $decision = CompanyDocument::query()->create([
         'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2026-0001', 'title' => 'Decizie',

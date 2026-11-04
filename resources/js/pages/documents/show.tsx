@@ -158,6 +158,8 @@ export default function DocumentShow({
     });
 
     const publish = useForm({
+        // Adresa de grup vine completată numai la proceduri; o decizie se
+        // trimite către cine scrii tu.
         emails: consentGroup,
         note: '',
         due: paper.consent_due_at ?? '',
@@ -917,7 +919,11 @@ export default function DocumentShow({
                                             </Label>
                                             <Input
                                                 id="publish-emails"
-                                                placeholder="adresa de grup a companiei"
+                                                placeholder={
+                                                    procedure
+                                                        ? 'adresa de grup a companiei'
+                                                        : 'adrese, despărțite prin virgulă'
+                                                }
                                                 value={publish.data.emails}
                                                 onChange={(event) =>
                                                     publish.setData(
