@@ -48,6 +48,10 @@ test('sending a procedure to the company mail group opens the way to consent', f
         ->and($procedure->events()->where('type', 'sent_for_consent')->exists())->toBeTrue();
 
     Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->hasTo('toata-lumea@christiantour.ro'));
+
+    // Subiectul spune din căsuță despre ce e vorba și ce se cere.
+    expect((new DocumentNoticeMail($procedure))->envelope()->subject)
+        ->toBe('Procedură nouă — PRO-2026-0001 · Procedura de decontare a cheltuielilor de deplasare: de citit și de luat la cunoștință');
 });
 
 test('a procedure without a file is not sent anywhere', function () {

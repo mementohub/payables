@@ -36,7 +36,7 @@ class DocumentNoticeMail extends Mailable
                 (string) config('documents.mail.from_name', 'Christian Tour · Documente interne'),
             ),
             subject: $this->document->needsConsent()
-                ? sprintf('Procedură nouă — %s %s: de citit și de luat la cunoștință', $this->document->number, $this->document->title)
+                ? sprintf('Procedură nouă — %s · %s: de citit și de luat la cunoștință', $this->document->number, $this->document->title)
                 : sprintf('%s %s — %s', $this->document->label('one'), $this->document->number, $this->document->title),
         );
     }
