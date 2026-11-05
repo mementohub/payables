@@ -7,6 +7,7 @@ use App\Models\CompanyDocumentFile;
 use App\Models\DocumentConsent;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -94,7 +95,7 @@ test('whoever holds the link reads the procedure and takes notice, without an ac
         ->and($this->procedure->events()->where('type', 'consent')->exists())->toBeTrue();
 
     // Dovada îi pleacă pe chiar adresa scrisă.
-    Mail::assertSent(ConsentReceiptMail::class, fn ($mail) => $mail->hasTo('andrei.popescu@christiantour.ro'));
+    Mail::assertQueued(ConsentReceiptMail::class, fn ($mail) => $mail->hasTo('andrei.popescu@christiantour.ro'));
 });
 
 test('the same address takes notice once, however many times it presses', function () {
@@ -155,7 +156,9 @@ test('a colleague with an account is recognised, and the register knows he has r
             ->where('documents.data.0.consents_count', 1));
 });
 
-test('the company mail group is the procedures address, never the decisions one', function () {
+test('a decision goes to the same company mail groups as a procedure', function () {
+    config(['documents.consent.group' => 'central@christiantour.ro,intern@christiantour.ro']);
+
     $decision = CompanyDocument::query()->create([
         'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2026-0002', 'title' => 'Decizie internă',
         'status' => CompanyDocument::STATUS_ACTIVE,
@@ -164,27 +167,45 @@ test('the company mail group is the procedures address, never the decisions one'
         'company_document_id' => $decision->id, 'path' => 'd2.txt', 'original_name' => 'd2.txt', 'hash' => 'h9', 'text' => 'Se decide.',
     ]);
 
-    // Fără adrese scrise anume, decizia nu pleacă nicăieri: nu cade pe adresa
-    // de grup, pe care stă toată compania.
+    // Fără adrese scrise anume, decizia pleacă tot pe adresele de grup: pe ele
+    // stă toată compania, și deciziile o privesc la fel ca procedurile.
     $this->actingAs($this->keeper)
         ->post("/documente/decizii/{$decision->id}/trimite")
         ->assertRedirect();
 
-    expect($decision->fresh()->published_at)->toBeNull();
-    Mail::assertNothingSent();
+    Mail::assertSent(DocumentNoticeMail::class, 2);
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->hasTo('central@christiantour.ro'));
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->hasTo('intern@christiantour.ro'));
 
-    // Nici ecranul nu i-o propune: câmpul vine gol la decizii, plin la proceduri.
+    $decision->refresh();
+
+    expect($decision->sent_to)->toBe('central@christiantour.ro, intern@christiantour.ro')
+        ->and($decision->published_at)->not->toBeNull()
+        // Pleacă la fel, dar nu cere nimănui să apese: asta rămâne a procedurilor.
+        ->and($decision->consent_due_at)->toBeNull()
+        ->and($decision->needsConsent())->toBeFalse();
+
+    // Iar ecranul le propune la amândouă, nu doar la proceduri.
+    foreach (['decizii', 'proceduri'] as $slug) {
+        $this->actingAs($this->keeper)
+            ->get("/documente/{$slug}")
+            ->assertInertia(fn ($page) => $page->where('consentGroup', 'central@christiantour.ro,intern@christiantour.ro'));
+    }
+
     $this->actingAs($this->keeper)
         ->get("/documente/decizii/{$decision->id}")
-        ->assertInertia(fn ($page) => $page->where('consentGroup', ''));
+        ->assertInertia(fn ($page) => $page->where('consentGroup', 'central@christiantour.ro,intern@christiantour.ro'));
+});
+
+test('without an address nothing leaves, whichever the paper', function () {
+    config(['documents.consent.group' => '']);
 
     $this->actingAs($this->keeper)
-        ->get("/documente/proceduri/{$this->procedure->id}")
-        ->assertInertia(fn ($page) => $page->where('consentGroup', 'toata-lumea@christiantour.ro'));
+        ->post("/documente/proceduri/{$this->procedure->id}/trimite")
+        ->assertRedirect();
 
-    $this->actingAs($this->keeper)
-        ->get('/documente/decizii')
-        ->assertInertia(fn ($page) => $page->where('consentGroup', ''));
+    expect($this->procedure->fresh()->published_at)->toBeNull();
+    Mail::assertNothingSent();
 });
 
 test('a procedure goes to every address of the group, each with its own mail', function () {
@@ -251,4 +272,19 @@ test('the proof comes out as a spreadsheet, for whoever audits it', function () 
         ->assertOk();
 
     expect($response->headers->get('content-type'))->toContain('spreadsheetml');
+});
+
+test('a page left open too long sends the reader back to it, not to an error', function () {
+    // Jetonul de formular moare odată cu sesiunea, iar procedura se citește pe
+    // îndelete, dintr-un mail: cine apasă după trei ore trebuie să se
+    // trezească tot la documentul lui, cu un rând care spune ce s-a întâmplat.
+    Route::get('/_jeton-expirat', fn () => abort(419))->middleware('web');
+
+    $page = url('/document/'.str_repeat('a', 48));
+
+    $this->get('/_jeton-expirat', ['referer' => $page])->assertRedirect($page);
+
+    // Dintr-un loc străin nu-l trimitem înapoi acolo.
+    $this->get('/_jeton-expirat', ['referer' => 'https://alt-site.example/pagina'])
+        ->assertRedirect(url('/'));
 });

@@ -24,8 +24,8 @@ use Throwable;
 /**
  * Documentul deschis din legătura primită pe mail — fără cont.
  *
- * Procedura pleacă pe adresa de grup a companiei, iar din cei care o primesc
- * cei mai mulți n-au cont aici. Așa că pagina e deschisă: cine are legătura
+ * Decizia și procedura pleacă pe adresele de grup ale companiei, iar din cei
+ * care le primesc cei mai mulți n-au cont aici. Așa că pagina e deschisă: cine are legătura
  * citește documentul, iar la capăt apasă „am citit și am luat la cunoștință”,
  * scriindu-și numele și adresa de serviciu.
  *
@@ -170,7 +170,11 @@ class DocumentReadController extends Controller
         ]);
 
         try {
-            Mail::to($consent->email)->send(new ConsentReceiptMail($document, $consent));
+            // Pe rând, nu pe loc: după ce pleacă procedura în toată compania
+            // apasă zeci de oameni deodată, iar o convorbire cu serverul de
+            // mail ar ține pagina în loc o secundă pentru fiecare. Dovada e
+            // deja scrisă, așa că mailul poate pleca din spate.
+            Mail::to($consent->email)->queue(new ConsentReceiptMail($document, $consent));
         } catch (Throwable $e) {
             // Dovada e rândul din registru, nu mailul: dacă mailul nu pleacă,
             // luarea la cunoștință rămâne scrisă.

@@ -285,7 +285,9 @@ export default function DocumentsIndex({
                     <Card>
                         <CardContent className="p-4">
                             <div className="text-xs text-muted-foreground uppercase">
-                                {procedures ? 'Trimise în companie' : 'Comunicate'}
+                                {procedures
+                                    ? 'Trimise în companie'
+                                    : 'Comunicate'}
                             </div>
                             <div className="text-2xl font-semibold tabular-nums">
                                 {summary.published}
@@ -341,12 +343,12 @@ export default function DocumentsIndex({
                     </p>
                 )}
 
-                {procedures && can.manage && consentGroup === '' && (
+                {can.manage && consentGroup === '' && (
                     <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
-                        Nu e pusă adresa de grup a companiei
-                        (<code>DOCUMENTS_CONSENT_GROUP</code> în
-                        configurare), așa că la trimitere trebuie scrisă de
-                        fiecare dată cu mâna.
+                        Nu sunt puse adresele de grup ale companiei (
+                        <code>DOCUMENTS_CONSENT_GROUP</code> în configurare),
+                        așa că la trimitere trebuie scrise de fiecare dată cu
+                        mâna.
                     </p>
                 )}
 
@@ -802,7 +804,8 @@ export default function DocumentsIndex({
                                                 </span>
                                             )}
                                             <div className="text-xs text-muted-foreground">
-                                                {row.owner ?? 'fără responsabil'}
+                                                {row.owner ??
+                                                    'fără responsabil'}
                                             </div>
                                         </TableCell>
                                         <TableCell className="tabular-nums">

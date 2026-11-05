@@ -95,7 +95,7 @@ class CompanyDocumentController extends Controller
             ],
             'ocr' => $reader->available(),
             'limits' => $this->limits(),
-            'consentGroup' => $type === CompanyDocument::TYPE_PROCEDURE ? $this->group() : '',
+            'consentGroup' => $this->group(),
         ]);
     }
 
@@ -121,7 +121,7 @@ class CompanyDocumentController extends Controller
                 && (string) config('ai.providers.openai.key', '') !== '',
             // Numai la proceduri: ecranul completează singur adresa de grup, iar
             // la decizii câmpul rămâne gol, de scris cu mâna.
-            'consentGroup' => $document->isProcedure() ? $this->group() : '',
+            'consentGroup' => $this->group(),
             'document' => [
                 ...$this->row($document, $this->consentedByMe($request, $document->type)),
                 'object' => $document->object,
@@ -372,9 +372,10 @@ class CompanyDocumentController extends Controller
     /**
      * Trimite documentul în companie.
      *
-     * La proceduri, asta e chiar cererea de luare la cunoștință: pleacă pe
-     * adresa de grup, iar legătura din mail e locul unde omul apasă. La
-     * decizii e doar o înștiințare, fără apăsat nimic.
+     * Și deciziile și procedurile pleacă pe adresele de grup ale companiei.
+     * La proceduri, asta e chiar cererea de luare la cunoștință: legătura din
+     * mail e locul unde omul apasă. La decizii e doar o înștiințare, fără
+     * apăsat nimic.
      */
     public function publish(Request $request, string $type, CompanyDocument $document): RedirectResponse
     {
@@ -393,15 +394,13 @@ class CompanyDocumentController extends Controller
             return back();
         }
 
-        // Adresa de grup e a procedurilor, nu a documentelor în general: pe ea
-        // stă toată compania. O decizie internă pleacă numai către adresele
-        // scrise anume, ca să nu ajungă din greșeală la toată lumea.
-        $emails = $this->emails($validated['emails'] ?? ($document->isProcedure() ? $this->group() : ''));
+        // Pe adresele de grup stă toată compania, și deciziile și procedurile
+        // pleacă pe ele. Ce le desparte e ce se cere mai departe: procedura se
+        // ia la cunoștință, decizia doar se aduce la cunoștință.
+        $emails = $this->emails($validated['emails'] ?? $this->group());
 
         if ($emails->isEmpty()) {
-            Inertia::flash('toast', ['type' => 'error', 'message' => $document->isProcedure()
-                ? 'Nicio adresă bună de e-mail. Pune adresa de grup a companiei.'
-                : 'Scrie adresele către care pleacă decizia. Adresa de grup a companiei e numai pentru proceduri.']);
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Nicio adresă bună de e-mail. Pune adresa de grup a companiei.']);
 
             return back();
         }
@@ -645,7 +644,7 @@ class CompanyDocumentController extends Controller
     }
 
     /**
-     * Adresele de grup pe care pleacă procedurile spre toată compania.
+     * Adresele de grup pe care pleacă hârtiile casei spre toată compania.
      *
      * Pot fi mai multe, despărțite prin virgulă: fiecare primește mailul ei.
      */

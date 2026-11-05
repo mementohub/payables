@@ -52,14 +52,18 @@ Route::get('contracte/{token}/fisier', [ContractController::class, 'sharedFile']
 /*
  * Decizia sau procedura deschisă din mail, fără cont.
  *
- * Procedura pleacă pe adresa de grup a companiei, iar cei mai mulți dintre cei
+ * Hârtiile pleacă pe adresele de grup ale companiei, iar cei mai mulți dintre cei
  * care o primesc n-au cont aici: pagina se deschide cu legătura, iar la capăt
  * omul își scrie numele și adresa și apasă „am luat la cunoștință”.
  */
 Route::get('document/{token}', [DocumentReadController::class, 'read'])->name('documents.read');
 Route::get('document/{token}/fisier', [DocumentReadController::class, 'file'])->name('documents.read.file');
+// Numărătoarea e pe adresă de internet, iar un birou întreg iese în lume pe
+// una singură: la o oră după ce pleacă procedura apasă zeci de oameni deodată,
+// de la aceeași adresă. 20 pe minut i-ar fi oprit pe cei de la coadă cu o
+// eroare pe care n-au cum s-o înțeleagă.
 Route::post('document/{token}/luare-la-cunostinta', [DocumentReadController::class, 'consent'])
-    ->middleware('throttle:20,1')
+    ->middleware('throttle:60,1')
     ->name('documents.consent');
 
 Route::middleware('auth')->group(function () {

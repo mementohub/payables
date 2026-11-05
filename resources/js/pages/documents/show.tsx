@@ -158,8 +158,8 @@ export default function DocumentShow({
     });
 
     const publish = useForm({
-        // Adresa de grup vine completată numai la proceduri; o decizie se
-        // trimite către cine scrii tu.
+        // Adresele de grup ale companiei vin completate la amândouă; se pot
+        // șterge, dacă hârtia asta pleacă numai către cineva anume.
         emails: consentGroup,
         note: '',
         due: paper.consent_due_at ?? '',
@@ -402,15 +402,8 @@ export default function DocumentShow({
                                         </div>
                                     </div>
                                     {paper.token !== null && (
-                                        <Button
-                                            className="ml-auto"
-                                            asChild
-                                        >
-                                            <a
-                                                href={
-                                                    paper.read_url ?? '#'
-                                                }
-                                            >
+                                        <Button className="ml-auto" asChild>
+                                            <a href={paper.read_url ?? '#'}>
                                                 Citește și confirmă
                                             </a>
                                         </Button>
@@ -688,7 +681,8 @@ export default function DocumentShow({
                                         </Label>
                                         <Select
                                             value={
-                                                form.data.supersedes_id || 'none'
+                                                form.data.supersedes_id ||
+                                                'none'
                                             }
                                             onValueChange={(value) =>
                                                 form.setData(
@@ -720,7 +714,9 @@ export default function DocumentShow({
                                     </div>
 
                                     <div className="grid gap-1.5">
-                                        <Label htmlFor="notes">Observații</Label>
+                                        <Label htmlFor="notes">
+                                            Observații
+                                        </Label>
                                         <Textarea
                                             id="notes"
                                             rows={2}
@@ -919,11 +915,7 @@ export default function DocumentShow({
                                             </Label>
                                             <Input
                                                 id="publish-emails"
-                                                placeholder={
-                                                    procedure
-                                                        ? 'adresa de grup a companiei'
-                                                        : 'adrese, despărțite prin virgulă'
-                                                }
+                                                placeholder="adrese, despărțite prin virgulă"
                                                 value={publish.data.emails}
                                                 onChange={(event) =>
                                                     publish.setData(
@@ -988,7 +980,7 @@ export default function DocumentShow({
                                     <p className="mt-2 text-xs text-muted-foreground">
                                         {procedure
                                             ? 'Pleacă un mail cu o legătură: cine o deschide citește procedura și apasă „am citit și am luat la cunoștință”, scriindu-și numele și adresa de serviciu. Confirmarea îi vine pe mail.'
-                                            : 'Pleacă un mail cu o legătură către document. Fișierul nu se atașează.'}
+                                            : 'Pleacă un mail cu o legătură către decizie: cine o deschide o citește, fără să aibă nevoie de cont. Fișierul nu se atașează.'}
                                     </p>
                                     {paper.sent_to && (
                                         <p className="mt-2 text-xs text-muted-foreground">
@@ -1060,7 +1052,7 @@ export default function DocumentShow({
                                                     <span className="text-xs text-muted-foreground">
                                                         {one.email}
                                                     </span>
-                                                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                                                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
                                                         {when(one.at)}
                                                     </span>
                                                 </li>

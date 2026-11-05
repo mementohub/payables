@@ -39,6 +39,42 @@ type Props = {
     consents: number;
 };
 
+/** Cheia sub care browserul ține minte cine a apăsat, pe telefonul lui. */
+const WHO = 'luare-la-cunostinta:cine';
+
+/**
+ * Cine are cont e știut; cine n-are și-a scris numele data trecută, iar
+ * procedurile vin una după alta. Îi ținem minte numele și adresa chiar în
+ * browserul lui — la noi nu ajung decât atunci când apasă.
+ */
+const who = (me: { name: string; email: string } | null) => {
+    if (me) {
+        return { name: me.name, email: me.email };
+    }
+
+    try {
+        const saved = JSON.parse(
+            window.localStorage.getItem(WHO) ?? 'null',
+        ) as { name?: string; email?: string } | null;
+
+        return {
+            name: typeof saved?.name === 'string' ? saved.name : '',
+            email: typeof saved?.email === 'string' ? saved.email : '',
+        };
+    } catch {
+        // Browser cu memoria închisă: scrie de mână, ca prima oară.
+        return { name: '', email: '' };
+    }
+};
+
+const remember = (name: string, email: string) => {
+    try {
+        window.localStorage.setItem(WHO, JSON.stringify({ name, email }));
+    } catch {
+        // N-are unde: nu-i nimic de făcut și nici de spus.
+    }
+};
+
 const dmy = (value: string | null) =>
     value === null ? '—' : new Date(value).toLocaleDateString('ro-RO');
 
@@ -72,8 +108,7 @@ export default function DocumentRead({
     const [done, setDone] = useState(mine !== null);
 
     const form = useForm({
-        name: me?.name ?? '',
-        email: me?.email ?? '',
+        ...who(me),
         agreed: false as boolean,
     });
 
@@ -89,7 +124,10 @@ export default function DocumentRead({
 
         form.post(consentRoute(token).url, {
             preserveScroll: true,
-            onSuccess: () => setDone(true),
+            onSuccess: () => {
+                remember(form.data.name, form.data.email);
+                setDone(true);
+            },
         });
     };
 
@@ -351,7 +389,8 @@ export default function DocumentRead({
                                         </Button>
                                         <span className="text-xs text-muted-foreground">
                                             Se înregistrează numele, adresa și
-                                            ceasul. Confirmarea îți vine pe mail.
+                                            ceasul. Confirmarea îți vine pe
+                                            mail.
                                             {consents > 0 &&
                                                 ` Până acum au confirmat ${consents}.`}
                                         </span>

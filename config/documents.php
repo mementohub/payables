@@ -9,8 +9,8 @@
 | privat al aplicației, se citesc cu aceleași unelte ca și contractele
 | (`pdftotext`, `tesseract`), iar fișierele se dau numai prin aplicație.
 |
-| Procedura are pe deasupra luarea la cunoștință: pleacă pe adresa de grup a
-| companiei, iar cine o citește apasă „am citit și am luat la cunoștință”. Cum
+| Amândouă pleacă pe adresele de grup ale companiei. Procedura are pe deasupra
+| luarea la cunoștință: cine o citește apasă „am citit și am luat la cunoștință”. Cum
 | nu toată lumea are cont aici, omul își scrie numele și adresa de serviciu, iar
 | pe adresa aceea pleacă îndată și confirmarea — care e și dovadă, și alarmă
 | dacă altcineva i-a folosit adresa.
@@ -27,14 +27,14 @@ return [
     'max_upload_mb' => (int) env('DOCUMENTS_MAX_UPLOAD_MB', 50),
 
     'consent' => [
-        /** Adresa de grup pe care pleacă procedura, dacă nu se scrie alta. */
+        /** Adresele de grup pe care pleacă documentul, dacă nu se scriu altele. */
         'group' => env('DOCUMENTS_CONSENT_GROUP', ''),
         /** În câte zile se așteaptă răspunsul, dacă nu se pune altă dată. */
         'days' => (int) env('DOCUMENTS_CONSENT_DAYS', 14),
         /** Domeniile de la care se primesc adresele celor care confirmă. */
         'domains' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('DOCUMENTS_CONSENT_DOMAINS', 'christiantour.ro,mementogroup.com')),
+            explode(',', (string) env('DOCUMENTS_CONSENT_DOMAINS', 'christiantour.ro,mementogroup.com,andali.ro')),
         ))),
     ],
 

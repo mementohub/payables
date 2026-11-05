@@ -11,6 +11,23 @@ use App\Services\Maintenance\ApplicationLog;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * Unde se întoarce omul după un jeton expirat: chiar pagina de pe care a
+ * apăsat, dacă e una de-a noastră — după expirare sesiunea nu mai ține minte
+ * pe unde a umblat, așa că `back()` l-ar duce la pagina de pornire, iar pe
+ * aceea cel fără cont n-o poate deschide.
+ */
+$backTo = static function (Request $request): string {
+    $referer = (string) $request->headers->get('referer', '');
+
+    return $referer !== '' && str_starts_with($referer, $request->getSchemeAndHttpHost())
+        ? $referer
+        : url('/');
+};
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -46,7 +63,30 @@ return Application::configure(basePath: dirname(__DIR__))
             KickErpSync::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
+    ->withExceptions(function (Exceptions $exceptions) use ($backTo): void {
+        // „Page Expired”, pe înțelesul omului.
+        //
+        // Jetonul de formular ține cât sesiunea — două ore de tăcere. Pe
+        // paginile aplicației nu prea se întâmplă, dar decizia și procedura se
+        // citesc dintr-un mail, de către oameni fără cont aici: deschid
+        // dimineața, citesc pe îndelete, apasă după prânz. În loc de un ecran
+        // de eroare pe care n-au cum să-l înțeleagă, îi ducem înapoi la
+        // documentul lor, cu jeton nou și cu un rând care spune ce s-a
+        // întâmplat și ce au de făcut. Apărarea rămâne întreagă: jetonul tot
+        // se cere, doar că refuzul lui nu mai arată ca o aplicație stricată.
+        $exceptions->respond(function (Response $response, Throwable $e, Request $request) use ($backTo) {
+            if ($response->getStatusCode() !== 419 || ! $request->hasSession()) {
+                return $response;
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => 'Pagina a stat prea mult deschisă și s-a închis singură. Am redeschis-o: mai apasă o dată.',
+            ]);
+
+            return redirect()->to($backTo($request));
+        });
+
         // Nobody can open a shell on the installation, so every logged
         // exception has to say which request raised it and how much memory
         // that request had taken: a fatal out of memory leaves nothing else
