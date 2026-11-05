@@ -33,7 +33,7 @@ class DocumentNoticeMail extends Mailable
         return new Envelope(
             from: new Address(
                 (string) config('mail.from.address'),
-                (string) config('documents.mail.from_name', 'Christian Tour · Documente interne'),
+                (string) config('documents.mail.from_name', 'Administrator Christian Tour'),
             ),
             subject: $this->document->needsConsent()
                 ? sprintf('Procedură nouă — %s · %s: de citit și de luat la cunoștință', $this->document->number, $this->document->title)

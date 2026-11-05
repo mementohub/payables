@@ -200,81 +200,12 @@ export default function DocumentRead({
                     </CardContent>
                 </Card>
 
-                {paper.files.length > 1 && (
-                    <Card>
-                        <CardContent className="grid gap-1 p-2">
-                            {paper.files.map((one) => (
-                                <button
-                                    key={one.id}
-                                    type="button"
-                                    onClick={() => setOpenId(one.id)}
-                                    className={cn(
-                                        'flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted',
-                                        one.id === openId && 'bg-muted',
-                                    )}
-                                >
-                                    <FileText className="size-4 shrink-0 text-muted-foreground" />
-                                    <span className="min-w-0 flex-1">
-                                        <span className="font-medium">
-                                            {one.title}
-                                        </span>
-                                        <span className="block truncate text-xs text-muted-foreground">
-                                            {one.name}
-                                        </span>
-                                    </span>
-                                    <a
-                                        href={`${url(one.id)}&download=1`}
-                                        onClick={(event) =>
-                                            event.stopPropagation()
-                                        }
-                                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                                        title={`Descarcă ${one.name}`}
-                                    >
-                                        <Download className="size-4" />
-                                    </a>
-                                </button>
-                            ))}
-                        </CardContent>
-                    </Card>
-                )}
-
-                {open === null ? (
-                    <p className="text-sm text-muted-foreground">
-                        Documentul n-are încă niciun fișier încărcat.
-                    </p>
-                ) : isPdf || isWord ? (
-                    <iframe
-                        src={url(open.id)}
-                        title={open.name}
-                        className="h-[75vh] w-full rounded-md border bg-background"
-                    />
-                ) : isImage ? (
-                    <img
-                        src={url(open.id)}
-                        alt={open.name}
-                        className="mx-auto rounded-md border bg-background"
-                    />
-                ) : (
-                    <Card>
-                        <CardContent className="p-4">
-                            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                                <FileText className="size-4" />
-                                {open.name}
-                            </div>
-                            {open.text ? (
-                                <pre className="max-h-[70vh] overflow-auto font-sans text-sm whitespace-pre-wrap">
-                                    {open.text}
-                                </pre>
-                            ) : (
-                                <p className="text-sm text-muted-foreground">
-                                    Fișierul nu se poate arăta în browser.
-                                    Descarcă-l ca să-l citești.
-                                </p>
-                            )}
-                        </CardContent>
-                    </Card>
-                )}
-
+                {/*
+                 * Butonul stă înaintea documentului, nu după el: cine deschide
+                 * legătura de pe telefon vede din prima ce i se cere, fără să
+                 * deruleze zece pagini de procedură. Documentul e chiar
+                 * dedesubt, iar rândul de sub titlu o spune.
+                 */}
                 {needsConsent &&
                     (done || mine !== null ? (
                         <Card className="border-2 border-emerald-600/40">
@@ -298,6 +229,11 @@ export default function DocumentRead({
                                 <CardTitle className="text-base">
                                     Am citit și am luat la cunoștință
                                 </CardTitle>
+                                <p className="text-sm text-muted-foreground">
+                                    {labels.article} e mai jos. Citește-o, apoi
+                                    bifează și apasă — se înregistrează numele
+                                    și ceasul.
+                                </p>
                             </CardHeader>
                             <CardContent>
                                 <form onSubmit={confirm} className="grid gap-3">
@@ -399,6 +335,81 @@ export default function DocumentRead({
                             </CardContent>
                         </Card>
                     ))}
+
+                {paper.files.length > 1 && (
+                    <Card>
+                        <CardContent className="grid gap-1 p-2">
+                            {paper.files.map((one) => (
+                                <button
+                                    key={one.id}
+                                    type="button"
+                                    onClick={() => setOpenId(one.id)}
+                                    className={cn(
+                                        'flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted',
+                                        one.id === openId && 'bg-muted',
+                                    )}
+                                >
+                                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                                    <span className="min-w-0 flex-1">
+                                        <span className="font-medium">
+                                            {one.title}
+                                        </span>
+                                        <span className="block truncate text-xs text-muted-foreground">
+                                            {one.name}
+                                        </span>
+                                    </span>
+                                    <a
+                                        href={`${url(one.id)}&download=1`}
+                                        onClick={(event) =>
+                                            event.stopPropagation()
+                                        }
+                                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                                        title={`Descarcă ${one.name}`}
+                                    >
+                                        <Download className="size-4" />
+                                    </a>
+                                </button>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {open === null ? (
+                    <p className="text-sm text-muted-foreground">
+                        Documentul n-are încă niciun fișier încărcat.
+                    </p>
+                ) : isPdf || isWord ? (
+                    <iframe
+                        src={url(open.id)}
+                        title={open.name}
+                        className="h-[75vh] w-full rounded-md border bg-background"
+                    />
+                ) : isImage ? (
+                    <img
+                        src={url(open.id)}
+                        alt={open.name}
+                        className="mx-auto rounded-md border bg-background"
+                    />
+                ) : (
+                    <Card>
+                        <CardContent className="p-4">
+                            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                                <FileText className="size-4" />
+                                {open.name}
+                            </div>
+                            {open.text ? (
+                                <pre className="max-h-[70vh] overflow-auto font-sans text-sm whitespace-pre-wrap">
+                                    {open.text}
+                                </pre>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Fișierul nu se poate arăta în browser.
+                                    Descarcă-l ca să-l citești.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </div>
     );

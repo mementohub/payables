@@ -31,7 +31,7 @@ class ConsentReceiptMail extends Mailable
         return new Envelope(
             from: new Address(
                 (string) config('mail.from.address'),
-                (string) config('documents.mail.from_name', 'Christian Tour · Documente interne'),
+                (string) config('documents.mail.from_name', 'Administrator Christian Tour'),
             ),
             subject: sprintf('Confirmare: ai luat la cunoștință procedura %s', $this->document->number),
         );

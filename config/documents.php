@@ -50,7 +50,8 @@ return [
     ],
 
     'mail' => [
-        'from_name' => env('DOCUMENTS_MAIL_FROM_NAME', 'Christian Tour · Documente interne'),
+        /** Numele cu care pleacă mailul: cine semnează hârtiile casei. */
+        'from_name' => env('DOCUMENTS_MAIL_FROM_NAME', 'Administrator Christian Tour'),
     ],
 
 ];

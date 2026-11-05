@@ -288,3 +288,11 @@ test('a page left open too long sends the reader back to it, not to an error', f
     $this->get('/_jeton-expirat', ['referer' => 'https://alt-site.example/pagina'])
         ->assertRedirect(url('/'));
 });
+
+test('the mail is signed by the house, not by the application', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite");
+
+    // Cine primește procedura vede în căsuță un nume de om, nu numele unei
+    // aplicații de facturi despre care n-a auzit.
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->envelope()->from?->name === 'Administrator Christian Tour');
+});
