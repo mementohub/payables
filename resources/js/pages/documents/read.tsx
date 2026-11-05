@@ -75,6 +75,68 @@ const remember = (name: string, email: string) => {
     }
 };
 
+/** Cheia sub care browserul ține minte ce hârtii au fost deja confirmate de aici. */
+const DONE = 'luare-la-cunostinta:hartii';
+
+type Signed = { name: string; email: string; at: string };
+
+const signatures = (): Record<string, Signed> => {
+    try {
+        const saved = JSON.parse(
+            window.localStorage.getItem(DONE) ?? '{}',
+        ) as Record<string, Signed> | null;
+
+        return saved && typeof saved === 'object' ? saved : {};
+    } catch {
+        return {};
+    }
+};
+
+/**
+ * Luarea la cunoștință a omului fără cont, ținută minte pe telefonul lui.
+ *
+ * Serverul îl știe pe cel autentificat, dar cei mai mulți deschid legătura din
+ * mail fără cont: pentru ei, a doua oară, pagina n-ar avea de unde ști că au
+ * apăsat deja și le-ar arăta același formular gol. Nu s-ar strica nimic — o
+ * adresă nu se poate scrie de două ori în registru — dar omul ar crede că
+ * prima apăsare nu s-a prins. Așa că ține minte browserul lui, iar dovada
+ * rămâne tot la noi.
+ */
+const signedHere = (token: string): Signed | null =>
+    signatures()[token] ?? null;
+
+const sign = (token: string, name: string, email: string) => {
+    try {
+        const all = signatures();
+        all[token] = { name, email, at: new Date().toISOString() };
+
+        // Hârtiile se adună an de an; ținem minte ultimele, nu tot ce a fost.
+        const keys = Object.keys(all);
+        const keep = keys.length > 60 ? keys.slice(keys.length - 60) : keys;
+
+        window.localStorage.setItem(
+            DONE,
+            JSON.stringify(
+                Object.fromEntries(keep.map((key) => [key, all[key]])),
+            ),
+        );
+    } catch {
+        // Browser cu memoria închisă: va vedea formularul din nou, atât.
+    }
+};
+
+/** „Nu sunt eu” — alt om, pe calculatorul din birou. */
+const forget = (token: string) => {
+    try {
+        const all = signatures();
+        delete all[token];
+        window.localStorage.setItem(DONE, JSON.stringify(all));
+        window.localStorage.removeItem(WHO);
+    } catch {
+        // Nimic de curățat.
+    }
+};
+
 const dmy = (value: string | null) =>
     value === null ? '—' : new Date(value).toLocaleDateString('ro-RO');
 
@@ -106,6 +168,9 @@ export default function DocumentRead({
         paper.files[0]?.id ?? null,
     );
     const [done, setDone] = useState(mine !== null);
+    const [signed, setSigned] = useState<Signed | null>(() =>
+        mine === null ? signedHere(token) : null,
+    );
 
     const form = useForm({
         ...who(me),
@@ -126,6 +191,7 @@ export default function DocumentRead({
             preserveScroll: true,
             onSuccess: () => {
                 remember(form.data.name, form.data.email);
+                sign(token, form.data.name, form.data.email);
                 setDone(true);
             },
         });
@@ -207,20 +273,48 @@ export default function DocumentRead({
                  * dedesubt, iar rândul de sub titlu o spune.
                  */}
                 {needsConsent &&
-                    (done || mine !== null ? (
+                    (done || mine !== null || signed !== null ? (
                         <Card className="border-2 border-emerald-600/40">
                             <CardContent className="flex flex-wrap items-center gap-4 p-5">
                                 <CheckCheck className="size-7 text-emerald-600" />
                                 <div className="text-sm">
                                     <div className="font-medium">
-                                        Am înregistrat luarea la cunoștință.
+                                        {done || mine !== null
+                                            ? 'Am înregistrat luarea la cunoștință.'
+                                            : 'Ai luat deja la cunoștință.'}
                                     </div>
                                     <div className="text-muted-foreground">
                                         {mine
                                             ? `${mine.name} · ${mine.email} · ${when(mine.at)}`
-                                            : 'Confirmarea ți-a plecat pe mail.'}
+                                            : signed && !done
+                                              ? `${signed.name} · ${signed.email} · ${when(signed.at)}`
+                                              : 'Confirmarea ți-a plecat pe mail.'}
                                     </div>
                                 </div>
+                                {/*
+                                 * Calculatorul din birou e al mai multora:
+                                 * cine nu e omul de mai sus își poate scrie
+                                 * numele lui.
+                                 */}
+                                {!done && mine === null && signed !== null && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="ml-auto text-muted-foreground"
+                                        onClick={() => {
+                                            forget(token);
+                                            form.setData({
+                                                name: '',
+                                                email: '',
+                                                agreed: false,
+                                            });
+                                            setSigned(null);
+                                        }}
+                                    >
+                                        Nu sunt eu
+                                    </Button>
+                                )}
                             </CardContent>
                         </Card>
                     ) : (

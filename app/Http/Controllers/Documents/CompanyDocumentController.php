@@ -107,6 +107,8 @@ class CompanyDocumentController extends Controller
             'files.uploadedBy:id,name', 'events.user:id,name', 'consents', 'supersedes:id,number,title,type',
         ]);
 
+        $twins = $this->twins($document->consents);
+
         return Inertia::render('documents/show', [
             'type' => CompanyDocument::slug($document->type),
             'labels' => CompanyDocument::LABELS[$document->type],
@@ -161,6 +163,12 @@ class CompanyDocumentController extends Controller
                     'email' => $consent->email,
                     'at' => $consent->consented_at?->toIso8601String(),
                     'source' => $consent->source,
+                    // Adresa n-are cont în aplicație: nu e o greșeală, dar la
+                    // audit cineva trebuie să spună cine e omul.
+                    'matched' => $consent->matched(),
+                    // Același nume, altă adresă: probabil același om, numărat
+                    // de două ori.
+                    'twin' => $twins[$consent->id] ?? null,
                 ])->values(),
                 'events' => $document->events->map(fn (CompanyDocumentEvent $event) => [
                     'id' => $event->id,
@@ -435,18 +443,57 @@ class CompanyDocumentController extends Controller
         return back();
     }
 
+    /**
+     * Același om, scris cu două adrese.
+     *
+     * Adresa nu se poate repeta — baza nu lasă — așa că o a doua confirmare a
+     * aceluiași om intră numai pe altă scriere a adresei. Nu ștergem nimic și
+     * nu refuzăm nimic: dovada rămâne întreagă, dar rândul își poartă
+     * semnul, ca numărătoarea să nu fie luată de bună fără să se uite cineva
+     * la ea. Doi oameni cu același nume ies și ei aici — de aceea coloana se
+     * cheamă „de verificat”, nu „dublură”.
+     *
+     * @param  Collection<int, DocumentConsent>  $consents
+     * @return array<int, string>
+     */
+    private function twins(Collection $consents): array
+    {
+        $twins = [];
+
+        foreach ($consents->groupBy(fn (DocumentConsent $one) => DocumentConsent::samePerson($one->name)) as $same) {
+            if ($same->count() < 2) {
+                continue;
+            }
+
+            foreach ($same as $one) {
+                $twins[$one->id] = $same->where('id', '!=', $one->id)->pluck('email')->implode(', ');
+            }
+        }
+
+        return $twins;
+    }
+
     /** Registrul de luări la cunoștință, într-o foaie de calcul. */
     public function consents(Request $request, string $type, CompanyDocument $document): StreamedResponse
     {
         $this->belongs($document, $this->type($type));
 
-        $rows = $document->consents()->with('user:id,name')->get()
+        $consents = $document->consents()->with('user:id,name')->get();
+        $twins = $this->twins($consents);
+
+        $rows = $consents
             ->map(fn (DocumentConsent $consent) => [
                 $consent->name,
                 $consent->email,
                 $consent->consented_at?->timezone('Europe/Bucharest')->format('d.m.Y H:i'),
                 $consent->source === DocumentConsent::SOURCE_ACCOUNT ? 'cont aplicație' : 'legătură din mail',
                 $consent->user?->name,
+                // Coloana de la care pornește verificarea, când registrul
+                // ajunge în fața unui auditor.
+                implode('; ', array_filter([
+                    $consent->matched() ? null : 'adresă fără cont în aplicație',
+                    isset($twins[$consent->id]) ? 'același nume ca '.$twins[$consent->id] : null,
+                ])),
                 $consent->ip,
                 $consent->user_agent,
             ])
@@ -456,8 +503,8 @@ class CompanyDocumentController extends Controller
             sprintf('luare-la-cunostinta-%s.xlsx', Str::slug($document->number)),
             [[
                 'name' => 'Luare la cunoștință',
-                'headers' => ['Nume', 'E-mail', 'Data și ora', 'Cum', 'Cont în aplicație', 'IP', 'Browser'],
-                'widths' => [28, 32, 18, 18, 22, 16, 50],
+                'headers' => ['Nume', 'E-mail', 'Data și ora', 'Cum', 'Cont în aplicație', 'De verificat', 'IP', 'Browser'],
+                'widths' => [28, 32, 18, 18, 22, 38, 16, 50],
                 'rows' => $rows,
             ]],
         );

@@ -148,9 +148,11 @@ class DocumentReadController extends Controller
 
         $consent = DocumentConsent::query()->create([
             'company_document_id' => $document->id,
-            // Dacă adresa e a cuiva cu cont, legăm dovada de el, chiar dacă a
-            // apăsat de pe telefon, nelogat.
-            'user_id' => $user?->id ?? User::query()->where('email', $email)->value('id'),
+            // Dovada se leagă de contul adresei scrise, nu de cel din sesiune:
+            // cine e autentificat poate să apese pentru el, dar poate să
+            // deschidă legătura și lângă un coleg fără cont, iar atunci
+            // luarea la cunoștință e a colegului, nu a lui.
+            'user_id' => User::query()->whereRaw('lower(email) = ?', [$email])->value('id'),
             'name' => trim($validated['name']),
             'email' => $email,
             'consented_at' => now(),

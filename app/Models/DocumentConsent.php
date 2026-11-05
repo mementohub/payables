@@ -27,6 +27,35 @@ class DocumentConsent extends Model
         return ['consented_at' => 'datetime'];
     }
 
+    /**
+     * Numele, adus la forma în care același om se recunoaște oricum l-ar scrie.
+     *
+     * Adresa e cheia dovezii și nu se repetă niciodată — dar același om poate
+     * confirma de două ori scriindu-și adresa altfel: azi ion.popescu@, peste
+     * o săptămână i.popescu@. Atunci numele rămâne singurul fir care îi leagă,
+     * așa că îl aducem la litere mici, fără diacritice, cu cuvintele puse în
+     * ordine: „Popescu Ion” și „ion popescu” ies la fel.
+     */
+    public static function samePerson(?string $name): string
+    {
+        $words = preg_split('/[^\p{L}]+/u', mb_strtolower(trim((string) $name)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        $words = array_map(
+            fn (string $word) => strtr($word, ['ă' => 'a', 'â' => 'a', 'î' => 'i', 'ș' => 's', 'ş' => 's', 'ț' => 't', 'ţ' => 't']),
+            $words,
+        );
+
+        sort($words);
+
+        return implode(' ', $words);
+    }
+
+    /** Adresa cu care a confirmat e a cuiva cu cont în aplicație. */
+    public function matched(): bool
+    {
+        return $this->user_id !== null;
+    }
+
     public function document(): BelongsTo
     {
         return $this->belongsTo(CompanyDocument::class, 'company_document_id');

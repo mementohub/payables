@@ -1039,7 +1039,7 @@ export default function DocumentShow({
                                         {paper.consents.map((one) => (
                                             <li
                                                 key={one.id}
-                                                className="flex items-baseline gap-2 border-b pb-1 last:border-0"
+                                                className="flex flex-wrap items-baseline gap-x-2 border-b pb-1 last:border-0"
                                             >
                                                 <span className="font-medium">
                                                     {one.name}
@@ -1050,6 +1050,20 @@ export default function DocumentShow({
                                                 <span className="ml-auto text-xs text-muted-foreground tabular-nums">
                                                     {when(one.at)}
                                                 </span>
+                                                {/*
+                                                 * Nimic nu se refuză și nimic
+                                                 * nu se șterge: rândul doar
+                                                 * spune de ce ar fi de privit
+                                                 * încă o dată, înainte ca
+                                                 * numărul să fie luat de bun.
+                                                 */}
+                                                {(one.twin || !one.matched) && (
+                                                    <span className="w-full text-xs text-amber-600">
+                                                        {one.twin
+                                                            ? `de verificat: același nume ca ${one.twin}`
+                                                            : 'de verificat: adresă fără cont în aplicație'}
+                                                    </span>
+                                                )}
                                             </li>
                                         ))}
                                     </ul>

@@ -72,6 +72,10 @@ export type DocumentConsentRow = {
     email: string;
     at: string | null;
     source: 'link' | 'account';
+    /** Adresa e a cuiva cu cont în aplicație. */
+    matched: boolean;
+    /** Altă adresă, același nume: poate fi același om, numărat de două ori. */
+    twin: string | null;
 };
 
 export type CompanyDocument = DocumentRow & {

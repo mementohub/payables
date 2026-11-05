@@ -352,3 +352,76 @@ test('uploading a paper tells nobody: the sending is done by hand', function () 
 
     Mail::assertSent(DocumentNoticeMail::class, 1);
 });
+
+test('the same man, written with two addresses, is marked for checking', function () {
+    // Adresa nu se poate repeta — dar scrisă altfel trece, și atunci omul e
+    // numărat de două ori. Nu refuzăm nimic: registrul își pune semnul, ca
+    // numărul să nu fie luat de bun fără să se uite cineva la el.
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite");
+    $token = $this->procedure->fresh()->token;
+
+    $this->post("/document/{$token}/luare-la-cunostinta", [
+        'name' => 'Ion Popescu', 'email' => 'ion.popescu@christiantour.ro', 'agreed' => true,
+    ])->assertRedirect();
+
+    $this->post("/document/{$token}/luare-la-cunostinta", [
+        'name' => 'POPESCU ION', 'email' => 'i.popescu@christiantour.ro', 'agreed' => true,
+    ])->assertRedirect();
+
+    expect(DocumentConsent::query()->count())->toBe(2);
+
+    $this->actingAs($this->keeper)
+        ->get("/documente/proceduri/{$this->procedure->id}")
+        ->assertInertia(fn ($page) => $page
+            // Registrul vine cu cea mai nouă confirmare prima.
+            ->where('document.consents.0.twin', 'ion.popescu@christiantour.ro')
+            ->where('document.consents.1.twin', 'i.popescu@christiantour.ro')
+            // Niciuna din cele două adrese n-are cont: și asta se vede.
+            ->where('document.consents.0.matched', false));
+});
+
+test('an address with an account is not marked, and the name is tidied up before comparing', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite");
+    $token = $this->procedure->fresh()->token;
+
+    $this->post("/document/{$token}/luare-la-cunostinta", [
+        'name' => $this->colleague->name, 'email' => $this->colleague->email, 'agreed' => true,
+    ])->assertRedirect();
+
+    $this->actingAs($this->keeper)
+        ->get("/documente/proceduri/{$this->procedure->id}")
+        ->assertInertia(fn ($page) => $page
+            ->where('document.consents.0.matched', true)
+            ->where('document.consents.0.twin', null));
+
+    // Diacriticele, ordinea cuvintelor și literele mari nu fac alt om.
+    expect(DocumentConsent::samePerson('Ștefan-Andrei Pîrvu'))
+        ->toBe(DocumentConsent::samePerson('pirvu stefan andrei'))
+        ->and(DocumentConsent::samePerson('Ion Popescu'))
+        ->not->toBe(DocumentConsent::samePerson('Ioana Popescu'));
+});
+
+test('the consent belongs to the address written, not to whoever is logged in', function () {
+    // Cel cu cont poate deschide legătura lângă un coleg fără cont, de pe
+    // calculatorul lui. Dovada e a colegului: altfel registrul ar arăta că
+    // una și aceeași persoană a luat la cunoștință pentru toată lumea.
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite");
+    $token = $this->procedure->fresh()->token;
+
+    $this->actingAs($this->keeper)
+        ->post("/document/{$token}/luare-la-cunostinta", [
+            'name' => $this->colleague->name, 'email' => $this->colleague->email, 'agreed' => true,
+        ])->assertRedirect();
+
+    $consent = DocumentConsent::query()->firstOrFail();
+
+    expect($consent->user_id)->toBe($this->colleague->id)
+        ->and($consent->source)->toBe(DocumentConsent::SOURCE_LINK);
+
+    // Iar o adresă care nu e a nimănui din aplicație rămâne nelegată.
+    $this->post("/document/{$token}/luare-la-cunostinta", [
+        'name' => 'Mihai Dobre', 'email' => 'mihai.dobre@christiantour.ro', 'agreed' => true,
+    ])->assertRedirect();
+
+    expect(DocumentConsent::query()->where('email', 'mihai.dobre@christiantour.ro')->value('user_id'))->toBeNull();
+});
