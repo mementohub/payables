@@ -2,6 +2,7 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import {
     Archive,
     ArrowLeft,
+    BellRing,
     CheckCheck,
     Download,
     Eye,
@@ -43,6 +44,7 @@ import {
     destroy as destroyRoute,
     index as documentsIndex,
     publish as publishRoute,
+    remind as remindRoute,
     show as documentShow,
     update as updateRoute,
 } from '@/routes/documents';
@@ -164,6 +166,8 @@ export default function DocumentShow({
         due: paper.consent_due_at ?? '',
     });
 
+    const reminder = useForm({});
+
     const version = useForm<{ files: File[]; kind: string; label: string }>({
         files: [],
         kind: 'annex',
@@ -183,6 +187,17 @@ export default function DocumentShow({
         publish.post(publishRoute({ type, document: paper.id }).url, {
             preserveScroll: true,
             onSuccess: () => publish.reset('note'),
+        });
+    };
+
+    /*
+     * Programul trimite singur aducerea aminte cu o zi înainte de termen;
+     * butonul ăsta e pentru hârtiile la care trebuie insistat, oricând
+     * altcândva. Pleacă pe aceleași adrese ca hârtia.
+     */
+    const remindCompany = () => {
+        reminder.post(remindRoute({ type, document: paper.id }).url, {
+            preserveScroll: true,
         });
     };
 
@@ -989,6 +1004,31 @@ export default function DocumentShow({
                                             <b>{paper.sent_to}</b>, pe{' '}
                                             {when(paper.published_at)}.
                                         </p>
+                                    )}
+                                    {paper.needs_consent && (
+                                        <div className="mt-3 border-t pt-3">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={reminder.processing}
+                                                onClick={remindCompany}
+                                            >
+                                                {reminder.processing ? (
+                                                    <Loader2 className="size-4 animate-spin" />
+                                                ) : (
+                                                    <BellRing className="size-4" />
+                                                )}
+                                                Adu aminte acum
+                                            </Button>
+                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                {paper.consent_reminded_at
+                                                    ? `Ultima aducere aminte a plecat pe ${when(paper.consent_reminded_at)}.`
+                                                    : 'N-a plecat încă nicio aducere aminte.'}{' '}
+                                                Cu o zi înainte de termen pleacă
+                                                oricum una singură.
+                                            </p>
+                                        </div>
                                     )}
                                     {paper.read_url && (
                                         <p className="mt-2 text-xs break-all text-muted-foreground">

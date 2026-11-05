@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Contracts\ContractReader;
 use App\Services\Contracts\WordPreview;
 use App\Services\Documents\DocumentAnswer;
+use App\Services\Documents\DocumentReminder;
 use App\Services\Xlsx\XlsxWorkbook;
 use Carbon\CarbonInterface;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -439,6 +440,34 @@ class CompanyDocumentController extends Controller
         Inertia::flash('toast', $sent === []
             ? ['type' => 'error', 'message' => 'Documentul s-a pregătit, dar mailul n-a putut pleca. Uită-te în jurnalul aplicației.']
             : ['type' => 'success', 'message' => $document->label('article').' a plecat spre luare la cunoștință către '.implode(', ', $sent).'.']);
+
+        return back();
+    }
+
+    /**
+     * Aducerea aminte, apăsată cu mâna.
+     *
+     * Programul o trimite singur cu o zi înainte de termen; butonul ăsta e
+     * pentru procedurile la care trebuie insistat, oricând altcândva. Pleacă
+     * pe aceleași adrese pe care a plecat hârtia — altele n-avem, iar pe
+     * grupuri stă toată compania.
+     */
+    public function remind(Request $request, string $type, CompanyDocument $document, DocumentReminder $reminder): RedirectResponse
+    {
+        $this->belongs($document, $this->type($type));
+        $this->mustManage($request);
+
+        if (! $document->needsConsent()) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => $document->label('article').' n-a plecat încă în companie: n-are cui să-i amintească.']);
+
+            return back();
+        }
+
+        $sent = $reminder->send($document, $request->user());
+
+        Inertia::flash('toast', $sent === []
+            ? ['type' => 'error', 'message' => 'Aducerea aminte n-a putut pleca. Uită-te în jurnalul aplicației.']
+            : ['type' => 'success', 'message' => 'Aducerea aminte a plecat către '.implode(', ', $sent).'.']);
 
         return back();
     }
@@ -873,6 +902,7 @@ class CompanyDocumentController extends Controller
             'published_at' => $document->published_at?->toIso8601String(),
             'sent_to' => $document->sent_to,
             'consent_due_at' => $document->consent_due_at?->toDateString(),
+            'consent_reminded_at' => $document->consent_reminded_at?->toIso8601String(),
             'needs_consent' => $document->needsConsent(),
             'consents_count' => $document->consents_count ?? ($document->relationLoaded('consents') ? $document->consents->count() : $document->consents()->count()),
             'i_consented' => isset($mine[$document->id]),

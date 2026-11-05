@@ -32,6 +32,8 @@ export type DocumentRow = {
     published_at: string | null;
     sent_to: string | null;
     consent_due_at: string | null;
+    /** Când a plecat ultima aducere aminte. */
+    consent_reminded_at: string | null;
     /** Procedură trimisă: cere „am luat la cunoștință”. */
     needs_consent: boolean;
     consents_count: number;

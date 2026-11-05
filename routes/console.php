@@ -148,3 +148,18 @@ Schedule::command('cashflow:build')
     ->timezone((string) config('cashflow.timezone', 'Europe/Bucharest'))
     ->withoutOverlapping(120)
     ->runInBackground();
+
+/*
+ * Cu o zi înainte de termen, hârtiile care încă așteaptă luarea la cunoștință
+ * își aduc singure aminte.
+ *
+ * Pe adresele de grup stă toată compania și nimeni nu poate fi scos dintr-o
+ * listă de distribuție, așa că mailul ajunge și la cel care a confirmat deja —
+ * de aceea îi spune din prima că n-are nimic de făcut. Ora e scrisă cu fusul
+ * nostru: serverul ține ceasul la Greenwich.
+ */
+Schedule::command('documents:remind')
+    ->dailyAt((string) config('documents.consent.remind_hour', '09:00'))
+    ->timezone('Europe/Bucharest')
+    ->when(fn () => (bool) config('documents.consent.remind', true))
+    ->withoutOverlapping();

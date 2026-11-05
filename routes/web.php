@@ -345,6 +345,7 @@ Route::middleware('auth')->group(function () {
             Route::put('{type}/{document}', [CompanyDocumentController::class, 'update'])->name('documents.update');
             Route::post('{type}/{document}/fisiere', [CompanyDocumentController::class, 'addFile'])->name('documents.files.store');
             Route::post('{type}/{document}/trimite', [CompanyDocumentController::class, 'publish'])->name('documents.publish');
+            Route::post('{type}/{document}/aminteste', [CompanyDocumentController::class, 'remind'])->name('documents.remind');
             Route::get('{type}/{document}/luari-la-cunostinta', [CompanyDocumentController::class, 'consents'])->name('documents.consents');
             Route::post('{type}/{document}/arhiveaza', [CompanyDocumentController::class, 'archive'])->name('documents.archive');
             Route::post('{type}/bulk/actiune', [CompanyDocumentController::class, 'bulk'])->name('documents.bulk');

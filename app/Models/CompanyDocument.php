@@ -63,6 +63,7 @@ class CompanyDocument extends Model
             'effective_at' => 'date',
             'expires_at' => 'date',
             'consent_due_at' => 'date',
+            'consent_reminded_at' => 'datetime',
             'published_at' => 'datetime',
             'archived_at' => 'datetime',
             'tags' => 'array',

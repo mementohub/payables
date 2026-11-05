@@ -31,6 +31,10 @@ return [
         'group' => env('DOCUMENTS_CONSENT_GROUP', ''),
         /** În câte zile se așteaptă răspunsul, dacă nu se pune altă dată. */
         'days' => (int) env('DOCUMENTS_CONSENT_DAYS', 14),
+        /** Aducerea aminte, trimisă singură cu o zi înainte de termen. */
+        'remind' => (bool) env('DOCUMENTS_CONSENT_REMIND', true),
+        /** La ce oră pleacă, ora României. */
+        'remind_hour' => env('DOCUMENTS_CONSENT_REMIND_HOUR', '09:00'),
         /** Domeniile de la care se primesc adresele celor care confirmă. */
         'domains' => array_values(array_filter(array_map(
             'trim',

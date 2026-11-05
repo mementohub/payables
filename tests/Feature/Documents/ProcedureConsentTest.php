@@ -2,6 +2,7 @@
 
 use App\Mail\ConsentReceiptMail;
 use App\Mail\DocumentNoticeMail;
+use App\Mail\DocumentReminderMail;
 use App\Models\CompanyDocument;
 use App\Models\CompanyDocumentFile;
 use App\Models\DocumentConsent;
@@ -424,4 +425,104 @@ test('the consent belongs to the address written, not to whoever is logged in', 
     ])->assertRedirect();
 
     expect(DocumentConsent::query()->where('email', 'mihai.dobre@christiantour.ro')->value('user_id'))->toBeNull();
+});
+
+test('with a day left, the paper reminds the company by itself', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", [
+        'emails' => 'central@christiantour.ro, intern@christiantour.ro',
+        'due' => now()->addDay()->toDateString(),
+    ]);
+
+    $this->artisan('documents:remind')->assertSuccessful();
+
+    // Pe aceleași adrese pe care a plecat hârtia, fiindcă altele n-avem.
+    Mail::assertSent(DocumentReminderMail::class, 2);
+    Mail::assertSent(DocumentReminderMail::class, fn ($mail) => $mail->hasTo('central@christiantour.ro'));
+    Mail::assertSent(DocumentReminderMail::class, fn ($mail) => $mail->hasTo('intern@christiantour.ro'));
+
+    $procedure = $this->procedure->fresh();
+
+    expect($procedure->consent_reminded_at)->not->toBeNull()
+        ->and($procedure->events()->where('type', 'reminded')->exists())->toBeTrue();
+
+    expect((new DocumentReminderMail($procedure))->envelope()->subject)
+        ->toBe('Mâine e ultima zi — Procedură PRO-2026-0001 · Procedura de decontare a cheltuielilor de deplasare: de luat la cunoștință');
+
+    // Programul rulează în fiecare zi: a doua trecere nu mai trimite nimic.
+    $this->artisan('documents:remind')->assertSuccessful();
+    Mail::assertSent(DocumentReminderMail::class, 2);
+});
+
+test('nothing is remembered for a deadline that is still far, or for a paper that never left', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", [
+        'due' => now()->addDays(6)->toDateString(),
+    ]);
+
+    $this->artisan('documents:remind')->assertSuccessful();
+
+    Mail::assertNotSent(DocumentReminderMail::class);
+
+    // Și o hârtie care n-a plecat în companie n-are cui să-i amintească.
+    $draft = CompanyDocument::query()->create([
+        'type' => CompanyDocument::TYPE_DECISION,
+        'number' => 'DEC-2026-0009',
+        'title' => 'Ciornă',
+        'status' => CompanyDocument::STATUS_ACTIVE,
+        'consent_due_at' => now()->addDay()->toDateString(),
+    ]);
+
+    $this->artisan('documents:remind')->assertSuccessful();
+    Mail::assertNotSent(DocumentReminderMail::class);
+
+    $this->actingAs($this->keeper)
+        ->post("/documente/decizii/{$draft->id}/aminteste")
+        ->assertRedirect();
+
+    Mail::assertNotSent(DocumentReminderMail::class);
+});
+
+test('the button reminds whenever it is pressed, and does not block the one before the deadline', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", [
+        'emails' => 'central@christiantour.ro',
+        'due' => now()->addDays(10)->toDateString(),
+    ]);
+
+    $this->actingAs($this->keeper)
+        ->post("/documente/proceduri/{$this->procedure->id}/aminteste")
+        ->assertRedirect();
+
+    Mail::assertSent(DocumentReminderMail::class, 1);
+    expect($this->procedure->fresh()->consent_reminded_at)->not->toBeNull();
+
+    // Peste câteva zile, cu o zi înainte de termen, programul își face
+    // treaba oricum: aducerea aminte apăsată cu mâna săptămâna trecută nu-l
+    // oprește.
+    $this->procedure->fresh()->forceFill([
+        'consent_due_at' => now()->addDay()->toDateString(),
+        'consent_reminded_at' => now()->subDays(7),
+    ])->save();
+
+    $this->artisan('documents:remind')->assertSuccessful();
+
+    Mail::assertSent(DocumentReminderMail::class, 2);
+});
+
+test('the reminder says how much time is left, whichever day it is pressed', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", [
+        'due' => now()->addDay()->toDateString(),
+    ]);
+
+    $tomorrow = new DocumentReminderMail($this->procedure->fresh());
+
+    expect($tomorrow->days())->toBe(1)
+        ->and($tomorrow->urgency()['badge'])->toStartWith('Mâine, ');
+
+    $this->procedure->fresh()->forceFill(['consent_due_at' => now()->toDateString()])->save();
+    expect((new DocumentReminderMail($this->procedure->fresh()))->urgency()['badge'])->toStartWith('Azi, ');
+
+    $this->procedure->fresh()->forceFill(['consent_due_at' => now()->subDays(2)->toDateString()])->save();
+    expect((new DocumentReminderMail($this->procedure->fresh()))->urgency()['badge'])->toStartWith('Termenul a trecut pe ');
+
+    $this->procedure->fresh()->forceFill(['consent_due_at' => now()->addDays(4)->toDateString()])->save();
+    expect((new DocumentReminderMail($this->procedure->fresh()))->urgency()['badge'])->toBe('Mai sunt 4 zile: termenul e '.now()->addDays(4)->format('d.m.Y').'.');
 });
