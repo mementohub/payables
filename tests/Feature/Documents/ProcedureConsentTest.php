@@ -6,6 +6,7 @@ use App\Models\CompanyDocument;
 use App\Models\CompanyDocumentFile;
 use App\Models\DocumentConsent;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -315,4 +316,39 @@ test('the mail is signed by the house, not by the application', function () {
     // Cine primește procedura vede în căsuță un nume de om, nu numele unei
     // aplicații de facturi despre care n-a auzit.
     Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->envelope()->from?->name === 'Administrator Christian Tour');
+});
+
+test('uploading a paper tells nobody: the sending is done by hand', function () {
+    // Încărcarea doar pune hârtia în registru și o dă la citit. Dacă ar pleca
+    // singură, o ciornă greșit urcată ar ajunge în toată compania.
+    $this->actingAs($this->keeper)
+        ->post('/documente/proceduri', ['files' => [UploadedFile::fake()->create('Procedura noua.pdf', 40, 'application/pdf')]])
+        ->assertRedirect();
+
+    $fresh = CompanyDocument::query()->ofType(CompanyDocument::TYPE_PROCEDURE)->latest('id')->firstOrFail();
+
+    // N-a plecat nicăieri: n-are nici ceasul trimiterii, nici legătura pe
+    // care s-ar deschide din afară, deci nici n-are cine s-o ia la cunoștință.
+    expect($fresh->published_at)->toBeNull()
+        ->and($fresh->token)->toBeNull()
+        ->and($fresh->sent_to)->toBeNull()
+        ->and($fresh->needsConsent())->toBeFalse();
+
+    Mail::assertNothingSent();
+    Mail::assertNothingQueued();
+
+    // Nici versiunea pusă peste o procedură deja trimisă nu dă de veste din
+    // nou: mailul pleacă o dată, când apeși „Trimite”.
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite");
+
+    Mail::assertSent(DocumentNoticeMail::class, 1);
+
+    $this->actingAs($this->keeper)
+        ->post("/documente/proceduri/{$this->procedure->id}/fisiere", [
+            'files' => [UploadedFile::fake()->create('Anexa 2.pdf', 10, 'application/pdf')],
+            'kind' => 'annex',
+        ])
+        ->assertRedirect();
+
+    Mail::assertSent(DocumentNoticeMail::class, 1);
 });
