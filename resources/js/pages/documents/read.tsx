@@ -44,7 +44,7 @@ const WHO = 'luare-la-cunostinta:cine';
 
 /**
  * Cine are cont e știut; cine n-are și-a scris numele data trecută, iar
- * procedurile vin una după alta. Îi ținem minte numele și adresa chiar în
+ * hârtiile vin una după alta. Îi ținem minte numele și adresa chiar în
  * browserul lui — la noi nu ajung decât atunci când apasă.
  */
 const who = (me: { name: string; email: string } | null) => {
@@ -90,7 +90,7 @@ const when = (value: string | null) =>
  * Documentul deschis din legătura primită pe mail.
  *
  * Pagina stă singură, fără meniul aplicației: cel care o deschide poate să nu
- * aibă cont aici. La proceduri, dedesubt stă chiar formularul de luare la
+ * aibă cont aici. Sus, înaintea documentului, stă formularul de luare la
  * cunoștință.
  */
 export default function DocumentRead({

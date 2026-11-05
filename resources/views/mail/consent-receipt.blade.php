@@ -34,7 +34,7 @@
                                 </td>
                                 <td style="padding-left:12px;vertical-align:middle;">
                                     <div style="font-family:{{ $titleFont }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
-                                    <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">Proceduri interne</div>
+                                    <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">{{ $document->label('many') }} interne</div>
                                 </td>
                             </tr>
                         </table>
@@ -58,7 +58,7 @@
                             <tr>
                                 <td style="padding:14px 16px;">
                                     <div style="font-family:{{ $titleFont }};font-size:15px;font-weight:700;">{{ $document->title }}</div>
-                                    <div style="font-size:12px;color:{{ $muted }};margin-top:2px;">Procedura {{ $document->number }}</div>
+                                    <div style="font-size:12px;color:{{ $muted }};margin-top:2px;">{{ $document->label('article') }} {{ $document->number }}</div>
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;font-size:13px;">
                                         <tr>
                                             <td style="padding:3px 0;color:{{ $muted }};">Nume</td>
@@ -82,8 +82,8 @@
                 <tr>
                     <td style="padding:14px 28px 26px;border-top:1px solid {{ $line }};">
                         <p style="margin:14px 0 0;font-size:11px;line-height:1.6;color:{{ $muted }};text-align:center;">
-                            Dacă nu tu ai apăsat, spune-i Departamentului care ține procedurile — mailul a plecat pe adresa scrisă în formular.
-                            Procedura rămâne de citit oricând la <a href="{{ $url }}" style="color:{{ $ink }};">această legătură</a>.
+                            Dacă nu tu ai apăsat, spune-i departamentului care ține documentele interne — mailul a plecat pe adresa scrisă în formular.
+                            {{ $document->label('article') }} rămâne de citit oricând la <a href="{{ $url }}" style="color:{{ $ink }};">această legătură</a>.
                         </p>
                     </td>
                 </tr>

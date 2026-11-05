@@ -38,9 +38,8 @@ use Throwable;
  * Registrul deciziilor și al procedurilor interne.
  *
  * Un singur ecran pentru amândouă: se deosebesc prin ce sunt — decizia se dă,
- * procedura se învață —, nu prin cum se țin. Deosebirea care contează e la
- * coadă: procedura pleacă spre toată compania și fiecare om apasă „am luat la
- * cunoștință”.
+ * procedura se învață —, nu prin cum se țin. Drumul e același până la capăt:
+ * pleacă spre toată compania și fiecare om apasă „am luat la cunoștință”.
  *
  * Toată lumea din aplicație citește registrul; umblă la el numai cine ține
  * documentele (`contract_management`, `top_management`) și administratorul.
@@ -119,8 +118,8 @@ class CompanyDocumentController extends Controller
             // undeva când întrebi, nu abia după ce ai întrebat.
             'ai' => (bool) config('documents.ai.enabled', false)
                 && (string) config('ai.providers.openai.key', '') !== '',
-            // Numai la proceduri: ecranul completează singur adresa de grup, iar
-            // la decizii câmpul rămâne gol, de scris cu mâna.
+            // Ecranul completează singur adresele de grup ale companiei; se
+            // șterg, dacă hârtia pleacă numai către cineva anume.
             'consentGroup' => $this->group(),
             'document' => [
                 ...$this->row($document, $this->consentedByMe($request, $document->type)),
@@ -372,10 +371,9 @@ class CompanyDocumentController extends Controller
     /**
      * Trimite documentul în companie.
      *
-     * Și deciziile și procedurile pleacă pe adresele de grup ale companiei.
-     * La proceduri, asta e chiar cererea de luare la cunoștință: legătura din
-     * mail e locul unde omul apasă. La decizii e doar o înștiințare, fără
-     * apăsat nimic.
+     * Și deciziile și procedurile pleacă pe adresele de grup ale companiei, iar
+     * asta e chiar cererea de luare la cunoștință: legătura din mail e locul
+     * unde omul citește și apasă.
      */
     public function publish(Request $request, string $type, CompanyDocument $document): RedirectResponse
     {
@@ -395,8 +393,7 @@ class CompanyDocumentController extends Controller
         }
 
         // Pe adresele de grup stă toată compania, și deciziile și procedurile
-        // pleacă pe ele. Ce le desparte e ce se cere mai departe: procedura se
-        // ia la cunoștință, decizia doar se aduce la cunoștință.
+        // pleacă pe ele.
         $emails = $this->emails($validated['emails'] ?? $this->group());
 
         if ($emails->isEmpty()) {
@@ -411,9 +408,7 @@ class CompanyDocumentController extends Controller
             'token' => $document->token ?? Str::random(48),
             'published_at' => $document->published_at ?? now(),
             'sent_to' => $emails->implode(', '),
-            'consent_due_at' => $document->isProcedure()
-                ? ($validated['due'] ?? now()->addDays((int) config('documents.consent.days', 14))->toDateString())
-                : null,
+            'consent_due_at' => $validated['due'] ?? now()->addDays((int) config('documents.consent.days', 14))->toDateString(),
             'status' => $document->status === CompanyDocument::STATUS_DRAFT ? CompanyDocument::STATUS_ACTIVE : $document->status,
         ])->save();
 
@@ -428,14 +423,14 @@ class CompanyDocumentController extends Controller
             }
         }
 
-        $this->event($document, $request->user(), $document->isProcedure() ? 'sent_for_consent' : 'sent', $emails->implode(', '), [
+        $this->event($document, $request->user(), 'sent_for_consent', $emails->implode(', '), [
             'mailed' => $sent,
             'due' => $document->consent_due_at?->toDateString(),
         ]);
 
         Inertia::flash('toast', $sent === []
             ? ['type' => 'error', 'message' => 'Documentul s-a pregătit, dar mailul n-a putut pleca. Uită-te în jurnalul aplicației.']
-            : ['type' => 'success', 'message' => ($document->isProcedure() ? 'Procedura a plecat spre luare la cunoștință către ' : 'Documentul a plecat către ').implode(', ', $sent).'.']);
+            : ['type' => 'success', 'message' => $document->label('article').' a plecat spre luare la cunoștință către '.implode(', ', $sent).'.']);
 
         return back();
     }

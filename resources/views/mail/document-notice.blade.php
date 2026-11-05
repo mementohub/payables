@@ -35,7 +35,7 @@
                                 <td style="padding-left:12px;vertical-align:middle;">
                                     <div style="font-family:{{ $titleFont }};font-size:17px;font-weight:800;color:{{ $ink }};">Christian Tour</div>
                                     <div style="font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:{{ $muted }};">
-                                        {{ $consent ? 'Proceduri interne' : 'Documente interne' }}
+                                        {{ $consent ? $document->label('many').' interne' : 'Documente interne' }}
                                     </div>
                                 </td>
                             </tr>
@@ -47,7 +47,7 @@
                     <td style="padding:26px 28px 0;">
                         <h1 style="margin:0 0 6px;font-family:{{ $titleFont }};font-size:19px;font-weight:800;color:{{ $ink }};">
                             @if ($consent)
-                                Ai de citit o procedură
+                                Ai de citit o {{ mb_strtolower($document->label('one')) }}
                             @else
                                 {{ $document->label('article') }} {{ $document->number }}
                             @endif
@@ -112,7 +112,7 @@
                     <td style="padding:14px 28px 26px;border-top:1px solid {{ $line }};">
                         <p style="margin:14px 0 0;font-size:11px;line-height:1.6;color:{{ $muted }};text-align:center;">
                             @if ($consent)
-                                Luarea la cunoștință se face o singură dată, de fiecare om. Ce apeși se trece în registrul procedurii, cu numele, adresa și ceasul.
+                                Luarea la cunoștință se face o singură dată, de fiecare om. Ce apeși se trece în registru, cu numele, adresa și ceasul.
                             @else
                                 Documentul nu e atașat: stă în aplicație, iar legătura îl deschide oricând.
                             @endif

@@ -12,8 +12,8 @@ use Illuminate\Support\Collection;
  * O hârtie a casei: o decizie sau o procedură internă.
  *
  * Spre deosebire de contract, n-are cealaltă parte și n-are valoare. Are un
- * emitent, o dată de la care se aplică și — la proceduri — oamenii care au
- * apăsat „am luat la cunoștință”.
+ * emitent, o dată de la care se aplică și oamenii care au apăsat „am luat la
+ * cunoștință”.
  */
 class CompanyDocument extends Model
 {
@@ -150,10 +150,17 @@ class CompanyDocument extends Model
         return $this->published_at !== null;
     }
 
-    /** Numai procedurile trimise cer luarea la cunoștință. */
+    /**
+     * Orice hârtie trimisă în companie cere luarea la cunoștință.
+     *
+     * La început o cereau numai procedurile; deciziile conducerii se dovedesc
+     * însă la fel de importante de dovedit citite, așa că amândouă trec prin
+     * aceeași pagină și prin același registru. Cât timp stă în ciornă, nu cere
+     * nimic: n-a plecat la nimeni.
+     */
     public function needsConsent(): bool
     {
-        return $this->isProcedure() && $this->isPublished();
+        return $this->isPublished();
     }
 
     public function label(string $which = 'one'): string

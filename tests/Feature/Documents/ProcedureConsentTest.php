@@ -181,9 +181,9 @@ test('a decision goes to the same company mail groups as a procedure', function 
 
     expect($decision->sent_to)->toBe('central@christiantour.ro, intern@christiantour.ro')
         ->and($decision->published_at)->not->toBeNull()
-        // Pleacă la fel, dar nu cere nimănui să apese: asta rămâne a procedurilor.
-        ->and($decision->consent_due_at)->toBeNull()
-        ->and($decision->needsConsent())->toBeFalse();
+        // Și cere la fel luarea la cunoștință, cu termenul din configurare.
+        ->and($decision->consent_due_at?->toDateString())->toBe(now()->addDays(14)->toDateString())
+        ->and($decision->needsConsent())->toBeTrue();
 
     // Iar ecranul le propune la amândouă, nu doar la proceduri.
     foreach (['decizii', 'proceduri'] as $slug) {
@@ -222,7 +222,7 @@ test('a procedure goes to every address of the group, each with its own mail', f
     expect($this->procedure->fresh()->sent_to)->toBe('central@christiantour.ro, intern@christiantour.ro');
 });
 
-test('a decision is communicated, but nobody is asked to take notice of it', function () {
+test('a decision is taken notice of exactly like a procedure', function () {
     $decision = CompanyDocument::query()->create([
         'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2026-0001', 'title' => 'Decizie',
         'status' => CompanyDocument::STATUS_ACTIVE,
@@ -232,20 +232,40 @@ test('a decision is communicated, but nobody is asked to take notice of it', fun
     ]);
 
     $this->actingAs($this->keeper)
-        ->post("/documente/decizii/{$decision->id}/trimite", ['emails' => 'cineva@christiantour.ro'])
+        ->post("/documente/decizii/{$decision->id}/trimite", ['emails' => 'cineva@christiantour.ro', 'due' => '2026-12-01'])
         ->assertRedirect();
 
     $decision->refresh();
 
     expect($decision->published_at)->not->toBeNull()
-        ->and($decision->consent_due_at)->toBeNull()
-        ->and($decision->needsConsent())->toBeFalse();
+        ->and($decision->consent_due_at?->toDateString())->toBe('2026-12-01')
+        ->and($decision->needsConsent())->toBeTrue();
 
-    // Legătura o deschide, dar n-are ce confirma nimeni pe ea.
-    $this->get("/document/{$decision->token}")->assertOk();
+    // Mailul spune din subiect ce fel de hârtie e și ce are omul de făcut.
+    Mail::assertSent(DocumentNoticeMail::class, fn ($mail) => $mail->envelope()->subject === 'Decizie nouă — DEC-2026-0001 · Decizie: de citit și de luat la cunoștință');
+
+    // Iar cel fără cont o citește și apasă, pe aceeași pagină ca la proceduri.
+    $this->get("/document/{$decision->token}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('needsConsent', true));
+
     $this->post("/document/{$decision->token}/luare-la-cunostinta", [
         'name' => 'Andrei Popescu', 'email' => 'andrei.popescu@christiantour.ro', 'agreed' => true,
-    ])->assertNotFound();
+    ])->assertRedirect();
+
+    $consent = DocumentConsent::query()->where('company_document_id', $decision->id)->sole();
+
+    expect($consent->name)->toBe('Andrei Popescu')
+        ->and($consent->source)->toBe(DocumentConsent::SOURCE_LINK);
+
+    Mail::assertQueued(ConsentReceiptMail::class);
+
+    // Și dovada iese în foaia de calcul, din registrul deciziilor.
+    $response = $this->actingAs($this->keeper)
+        ->get("/documente/decizii/{$decision->id}/luari-la-cunostinta")
+        ->assertOk();
+
+    expect($response->headers->get('content-type'))->toContain('spreadsheetml');
 });
 
 test('a link to a procedure that was never sent opens nothing', function () {

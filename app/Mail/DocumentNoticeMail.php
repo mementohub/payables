@@ -35,8 +35,11 @@ class DocumentNoticeMail extends Mailable
                 (string) config('mail.from.address'),
                 (string) config('documents.mail.from_name', 'Administrator Christian Tour'),
             ),
+            // „Procedură nouă — PRO-2026-0001 · Concediul de odihnă: de citit
+            // și de luat la cunoștință” — subiectul spune din căsuță ce fel de
+            // hârtie e și ce are omul de făcut cu ea.
             subject: $this->document->needsConsent()
-                ? sprintf('Procedură nouă — %s · %s: de citit și de luat la cunoștință', $this->document->number, $this->document->title)
+                ? sprintf('%s nouă — %s · %s: de citit și de luat la cunoștință', $this->document->label('one'), $this->document->number, $this->document->title)
                 : sprintf('%s %s — %s', $this->document->label('one'), $this->document->number, $this->document->title),
         );
     }

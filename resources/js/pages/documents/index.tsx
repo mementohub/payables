@@ -163,7 +163,6 @@ export default function DocumentsIndex({
     limits,
     consentGroup,
 }: Props) {
-    const procedures = type === 'proceduri';
     const [search, setSearch] = useState(String(filters.search ?? ''));
     const [refused, setRefused] = useState<string | null>(null);
     const uploader = useRef<HTMLInputElement>(null);
@@ -285,9 +284,7 @@ export default function DocumentsIndex({
                     <Card>
                         <CardContent className="p-4">
                             <div className="text-xs text-muted-foreground uppercase">
-                                {procedures
-                                    ? 'Trimise în companie'
-                                    : 'Comunicate'}
+                                Trimise în companie
                             </div>
                             <div className="text-2xl font-semibold tabular-nums">
                                 {summary.published}
@@ -307,18 +304,14 @@ export default function DocumentsIndex({
                     <Card>
                         <CardContent className="p-4">
                             <div className="text-xs text-muted-foreground uppercase">
-                                {procedures
-                                    ? 'Luări la cunoștință'
-                                    : 'Fișiere citite'}
+                                Luări la cunoștință
                             </div>
                             <div className="text-2xl font-semibold tabular-nums">
-                                {procedures ? summary.consents : summary.total}
+                                {summary.consents}
                             </div>
-                            {procedures && (
-                                <div className="text-xs text-muted-foreground">
-                                    pe toate procedurile
-                                </div>
-                            )}
+                            <div className="text-xs text-muted-foreground">
+                                pe {labels.many.toLowerCase()} de aici
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -712,11 +705,7 @@ export default function DocumentsIndex({
                                             onSort={sortBy}
                                         />
                                     ))}
-                                    {procedures && (
-                                        <TableHead>
-                                            Luare la cunoștință
-                                        </TableHead>
-                                    )}
+                                    <TableHead>Luare la cunoștință</TableHead>
                                     {can.delete && <TableHead />}
                                 </TableRow>
                             </TableHeader>
@@ -817,37 +806,34 @@ export default function DocumentsIndex({
                                         <TableCell>
                                             <StatusBadge status={row.status} />
                                         </TableCell>
-                                        {procedures && (
-                                            <TableCell>
-                                                {!row.needs_consent ? (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        netrimisă
-                                                    </span>
-                                                ) : row.i_consented ? (
-                                                    <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">
-                                                        <CheckCheck className="size-3.5" />
-                                                        ai confirmat ·{' '}
-                                                        {row.consents_count} în
-                                                        total
-                                                    </span>
-                                                ) : (
-                                                    <Link
-                                                        href={
-                                                            documentShow({
-                                                                type,
-                                                                document:
-                                                                    row.id,
-                                                            }).url
-                                                        }
-                                                        className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
-                                                    >
-                                                        de citit ·{' '}
-                                                        {row.consents_count} au
-                                                        confirmat
-                                                    </Link>
-                                                )}
-                                            </TableCell>
-                                        )}
+                                        <TableCell>
+                                            {!row.needs_consent ? (
+                                                <span className="text-xs text-muted-foreground">
+                                                    netrimisă
+                                                </span>
+                                            ) : row.i_consented ? (
+                                                <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">
+                                                    <CheckCheck className="size-3.5" />
+                                                    ai confirmat ·{' '}
+                                                    {row.consents_count} în
+                                                    total
+                                                </span>
+                                            ) : (
+                                                <Link
+                                                    href={
+                                                        documentShow({
+                                                            type,
+                                                            document: row.id,
+                                                        }).url
+                                                    }
+                                                    className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+                                                >
+                                                    de citit ·{' '}
+                                                    {row.consents_count} au
+                                                    confirmat
+                                                </Link>
+                                            )}
+                                        </TableCell>
                                         {can.delete && (
                                             <TableCell className="text-right">
                                                 <Button

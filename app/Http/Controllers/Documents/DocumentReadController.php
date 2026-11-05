@@ -121,7 +121,7 @@ class DocumentReadController extends Controller
             'name.min' => 'Scrie numele întreg, nu o inițială.',
             'email.required' => 'Scrie adresa ta de serviciu.',
             'email.email' => 'Adresa nu pare bună.',
-            'agreed.accepted' => 'Bifează că ai citit procedura.',
+            'agreed.accepted' => 'Bifează că ai citit '.mb_strtolower($document->label('article')).'.',
         ]);
 
         $email = mb_strtolower(trim($validated['email']));

@@ -138,7 +138,6 @@ export default function DocumentShow({
     people,
     others,
 }: Props) {
-    const procedure = type === 'proceduri';
     const uploader = useRef<HTMLInputElement>(null);
     const [previewing, setPreviewing] = useState<DocumentFile | null>(null);
 
@@ -362,10 +361,10 @@ export default function DocumentShow({
                 </div>
 
                 {/*
-                 * Pentru cel care doar citește: butonul cu care ia procedura la
+                 * Pentru cel care doar citește: butonul cu care ia hârtia la
                  * cunoștință, chiar aici, fără să mai caute mailul.
                  */}
-                {procedure && paper.needs_consent && (
+                {paper.needs_consent && (
                     <Card
                         className={cn(
                             'border-2',
@@ -380,7 +379,9 @@ export default function DocumentShow({
                                     <CheckCheck className="size-6 text-emerald-600" />
                                     <div className="text-sm">
                                         <div className="font-medium">
-                                            Ai luat procedura la cunoștință.
+                                            Ai luat{' '}
+                                            {labels.article.toLowerCase()} la
+                                            cunoștință.
                                         </div>
                                         <div className="text-muted-foreground">
                                             Confirmarea ți-a plecat pe mail și
@@ -392,8 +393,8 @@ export default function DocumentShow({
                                 <>
                                     <div className="text-sm">
                                         <div className="font-medium">
-                                            Procedura asta trebuie citită și
-                                            luată la cunoștință.
+                                            {labels.article} asta trebuie citită
+                                            și luată la cunoștință.
                                         </div>
                                         <div className="text-muted-foreground">
                                             {paper.consent_due_at
@@ -899,9 +900,7 @@ export default function DocumentShow({
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-base">
-                                        {procedure
-                                            ? 'Trimite spre luare la cunoștință'
-                                            : 'Trimite în companie'}
+                                        Trimite spre luare la cunoștință
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
@@ -925,25 +924,23 @@ export default function DocumentShow({
                                                 }
                                             />
                                         </div>
-                                        {procedure && (
-                                            <div className="grid gap-1.5">
-                                                <Label htmlFor="publish-due">
-                                                    De citit până la
-                                                </Label>
-                                                <Input
-                                                    id="publish-due"
-                                                    type="date"
-                                                    className="w-44"
-                                                    value={publish.data.due}
-                                                    onChange={(event) =>
-                                                        publish.setData(
-                                                            'due',
-                                                            event.target.value,
-                                                        )
-                                                    }
-                                                />
-                                            </div>
-                                        )}
+                                        <div className="grid gap-1.5">
+                                            <Label htmlFor="publish-due">
+                                                De citit până la
+                                            </Label>
+                                            <Input
+                                                id="publish-due"
+                                                type="date"
+                                                className="w-44"
+                                                value={publish.data.due}
+                                                onChange={(event) =>
+                                                    publish.setData(
+                                                        'due',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                            />
+                                        </div>
                                         <Textarea
                                             rows={2}
                                             placeholder="un rând de însoțire, dacă vrei"
@@ -978,9 +975,13 @@ export default function DocumentShow({
                                         )}
                                     </form>
                                     <p className="mt-2 text-xs text-muted-foreground">
-                                        {procedure
-                                            ? 'Pleacă un mail cu o legătură: cine o deschide citește procedura și apasă „am citit și am luat la cunoștință”, scriindu-și numele și adresa de serviciu. Confirmarea îi vine pe mail.'
-                                            : 'Pleacă un mail cu o legătură către decizie: cine o deschide o citește, fără să aibă nevoie de cont. Fișierul nu se atașează.'}
+                                        Pleacă un mail cu o legătură: cine o
+                                        deschide citește{' '}
+                                        {labels.article.toLowerCase()} și apasă
+                                        „am citit și am luat la cunoștință”,
+                                        scriindu-și numele și adresa de
+                                        serviciu. N-are nevoie de cont aici, iar
+                                        confirmarea îi vine pe mail.
                                     </p>
                                     {paper.sent_to && (
                                         <p className="mt-2 text-xs text-muted-foreground">
@@ -1004,64 +1005,57 @@ export default function DocumentShow({
                             </Card>
                         )}
 
-                        {procedure && (
-                            <Card>
-                                <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-                                    <CardTitle className="text-base">
-                                        Au luat la cunoștință (
-                                        {paper.consents.length})
-                                    </CardTitle>
-                                    {can.manage &&
-                                        paper.consents.length > 0 && (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                asChild
+                        <Card>
+                            <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+                                <CardTitle className="text-base">
+                                    Au luat la cunoștință (
+                                    {paper.consents.length})
+                                </CardTitle>
+                                {can.manage && paper.consents.length > 0 && (
+                                    <Button variant="outline" size="sm" asChild>
+                                        <a
+                                            href={
+                                                consentsRoute({
+                                                    type,
+                                                    document: paper.id,
+                                                }).url
+                                            }
+                                        >
+                                            <FileSpreadsheet className="size-4" />
+                                            xlsx
+                                        </a>
+                                    </Button>
+                                )}
+                            </CardHeader>
+                            <CardContent>
+                                {paper.consents.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">
+                                        {paper.needs_consent
+                                            ? 'N-a confirmat nimeni încă.'
+                                            : `${labels.article} n-a plecat încă spre companie.`}
+                                    </p>
+                                ) : (
+                                    <ul className="grid max-h-80 gap-1 overflow-auto text-sm">
+                                        {paper.consents.map((one) => (
+                                            <li
+                                                key={one.id}
+                                                className="flex items-baseline gap-2 border-b pb-1 last:border-0"
                                             >
-                                                <a
-                                                    href={
-                                                        consentsRoute({
-                                                            type,
-                                                            document: paper.id,
-                                                        }).url
-                                                    }
-                                                >
-                                                    <FileSpreadsheet className="size-4" />
-                                                    xlsx
-                                                </a>
-                                            </Button>
-                                        )}
-                                </CardHeader>
-                                <CardContent>
-                                    {paper.consents.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground">
-                                            {paper.needs_consent
-                                                ? 'N-a confirmat nimeni încă.'
-                                                : 'Procedura n-a plecat încă spre companie.'}
-                                        </p>
-                                    ) : (
-                                        <ul className="grid max-h-80 gap-1 overflow-auto text-sm">
-                                            {paper.consents.map((one) => (
-                                                <li
-                                                    key={one.id}
-                                                    className="flex items-baseline gap-2 border-b pb-1 last:border-0"
-                                                >
-                                                    <span className="font-medium">
-                                                        {one.name}
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {one.email}
-                                                    </span>
-                                                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                                                        {when(one.at)}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )}
+                                                <span className="font-medium">
+                                                    {one.name}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {one.email}
+                                                </span>
+                                                <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                                                    {when(one.at)}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </CardContent>
+                        </Card>
 
                         <Card>
                             <CardHeader>
