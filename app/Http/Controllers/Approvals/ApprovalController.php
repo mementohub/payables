@@ -9,11 +9,13 @@ use App\Models\InvoiceDepartmentApproval;
 use App\Models\User;
 use App\Services\Approvals\ApprovalPresenter;
 use App\Services\Approvals\InvoiceWorkflow;
+use App\Services\Invoices\InvoicePresenter;
 use App\Services\Notifications\WorkflowNotifier;
 use App\Services\Routing\DepartmentAssigner;
 use App\Services\Xlsx\XlsxWriter;
 use App\Support\ViewAs;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -32,6 +34,56 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class ApprovalController extends Controller
 {
     public function __construct(private ApprovalPresenter $presenter) {}
+
+    /**
+     * Factura, așa cum o cere cel care semnează: ce s-a cumpărat, ce a decis
+     * fiecare departament și ce a scris acolo, plus tot ce s-a vorbit pe
+     * factură.
+     *
+     * Căsuța arăta până acum numai insigna „Aprobat” și numele celui care a
+     * dat-o; motivul scris de el stătea ascuns într-un sfat de ecran, iar
+     * factura se deschidea în altă filă. Cine semnează final trebuie să le
+     * aibă pe amândouă sub ochi, fără să piardă coada.
+     */
+    public function preview(Request $request, Invoice $invoice, InvoicePresenter $invoices): JsonResponse
+    {
+        abort_unless(
+            Invoice::query()->whereKey($invoice->getKey())->visibleTo($request->user())->exists(),
+            403,
+            'Factura este a altui departament.',
+        );
+
+        $invoice->load([
+            ...ApprovalPresenter::relations(),
+            'company:id,name',
+            'details',
+            'events' => fn ($query) => $query->orderByDesc('created_at')->orderByDesc('id'),
+            'events.user:id,name,email',
+            'events.department:id,name',
+        ]);
+
+        return response()->json([
+            'invoice' => [
+                ...$this->presenter->invoice($invoice),
+                'company' => $invoice->company?->name,
+                'val_mon_tva' => (float) $invoice->val_mon_tva,
+                'emitent' => $invoice->emitent,
+                // Ce s-a cumpărat, pe linii: fără asta, „87.580,93 lei” nu
+                // spune nimănui nimic.
+                'lines' => $invoice->details->map(fn ($row) => [
+                    'id' => $row->id,
+                    'articol' => $row->articol,
+                    'detail' => $row->detaliu_articol,
+                    'quantity' => (float) $row->cant,
+                    'unit' => $row->um,
+                    'price' => (float) $row->pret,
+                    'account' => $row->account,
+                    'place' => $row->loc,
+                ])->values()->all(),
+            ],
+            'timeline' => $invoices->timelinePayload($invoice),
+        ]);
+    }
 
     public function index(Request $request): Response
     {

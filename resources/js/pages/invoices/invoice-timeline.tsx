@@ -234,6 +234,21 @@ export function InvoiceTimeline({
                 )}
             </Form>
 
+            <TimelineEvents events={events} />
+        </div>
+    );
+}
+
+/**
+ * Ce s-a întâmplat cu factura, fără cutia de scris.
+ *
+ * Aceeași cronologie se citește și din căsuța de aprobări, unde nu se scrie
+ * nimic: cine semnează final vrea să vadă ce a lăsat departamentul, nu să
+ * înceapă o discuție nouă.
+ */
+export function TimelineEvents({ events }: { events: TimelineEvent[] }) {
+    return (
+        <>
             {events.length === 0 ? (
                 <p className="rounded-md border border-dashed border-sidebar-border/70 px-4 py-6 text-center text-sm text-muted-foreground dark:border-sidebar-border">
                     Nicio activitate până acum.
@@ -292,6 +307,6 @@ export function InvoiceTimeline({
                     })}
                 </ol>
             )}
-        </div>
+        </>
     );
 }

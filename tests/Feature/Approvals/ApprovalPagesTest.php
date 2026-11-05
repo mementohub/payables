@@ -313,3 +313,31 @@ test('the inbox totals what is due and hands out the same list as a file', funct
 
     expect(strlen($file->streamedContent()))->toBeGreaterThan(0);
 });
+
+test('the inbox opens an invoice with what the department decided and wrote on it', function () {
+    // Insigna „Aprobat” spune că s-a hotărât, nu și de ce. Cine semnează
+    // final cere motivul scris de om și ce s-a cumpărat, fără să plece din
+    // coadă.
+    $invoice = pagesRoutedInvoice($this->company);
+
+    $this->actingAs($this->head)->post('/approvals/decide', [
+        'invoice_ids' => [$invoice->id],
+        'department_id' => $this->departments['charters']->id,
+        'decision' => 'approved',
+        'comment' => 'Sumele sunt cele din contract, am verificat cu furnizorul.',
+    ])->assertRedirect();
+
+    $preview = $this->actingAs($this->boss)
+        ->getJson("/approvals/invoices/{$invoice->id}/preview")
+        ->assertOk()
+        ->json();
+
+    expect($preview['invoice']['nr_doc'])->toBe($invoice->nr_doc)
+        ->and($preview['invoice']['departments'][0]['name'])->toBe('Charters')
+        ->and($preview['invoice']['departments'][0]['comment'])->toBe('Sumele sunt cele din contract, am verificat cu furnizorul.')
+        ->and($preview['invoice']['departments'][0]['by'])->toBe($this->head->name)
+        // Ce s-a facturat, nu doar cât: altfel suma nu spune nimănui nimic.
+        ->and($preview['invoice']['lines'])->toHaveCount(1)
+        // Și tot ce s-a vorbit pe factură, cu decizia în cronologie.
+        ->and(collect($preview['timeline'])->pluck('type'))->toContain('department_approved');
+});

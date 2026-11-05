@@ -17,6 +17,7 @@ import {
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import ApprovalController from '@/actions/App/Http/Controllers/Approvals/ApprovalController';
+import ApprovalPreviewSheet from '@/components/approval-preview-sheet';
 import DepartmentSelect from '@/components/department-select';
 import DepartmentShares from '@/components/department-shares';
 import {
@@ -26,6 +27,7 @@ import {
 } from '@/components/filter-field';
 import InputError from '@/components/input-error';
 import Pagination from '@/components/pagination';
+import PaymentStatusBadge from '@/components/payment-status-badge';
 import RouteInvoicesDialog from '@/components/route-invoices-dialog';
 import { SelectionBar, useTableSelection } from '@/components/table-selection';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -65,7 +67,6 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import PaymentStatusBadge from '@/components/payment-status-badge';
 import WorkflowStatusBadge from '@/components/workflow-status-badge';
 import AppLayout from '@/layouts/app-layout';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/money';
@@ -225,6 +226,9 @@ export default function ApprovalsIndex({
     const canRoute = tab === 'routing' && can.route;
     const selectable = canDecideMine || canDecideFinal || canRoute;
     const showActions = selectable || canReopen;
+    // Factura deschisă în fereastra laterală: se vede ce s-a cumpărat și ce a
+    // scris departamentul, fără a pierde coada.
+    const [previewed, setPreviewed] = useState<WorkflowInvoice | null>(null);
     const columnCount = 5 + (selectable ? 1 : 0) + (showActions ? 1 : 0);
     const today = localIsoDate();
 
@@ -477,7 +481,8 @@ export default function ApprovalsIndex({
 
         const until = request.decision === 'postponed' ? values.until : null;
         // Gol înseamnă „tot”: suma se trimite doar când omul a scris una.
-        const amount = values.amount.trim() !== '' ? Number(values.amount) : null;
+        const amount =
+            values.amount.trim() !== '' ? Number(values.amount) : null;
 
         if (request.kind === 'final') {
             decideFinal(
@@ -1200,7 +1205,25 @@ export default function ApprovalsIndex({
                                 return (
                                     <TableRow
                                         key={invoice.id}
-                                        className="align-top"
+                                        className="cursor-pointer align-top"
+                                        /*
+                                         * Un rând apăsat deschide factura.
+                                         * Butoanele, legăturile și bifele își
+                                         * păstrează însă fapta lor: altfel
+                                         * „Aprobă final” ar fi deschis și
+                                         * fereastra.
+                                         */
+                                        onClick={(event) => {
+                                            if (
+                                                (
+                                                    event.target as HTMLElement
+                                                ).closest(
+                                                    'a,button,input,label,[role="checkbox"],[role="menuitem"]',
+                                                ) === null
+                                            ) {
+                                                setPreviewed(invoice);
+                                            }
+                                        }}
                                         data-state={
                                             selection.isSelected(invoice.id)
                                                 ? 'selected'
@@ -1354,6 +1377,42 @@ export default function ApprovalsIndex({
                     <Pagination links={rows.links} />
                 </div>
             </div>
+
+            <ApprovalPreviewSheet
+                invoice={previewed}
+                onClose={() => setPreviewed(null)}
+                actions={
+                    previewed !== null && canDecideFinal ? (
+                        <>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={processing}
+                                onClick={() => {
+                                    const invoice = previewed;
+                                    setPreviewed(null);
+                                    openRowDialog(invoice, 'approved');
+                                }}
+                            >
+                                <MessageSquare className="size-4" />
+                                Aprobă parțial sau cu comentariu
+                            </Button>
+                            <Button
+                                type="button"
+                                className="ml-auto"
+                                disabled={processing}
+                                onClick={() => {
+                                    decideFinal([previewed], 'approved');
+                                    setPreviewed(null);
+                                }}
+                            >
+                                <CheckCheck className="size-4" />
+                                Aprobă final
+                            </Button>
+                        </>
+                    ) : null
+                }
+            />
 
             <Dialog
                 open={request !== null}
