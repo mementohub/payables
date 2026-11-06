@@ -53,6 +53,8 @@ class DocumentNoticeMail extends Mailable
                 'sender' => $this->sender,
                 'note' => $this->note,
                 'url' => route('documents.read', $this->document->token),
+                // Raftul cu toate hârtiile casei: de aici intră în el cine n-are cont.
+                'library' => route('documents.library', $this->document->token),
                 'consent' => $this->document->needsConsent(),
             ],
         );

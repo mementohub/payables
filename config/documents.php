@@ -58,4 +58,21 @@ return [
         'from_name' => env('DOCUMENTS_MAIL_FROM_NAME', 'Administrator Christian Tour'),
     ],
 
+    /*
+     * Raftul: toate deciziile și procedurile trimise, la un loc.
+     *
+     * Cele mai multe hârtii se citesc o dată, din mail, și pe urmă se caută
+     * degeaba prin căsuță. Cine are cont le găsește în registru; ceilalți —
+     * adică aproape toată compania — n-aveau până acum de unde. Așa că
+     * legătura oricărei hârtii primite deschide și raftul cu toate celelalte:
+     * nu-i o cheie nouă de împărțit, e cea pe care omul o are deja.
+     *
+     * Pe raft stau numai hârtiile plecate în companie și nearhivate — adică
+     * exact cele care au ajuns oricum în căsuța tuturor. Nu se umblă la nimic
+     * de acolo: se citește și se descarcă, atât.
+     */
+    'library' => [
+        'open' => (bool) env('DOCUMENTS_LIBRARY_OPEN', true),
+    ],
+
 ];

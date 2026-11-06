@@ -45,6 +45,7 @@ class ConsentReceiptMail extends Mailable
                 'document' => $this->document,
                 'consent' => $this->consent,
                 'url' => route('documents.read', $this->document->token),
+                'library' => route('documents.library', $this->document->token),
             ],
         );
     }

@@ -100,6 +100,14 @@
                 </tr>
 
                 <tr>
+                    <td align="center" style="padding:4px 28px 0;">
+                        <a href="{{ $library }}" style="font-size:12px;color:{{ $muted }};text-decoration:underline;">
+                            Vezi toate deciziile și procedurile companiei
+                        </a>
+                    </td>
+                </tr>
+
+                <tr>
                     <td style="padding:14px 28px 26px;border-top:1px solid {{ $line }};">
                         <p style="margin:14px 0 0;font-size:11px;line-height:1.6;color:{{ $muted }};text-align:center;">
                             Dacă ai apăsat deja „am citit”, ești în regulă și n-ai de făcut nimic: aducerea aminte pleacă pe adresa întregului birou, nu doar celor rămași.<br>

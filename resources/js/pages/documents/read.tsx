@@ -1,5 +1,11 @@
 import { Head, useForm } from '@inertiajs/react';
-import { CheckCheck, Download, FileText, Loader2 } from 'lucide-react';
+import {
+    CheckCheck,
+    Download,
+    FileText,
+    Library,
+    Loader2,
+} from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
@@ -8,7 +14,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { consent as consentRoute } from '@/routes/documents';
+import {
+    consent as consentRoute,
+    library as libraryRoute,
+} from '@/routes/documents';
 import type { DocumentLabels } from './types';
 
 type Props = {
@@ -504,6 +513,22 @@ export default function DocumentRead({
                         </CardContent>
                     </Card>
                 )}
+
+                {/*
+                 * Hârtia asta a venit pe mail și acolo rămâne. Celelalte —
+                 * cele de dinaintea ei și cele care vin — se caută degeaba
+                 * prin căsuță, iar registrul din aplicație e doar al celor
+                 * vreo treizeci care au cont. De aici le vede oricine are
+                 * legătura: tot raftul, doar de citit.
+                 */}
+                <div className="flex justify-center pb-8">
+                    <Button variant="outline" asChild>
+                        <a href={libraryRoute(token).url}>
+                            <Library className="size-4" />
+                            Vezi toate deciziile și procedurile
+                        </a>
+                    </Button>
+                </div>
             </div>
         </div>
     );

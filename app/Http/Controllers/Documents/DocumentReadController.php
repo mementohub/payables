@@ -68,6 +68,64 @@ class DocumentReadController extends Controller
         ]);
     }
 
+    /**
+     * Raftul: toate deciziile și procedurile trimise, deschise cu legătura uneia.
+     *
+     * Cine n-are cont aici — adică aproape toată compania — are hârtiile
+     * împrăștiate prin căsuța de mail și le caută după cuvinte pe jumătate
+     * ținute minte. Legătura pe care o are deja în mail îi deschide raftul:
+     * numai ce-a plecat oricum în companie și numai de citit, fără nicio
+     * faptă. Cine are cont, dar nu trece pe la registru, ajunge pe același
+     * raft din același loc.
+     */
+    public function library(Request $request, string $token): Response
+    {
+        abort_unless((bool) config('documents.library.open', true), 404, 'Raftul nu e deschis.');
+
+        $opened = $this->open($token);
+        $user = $request->user();
+
+        $papers = CompanyDocument::query()
+            ->published()
+            ->notArchived()
+            ->whereNotNull('token')
+            // Cea mai nouă hârtie în vigoare sus: așa o caută omul.
+            ->orderByDesc('effective_at')
+            ->orderByDesc('issued_at')
+            ->orderByDesc('id')
+            ->get(['id', 'type', 'number', 'title', 'object', 'issuer', 'issued_at', 'effective_at', 'consent_due_at', 'status', 'token']);
+
+        // Ce-a apăsat deja omul, dacă îl știm după cont: pe raft se vede
+        // dintr-o privire ce i-a mai rămas de citit. Cine n-are cont își
+        // ține semnele în browserul lui, iar pagina le pune peste astea.
+        $mine = $user === null ? [] : DocumentConsent::query()
+            ->whereIn('company_document_id', $papers->pluck('id'))
+            ->where(fn ($q) => $q->where('user_id', $user->id)->orWhereRaw('lower(email) = ?', [mb_strtolower($user->email)]))
+            ->pluck('company_document_id')
+            ->all();
+
+        return Inertia::render('documents/library', [
+            'token' => $token,
+            'opened' => ['number' => $opened->number, 'title' => $opened->title],
+            'papers' => $papers->map(fn (CompanyDocument $paper) => [
+                'id' => $paper->id,
+                'type' => $paper->type,
+                'label' => $paper->label('one'),
+                'number' => $paper->number,
+                'title' => $paper->title,
+                'object' => $paper->object,
+                'issuer' => $paper->issuer,
+                'issued_at' => $paper->issued_at?->toDateString(),
+                'effective_at' => $paper->effective_at?->toDateString(),
+                'consent_due_at' => $paper->consent_due_at?->toDateString(),
+                'status' => $paper->status,
+                'token' => $paper->token,
+                'url' => route('documents.read', $paper->token),
+                'mine' => in_array($paper->id, $mine, true),
+            ])->values()->all(),
+        ]);
+    }
+
     /** Fișierul documentului, pe aceeași legătură. */
     public function file(Request $request, string $token, WordPreview $word): Page|StreamedResponse
     {

@@ -526,3 +526,80 @@ test('the reminder says how much time is left, whichever day it is pressed', fun
     $this->procedure->fresh()->forceFill(['consent_due_at' => now()->addDays(4)->toDateString()])->save();
     expect((new DocumentReminderMail($this->procedure->fresh()))->urgency()['badge'])->toBe('Mai sunt 4 zile: termenul e '.now()->addDays(4)->format('d.m.Y').'.');
 });
+
+/*
+ * Raftul: de la o hârtie primită pe mail, toate celelalte.
+ *
+ * Conturile sunt vreo treizeci, hârtiile sunt ale întregii companii. Cine
+ * n-are cont își ține deciziile și procedurile doar în căsuța de mail, așa
+ * că legătura uneia îi deschide raftul cu toate — de citit, atât.
+ */
+test('the link of one paper opens the shelf with all of them', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", ['due' => '2026-11-20']);
+    $token = $this->procedure->fresh()->token;
+
+    $decision = CompanyDocument::query()->create([
+        'type' => CompanyDocument::TYPE_DECISION,
+        'number' => 'DEC-2026-0007',
+        'title' => 'Decizia privind programul de lucru',
+        'status' => CompanyDocument::STATUS_ACTIVE,
+        'issued_at' => '2026-09-01',
+        'effective_at' => '2026-09-15',
+        'published_at' => now(),
+        'token' => str_repeat('d', 48),
+    ]);
+
+    // Ciorna n-a plecat la nimeni, iar cea arhivată a ieșit din uz: niciuna
+    // n-are ce căuta pe raft.
+    CompanyDocument::query()->create([
+        'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2026-0008', 'title' => 'Ciornă',
+    ]);
+    CompanyDocument::query()->create([
+        'type' => CompanyDocument::TYPE_DECISION, 'number' => 'DEC-2025-0001', 'title' => 'Scoasă din uz',
+        'published_at' => now()->subYear(), 'archived_at' => now(), 'token' => str_repeat('a', 48),
+    ]);
+
+    $this->get("/document/{$token}/toate")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('documents/library')
+            ->where('opened.number', 'PRO-2026-0001')
+            ->has('papers', 2)
+            ->where('papers.0.number', $decision->number)
+            ->where('papers.0.url', route('documents.read', $decision->token))
+            ->where('papers.1.number', 'PRO-2026-0001'),
+        );
+});
+
+test('the shelf opens only with a link that is still good', function () {
+    $this->get('/document/'.str_repeat('x', 48).'/toate')->assertNotFound();
+});
+
+test('the shelf shows the reader what is already taken note of', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", ['due' => '2026-11-20']);
+    $token = $this->procedure->fresh()->token;
+
+    $this->post("/document/{$token}/luare-la-cunostinta", [
+        'name' => 'Ioana Vlad', 'email' => $this->colleague->email, 'agreed' => true,
+    ])->assertRedirect();
+
+    $this->actingAs($this->colleague)
+        ->get("/document/{$token}/toate")
+        ->assertInertia(fn ($page) => $page->where('papers.0.mine', true));
+
+    // Altcineva n-a apăsat încă: raftul n-o spune despre el.
+    $this->actingAs($this->keeper)
+        ->get("/document/{$token}/toate")
+        ->assertInertia(fn ($page) => $page->where('papers.0.mine', false));
+});
+
+test('the shelf can be shut from the settings', function () {
+    $this->actingAs($this->keeper)->post("/documente/proceduri/{$this->procedure->id}/trimite", ['due' => '2026-11-20']);
+    $token = $this->procedure->fresh()->token;
+
+    config(['documents.library.open' => false]);
+
+    $this->get("/document/{$token}/toate")->assertNotFound();
+    // Hârtia primită se citește oricum: raftul e în plus, nu în loc.
+    $this->get("/document/{$token}")->assertOk();
+});

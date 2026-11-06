@@ -58,6 +58,10 @@ Route::get('contracte/{token}/fisier', [ContractController::class, 'sharedFile']
  */
 Route::get('document/{token}', [DocumentReadController::class, 'read'])->name('documents.read');
 Route::get('document/{token}/fisier', [DocumentReadController::class, 'file'])->name('documents.read.file');
+// Raftul: de la o hârtie primită, toate celelalte. Cheia e legătura pe care
+// omul o are deja în mail, fiindcă altă cheie n-are de unde să ia: conturile
+// sunt vreo treizeci, iar hârtiile sunt ale întregii companii.
+Route::get('document/{token}/toate', [DocumentReadController::class, 'library'])->name('documents.library');
 // Numărătoarea e pe adresă de internet, iar un birou întreg iese în lume pe
 // una singură: la o oră după ce pleacă procedura apasă zeci de oameni deodată,
 // de la aceeași adresă. 20 pe minut i-ar fi oprit pe cei de la coadă cu o

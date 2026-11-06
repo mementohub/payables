@@ -83,6 +83,7 @@ class DocumentReminderMail extends Mailable
             with: [
                 'document' => $this->document,
                 'url' => route('documents.read', $this->document->token),
+                'library' => route('documents.library', $this->document->token),
                 'badge' => $urgency['badge'],
                 'tail' => $urgency['tail'],
                 'sentOn' => $this->document->published_at?->timezone('Europe/Bucharest')->format('d.m.Y'),
